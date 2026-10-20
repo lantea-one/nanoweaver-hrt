@@ -58,7 +58,11 @@ window.WeaverVisualizer = {
 
         if (!points || points.length === 0) return;
 
-        const maxHours = points[points.length - 1].hour || 72;
+        const getH = (p) => (p.hour !== undefined ? p.hour : (p.Hour !== undefined ? p.Hour : 0));
+        const getE2Val = (p) => (p.estradiol_pmol_l !== undefined ? p.estradiol_pmol_l : (p.estradiolPmolL !== undefined ? p.estradiolPmolL : (p.EstradiolPmolL !== undefined ? p.EstradiolPmolL : 0)));
+        const getTVal = (p) => (p.testosterone_nmol_l !== undefined ? p.testosterone_nmol_l : (p.testosteroneNmolL !== undefined ? p.testosteroneNmolL : (p.TestosteroneNmolL !== undefined ? p.TestosteroneNmolL : 0)));
+
+        const maxHours = getH(points[points.length - 1]) || 72;
         const maxE2 = Math.max(800, targetE2 * 1.25);
         const maxT = Math.max(30, targetT * 1.5);
 
@@ -91,27 +95,27 @@ window.WeaverVisualizer = {
         gradE2.addColorStop(1, 'rgba(56, 189, 248, 0.0)');
 
         ctx.beginPath();
-        ctx.moveTo(getX(points[0].hour), getYE2(points[0].estradiol_pmol_l));
+        ctx.moveTo(getX(getH(points[0])), getYE2(getE2Val(points[0])));
         for (let i = 1; i < points.length; i++) {
             const prev = points[i - 1];
             const curr = points[i];
-            const cx = (getX(prev.hour) + getX(curr.hour)) / 2;
-            ctx.bezierCurveTo(cx, getYE2(prev.estradiol_pmol_l), cx, getYE2(curr.estradiol_pmol_l), getX(curr.hour), getYE2(curr.estradiol_pmol_l));
+            const cx = (getX(getH(prev)) + getX(getH(curr))) / 2;
+            ctx.bezierCurveTo(cx, getYE2(getE2Val(prev)), cx, getYE2(getE2Val(curr)), getX(getH(curr)), getYE2(getE2Val(curr)));
         }
-        ctx.lineTo(getX(points[points.length - 1].hour), height - padBottom);
-        ctx.lineTo(getX(points[0].hour), height - padBottom);
+        ctx.lineTo(getX(getH(points[points.length - 1])), height - padBottom);
+        ctx.lineTo(getX(getH(points[0])), height - padBottom);
         ctx.closePath();
         ctx.fillStyle = gradE2;
         ctx.fill();
 
         // Stroke E2 Line
         ctx.beginPath();
-        ctx.moveTo(getX(points[0].hour), getYE2(points[0].estradiol_pmol_l));
+        ctx.moveTo(getX(getH(points[0])), getYE2(getE2Val(points[0])));
         for (let i = 1; i < points.length; i++) {
             const prev = points[i - 1];
             const curr = points[i];
-            const cx = (getX(prev.hour) + getX(curr.hour)) / 2;
-            ctx.bezierCurveTo(cx, getYE2(prev.estradiol_pmol_l), cx, getYE2(curr.estradiol_pmol_l), getX(curr.hour), getYE2(curr.estradiol_pmol_l));
+            const cx = (getX(getH(prev)) + getX(getH(curr))) / 2;
+            ctx.bezierCurveTo(cx, getYE2(getE2Val(prev)), cx, getYE2(getE2Val(curr)), getX(getH(curr)), getYE2(getE2Val(curr)));
         }
         ctx.strokeStyle = '#38bdf8';
         ctx.lineWidth = 2.5;
@@ -122,12 +126,12 @@ window.WeaverVisualizer = {
 
         // 4. Draw Testosterone (T) Curve
         ctx.beginPath();
-        ctx.moveTo(getX(points[0].hour), getYT(points[0].testosterone_nmol_l));
+        ctx.moveTo(getX(getH(points[0])), getYT(getTVal(points[0])));
         for (let i = 1; i < points.length; i++) {
             const prev = points[i - 1];
             const curr = points[i];
-            const cx = (getX(prev.hour) + getX(curr.hour)) / 2;
-            ctx.bezierCurveTo(cx, getYT(prev.testosterone_nmol_l), cx, getYT(curr.testosterone_nmol_l), getX(curr.hour), getYT(curr.testosterone_nmol_l));
+            const cx = (getX(getH(prev)) + getX(getH(curr))) / 2;
+            ctx.bezierCurveTo(cx, getYT(getTVal(prev)), cx, getYT(getTVal(curr)), getX(getH(curr)), getYT(getTVal(curr)));
         }
         ctx.strokeStyle = '#f43f5e';
         ctx.lineWidth = 2.5;
@@ -283,5 +287,50 @@ window.WeaverVisualizer = {
             ctx.textAlign = 'center';
             ctx.fillText(`${steps[i].target_temperature_celsius}°C`, x, y - 8);
         }
+    },
+
+    /**
+     * Inspects DOM on page load and automatically renders initial visual charts for prerendered canvases.
+     */
+    autoInit: function () {
+        const kineticsCanvas = document.getElementById('canvas-endocrine-kinetics');
+        if (kineticsCanvas) {
+            const defaultPoints = [
+                { hour: 0, estradiolPmolL: 120.0, testosteroneNmolL: 18.0 },
+                { hour: 4, estradiolPmolL: 237.8, testosteroneNmolL: 13.4 },
+                { hour: 8, estradiolPmolL: 323.3, testosteroneNmolL: 10.06 },
+                { hour: 12, estradiolPmolL: 385.4, testosteroneNmolL: 7.63 },
+                { hour: 16, estradiolPmolL: 430.4, testosteroneNmolL: 5.87 },
+                { hour: 20, estradiolPmolL: 463.2, testosteroneNmolL: 4.59 },
+                { hour: 24, estradiolPmolL: 487.0, testosteroneNmolL: 3.66 },
+                { hour: 28, estradiolPmolL: 504.2, testosteroneNmolL: 2.99 },
+                { hour: 32, estradiolPmolL: 516.8, testosteroneNmolL: 2.50 },
+                { hour: 36, estradiolPmolL: 525.9, testosteroneNmolL: 2.14 },
+                { hour: 40, estradiolPmolL: 532.5, testosteroneNmolL: 1.88 },
+                { hour: 44, estradiolPmolL: 537.3, testosteroneNmolL: 1.70 },
+                { hour: 48, estradiolPmolL: 540.8, testosteroneNmolL: 1.56 },
+                { hour: 52, estradiolPmolL: 543.3, testosteroneNmolL: 1.46 },
+                { hour: 56, estradiolPmolL: 545.1, testosteroneNmolL: 1.39 },
+                { hour: 60, estradiolPmolL: 546.5, testosteroneNmolL: 1.34 },
+                { hour: 64, estradiolPmolL: 547.4, testosteroneNmolL: 1.30 },
+                { hour: 68, estradiolPmolL: 548.1, testosteroneNmolL: 1.27 },
+                { hour: 72, estradiolPmolL: 548.6, testosteroneNmolL: 1.25 }
+            ];
+            WeaverVisualizer.renderKineticsChart('canvas-endocrine-kinetics', defaultPoints, 550.0, 1.2);
+        }
+
+        const compCanvas = document.getElementById('canvas-composition');
+        if (compCanvas) {
+            WeaverVisualizer.renderCompositionDoughnut('canvas-composition', 9, 22, 15, 5, 39.2);
+        }
     }
 };
+
+if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => setTimeout(WeaverVisualizer.autoInit, 50));
+    } else {
+        setTimeout(WeaverVisualizer.autoInit, 50);
+    }
+    window.addEventListener('load', () => setTimeout(WeaverVisualizer.autoInit, 100));
+}
