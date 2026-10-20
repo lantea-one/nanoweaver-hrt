@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# Weaver-LAMMPS-HRT: Git Pre-Commit Hook
+# ------------------------------------------------------------------------------
+# WHAT: Pre-commit hook executing the universal verification gate.
+# WHY:  Prevents committing code with formatting errors, coverage drops, or broken math.
+# HOW:  Runs ./scripts/verify-all.sh and aborts git commit if any check fails.
+# ==============================================================================
+
+set -euo pipefail
+
+echo "Executing pre-commit verification gate..."
+./scripts/verify-all.sh

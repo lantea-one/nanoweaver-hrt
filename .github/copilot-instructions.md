@@ -19,3 +19,13 @@ The primary codebase includes a .NET 10 zero-allocation trajectory parsing micro
    - Never suggest `string.Split()` or string concatenations when parsing XYZ or DCD simulation coordinates.
 4. **Plain English Explanations**:
    - Demystify scientific concepts (DNA origami, coarse-graining, nucleotides, Angstroms, periodic boundary conditions) so anyone can read and modify the code.
+5. **100.00% Line and Branch Code Coverage**:
+   - Every new method, conditional branch, or exception block must be tested with 100% line and branch coverage in `tests/WeaverLammpsHrt.TrajectoryParser.Tests`.
+   - Never suggest `[ExcludeFromCodeCoverage]`.
+   - Client JavaScript (`weaver-visualizer.js`) must maintain 100% lines, branches, and functions coverage via `npm test`.
+6. **100% Deterministic Accuracy**:
+   - Calculations and models must be mathematically and physically exact. Zero compiler warnings (`/warnaserror`) and zero test flakiness.
+7. **Clean Unicode Markdown Formatting**:
+   - Do not wrap units (`50 µL`, `100 µM`), chemical formulas (`17β-estradiol`, `Mg²⁺`), or temperatures in raw `$ ... $` tokens; use clean Unicode symbols.
+8. **Universal Pre-Flight Verification**:
+   - All code must pass `./scripts/verify-all.sh` cleanly before commit.

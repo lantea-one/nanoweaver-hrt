@@ -116,3 +116,28 @@ Whenever writing code or comments involving domain concepts, use these analogies
    Data structures passed across threads or to GPU pipelines must be `readonly struct` with explicit `[StructLayout(LayoutKind.Sequential)]`.
 4. **Independent Cryptographic Provenance**:
    Every exported simulation dataset must have an accompanying `manifest.json` containing an immutable SHA-256 checksum and ISO 8601 UTC timestamp.
+
+---
+
+## 5. Quality, Coverage & Accuracy Invariants
+
+1. **100.00% Line & Branch Coverage Threshold**:
+   - Zero untested code. Every class, method, branch (`if`/`else`, `switch`, ternary), and exception handler must have tests in `tests/WeaverLammpsHrt.TrajectoryParser.Tests`.
+   - Never use `[ExcludeFromCodeCoverage]` to bypass writing tests.
+   - Client-side JavaScript (`weaver-visualizer.js`) must achieve 100% line, branch, and function coverage via `npm test`.
+
+2. **100% Deterministic Accuracy & Zero Warnings**:
+   - Mathematical, biophysical, and pharmacokinetic models must be exact.
+   - Build with zero warnings (`/warnaserror`).
+   - Zero test flakiness or arbitrary thread sleeping.
+
+3. **Markdown Documentation Math Invariants**:
+   - Never wrap physical quantities, units (`50 µL`, `100 µM`), chemical formulas (`17β-estradiol`, `Mg²⁺`), or temperatures in raw single-dollar LaTeX delimiters (`$ ... $`).
+   - Use clean Unicode symbols to guarantee clean rendering on GitHub.com and GitHub Pages without breaking markdown tables. Display equations must use fenced `$$ ... $$` blocks.
+
+4. **Universal Pre-Flight Verification Gate**:
+   - Before committing or concluding any pull request, contributors and AI agents must run:
+     ```bash
+     ./scripts/verify-all.sh
+     ```
+   - All 5 steps must pass cleanly.
