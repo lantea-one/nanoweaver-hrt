@@ -14,19 +14,11 @@ A foundational architectural principle of the Weaver-LAMMPS-HRT platform is the 
 
 > **"Whatever is in the database wins. Stack environment variables do nothing if configuration exists in the database."**
 
-```
-              Container Boot / Service Start
-                            |
-                            v
-            Does the database contain saved
-                 configuration records?
-                            |
-             +--------------+--------------+
-             | YES                         | NO
-             v                             v
-   [Database Configuration]      [Environment Variables / Defaults]
-    Authoritative values loaded   Bootstrap defaults loaded into memory
-    Env variables ignored         and persisted to the database
+```mermaid
+flowchart TD
+    Boot["Container Boot / Service Start"] --> Check{"Does the database contain<br>saved configuration records?"}
+    Check -->|YES| DB["Database Configuration<br>- Authoritative values loaded<br>- Stack environment variables ignored"]
+    Check -->|NO| Env["Environment Variables / Defaults<br>- Bootstrap defaults loaded into memory<br>- Persisted immediately to database"]
 ```
 
 ### Why This Law Exists
@@ -58,21 +50,15 @@ In containerized microservice architectures (Docker Compose, Kubernetes, Podman)
 
 To securely share trajectory datasets, simulation telemetry, and DNA nanocarrier configurations across independent labs without creating centralized accounts, the platform implements **Single-Use Cryptographic Share Keys**.
 
-```
-  Node A (Sender)                                Node B (Receiver)
-         |                                               |
-         | --- 1. Generates Key (nanoweaver_hrt_...) ---------> |
-         |        (Selects Expiration Window)            |
-         |                                               |
-         |                                               | --- 2. Enters Key in Connect Dialog
-         |                                               |        (POST /api/peers/connect)
-         |                                               |                 |
-         | <--- 3. Atomic Redemption Request ------------+                 |
-         |                                                                 |
-         | --- 4. Key Validated & Consumed ATOMICALLY -------------------> |
-         |        (Key immediately marked as "Used")                       |
-         |                                                                 |
-         | <--- 5. Peer Link Established (Encrypted Federation) ---------> |
+```mermaid
+sequenceDiagram
+    autonumber
+    actor NodeA as Node A (Sender)
+    actor NodeB as Node B (Receiver)
+    NodeA->>NodeB: 1. Generates Key (nanoweaver_hrt_...) with Expiration Window
+    NodeB->>NodeA: 2. Connects via Key (POST /api/peers/connect)
+    Note over NodeA: 3. Atomic Redemption Request<br>Validates key & marks is_consumed = true
+    NodeA-->>NodeB: 4. Peer Link Established & Encrypted Federation Authorized
 ```
 
 ### Key Format & Generation

@@ -5,41 +5,36 @@
 
 ---
 
+## 📄 Scientific Abstract
+
+> **Title:** **Autonomous Closed-Loop DNA Origami Nanocarriers for Permanent, Patient-Targeted Endocrine Regulation: An Open-Source In-Silico Modeling, Pharmacogenomics, and Benchtop Fabrication Framework**
+
+Conventional Hormone Replacement Therapy (HRT) for gender-affirming care relies on lifelong, episodic exogenous administration of sex steroids via intramuscular depot injections, transdermal matrices, or oral formulations. This paradigm induces chronic peak-to-trough pharmacokinetic volatility, elevated thromboembolic and hepatic risks, systemic dysphoric fluctuations, and absolute dependency on vulnerable centralized pharmaceutical supply chains. Here, we present **`weaver-lammps-hrt`**, an open-source computational nanotechnology and synthetic biology platform engineering autonomous, patient-targeted DNA origami nanocarriers for permanent, closed-loop Female-to-Male (FtM) and Male-to-Female (MtF) endocrine regulation.
+
+The platform couples multi-scale molecular dynamics with real-time bioinformatic streaming and decentralized fabrication protocols:
+1. **Structural Nanotechnology & Biomolecular Gating:** Engineered nanocarriers (hexagonal six-helix bundle nanotubes, hollow 3D cuboids, and tetrahedral cages folded from bacteriophage M13mp18 ssDNA scaffolds) feature surface-conjugated peptide and nucleic acid aptamer ligands displaying high-affinity tropism for anterior pituitary gonadotropes along the Hypothalamic-Pituitary-Gonadal (HPG) axis. Autonomous allosteric aptamer gates modulate steroid hormone micro-release in direct response to endogenous gonadotropin (LH/FSH) feedback signals, achieving self-regulating physiological homeostasis.
+2. **Zero-Allocation In-Silico Simulation Pipeline:** The computational engine integrates coarse-grained mechanical folding simulations via oxDNA and atomistic docking dynamics via LAMMPS across diverse hardware backends (Intel Arc, NVIDIA CUDA, AMD ROCm, CPU). Trajectory coordinate streams (`.xyz`, `.dcd`, `.lammps`) are ingested by a high-throughput, zero-allocation .NET 10 microservice utilizing `System.IO.Pipelines`, `ReadOnlySpan<byte>`, and AVX-512 SIMD vectorization, serializing multi-gigabyte atomic frames into columnar Apache Parquet with zero Garbage Collection heap pressure in steady state.
+3. **Bistable Endocrinology & Pharmacogenomics:** A mathematical bistable state machine models target endocrine setpoints (Feminizing MtF: 17β-estradiol 500–600 pmol/L, testosterone &lt; 1.8 nmol/L; Masculinizing FtM: testosterone 15–25 nmol/L, 17β-estradiol &lt; 150 pmol/L). The integrated `PharmacogenomicsService` screens high-impact genetic markers (*Factor V Leiden*, *Prothrombin G20210A*, *COMT*, *CYP1B1\*3*, *UGT2B17*, *AR CAG*, *TLR9*), triggering severity call-out alerts and closed-loop kinetic recalibration (`k_eff × 0.85`, safe estradiol capping, aptamer Kd tuning).
+4. **Decentralized Translation & Community Science ("How-To"):** Complete oligo routing tables, cryptographic SHA-256 provenance manifests, and an exhaustive benchtop fabrication protocol (50 µL stoichiometric pipetting schedules, non-toxic reagent substitutions, 90°C → 4°C thermal annealing ramps, and agarose gel electrophoresis QC guidelines).
+
+For the interactive documentation, architectural guides, and visual workflows, visit the [**Weaver-LAMMPS-HRT Documentation Wiki**](docs/index.md).
+
+---
+
 ## 🧬 Architectural Overview & Scientific Mission
 
 Current clinical Hormone Replacement Therapy (HRT) requires lifelong exogenous administration of steroid hormones (estradiol or testosterone injections, patches, or gels), creating systemic troughs, dependency on fragile pharmaceutical supply chains, and fluctuating endocrine levels. 
 
 **`weaver-lammps-hrt`** is an open-source, sovereign computational platform designed to model, simulate, and fabricate permanent, patient-targeted endocrine delivery and feedback systems. By coupling **DNA nanotechnology (DNA origami)** with **bistable synthetic biology toggle circuits**, the system achieves targeted in-vivo hormonal regulation.
 
-```
-                               +-------------------------------------------------+
-                               |   Patient-Targeted Endocrine Toggle Engine      |
-                               |    Closed-Loop Feedback Controller (.NET 10)    |
-                               +------------------------+------------------------+
-                                                        |
-                           +----------------------------+----------------------------+
-                           |                                                         |
-                           v                                                         v
-           [Male-to-Female (MtF) Regimen]                            [Female-to-Male (FtM) Regimen]
-           - 17β-Estradiol (E2): 350 - 750 pmol/L                    - Testosterone (T): 12 - 28 nmol/L
-           - Androgen Suppression: < 1.8 nmol/L                      - Estradiol Suppression: < 150 pmol/L
-           - Aromatase (CYP19A1) / ERα/ERβ activation                - 17β-HSD / Androgen Receptor (AR) activation
-           - Pituitary GnRH-R feedback modulation                    - Pituitary/Adrenal targeted modulation
-                           |                                                         |
-                           +----------------------------+----------------------------+
-                                                        |
-                                                        v
-                               +-------------------------------------------------+
-                               |      DNA Origami Nanocarrier Delivery Vehicle   |
-                               |        Coarse-grained modeling via oxDNA        |
-                               |        Atomistic docking via LAMMPS (GPU)       |
-                               +------------------------+------------------------+
-                                                        |
-                                                        v
-                               +-------------------------------------------------+
-                               |     Zero-Allocation Pipeline & Sovereign UI     |
-                               |       System.IO.Pipelines Real-Time Slicing     |
-                               +-------------------------------------------------+
+```mermaid
+flowchart TD
+    Toggle["Patient-Targeted Endocrine Toggle Engine<br>Closed-Loop Feedback Controller (.NET 10)"]
+    Toggle --> MtF["Male-to-Female (MtF) Regimen<br>- 17β-Estradiol (E2): 350 - 750 pmol/L<br>- Androgen Suppression: &lt; 1.8 nmol/L<br>- Aromatase (CYP19A1) / ERα/ERβ activation<br>- Pituitary GnRH-R feedback modulation"]
+    Toggle --> FtM["Female-to-Male (FtM) Regimen<br>- Testosterone (T): 12 - 28 nmol/L<br>- Estradiol Suppression: &lt; 150 pmol/L<br>- 17β-HSD / Androgen Receptor (AR) activation<br>- Pituitary/Adrenal targeted modulation"]
+    MtF --> Carrier["DNA Origami Nanocarrier Delivery Vehicle<br>Coarse-grained modeling via oxDNA<br>Atomistic docking via LAMMPS (GPU)"]
+    FtM --> Carrier
+    Carrier --> Engine["Zero-Allocation Pipeline & Sovereign UI<br>System.IO.Pipelines Real-Time Slicing"]
 ```
 
 ### 1. Male-to-Female (MtF) Regimen

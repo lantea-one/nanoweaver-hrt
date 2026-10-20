@@ -18,23 +18,13 @@ Conventional HRT relies on periodic exogenous depot injections, transdermal gels
 **Our Approach:**
 By folding single-stranded viral DNA (bacteriophage M13mp18) into rigid 3D nanostructures functionalized with synthetic DNA aptamer pockets and tissue-targeting ligands, we create **autonomous, closed-loop nanocarriers**. These nanocarriers home directly to anterior pituitary gonadotropes, hypothalamic receptors, or steroidogenic targets, releasing hormones in direct response to local physiological feedback loops.
 
-```
-                      +---------------------------------------+
-                      |       Simulation Engine (Docker)       |
-                      |   oxDNA / LAMMPS (OpenCL / SYCL)      |
-                      +-------------------+-------------------+
-                                          |
-                                Writes trajectory (.xyz, .dcd, .dump)
-                                          |
-                                          v
-+-----------------------+     +-------------------------------+
-|  Sovereign Web UI     | <-> |  .NET 10 Microservice (Node)  |
-|  Dataset Import/Export|     |  System.IO.Pipelines Parser   |
-|  Telemetry Dashboard  |     |  Zero-Allocation Frame Slices |
-+-----------------------+     +---------------+---------------+
-                                              |
-                                Streams parsed frames to
-                                downstream analysis & ML
+```mermaid
+flowchart TD
+    Sim["Simulation Engine (Docker)<br>oxDNA / LAMMPS (OpenCL / SYCL)"]
+    Sim -->|Writes Trajectory Coordinates<br>.xyz, .dcd, .dump| Volume[("Shared Simulation Volume<br>/simulations/shared-data")]
+    Volume -->|Zero-Allocation Stream| Parser[".NET 10 Microservice (Kestrel :5000)<br>System.IO.Pipelines Parser"]
+    Parser ---|Live Telemetry & Bistable Controls| UI["Sovereign Web UI<br>Blazor Interactive Dashboard"]
+    Parser -->|Zero-GC Columnar Serialization| Parquet["DuckDB Parquet / Trajectory Bundles<br>Downstream ML & Verification"]
 ```
 
 ---
@@ -81,25 +71,27 @@ By folding single-stranded viral DNA (bacteriophage M13mp18) into rigid 3D nanos
 
 Explore the comprehensive guides and references below:
 
-1. [**Getting Started & Deployment**](getting-started.md)
+1. [**Scientific Abstract**](abstract.md)
+   * Formal scientific abstract, biomolecular gating mechanisms, zero-allocation pipeline specifications, and pharmacogenomic models.
+2. [**Getting Started & Deployment**](getting-started.md)
    * Local development prerequisites, .NET 10 setup, Docker Compose GPU backends (Intel Arc, NVIDIA CUDA, AMD ROCm, CPU).
-2. [**Secure Public Access & Reverse Proxies**](secure-public-access.md)
+3. [**Secure Public Access & Reverse Proxies**](secure-public-access.md)
    * Hardened production deployment architectures, automated Let's Encrypt SSL/TLS, Caddy, Nginx + Certbot, and Cloudflare Tunnels (CGNAT bypass).
-3. [**Guided DNA Workflow Wizard**](workflow-wizard.md)
+4. [**Guided DNA Workflow Wizard**](workflow-wizard.md)
    * Deep-dive walkthrough of all 6 stages from digitized sequence ingestion to physical bench synthesis.
-4. [**Endocrine Hub & Pharmacodynamics**](endocrine-hub.md)
+5. [**Endocrine Hub & Pharmacodynamics**](endocrine-hub.md)
    * Plain-English biomedical context of the HPG axis, bistable state transitions, and 72-hour kinetics.
-5. [**Configuration & Sovereign Peering**](configuration-peers.md)
+6. [**Configuration & Sovereign Peering**](configuration-peers.md)
    * Database-first precedence rules, single-use share key lifecycle, and federating remote UI instances.
-6. [**Stack Topology & Hardware Telemetry**](stack-services.md)
+7. [**Stack Topology & Hardware Telemetry**](stack-services.md)
    * Service health inspection, diagnostic connectivity pings, SIMD detection, and Server GC telemetry.
-7. [**Trajectory Streaming & Dataset Provenance**](trajectories-and-datasets.md)
+8. [**Trajectory Streaming & Dataset Provenance**](trajectories-and-datasets.md)
    * Zero-allocation streaming pipelines, columnar Parquet serialization, and SHA-256 signed tarballs.
-8. [**Example Biomedical Workflows**](example-workflows.md)
+9. [**Example Biomedical Workflows**](example-workflows.md)
    * Concrete step-by-step examples: MtF feminizing nanotube, FtM masculinizing nanocage, and collaborative compute peering.
-9. [**DIY & HomeLab Benchtop Fabrication Guide**](diy-fabrication-guide.md)
+10. [**DIY & HomeLab Benchtop Fabrication Guide**](diy-fabrication-guide.md)
    * Step-by-step physical instructions for community scientists: 50 µL pipetting recipe, reagents checklist, 7-step bench execution, agarose gel QC, and non-toxic safety protocols.
-10. [**REST API Reference**](api-reference.md)
+11. [**REST API Reference**](api-reference.md)
    * Full endpoint catalog, request/response JSON schemas, and test suite execution.
 
 ---

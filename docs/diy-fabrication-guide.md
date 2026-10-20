@@ -47,15 +47,12 @@ You do not need a university lab or a $50,000 capital budget to fold DNA origami
 
 Pipette components into a sterile 0.2 mL thin-walled PCR tube in the exact order shown below:
 
-```
-[Pipetting Sequence for 50 µL Reaction]
-  1. Water (35.0 µL) ---------> Sterile PCR tube
-  2. 10x Buffer (5.0 µL) -----> Mix gently
-  3. M13mp18 Scaffold (5.0 µL) -> Add on ice
-  4. Staple Pool (5.0 µL) ----> 10x stoichiometric excess
-                                    |
-                                    v
-                     Gently flick tube 5 times (DO NOT VORTEX!)
+```mermaid
+flowchart TD
+    W["1. Nuclease-Free Water (35.0 µL)<br>Add first to sterile 0.2 mL PCR tube"] --> B["2. 10x Folding Buffer (5.0 µL)<br>10x TAE + 125 mM MgCl2; mix gently"]
+    B --> S["3. M13mp18 ssDNA Scaffold (5.0 µL)<br>Add on ice; DO NOT VORTEX!"]
+    S --> P["4. Master Staple Pool (5.0 µL)<br>10x stoichiometric excess (100 nM final)"]
+    P --> M["5. Gently flick tube 5 times & pulse spin<br>Ready for 6-stage thermal cycler ramp"]
 ```
 
 | Order | Component Name | Stock Concentration | Volume (µL) | Final Concentration | Handling Tip |

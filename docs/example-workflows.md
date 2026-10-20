@@ -11,20 +11,12 @@ This guide provides concrete, end-to-end walkthroughs for common workflows in **
 ### Objective
 Design and simulate an autonomous DNA origami cylindrical nanotube targeted to anterior pituitary gonadotrope cells for permanent, closed-loop 17β-estradiol (E2) titration and natural luteinizing hormone (LH) suppression.
 
-```
-  [Viral M13mp18 ssDNA] + [180 Synthetic Staples]
-                           |
-                           v (Wizard Stages 1-4)
-            6-Stage Thermal Annealing Ramp
-                           |
-                           v (Wizard Stage 5)
-         oxDNA / LAMMPS In-Silico Structural Validation
-                           |
-                           v (Endocrine Hub)
-       72-Hour In-Vivo Kinetics & Bistable Setpoint Test
-                           |
-                           v (Wizard Stage 6)
-       Export CSV Order Sheet + Signed Manifest Bundle
+```mermaid
+flowchart TD
+    Step1["Viral M13mp18 ssDNA + 180 Synthetic Staples<br>Algorithmic Crossover Routing (Wizard Stages 1-4)"] --> Step2["6-Stage Thermal Annealing Ramp<br>90°C Denaturation to 4°C Storage"]
+    Step2 --> Step3["oxDNA / LAMMPS In-Silico Structural Validation<br>Lattice Rigidity & Kd Contact Testing (Stage 5)"]
+    Step3 --> Step4["Endocrine Hub Kinetics Validation<br>72-Hour In-Vivo Bistable Setpoint Test"]
+    Step4 --> Step5["Export CSV Order Sheet + Signed Manifest<br>Stoichiometric Pipetting Map & SHA-256 Bundle (Stage 6)"]
 ```
 
 ### Step 1: Ingest Scaffold in the Guided DNA Wizard
@@ -134,23 +126,16 @@ curl -X POST http://localhost:5000/api/analytics/query \
 ### Objective
 Establish a secure, authenticated link between Lab A (Originating Node) and Lab B (Collaborating Node) using single-use share keys to exchange trajectory metadata without transmitting raw multi-gigabyte trajectory files across public networks.
 
-```
-  [Lab A: Origin Node]                            [Lab B: Collaborator Node]
-           |                                                    |
-  1. Generate Single-Use Key                                    |
-     (nanoweaver_hrt_..., Window: 24h)                                 |
-           |                                                    |
-           + - - - - - (Secure Out-of-Band Channel) - - - - - > |
-                                                                |
-                                                    2. Opens Peer Connect Dialog
-                                                    3. Enters Node URL & Key
-                                                                |
-           < - - - - - (Atomic Redemption Exchange) - - - - - - +
-           |                                                    |
-  4. Validates Key & Marks Used                                 |
-  5. Authorizes Federated Session                               |
-           |                                                    |
-           < = = = = = (Encrypted Metadata Peering) = = = = = = >
+```mermaid
+sequenceDiagram
+    autonumber
+    actor LabA as Lab A (Origin Node)
+    actor LabB as Lab B (Collaborator Node)
+    LabA->>LabB: 1. Generate Single-Use Key (nanoweaver_hrt_..., 24h window) via Secure Channel
+    LabB->>LabA: 2. Connect Remote Peer (Node URL + Single-Use Key)
+    Note over LabA: 3. Atomic Redemption Exchange<br>Validates key & marks used immediately
+    LabA-->>LabB: 4. Authorize Federated Session
+    Note over LabA,LabB: 5. Encrypted Metadata & Parquet Trajectory Catalog Peering Active
 ```
 
 ### Step 1: Generate Peering Key on Lab A

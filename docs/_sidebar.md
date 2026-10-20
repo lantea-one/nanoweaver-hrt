@@ -1,6 +1,7 @@
 <!-- docs/_sidebar.md -->
 
 * [**Overview & Vision**](index.md)
+* [**Scientific Abstract**](abstract.md)
 * [**Getting Started & Deployment**](getting-started.md)
 * [**Secure Public Access & Reverse Proxies**](secure-public-access.md)
 * [**Guided DNA Workflow Wizard**](workflow-wizard.md)

@@ -28,18 +28,13 @@ Our nanocarriers offer four fundamental advantages:
 
 The Wizard guides you sequentially through six distinct computational and experimental stages:
 
-```
-+----------------------------------------------------------------------------------------+
-|                      6-STAGE GUIDED DNA FABRICATION PIPELINE                           |
-+-------------------+--------------------+--------------------+--------------------------+
-|  Stage 1:         |  Stage 2:          |  Stage 3:          |  Stage 4:                |
-|  Scaffold         |  Target Geometry   |  Staple Routing &  |  Stoichiometric Thermal  |
-|  Ingestion        |  & Conformation    |  Crossover Design  |  Annealing Protocol      |
-+-------------------+--------------------+--------------------+--------------------------+
-                    |  Stage 5:          |  Stage 6:          |
-                    |  In-Silico oxDNA / |  Benchtop Synthesis|
-                    |  LAMMPS Validation |  & Export Manifest |
-                    +--------------------+--------------------+
+```mermaid
+flowchart LR
+    S1["Stage 1<br>Scaffold Ingestion<br>& Screening"] --> S2["Stage 2<br>Target Geometry<br>& Conformation"]
+    S2 --> S3["Stage 3<br>Staple Routing<br>& Crossovers"]
+    S3 --> S4["Stage 4<br>Stoichiometric<br>Thermal Annealing"]
+    S4 --> S5["Stage 5<br>In-Silico oxDNA<br>& LAMMPS Validation"]
+    S5 --> S6["Stage 6<br>Benchtop Synthesis<br>& Export Manifest"]
 ```
 
 ---
@@ -55,8 +50,11 @@ In this first stage, you supply or select the primary single-stranded DNA (ssDNA
 As the sequence is ingested, the engine performs instantaneous zero-allocation validation:
 * **Base Distribution**: Computes exact counts and mole fractions for Adenine (A), Thymine (T), Guanine (G), and Cytosine (C).
 * **GC-Content Percentage**:
-  $$\text{GC}\% = \frac{G + C}{A + T + G + C} \times 100\%$$
-  *(or: `GC% = (G + C) / (A + T + G + C) × 100%`)*
+  Determines thermal duplex stability and mechanical rigidity:
+
+$$\text{GC}\% = \frac{G + C}{A + T + G + C} \times 100\%$$
+
+  *(or in plain text: `GC% = (G + C) / (A + T + G + C) × 100%`)*
   *Why it matters*: DNA double helices formed by G-C pairs have three hydrogen bonds compared to two in A-T pairs. A GC-content between 40% and 55% ensures optimal structural rigidity without requiring extreme thermal denaturation temperatures.
 * **Molecular Weight Estimation**: Calculated using average monophosphate nucleotide weights (~330 Da/nucleotide), providing accurate molar mass figures for stoichiometric bench mixing.
 * **Automated Pharmacogenomic Sequence Screening**:

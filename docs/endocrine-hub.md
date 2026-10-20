@@ -12,37 +12,15 @@ The **Endocrine Regulatory Hub** provides computational modeling and real-time v
 
 To understand how targeted DNA nanocarriers function as sovereign Hormone Replacement Therapy (HRT), it is essential to understand the biological control system governing human sex steroids: the **Hypothalamic-Pituitary-Gonadal (HPG) Axis**.
 
-```
-                           +------------------------+
-                           |      Hypothalamus      |
-                           |   GnRH Pulsing Pulse   |
-                           +-----------+------------+
-                                       |
-                                       v (GnRH)
-                           +------------------------+
-                           |   Anterior Pituitary   |
-                           |    Gonadotropes        |
-                           +-----------+------------+
-                                       |
-                    +------------------+------------------+
-                    |                                     |
-                    v (LH)                                v (FSH)
-         +---------------------+               +---------------------+
-         |  Leydig Cells /     |               |  Granulosa Cells /  |
-         |  Theca Cells        |               |  Sertoli Cells      |
-         +----------+----------+               +----------+----------+
-                    |                                     |
-                    +------------------+------------------+
-                                       |
-                                       v
-                    +-------------------------------------+
-                    |     Steroid Hormones Produced:      |
-                    |  - 17β-Estradiol (E2)               |
-                    |  - Testosterone (T)                 |
-                    |  - Progesterone (P4)                |
-                    +------------------+------------------+
-                                       |
-             (Negative Feedback) - - - + - - - > Inhibit Hypothalamus & Pituitary
+```mermaid
+flowchart TD
+    Hypo["Hypothalamus<br>(Pulsatile GnRH Release)"] -->|GnRH Stimulation| Pituitary["Anterior Pituitary Gonadotropes<br>(GnRH Receptors)"]
+    Pituitary -->|Luteinizing Hormone - LH| GonadsLH["Leydig Cells / Theca Cells<br>(Steroidogenesis)"]
+    Pituitary -->|Follicle-Stimulating Hormone - FSH| GonadsFSH["Granulosa Cells / Sertoli Cells<br>(Aromatization & Gametogenesis)"]
+    GonadsLH --> Steroids["Circulating Sex Steroids<br>- 17β-Estradiol (E2)<br>- Total Testosterone (T)<br>- Progesterone (P4)"]
+    GonadsFSH --> Steroids
+    Steroids -.->|Reciprocal Negative Feedback| Hypo
+    Steroids -.->|Reciprocal Negative Feedback| Pituitary
 ```
 
 ### The Endogenous Feedback Loop
@@ -73,24 +51,11 @@ Instead of dumping free steroids into the general circulation, our system utiliz
 
 The Endocrine Regulatory Hub implements a mathematical state machine modeling the patient's hormonal state:
 
-```
-                  +--------------------------------+
-                  |            STATE 0             |
-                  |       Baseline / Unprimed      |
-                  +---------------+----------------+
-                                  |
-              +-------------------+-------------------+
-              |                                       |
-   Select Feminizing (MtF)                 Select Masculinizing (FtM)
-              |                                       |
-              v                                       v
-+-------------------------------+   +-------------------------------+
-|            STATE 1            |   |            STATE 2            |
-|    Feminizing Homeostasis     |   |    Masculinizing Homeostasis  |
-| E2: 500-600 pmol/L (Target)   |   | T:  15-25 nmol/L (Target)     |
-| T:  < 1.8 nmol/L (Suppressed) |   | E2: < 150 pmol/L (Suppressed) |
-| LH: Basal suppression         |   | LH: Basal suppression         |
-+-------------------------------+   +-------------------------------+
+```mermaid
+flowchart TD
+    State0["State 0: Baseline / Unprimed Genome"]
+    State0 -->|Select Feminizing Regimen| State1["State 1: Feminizing Homeostasis (MtF)<br>• 17β-Estradiol: 500-600 pmol/L<br>• Testosterone: &lt; 1.8 nmol/L<br>• Pituitary LH/FSH Negative Feedback"]
+    State0 -->|Select Masculinizing Regimen| State2["State 2: Masculinizing Homeostasis (FtM)<br>• Total Testosterone: 15-25 nmol/L<br>• 17β-Estradiol: &lt; 150 pmol/L<br>• GnRH Pulsatility Suppression"]
 ```
 
 ### State 1: Feminizing Hormone Therapy (MtF)
@@ -150,14 +115,15 @@ The platform categorizes genetic findings into four strict clinical alert tiers:
 When genetic markers are detected or selected, the engine recalibrates the closed-loop mathematical kinetics:
 
 1. **Clearance Multiplier Scaling**:
-   The baseline exponential rate constant ($$k = 0.08\text{ h}^{-1}$$) is dynamically scaled by the patient's combined metabolic multiplier:
-   $$k_{\text{eff}} = 0.08 \times \prod_i M_{\text{clearance}, i}$$
+   The baseline exponential rate constant (`k = 0.08 h⁻¹`) is dynamically scaled by the patient's combined metabolic multiplier:
+
+$$k_{\text{eff}} = 0.08 \times \prod_i M_{\text{clearance}, i}$$
 
 2. **Thrombosis Surge Damping**:
-   If the aggregate thrombosis risk index exceeds 1.5, the initial burst release rate is damped by 15% ($$k_{\text{eff}} \times 0.85$$) to model continuous micro-infusion delivery and eliminate transient hyper-coagulation peaks.
+   If the aggregate thrombosis risk index exceeds 1.5, the initial burst release rate is damped by 15% (`k_eff × 0.85`) to model continuous micro-infusion delivery and eliminate transient hyper-coagulation peaks.
 
 3. **Epigenetic Stability Extension**:
-   When enzymatic CpG methylation is mandated for TLR9 tolerance, the methylated DNA origami nanocarrier exhibits 40% higher resistance to human serum endonucleases, extending estimated in-vivo half-life ($$t_{1/2} \times 1.40$$).
+   When enzymatic CpG methylation is mandated for TLR9 tolerance, the methylated DNA origami nanocarrier exhibits 40% higher resistance to human serum endonucleases, extending estimated in-vivo half-life (`t½ × 1.40`).
 
 ---
 

@@ -16,26 +16,26 @@ By default, the .NET 10 Trajectory Parser and sovereign Web UI listen on interna
 ```mermaid
 flowchart TD
     subgraph PublicInternet["Public Internet"]
-        Client["Browser / Remote Peer\n(HTTPS :443)"]
+        Client["Browser / Remote Peer<br>(HTTPS :443)"]
     end
 
     subgraph FirewallBoundary["Firewall & Host OS Boundary"]
-        Firewall["Firewall (UFW / NAT Router)\nPorts 80 & 443 Forwarded"]
+        Firewall["Firewall (UFW / NAT Router)<br>Ports 80 & 443 Forwarded"]
     end
 
     subgraph ReverseProxyTier["Hardened Reverse Proxy Tier"]
-        Proxy["Reverse Proxy (Caddy / Nginx / Traefik)\n- Free Let's Encrypt SSL\n- Auto TLS 1.3 Termination\n- HTTP -> HTTPS Redirect\n- Hardened Headers & Rate Limiting"]
+        Proxy["Reverse Proxy (Caddy / Nginx / Traefik)<br>- Free Let's Encrypt SSL<br>- Auto TLS 1.3 Termination<br>- HTTP to HTTPS Redirect<br>- Hardened Headers & Rate Limiting"]
     end
 
     subgraph DockerInternal["Internal Docker Network (weaver-lammps-hrt)"]
-        Parser["weaver-parser (Kestrel :5000)\n- Loopback Only (127.0.0.1)\n- Blazor SignalR Streaming\n- Zero-Allocation Frame Engine"]
-        Sim["weaver-simulation\n(oxDNA & LAMMPS Engines)"]
+        Parser["weaver-parser (Kestrel :5000)<br>- Loopback Only (127.0.0.1)<br>- Blazor SignalR Streaming<br>- Zero-Allocation Frame Engine"]
+        Sim["weaver-simulation<br>(oxDNA & LAMMPS Engines)"]
     end
 
     Client -->|Encrypted HTTPS / WSS| Firewall
     Firewall --> Proxy
     Proxy -->|Internal HTTP / WS| Parser
-    Parser <-->|Shared Volume / Parquet| Sim
+    Parser ---|Shared Volume / Parquet| Sim
 ```
 
 ---
@@ -233,9 +233,9 @@ Many home lab researchers operate behind **Carrier-Grade NAT (CGNAT)** or reside
 
 ```mermaid
 flowchart LR
-    Browser["Public User\nhttps://hrt.yourdomain.org"] -->|Encrypted HTTPS| CloudflareEdge["Cloudflare Edge Network\n(Free SSL & WAF)"]
-    CloudflareEdge -->|Encrypted Outbound QUIC/TLS| Cloudflared["weaver-cloudflared\n(Container on Host)"]
-    Cloudflared -->|Internal HTTP| Parser["weaver-parser:5000\n(Web UI & API)"]
+    Browser["Public User<br>(HTTPS :443)"] -->|Encrypted HTTPS| CloudflareEdge["Cloudflare Edge Network<br>(Free SSL & WAF)"]
+    CloudflareEdge -->|Encrypted Outbound QUIC/TLS| Cloudflared["weaver-cloudflared<br>(Container on Host)"]
+    Cloudflared -->|Internal HTTP| Parser["weaver-parser:5000<br>(Web UI & API)"]
 ```
 
 ### 7.1. Cloudflare Tunnel Setup (Step-by-Step)

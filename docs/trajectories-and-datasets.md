@@ -17,32 +17,14 @@ In traditional managed runtimes (Python, Java, legacy .NET), parsing text-based 
 ### Our Solution: Zero Heap Allocations in Hot Loops
 Weaver-LAMMPS-HRT enforces a **Strict Zero-Allocation Policy** across all trajectory ingest pipelines:
 
-```
-  Disk / File Stream (.xyz, .dump, .dcd)
-                     |
-                     v
-   System.IO.Pipelines.PipeReader
-   (Asynchronous raw byte buffer sliding window)
-                     |
-                     v
-   SequenceReader<byte> / ReadOnlySpan<byte>
-   (Slices raw ASCII bytes without creating strings)
-                     |
-                     v
-   System.Buffers.Text.Utf8Parser
-   (Parses floats and ints directly into CPU registers)
-                     |
-                     v
-   ArrayPool<AtomCoordinate>.Shared
-   (Rents pre-allocated blittable struct buffers)
-                     |
-                     v
-   Hardware SIMD Vector Processing (AVX-512 / AVX2 / SSE4.2)
-   (Computes Center of Mass, RMSD, Radius of Gyration in parallel)
-                     |
-                     v
-   Returned to ArrayPool in finally block
-   (GC Gen 0 / 1 / 2 Heap Allocations = 0)
+```mermaid
+flowchart TD
+    Disk["Disk / File Stream<br>(.xyz, .dump, .dcd)"] --> Pipe["System.IO.Pipelines.PipeReader<br>(Asynchronous raw byte buffer sliding window)"]
+    Pipe --> Span["SequenceReader / ReadOnlySpan&lt;byte&gt;<br>(Slices raw ASCII bytes without creating strings)"]
+    Span --> Utf8["System.Buffers.Text.Utf8Parser<br>(Parses floats and ints directly into CPU registers)"]
+    Utf8 --> Pool["ArrayPool&lt;AtomCoordinate&gt;.Shared<br>(Rents pre-allocated blittable struct buffers)"]
+    Pool --> SIMD["Hardware SIMD Vector Processing<br>(AVX-512 / AVX2 / SSE4.2 parallel computations)"]
+    SIMD --> Return["Returned to ArrayPool in finally block<br>(GC Gen 0 / 1 / 2 Heap Allocations = 0)"]
 ```
 
 ---

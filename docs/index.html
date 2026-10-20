@@ -12,10 +12,20 @@
   <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/katex@latest/dist/katex.min.css"/>
   <link rel="stylesheet" href="assets/sovereign-theme.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧬</text></svg>">
+  <!-- Mermaid Flowchart & Sequence Rendering -->
+  <script src="//cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
 </head>
 <body>
   <div id="app">Loading Weaver-LAMMPS-HRT Wiki...</div>
   <script>
+    if (typeof mermaid !== 'undefined') {
+      mermaid.initialize({
+        startOnLoad: false,
+        theme: 'dark',
+        securityLevel: 'loose'
+      });
+    }
+
     window.$docsify = {
       name: 'Weaver-LAMMPS-HRT',
       repo: 'https://github.com/lantea-one/dotnet-weaver-lammps-hrt',
@@ -39,7 +49,30 @@
         buttonText: 'Copy',
         errorText: 'Error',
         successText: 'Copied'
-      }
+      },
+      markdown: {
+        renderer: {
+          code: function(code, lang) {
+            if (lang === "mermaid") {
+              return '<div class="mermaid">' + code + '</div>';
+            }
+            return this.origin.code.apply(this, arguments);
+          }
+        }
+      },
+      plugins: [
+        function(hook, vm) {
+          hook.doneEach(function() {
+            if (typeof mermaid !== 'undefined') {
+              mermaid.run({
+                querySelector: '.mermaid'
+              }).catch(function(err) {
+                console.warn('Mermaid rendering notice:', err);
+              });
+            }
+          });
+        }
+      ]
     };
   </script>
   <!-- Docsify Core -->

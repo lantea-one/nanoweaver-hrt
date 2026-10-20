@@ -12,35 +12,19 @@ The **Stack Services & Telemetry** module provides continuous, real-time observa
 
 The Weaver-LAMMPS-HRT system is engineered as a decoupled, multi-container microservice stack:
 
-```
-+-----------------------------------------------------------------------------------+
-|                           LOCAL HOST / COMPUTE NODE                               |
-+-----------------------------------------------------------------------------------+
-|                                                                                   |
-|  +----------------------------------+       +----------------------------------+  |
-|  |     Trajectory Parser & Web      |       |        Simulation Engine         |  |
-|  |     (.NET 10 Kestrel Service)    | <---> |        (Docker Container)        |  |
-|  |  - High-throughput PipeReader    |       |  - oxDNA 2.4 (OpenCL / SYCL)     |  |
-|  |  - Zero-alloc SIMD Parser        |       |  - LAMMPS (Stable / GPU package) |  |
-|  |  - Blazor Interactive Server UI  |       |  - Direct GPU Access (/dev/dri)  |  |
-|  |  - Port 5000                     |       +----------------------------------+  |
-|  +----------------------------------+                        |                    |
-|                   |                                          |                    |
-|                   | (Reads Trajectories)                     | (Writes Frames)    |
-|                   v                                          v                    |
-|  +-----------------------------------------------------------------------------+  |
-|  |             Shared Host Volume: /simulations/shared-data/                    |  |
-|  |             - Trajectories: .xyz, .dump, .lammps, .dcd                      |  |
-|  |             - Columnar Archives: .parquet                                   |  |
-|  +-----------------------------------------------------------------------------+  |
-|                   |                                                               |
-|                   v                                                               |
-|  +----------------------------------+                                             |
-|  |      Columnar & State DB         |                                             |
-|  |  - PostgreSQL with pg_duckdb     |                                             |
-|  |  - Embedded SQLite Fallback      |                                             |
-|  +----------------------------------+                                             |
-+-----------------------------------------------------------------------------------+
+```mermaid
+flowchart TD
+    subgraph ComputeNode["Local Host / Compute Node"]
+        Parser["Trajectory Parser & Web Service<br>(.NET 10 Kestrel :5000)<br>- High-throughput PipeReader<br>- Zero-alloc SIMD Parser<br>- Blazor Interactive Server UI"]
+        Sim["Simulation Engine Container<br>(oxDNA 2.4 & LAMMPS)<br>- OpenCL / Level Zero / CUDA<br>- Direct GPU Access (/dev/dri)"]
+        Volume[("Shared Simulation Volume<br>/simulations/shared-data/<br>- Trajectories: .xyz, .dump, .dcd<br>- Columnar Archives: .parquet")]
+        DB[("Columnar & State DB<br>PostgreSQL with pg_duckdb<br>(Embedded SQLite Fallback)")]
+
+        Sim -->|Writes Frames| Volume
+        Volume -->|Reads Trajectories| Parser
+        Parser ---|Live Telemetry & Diagnostics| Sim
+        Parser -->|Persists State & Manifests| DB
+    end
 ```
 
 ### Components

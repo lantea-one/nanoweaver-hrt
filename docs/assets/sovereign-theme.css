@@ -283,6 +283,22 @@ body {
   color: #e2e8f0 !important;
 }
 
+/* Mermaid Flowchart & Sequence Diagram Container */
+.markdown-section .mermaid {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: 8px !important;
+  padding: 1.5rem !important;
+  margin: 1.5rem 0 !important;
+  text-align: center !important;
+  overflow-x: auto !important;
+}
+
+.markdown-section .mermaid svg {
+  max-width: 100% !important;
+  height: auto !important;
+}
+
 /* Embedded Screenshots & Visuals */
 .markdown-section img {
   max-width: 100% !important;
