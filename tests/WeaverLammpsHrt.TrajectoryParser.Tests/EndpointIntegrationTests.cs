@@ -36,6 +36,8 @@ public sealed class EndpointIntegrationTests : IClassFixture<WebApplicationFacto
         string exportDir = Path.Combine(solutionRoot, "simulations", "exports");
         string parquetDir = Path.Combine(solutionRoot, "simulations", "parquet");
 
+        TestFixturesHelper.EnsureTestFixtures(dataDir);
+
         _factory = factory.WithWebHostBuilder(builder =>
         {
             builder.UseSetting("TRAJECTORY_INCOMING_DIR", dataDir);

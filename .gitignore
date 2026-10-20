@@ -932,8 +932,22 @@ src/Lakshmi.Integration.Prism.Web/application
 
 ## Forcing Fresh Deploy 2025-12-09T17:14:43
 
-# Simulation and Test Runtime Outputs
-simulations/exports/*.tar.gz
-simulations/exports/*.manifest.json
-simulations/parquet/*.parquet
+# Data Directories (Simulation Shared Trajectories, Columnar Parquet Files, and Export Bundles)
+simulations/shared-data/*
+!simulations/shared-data/.gitkeep
+!simulations/shared-data/README.md
+
+simulations/exports/*
+!simulations/exports/.gitkeep
+!simulations/exports/README.md
+
+simulations/parquet/*
+!simulations/parquet/.gitkeep
+!simulations/parquet/README.md
+
+# General trajectory and columnar data files
+*.parquet
+*.dcd
+*.dump
+*.lammpstrj
 .msCoverageSourceRootsMapping*

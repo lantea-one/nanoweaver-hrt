@@ -54,6 +54,8 @@ public sealed class ComprehensiveCoverageTests : IClassFixture<WebApplicationFac
         _exportDir = Path.Combine(solutionRoot, "simulations", "exports");
         string parquetDir = Path.Combine(solutionRoot, "simulations", "parquet");
 
+        TestFixturesHelper.EnsureTestFixtures(_sharedDataDir);
+
         WebApplicationFactory<Program> customFactory = factory.WithWebHostBuilder(builder =>
         {
             builder.UseSetting("TRAJECTORY_INCOMING_DIR", _sharedDataDir);
