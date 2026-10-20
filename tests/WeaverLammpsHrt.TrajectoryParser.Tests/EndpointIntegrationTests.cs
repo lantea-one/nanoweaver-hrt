@@ -30,8 +30,12 @@ public sealed class EndpointIntegrationTests : IClassFixture<WebApplicationFacto
     /// <param name="factory">The test web application factory fixture.</param>
     public EndpointIntegrationTests(WebApplicationFactory<Program> factory)
     {
-        string baseDir = AppContext.BaseDirectory;
-        string solutionRoot = Path.GetFullPath(Path.Combine(baseDir, "../../../../../"));
+        string? current = AppContext.BaseDirectory;
+        while (!string.IsNullOrEmpty(current) && !File.Exists(Path.Combine(current, "dotnet-weaver-lammps-hrt.sln")))
+        {
+            current = Directory.GetParent(current)?.FullName;
+        }
+        string solutionRoot = current ?? Directory.GetCurrentDirectory();
         string dataDir = Path.Combine(solutionRoot, "simulations", "shared-data");
         string exportDir = Path.Combine(solutionRoot, "simulations", "exports");
         string parquetDir = Path.Combine(solutionRoot, "simulations", "parquet");
@@ -211,16 +215,31 @@ public sealed class EndpointIntegrationTests : IClassFixture<WebApplicationFacto
         // WHAT: Creates a test file in the export directory and verifies successful download.
         // WHY:  Ensures researchers can download cryptographically signed bundles over HTTP.
         // HOW:  Writes a temporary export file and requests it via the download endpoint.
-        string baseDir = AppContext.BaseDirectory;
-        string solutionRoot = Path.GetFullPath(Path.Combine(baseDir, "../../../../../"));
+        string? current = AppContext.BaseDirectory;
+        while (!string.IsNullOrEmpty(current) && !File.Exists(Path.Combine(current, "dotnet-weaver-lammps-hrt.sln")))
+        {
+            current = Directory.GetParent(current)?.FullName;
+        }
+        string solutionRoot = current ?? Directory.GetCurrentDirectory();
         string exportDir = Path.Combine(solutionRoot, "simulations", "exports");
+        Directory.CreateDirectory(exportDir);
         string testFile = Path.Combine(exportDir, "test_download.tar.gz");
         await File.WriteAllTextAsync(testFile, "MOCK_TAR_GZ_CONTENT");
 
-        HttpResponseMessage response = await _client.GetAsync("/api/datasets/download/test_download.tar.gz");
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        byte[] bytes = await response.Content.ReadAsByteArrayAsync();
-        Assert.NotEmpty(bytes);
+        try
+        {
+            HttpResponseMessage response = await _client.GetAsync("/api/datasets/download/test_download.tar.gz");
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            byte[] bytes = await response.Content.ReadAsByteArrayAsync();
+            Assert.NotEmpty(bytes);
+        }
+        finally
+        {
+            if (File.Exists(testFile))
+            {
+                File.Delete(testFile);
+            }
+        }
     }
 
     /// <summary>

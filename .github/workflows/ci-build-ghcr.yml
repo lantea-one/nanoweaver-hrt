@@ -26,6 +26,11 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
       - name: Restore Dependencies
         run: dotnet restore dotnet-weaver-lammps-hrt.sln
 
@@ -34,6 +39,12 @@ jobs:
         # WHY:  Guarantees uniform code formatting across all contributor commits and fails the build if changes are needed.
         # HOW:  Runs dotnet format --verify-no-changes with zero-tolerance for unformatted files.
         run: dotnet format dotnet-weaver-lammps-hrt.sln --no-restore --verify-no-changes --verbosity normal
+
+      - name: Verify JavaScript Code & Coverage Gate
+        # WHAT: Executes client-side JavaScript visualization tests.
+        # WHY:  Enforces 100% line, branch, and function coverage across wwwroot/js/weaver-visualizer.js.
+        # HOW:  Runs node --test with native experimental coverage thresholds set to 100%.
+        run: npm test
 
       - name: Build and Test Solution with Coverage
         # WHAT: Runs the test suite in Release configuration with cross-platform code coverage collection.

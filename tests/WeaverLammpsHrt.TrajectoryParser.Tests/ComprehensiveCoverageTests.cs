@@ -48,8 +48,12 @@ public sealed class ComprehensiveCoverageTests : IClassFixture<WebApplicationFac
     /// <param name="factory">Test web application factory.</param>
     public ComprehensiveCoverageTests(WebApplicationFactory<Program> factory)
     {
-        string baseDir = AppContext.BaseDirectory;
-        string solutionRoot = Path.GetFullPath(Path.Combine(baseDir, "../../../../../"));
+        string? current = AppContext.BaseDirectory;
+        while (!string.IsNullOrEmpty(current) && !File.Exists(Path.Combine(current, "dotnet-weaver-lammps-hrt.sln")))
+        {
+            current = Directory.GetParent(current)?.FullName;
+        }
+        string solutionRoot = current ?? Directory.GetCurrentDirectory();
         _sharedDataDir = Path.Combine(solutionRoot, "simulations", "shared-data");
         _exportDir = Path.Combine(solutionRoot, "simulations", "exports");
         string parquetDir = Path.Combine(solutionRoot, "simulations", "parquet");
