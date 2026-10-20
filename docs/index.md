@@ -57,10 +57,14 @@ By folding single-stranded viral DNA (bacteriophage M13mp18) into rigid 3D nanos
 - Stoichiometric thermal annealing protocol: 6-stage cryogenic-to-ambient cooling schedule (90°C → 4°C).
 - Cryptographic provenance manifests with deterministic SHA-256 integrity verification.
 
-### 3. Patient-Targeted Endocrine Regulatory Hub
+### 3. Patient-Targeted Endocrine Regulatory Hub & Pharmacogenomics
 - Mathematical bistable state machine modeling in-vivo hormone setpoints:
   - **Feminizing HRT (MtF)**: E2 ≈ 550 pmol/L, T < 1.8 nmol/L, progesterone setpoint.
   - **Masculinizing HRT (FtM)**: T ≈ 20.0 nmol/L, E2 < 150 pmol/L.
+- **Pharmacogenomic Risk & Predisposition Engine**:
+  - High-impact variant screening: Factor V Leiden, Prothrombin G20210A, AR CAG repeats, COMT Val158Met, CYP1B1*3, UGT2B17 deletion, and TLR9 CpG hypersensitivity.
+  - Severity-tiered visual call-out alerts (Critical, Warning, Advisory, Optimal) in the Blazor UI.
+  - Closed-loop kinetic recalibration: clearance multiplier scaling, thrombosis burst-release damping, and safe estradiol setpoint capping.
 - 72-hour closed-loop pharmacodynamics simulation with reciprocal negative feedback.
 - Real-time HTML5 Canvas kinetics charting and 3D double helix projections.
 

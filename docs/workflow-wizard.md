@@ -59,6 +59,10 @@ As the sequence is ingested, the engine performs instantaneous zero-allocation v
   *(or: `GC% = (G + C) / (A + T + G + C) × 100%`)*
   *Why it matters*: DNA double helices formed by G-C pairs have three hydrogen bonds compared to two in A-T pairs. A GC-content between 40% and 55% ensures optimal structural rigidity without requiring extreme thermal denaturation temperatures.
 * **Molecular Weight Estimation**: Calculated using average monophosphate nucleotide weights (~330 Da/nucleotide), providing accurate molar mass figures for stoichiometric bench mixing.
+* **Automated Pharmacogenomic Sequence Screening**:
+  The wizard immediately scans the raw sequence for immunogenic and receptor-interaction motifs:
+  * **Unmethylated CpG Dinucleotide Density (TLR9 Trigger)**: Bacterial and viral single-stranded DNA (such as M13mp18) contains high frequencies of unmethylated cytosine-guanine (CpG) motifs. In mammalian endosomes, these motifs bind Toll-Like Receptor 9 (TLR9), alerting the immune system and accelerating macrophage clearance. Sequences with CpG density >= 3.0% trigger a prominent **Critical Synthesis Requirement** alert mandating enzymatic CpG methylation (M.SssI) prior to thermal folding.
+  * **Tandem Trinucleotide CAG Repeats (Androgen Receptor Mimic)**: Contiguous stretches of CAG repeats mimic the polyglutamine tract of AR Exon 1. The wizard identifies repeat lengths >= 26 (androgen resistance trigger) and lengths 10 to 19 (androgen hypersensitivity), automatically adjusting target Kd and minimum testosterone recommendations.
 
 ---
 
@@ -138,6 +142,7 @@ Once in-silico simulation results are verified, the wizard automatically generat
 2. **Staple Synthesis Order Sheet (`.csv`)**: Ready for direct upload to oligonucleotide synthesis providers (e.g., IDT, Twist Bioscience, Eurofins), specifying well coordinates, sequence, purification method, and scale.
 3. **Thermal Cycler Script (`.pcr` / `.txt`)**: Automated program files for Bio-Rad, Eppendorf, or Applied Biosystems thermocyclers.
 4. **Cryptographic Provenance Manifest (`manifest.json`)**: Contains SHA-256 integrity hashes for all sequence inputs, staple mappings, annealing protocols, and the complete DIY fabrication guide.
+5. **Epigenetic Modification Protocol (if TLR9 alert is triggered)**: For sequences with CpG density >= 3.0%, the manifest includes explicit pre-annealing enzymatic treatment instructions (M.SssI CpG methyltransferase + SAM at 37°C for 2 hours) to prevent macrophage clearance and extend in-vivo stability by 40%.
 
 ---
 

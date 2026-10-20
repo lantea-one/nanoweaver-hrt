@@ -263,7 +263,150 @@ Executes closed-loop pharmacodynamics simulation across a 72-hour timeline.
 
 ---
 
-## 5. Automated Test Suite Execution
+## 5. Pharmacogenomics & Genetic Screening Endpoints
+
+### `GET /api/genomics/markers`
+Retrieves the catalog of clinically characterized pharmacogenomic and hemostatic markers.
+
+* **Method**: `GET`
+* **Response Status**: `200 OK`
+* **Response Payload**:
+  ```json
+  [
+    {
+      "marker_id": "F5_LEIDEN",
+      "gene_symbol": "F5",
+      "variant_name": "Factor V Leiden (rs6025, c.1691G>A, p.Arg506Gln)",
+      "category": "ThromboticRisk",
+      "severity": "Critical",
+      "observed_genotype": "G/A (Heterozygous Carrier)",
+      "clinical_description": "Resistance to Activated Protein C (APC) prevents inactivation of clotting Factor Va...",
+      "recommended_action": "In MtF regimens, cap peak 17β-estradiol setpoint to <= 500 pmol/L...",
+      "associated_regimen": "MaleToFemale",
+      "clearance_rate_multiplier": 1.0,
+      "target_kd_offset_nm": 0.0,
+      "max_safe_estradiol_pmol_l": 500.0,
+      "thrombosis_risk_multiplier": 4.2
+    }
+  ]
+  ```
+
+---
+
+### `GET /api/genomics/presets`
+Retrieves standard clinical genetic test panels for rapid patient profiling.
+
+* **Method**: `GET`
+* **Response Status**: `200 OK`
+* **Response Payload**:
+  ```json
+  [
+    {
+      "preset_id": "PRESET_BASELINE",
+      "title": "Standard Cis-Typical Baseline (Zero Risk Alleles)",
+      "regimen": "MaleToFemale",
+      "marker_ids": []
+    },
+    {
+      "preset_id": "PRESET_MTF_THROMBOSIS",
+      "title": "MtF Patient - Factor V Leiden Heterozygote (High Clot Risk)",
+      "regimen": "MaleToFemale",
+      "marker_ids": ["F5_LEIDEN", "COMT_VAL158MET"]
+    }
+  ]
+  ```
+
+---
+
+### `POST /api/genomics/analyze`
+Evaluates patient genetic markers and generates severity-tiered call-out alerts and kinetic modifiers.
+
+* **Method**: `POST`
+* **Request Headers**: `Content-Type: application/json`
+* **Request Payload**:
+  ```json
+  {
+    "patient_id": "PATIENT-001",
+    "marker_ids": ["F5_LEIDEN", "COMT_VAL158MET"],
+    "regimen": "MaleToFemale"
+  }
+  ```
+* **Response Status**: `200 OK`
+* **Response Payload**:
+  ```json
+  {
+    "patient_id": "PATIENT-001",
+    "regimen": "MaleToFemale",
+    "observed_markers": ["..."],
+    "alerts": [
+      {
+        "alert_id": "ALERT_F5_LEIDEN_...",
+        "gene_symbol": "F5",
+        "severity": "Critical",
+        "category": "ThromboticRisk",
+        "title": "F5: Factor V Leiden (rs6025, c.1691G>A, p.Arg506Gln)",
+        "call_out_message": "[CRITICAL] Resistance to Activated Protein C (APC)...",
+        "clinical_guidance": "In MtF regimens, cap peak 17β-estradiol setpoint to <= 500 pmol/L...",
+        "kinetic_guidance": "Limit peak hormone burst; cap E2 to <= 500 pmol/L."
+      }
+    ],
+    "thrombosis_risk_index": 5.04,
+    "overall_clearance_multiplier": 0.75,
+    "cpg_methylation_mandatory": false,
+    "recommended_max_estradiol_pmol_l": 500.0,
+    "recommended_min_testosterone_nmol_l": null,
+    "recommended_kd_offset_nm": 0.0
+  }
+  ```
+
+---
+
+### `POST /api/genomics/analyze-sequence`
+Scans raw nucleotide sequences for CpG dinucleotide density (TLR9 immunogenicity) and tandem CAG repeats (AR sensitivity).
+
+* **Method**: `POST`
+* **Request Headers**: `Content-Type: application/json`
+* **Request Payload**:
+  ```json
+  {
+    "patient_id": "ANON-SEQ",
+    "sequence": "5'-CGCGCGCGCGCGCGCGCGCG-3'",
+    "regimen": "MaleToFemale"
+  }
+  ```
+* **Response Status**: `200 OK`
+
+---
+
+### `POST /api/genomics/apply-adjustments`
+Evaluates markers and applies personalized setpoints and kinetic modifiers directly to the active endocrine engine.
+
+* **Method**: `POST`
+* **Request Headers**: `Content-Type: application/json`
+* **Request Payload**:
+  ```json
+  {
+    "patient_id": "PATIENT-001",
+    "marker_ids": ["F5_LEIDEN"],
+    "regimen": "MaleToFemale"
+  }
+  ```
+* **Response Status**: `200 OK`
+* **Response Payload**:
+  ```json
+  {
+    "genomic_profile": { "patient_id": "PATIENT-001", "..." : "..." },
+    "adjusted_endocrine_profile": {
+      "target_estradiol_pmol_l": 500.0,
+      "target_testosterone_nmol_l": 1.20,
+      "..." : "..."
+    }
+  }
+  ```
+
+---
+
+## 6. Automated Test Suite Execution
 
 We enforce 100% test pass rate and 100% line/branch code coverage across both .NET and JavaScript codebases.
 

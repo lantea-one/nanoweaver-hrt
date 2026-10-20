@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using WeaverLammpsHrt.TrajectoryParser.Genomics;
 
 namespace WeaverLammpsHrt.TrajectoryParser.Endocrine;
 
@@ -100,6 +101,19 @@ public sealed class EndocrineStateEngine
     }
 
     /// <summary>
+    /// Explicitly replaces the active endocrine target profile with an adjusted or customized profile.
+    /// </summary>
+    /// <param name="profile">The new profile to set as active.</param>
+    public void SetActiveProfile(EndocrineTargetProfile profile)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        lock (_stateLock)
+        {
+            _currentProfile = profile;
+        }
+    }
+
+    /// <summary>
     /// Transitions the endocrine toggle switch to a new operational regime and updates target setpoints.
     /// </summary>
     /// <param name="request">The switch request containing target state and optional concentration overrides.</param>
@@ -159,12 +173,14 @@ public sealed class EndocrineStateEngine
     }
 
     /// <summary>
-    /// Simulates pharmacodynamic hormone concentration stabilization over a given time horizon.
+    /// Simulates pharmacodynamic hormone concentration stabilization over a given time horizon, optionally modulating 
+    /// clearance rate and burst damping according to a patient's pharmacogenomic profile.
     /// </summary>
     /// <param name="totalHours">Total simulation duration in hours (e.g. 72 hours).</param>
     /// <param name="stepHours">Time interval between discrete curve sample points.</param>
+    /// <param name="genomicProfile">Optional patient genomic profile adjusting clearance and thrombosis damping.</param>
     /// <returns>A collection of simulated serum hormone concentration data points.</returns>
-    public IReadOnlyList<HormoneCurvePoint> SimulateKinetics(int totalHours = 72, int stepHours = 4)
+    public IReadOnlyList<HormoneCurvePoint> SimulateKinetics(int totalHours = 72, int stepHours = 4, PatientGenomicProfile? genomicProfile = null)
     {
         EndocrineTargetProfile profile = GetActiveProfile();
         List<HormoneCurvePoint> points = new();
@@ -174,7 +190,21 @@ public sealed class EndocrineStateEngine
         double currentT = profile.TargetState == ToggleState.EstrogenicDominant ? 18.0 : 1.5;
 
         // Exponential approach rate toward target setpoints (representing closed-loop aptamer/feedback kinetics)
+        // WHAT: Modulates baseline rate constant (0.08 h⁻¹) by the patient's genetic clearance multiplier.
+        // WHY:  Rapid metabolizers (e.g. CYP1B1*3) clear faster, whereas poor metabolizers (COMT/UGT2B17) clear slower.
+        // HOW:  Scales 0.08 by OverallClearanceMultiplier and applies damping if thrombosis risk is elevated.
         double rateConstant = 0.08;
+        if (genomicProfile != null)
+        {
+            double clearance = genomicProfile.OverallClearanceMultiplier;
+            rateConstant *= clearance > 0 ? clearance : 1.0;
+
+            // If thrombosis risk is elevated (> 1.5), dampen release rate to model continuous micro-infusion
+            if (genomicProfile.ThrombosisRiskIndex > 1.5)
+            {
+                rateConstant *= 0.85;
+            }
+        }
 
         for (int h = 0; h <= totalHours; h += stepHours)
         {

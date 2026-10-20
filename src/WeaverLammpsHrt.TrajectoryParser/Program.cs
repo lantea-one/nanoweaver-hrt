@@ -7,6 +7,7 @@ using WeaverLammpsHrt.TrajectoryParser.Components;
 using WeaverLammpsHrt.TrajectoryParser.Configuration;
 using WeaverLammpsHrt.TrajectoryParser.Endocrine;
 using WeaverLammpsHrt.TrajectoryParser.Fabrication;
+using WeaverLammpsHrt.TrajectoryParser.Genomics;
 using WeaverLammpsHrt.TrajectoryParser.Models;
 using WeaverLammpsHrt.TrajectoryParser.Pipelines;
 using WeaverLammpsHrt.TrajectoryParser.Services;
@@ -56,6 +57,7 @@ public class Program
         builder.Services.AddSingleton<IConfigurationRepository, SystemConfigurationStore>();
         builder.Services.AddSingleton<IStackServiceManager, StackServiceManager>();
         builder.Services.AddSingleton<IFabricationService, FabricationService>();
+        builder.Services.AddSingleton<IPharmacogenomicsService, PharmacogenomicsService>();
         builder.Services.AddSingleton<IDatasetManager, DatasetTransferService>();
         builder.Services.AddSingleton<XyzPipeReader>();
         builder.Services.AddSingleton<DcdPipeReader>();
@@ -527,6 +529,67 @@ public class Program
         .WithName("GenerateFabricationPackage")
         .WithSummary("Synthesizes a complete staple routing manifest, annealing schedule, and SHA-256 provenance hash.");
 
+        // ---------------------------------------------------------------------
+        // REST API: Pharmacogenomics & Genetic Predisposition Screening
+        // ---------------------------------------------------------------------
+        app.MapGet("/api/genomics/markers", (IPharmacogenomicsService genomics) =>
+        {
+            return Results.Ok(genomics.GetCatalog());
+        })
+        .WithName("GetGenomicMarkers")
+        .WithSummary("Retrieves the catalog of clinically characterized pharmacogenomic and hemostatic markers.");
+
+        app.MapGet("/api/genomics/presets", (IPharmacogenomicsService genomics) =>
+        {
+            return Results.Ok(genomics.GetPresetProfiles());
+        })
+        .WithName("GetGenomicPresets")
+        .WithSummary("Retrieves standard clinical genetic test panels for rapid patient profiling.");
+
+        app.MapPost("/api/genomics/analyze", (GenomicAnalysisRequest req, IPharmacogenomicsService genomics) =>
+        {
+            PatientGenomicProfile profile = genomics.AnalyzeProfile(
+                req.PatientId ?? "ANON-PATIENT-001",
+                req.MarkerIds ?? Array.Empty<string>(),
+                req.Regimen);
+
+            return Results.Ok(profile);
+        })
+        .WithName("AnalyzeGenomicProfile")
+        .WithSummary("Evaluates patient genetic markers and generates severity-tiered call-out alerts and kinetic modifiers.");
+
+        app.MapPost("/api/genomics/analyze-sequence", (SequenceAnalysisRequest req, IPharmacogenomicsService genomics) =>
+        {
+            PatientGenomicProfile profile = genomics.AnalyzeSequence(
+                req.PatientId ?? "ANON-PATIENT-001",
+                req.Sequence ?? string.Empty,
+                req.Regimen);
+
+            return Results.Ok(profile);
+        })
+        .WithName("AnalyzeSequenceGenomics")
+        .WithSummary("Scans nucleotide sequences for CpG density (TLR9 immunogenicity) and CAG repeat length (AR sensitivity).");
+
+        app.MapPost("/api/genomics/apply-adjustments", (GenomicAnalysisRequest req, IPharmacogenomicsService genomics, EndocrineStateEngine engine) =>
+        {
+            PatientGenomicProfile genomicProfile = genomics.AnalyzeProfile(
+                req.PatientId ?? "ANON-PATIENT-001",
+                req.MarkerIds ?? Array.Empty<string>(),
+                req.Regimen);
+
+            EndocrineTargetProfile baseProfile = engine.GetActiveProfile();
+            EndocrineTargetProfile adjustedProfile = genomics.ApplyGeneticAdjustments(baseProfile, genomicProfile);
+            engine.SetActiveProfile(adjustedProfile);
+
+            return Results.Ok(new
+            {
+                genomic_profile = genomicProfile,
+                adjusted_endocrine_profile = adjustedProfile
+            });
+        })
+        .WithName("ApplyGenomicAdjustments")
+        .WithSummary("Applies patient pharmacogenomic adjustments to the active endocrine target profile.");
+
         app.Run();
     }
 
@@ -670,4 +733,52 @@ public sealed record FabricationGenerateRequest
     /// </summary>
     [JsonPropertyName("target_kd")]
     public double TargetKd { get; init; } = 4.2;
+}
+
+/// <summary>
+/// Request payload for evaluating a patient's pharmacogenomic profile from marker IDs.
+/// </summary>
+public sealed record GenomicAnalysisRequest
+{
+    /// <summary>
+    /// Patient identifier.
+    /// </summary>
+    [JsonPropertyName("patient_id")]
+    public string? PatientId { get; init; } = "ANON-PATIENT-001";
+
+    /// <summary>
+    /// Array of observed genetic marker identifiers (e.g. 'F5_LEIDEN', 'AR_CAG_LONG').
+    /// </summary>
+    [JsonPropertyName("marker_ids")]
+    public string[]? MarkerIds { get; init; }
+
+    /// <summary>
+    /// Active therapeutic regimen (MaleToFemale or FemaleToMale).
+    /// </summary>
+    [JsonPropertyName("regimen")]
+    public TherapeuticRegimen Regimen { get; init; } = TherapeuticRegimen.MaleToFemale;
+}
+
+/// <summary>
+/// Request payload for scanning a DNA nucleotide sequence for CpG density and repeat motifs.
+/// </summary>
+public sealed record SequenceAnalysisRequest
+{
+    /// <summary>
+    /// Patient identifier.
+    /// </summary>
+    [JsonPropertyName("patient_id")]
+    public string? PatientId { get; init; } = "ANON-PATIENT-001";
+
+    /// <summary>
+    /// Raw FASTA or nucleotide sequence string.
+    /// </summary>
+    [JsonPropertyName("sequence")]
+    public string? Sequence { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Active therapeutic regimen.
+    /// </summary>
+    [JsonPropertyName("regimen")]
+    public TherapeuticRegimen Regimen { get; init; } = TherapeuticRegimen.MaleToFemale;
 }

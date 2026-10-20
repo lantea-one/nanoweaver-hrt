@@ -2,6 +2,7 @@
 @page "/wizard"
 @inject IFabricationService FabricationService
 @inject EndocrineStateEngine EndocrineEngine
+@inject IPharmacogenomicsService PharmacogenomicsService
 @inject IConfigurationRepository ConfigRepo
 @inject XyzPipeReader XyzParser
 @inject DcdPipeReader DcdParser
@@ -132,6 +133,55 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Pharmacogenomic Sequence Screening & Call-Outs -->
+            @if (_seqGenomicProfile != null)
+            {
+                <div class="card subpanel mt-3">
+                    <div class="panel-header">
+                        <h4>🧬 Sequence Pharmacogenomic Screening</h4>
+                        @if (_seqGenomicProfile.CpGMethylationMandatory)
+                        {
+                            <span class="badge genomic-badge-critical">TLR9 CpG Immunogenic Alert</span>
+                        }
+                        else
+                        {
+                            <span class="badge genomic-badge-optimal">Tolerant Chassis Sequence</span>
+                        }
+                    </div>
+                    <p class="subtext">
+                        Automated in-silico screening of unmethylated CpG dinucleotide density and tandem repeat motifs affecting nanocarrier immunogenicity and target receptor affinity.
+                    </p>
+
+                    @if (_seqGenomicProfile.Alerts.Count > 0)
+                    {
+                        <div class="genomic-alerts-list mt-2">
+                            @foreach (GeneticAlert alert in _seqGenomicProfile.Alerts)
+                            {
+                                <div class="genomic-alert-box @GetAlertBoxClass(alert.Severity)">
+                                    <div class="flex-between">
+                                        <span class="genomic-alert-title">
+                                            <span class="badge @GetAlertBadgeClass(alert.Severity)">@alert.Severity</span>
+                                            @alert.Title
+                                        </span>
+                                        <span class="font-mono subtext">@alert.Category</span>
+                                    </div>
+                                    <div class="genomic-alert-body mt-1">@alert.CallOutMessage</div>
+                                    <div class="genomic-guidance-pill mt-2">
+                                        <strong>Guidance:</strong> @alert.ClinicalGuidance
+                                    </div>
+                                    @if (!string.IsNullOrEmpty(alert.ScaffoldGuidance))
+                                    {
+                                        <div class="genomic-guidance-pill mt-1" style="background: rgba(239, 68, 68, 0.15); border-left-color: #ef4444;">
+                                            <strong>Scaffold / Synthesis:</strong> @alert.ScaffoldGuidance
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
 
             <!-- Interactive 3D B-DNA Double Helix Folding & Base Pairing -->
             <div class="card subpanel mt-3">
@@ -542,6 +592,26 @@
                 <div class="callout-item"><strong>WHY:</strong> Folding DNA origami requires mixing the viral scaffold DNA with an excess of short staple strands in magnesium buffer, heating to denature, and slow cooling to fold.</div>
                 <div class="callout-item"><strong>HOW:</strong> The manifest is cryptographically hashed with SHA-256 for provenance, ensuring open-source reproducibility.</div>
             </div>
+
+            <!-- TLR9 Epigenetic Methylation Call-Out (if triggered) -->
+            @if (_seqGenomicProfile?.CpGMethylationMandatory == true)
+            {
+                <div class="genomic-alert-box genomic-alert-critical mt-3">
+                    <div class="flex-between">
+                        <span class="genomic-alert-title">
+                            <span class="badge genomic-badge-critical">CRITICAL SYNTHESIS REQUIREMENT</span>
+                            TLR9 CpG Immunogenicity Detected: Enzymatic Methylation Mandatory
+                        </span>
+                        <span class="font-mono subtext">NanocarrierImmunogenicity</span>
+                    </div>
+                    <div class="genomic-alert-body mt-1">
+                        Sequence contains CpG dinucleotide density &gt;= 3.0%, activating toll-like receptor 9 (TLR9) in human macrophages. In-vivo delivery requires prior epigenetic modification to prevent rapid clearance and inflammatory response.
+                    </div>
+                    <div class="genomic-guidance-pill mt-2" style="background: rgba(239, 68, 68, 0.15); border-left-color: #ef4444;">
+                        <strong>Mandatory Wet-Lab Step:</strong> Incubate 1 µg scaffold DNA with 4 U CpG Methyltransferase (M.SssI) and 160 µM S-adenosylmethionine (SAM) for 2 hours at 37°C prior to thermal annealing.
+                    </div>
+                </div>
+            }
 
             <!-- Fabrication Overview Specs -->
             <div class="fabrication-summary card mt-3">
@@ -987,6 +1057,37 @@
     private string _activeDiyTab = "protocol";
 
     /// <summary>
+    /// Genomic profile derived from automated screening of the input nucleic acid sequence.
+    /// </summary>
+    private PatientGenomicProfile? _seqGenomicProfile;
+
+    /// <summary>
+    /// Computes the CSS style class for a genomic call-out alert card based on clinical severity.
+    /// </summary>
+    /// <param name="severity">The clinical severity tier.</param>
+    /// <returns>CSS class string corresponding to the severity.</returns>
+    private static string GetAlertBoxClass(ClinicalSeverity severity) => severity switch
+    {
+        ClinicalSeverity.Critical => "genomic-alert-critical",
+        ClinicalSeverity.Warning => "genomic-alert-warning",
+        ClinicalSeverity.Advisory => "genomic-alert-advisory",
+        _ => "genomic-alert-optimal"
+    };
+
+    /// <summary>
+    /// Computes the CSS style class for a genomic alert badge based on clinical severity.
+    /// </summary>
+    /// <param name="severity">The clinical severity tier.</param>
+    /// <returns>CSS badge class string corresponding to the severity.</returns>
+    private static string GetAlertBadgeClass(ClinicalSeverity severity) => severity switch
+    {
+        ClinicalSeverity.Critical => "genomic-badge-critical",
+        ClinicalSeverity.Warning => "genomic-badge-warning",
+        ClinicalSeverity.Advisory => "genomic-badge-advisory",
+        _ => "genomic-badge-optimal"
+    };
+
+    /// <summary>
     /// Selects the active tab in the DIY &amp; HomeLab benchtop fabrication guide.
     /// </summary>
     /// <param name="tab">The tab identifier to activate.</param>
@@ -1073,12 +1174,16 @@
     }
 
     /// <summary>
-    /// Updates base composition counts whenever the input sequence changes.
+    /// Updates base composition counts and executes pharmacogenomic sequence screening whenever the input sequence changes.
     /// </summary>
     private void OnSequenceChanged()
     {
+        // WHAT: Analyzes nucleotide frequencies and scans for pharmacogenomic triggers.
+        // WHY:  Calculates GC percentage and detects immunogenic CpG motifs or receptor repeat sequences.
+        // HOW:  Invokes FabricationService for base metrics and PharmacogenomicsService for sequence analysis.
         (_baseA, _baseT, _baseG, _baseC, _gcPercent, _estimatedMwKDa) = FabricationService.AnalyzeSequenceComposition(InputSequence);
         _seqLength = _baseA + _baseT + _baseG + _baseC;
+        _seqGenomicProfile = PharmacogenomicsService.AnalyzeSequence("SEQ_INPUT", InputSequence, SelectedRegimen);
     }
 
     /// <summary>
@@ -1090,10 +1195,13 @@
     }
 
     /// <summary>
-    /// Updates the selected therapeutic regimen and adjusts standard endocrine setpoints.
+    /// Updates the selected therapeutic regimen, adjusts standard endocrine setpoints, and refreshes sequence screening.
     /// </summary>
     private void SetRegimen(TherapeuticRegimen regimen)
     {
+        // WHAT: Updates the active hormone objective (MtF vs. FtM).
+        // WHY:  Configures baseline target estradiol/testosterone levels and re-evaluates sequence markers.
+        // HOW:  Assigns setpoints and re-runs sequence analysis with the new regimen context.
         SelectedRegimen = regimen;
         if (regimen == TherapeuticRegimen.MaleToFemale)
         {
@@ -1105,6 +1213,8 @@
             TargetEstradiolPmol = 90.0;
             TargetTestosteroneNmol = 18.50;
         }
+
+        _seqGenomicProfile = PharmacogenomicsService.AnalyzeSequence("SEQ_INPUT", InputSequence, SelectedRegimen);
     }
 
     /// <summary>

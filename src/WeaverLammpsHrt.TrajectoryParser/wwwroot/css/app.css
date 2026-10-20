@@ -1274,3 +1274,95 @@ body {
     margin-top: 0;
     margin-bottom: 8px;
 }
+
+/* Pharmacogenomics & Genetic Predisposition Call-Outs */
+.genomic-alert-box {
+    border-radius: 6px;
+    padding: 14px 18px;
+    margin-bottom: 12px;
+    border-left: 4px solid;
+    background: rgba(18, 24, 36, 0.95);
+    transition: all 0.2s ease;
+}
+
+.genomic-alert-critical {
+    border-color: #ef4444;
+    background: rgba(239, 68, 68, 0.08);
+    box-shadow: 0 0 15px rgba(239, 68, 68, 0.15);
+}
+
+.genomic-alert-warning {
+    border-color: #f59e0b;
+    background: rgba(245, 158, 11, 0.08);
+    box-shadow: 0 0 12px rgba(245, 158, 11, 0.12);
+}
+
+.genomic-alert-advisory {
+    border-color: #00d2ff;
+    background: rgba(0, 210, 255, 0.08);
+}
+
+.genomic-alert-optimal {
+    border-color: #10b981;
+    background: rgba(16, 185, 129, 0.08);
+}
+
+.genomic-alert-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.genomic-badge-critical {
+    background: rgba(239, 68, 68, 0.2);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+}
+
+.genomic-badge-warning {
+    background: rgba(245, 158, 11, 0.2);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.4);
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+}
+
+.genomic-badge-advisory {
+    background: rgba(0, 210, 255, 0.2);
+    color: #38bdf8;
+    border: 1px solid rgba(0, 210, 255, 0.4);
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+}
+
+.genomic-badge-optimal {
+    background: rgba(16, 185, 129, 0.2);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.4);
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+}
+
+.genomic-guidance-pill {
+    background: rgba(0, 0, 0, 0.35);
+    border-radius: 4px;
+    padding: 6px 12px;
+    font-size: 0.85rem;
+    margin-top: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+

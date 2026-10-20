@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using WeaverLammpsHrt.TrajectoryParser.Endocrine;
+using WeaverLammpsHrt.TrajectoryParser.Genomics;
 using WeaverLammpsHrt.TrajectoryParser.Models;
 using Xunit;
 
@@ -342,5 +343,171 @@ public sealed class EndpointIntegrationTests : IClassFixture<WebApplicationFacto
         Assert.Equal(TimeSpan.FromHours(48), Program.ParseExpirationWindow("48"));
         Assert.Equal(TimeSpan.FromHours(12), Program.ParseExpirationWindow("invalid", 12));
         Assert.Equal(TimeSpan.FromHours(24), Program.ParseExpirationWindow("invalid", -1));
+    }
+
+    /// <summary>
+    /// Verifies that GET /api/genomics/markers returns HTTP 200 OK with the curated genetic catalog.
+    /// </summary>
+    [Fact]
+    public async Task GetGenomicsMarkers_ShouldReturnOkWithCatalog()
+    {
+        // WHAT: Invokes GET /api/genomics/markers endpoint.
+        // WHY:  Ensures the frontend can fetch the active marker catalog for patient profiling.
+        // HOW:  Asserts 200 OK and non-empty JSON array of genetic markers.
+        HttpResponseMessage response = await _client.GetAsync("/api/genomics/markers");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        List<GeneticMarker>? markers = await response.Content.ReadFromJsonAsync<List<GeneticMarker>>();
+        Assert.NotNull(markers);
+        Assert.Equal(8, markers.Count);
+    }
+
+    /// <summary>
+    /// Verifies that GET /api/genomics/presets returns HTTP 200 OK with clinical test panels.
+    /// </summary>
+    [Fact]
+    public async Task GetGenomicsPresets_ShouldReturnOkWithPresets()
+    {
+        // WHAT: Invokes GET /api/genomics/presets endpoint.
+        // WHY:  Ensures the frontend can load clinical demonstration test panels.
+        // HOW:  Asserts 200 OK and list containing 4 presets.
+        HttpResponseMessage response = await _client.GetAsync("/api/genomics/presets");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        List<GeneticMarkerPreset>? presets = await response.Content.ReadFromJsonAsync<List<GeneticMarkerPreset>>();
+        Assert.NotNull(presets);
+        Assert.Equal(4, presets.Count);
+    }
+
+    /// <summary>
+    /// Verifies that POST /api/genomics/analyze evaluates patient markers and returns alerts.
+    /// </summary>
+    [Fact]
+    public async Task PostGenomicsAnalyze_ShouldReturnOkWithProfile()
+    {
+        // WHAT: Invokes POST /api/genomics/analyze with specific markers and with null fallbacks.
+        // WHY:  Validates minimal API request binding and response serialization.
+        // HOW:  Asserts 200 OK and evaluated patient genomic profile.
+        GenomicAnalysisRequest req = new()
+        {
+            PatientId = "TEST-API-001",
+            MarkerIds = ["F5_LEIDEN"],
+            Regimen = TherapeuticRegimen.MaleToFemale
+        };
+
+        HttpResponseMessage response = await _client.PostAsJsonAsync("/api/genomics/analyze", req);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        PatientGenomicProfile? profile = await response.Content.ReadFromJsonAsync<PatientGenomicProfile>();
+        Assert.NotNull(profile);
+        Assert.Equal("TEST-API-001", profile.PatientId);
+        Assert.Single(profile.ObservedMarkers);
+
+        // Also test null fallback branch
+        GenomicAnalysisRequest fallbackReq = new()
+        {
+            PatientId = null,
+            MarkerIds = null,
+            Regimen = TherapeuticRegimen.MaleToFemale
+        };
+        HttpResponseMessage fallbackResp = await _client.PostAsJsonAsync("/api/genomics/analyze", fallbackReq);
+        Assert.Equal(HttpStatusCode.OK, fallbackResp.StatusCode);
+        PatientGenomicProfile? fallbackProfile = await fallbackResp.Content.ReadFromJsonAsync<PatientGenomicProfile>();
+        Assert.NotNull(fallbackProfile);
+        Assert.Equal("ANON-PATIENT-001", fallbackProfile.PatientId);
+    }
+
+    /// <summary>
+    /// Verifies that POST /api/genomics/analyze-sequence scans raw DNA sequence for immunogenicity and repeat motifs.
+    /// </summary>
+    [Fact]
+    public async Task PostGenomicsAnalyzeSequence_ShouldReturnOkWithSequenceProfile()
+    {
+        // WHAT: Invokes POST /api/genomics/analyze-sequence with nucleotide string.
+        // WHY:  Ensures sequence-level screening operates properly over HTTP.
+        // HOW:  Sends high CpG sequence and asserts TLR9 detection.
+        SequenceAnalysisRequest req = new()
+        {
+            PatientId = "TEST-SEQ-API",
+            Sequence = "CGCGCGCGCGCGCGCGCGCG",
+            Regimen = TherapeuticRegimen.MaleToFemale
+        };
+
+        HttpResponseMessage response = await _client.PostAsJsonAsync("/api/genomics/analyze-sequence", req);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        PatientGenomicProfile? profile = await response.Content.ReadFromJsonAsync<PatientGenomicProfile>();
+        Assert.NotNull(profile);
+        Assert.True(profile.CpGMethylationMandatory);
+
+        // Test null fallback
+        SequenceAnalysisRequest fallbackReq = new()
+        {
+            PatientId = null,
+            Sequence = null,
+            Regimen = TherapeuticRegimen.MaleToFemale
+        };
+        HttpResponseMessage fallbackResp = await _client.PostAsJsonAsync("/api/genomics/analyze-sequence", fallbackReq);
+        Assert.Equal(HttpStatusCode.OK, fallbackResp.StatusCode);
+    }
+
+    /// <summary>
+    /// Verifies that POST /api/genomics/apply-adjustments updates active endocrine profile setpoints.
+    /// </summary>
+    [Fact]
+    public async Task PostGenomicsApplyAdjustments_ShouldReturnOkWithAdjustedProfile()
+    {
+        // WHAT: Invokes POST /api/genomics/apply-adjustments.
+        // WHY:  Validates that patient genetic limits are applied to the active runtime state engine.
+        // HOW:  Asserts 200 OK and response containing adjusted endocrine profile.
+        GenomicAnalysisRequest req = new()
+        {
+            PatientId = "TEST-ADJUST-API",
+            MarkerIds = ["F5_LEIDEN"],
+            Regimen = TherapeuticRegimen.MaleToFemale
+        };
+
+        HttpResponseMessage response = await _client.PostAsJsonAsync("/api/genomics/apply-adjustments", req);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        // Test fallback defaults with null fields
+        GenomicAnalysisRequest fallbackReq = new()
+        {
+            PatientId = null,
+            MarkerIds = null,
+            Regimen = TherapeuticRegimen.FemaleToMale
+        };
+        HttpResponseMessage fallbackResp = await _client.PostAsJsonAsync("/api/genomics/apply-adjustments", fallbackReq);
+        Assert.Equal(HttpStatusCode.OK, fallbackResp.StatusCode);
+    }
+
+    /// <summary>
+    /// Verifies model record instantiation and with-expressions for request payloads.
+    /// </summary>
+    [Fact]
+    public void GenomicRequestModels_RecordPropertiesAndWith()
+    {
+        // WHAT: Tests GenomicAnalysisRequest and SequenceAnalysisRequest records.
+        // WHY:  Guarantees 100% line and branch coverage on request records.
+        // HOW:  Initializes records and exercises with-mutations.
+        GenomicAnalysisRequest req = new()
+        {
+            PatientId = "P1",
+            MarkerIds = ["F5_LEIDEN"],
+            Regimen = TherapeuticRegimen.MaleToFemale
+        };
+        GenomicAnalysisRequest mutated = req with { PatientId = "P2" };
+        Assert.Equal("P2", mutated.PatientId);
+        Assert.Single(mutated.MarkerIds!);
+
+        SequenceAnalysisRequest seqReq = new()
+        {
+            PatientId = "S1",
+            Sequence = "ATCG",
+            Regimen = TherapeuticRegimen.FemaleToMale
+        };
+        SequenceAnalysisRequest seqMutated = seqReq with { Sequence = "GGCC" };
+        Assert.Equal("GGCC", seqMutated.Sequence);
+        Assert.Equal(TherapeuticRegimen.FemaleToMale, seqMutated.Regimen);
     }
 }

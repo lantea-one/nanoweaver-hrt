@@ -17,6 +17,7 @@ using WeaverLammpsHrt.TrajectoryParser.Components.Pages;
 using WeaverLammpsHrt.TrajectoryParser.Configuration;
 using WeaverLammpsHrt.TrajectoryParser.Endocrine;
 using WeaverLammpsHrt.TrajectoryParser.Fabrication;
+using WeaverLammpsHrt.TrajectoryParser.Genomics;
 using WeaverLammpsHrt.TrajectoryParser.Pipelines;
 using WeaverLammpsHrt.TrajectoryParser.Services;
 using WeaverLammpsHrt.TrajectoryParser.Services.Stack;
@@ -88,6 +89,7 @@ public sealed class RazorComponentLifecycleTests : IDisposable
         sc.AddSingleton<LammpsCustomPipeReader>();
         sc.AddSingleton<IParquetTrajectoryWriter, DuckDbParquetWriter>();
         sc.AddSingleton<EndocrineStateEngine>();
+        sc.AddSingleton<IPharmacogenomicsService, PharmacogenomicsService>();
         sc.AddSingleton<NavigationManager>(_navManager);
         sc.AddSingleton<IJSRuntime>(_jsRuntime);
         sc.AddHttpContextAccessor();
@@ -335,6 +337,26 @@ public sealed class RazorComponentLifecycleTests : IDisposable
         RenderComponent(wizard);
         InvokeMethod(wizard, "SetDiyTab", "protocol");
         RenderComponent(wizard);
+
+        // 11. Test Sequence Pharmacogenomic Screening and TLR9 Epigenetic Warning Render
+        SetProperty(wizard, "InputSequence", string.Concat(Enumerable.Repeat("CGCG", 25)));
+        InvokeMethod(wizard, "OnSequenceChanged");
+        RenderComponent(wizard);
+
+        // Advance to Stage 6 with TLR9 alert triggered to verify epigenetic banner render
+        InvokeMethod(wizard, "SetStep", 6);
+        RenderComponent(wizard);
+
+        // Test static alert CSS helpers
+        Assert.Equal("genomic-alert-critical", InvokeMethodWithResult<string>(wizard, "GetAlertBoxClass", ClinicalSeverity.Critical));
+        Assert.Equal("genomic-alert-warning", InvokeMethodWithResult<string>(wizard, "GetAlertBoxClass", ClinicalSeverity.Warning));
+        Assert.Equal("genomic-alert-advisory", InvokeMethodWithResult<string>(wizard, "GetAlertBoxClass", ClinicalSeverity.Advisory));
+        Assert.Equal("genomic-alert-optimal", InvokeMethodWithResult<string>(wizard, "GetAlertBoxClass", ClinicalSeverity.Optimal));
+
+        Assert.Equal("genomic-badge-critical", InvokeMethodWithResult<string>(wizard, "GetAlertBadgeClass", ClinicalSeverity.Critical));
+        Assert.Equal("genomic-badge-warning", InvokeMethodWithResult<string>(wizard, "GetAlertBadgeClass", ClinicalSeverity.Warning));
+        Assert.Equal("genomic-badge-advisory", InvokeMethodWithResult<string>(wizard, "GetAlertBadgeClass", ClinicalSeverity.Advisory));
+        Assert.Equal("genomic-badge-optimal", InvokeMethodWithResult<string>(wizard, "GetAlertBadgeClass", ClinicalSeverity.Optimal));
     }
 
     /// <summary>
@@ -423,7 +445,41 @@ public sealed class RazorComponentLifecycleTests : IDisposable
         RenderComponent(dashboard);
         Assert.Equal(ToggleState.EstrogenicDominant, engine.GetActiveProfile().TargetState);
 
-        // 3. Test AfterRender and Chart Rendering
+        // 3. Test Pharmacogenomic Presets and Custom Markers
+        InvokeMethod(dashboard, "SelectPreset", "PRESET_MTF_THROMBOSIS");
+        RenderComponent(dashboard);
+
+        // Test non-existent preset fallback
+        InvokeMethod(dashboard, "SelectPreset", "PRESET_NONEXISTENT");
+        RenderComponent(dashboard);
+
+        // Toggle marker off and on
+        InvokeMethod(dashboard, "ToggleMarker", "F5_LEIDEN");
+        RenderComponent(dashboard);
+        InvokeMethod(dashboard, "ToggleMarker", "F5_LEIDEN");
+        RenderComponent(dashboard);
+
+        // Clear all markers
+        InvokeMethod(dashboard, "ClearAllMarkers");
+        RenderComponent(dashboard);
+
+        // Apply genomic adjustments
+        InvokeMethod(dashboard, "SelectPreset", "PRESET_MTF_THROMBOSIS");
+        await InvokeAsyncMethod(dashboard, "ApplyGenomicAdjustments");
+        RenderComponent(dashboard);
+
+        // Test styling helpers
+        Assert.Equal("genomic-alert-critical", InvokeMethodWithResult<string>(dashboard, "GetAlertBoxClass", ClinicalSeverity.Critical));
+        Assert.Equal("genomic-alert-warning", InvokeMethodWithResult<string>(dashboard, "GetAlertBoxClass", ClinicalSeverity.Warning));
+        Assert.Equal("genomic-alert-advisory", InvokeMethodWithResult<string>(dashboard, "GetAlertBoxClass", ClinicalSeverity.Advisory));
+        Assert.Equal("genomic-alert-optimal", InvokeMethodWithResult<string>(dashboard, "GetAlertBoxClass", ClinicalSeverity.Optimal));
+
+        Assert.Equal("genomic-badge-critical", InvokeMethodWithResult<string>(dashboard, "GetBadgeClass", ClinicalSeverity.Critical));
+        Assert.Equal("genomic-badge-warning", InvokeMethodWithResult<string>(dashboard, "GetBadgeClass", ClinicalSeverity.Warning));
+        Assert.Equal("genomic-badge-advisory", InvokeMethodWithResult<string>(dashboard, "GetBadgeClass", ClinicalSeverity.Advisory));
+        Assert.Equal("genomic-badge-optimal", InvokeMethodWithResult<string>(dashboard, "GetBadgeClass", ClinicalSeverity.Optimal));
+
+        // 4. Test AfterRender and Chart Rendering
         await InvokeAsyncMethod(dashboard, "OnAfterRenderAsync", false);
         await InvokeAsyncMethod(dashboard, "RenderChartAsync");
     }
