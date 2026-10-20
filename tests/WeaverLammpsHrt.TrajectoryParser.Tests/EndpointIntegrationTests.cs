@@ -568,4 +568,149 @@ public sealed class EndpointIntegrationTests : IClassFixture<WebApplicationFacto
         Assert.True(docRedirect.StatusCode == HttpStatusCode.MovedPermanently || docRedirect.StatusCode == HttpStatusCode.Redirect);
         Assert.EndsWith("documentation/index.html", docRedirect.Headers.Location?.OriginalString);
     }
+
+    /// <summary>
+    /// Verifies that GET /api/system/telemetry returns valid lower camelCase JSON keys.
+    /// </summary>
+    [Fact]
+    public async Task GetSystemTelemetry_ShouldReturnCamelCaseJson()
+    {
+        // WHAT: Tests raw JSON response from GET /api/system/telemetry.
+        // WHY:  Enforces lower camelCase JSON standard requested by user.
+        // HOW:  Issues GET request, reads raw JSON text, and asserts presence of camelCase keys.
+        HttpResponseMessage response = await _client.GetAsync("/api/system/telemetry");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        string json = await response.Content.ReadAsStringAsync();
+        Assert.Contains("\"nodeName\":", json);
+        Assert.Contains("\"acceleratorBackend\":", json);
+        Assert.Contains("\"framesParsed\":", json);
+        Assert.DoesNotContain("\"node_name\":", json);
+        Assert.DoesNotContain("\"frames_parsed\":", json);
+    }
+
+    /// <summary>
+    /// Verifies that GET /api/system/telemetry returns XML when requested via Accept header.
+    /// </summary>
+    [Fact]
+    public async Task GetSystemTelemetry_WithXmlAccept_ShouldReturnXml()
+    {
+        // WHAT: Tests content negotiation for application/xml on telemetry endpoint.
+        // WHY:  Validates XML transcoding in FormatNegotiationMiddleware.
+        // HOW:  Issues GET with Accept: application/xml header and asserts XML payload.
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/system/telemetry");
+        request.Headers.Accept.ParseAdd("application/xml");
+
+        HttpResponseMessage response = await _client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("application/xml; charset=utf-8", response.Content.Headers.ContentType?.ToString());
+
+        string xml = await response.Content.ReadAsStringAsync();
+        Assert.Contains("<nodeName>", xml);
+        Assert.Contains("</nodeName>", xml);
+    }
+
+    /// <summary>
+    /// Verifies that GET /api/system/telemetry returns YAML with lower snake-case with hyphens when requested via Accept header.
+    /// </summary>
+    [Fact]
+    public async Task GetSystemTelemetry_WithYamlAccept_ShouldReturnYamlWithHyphens()
+    {
+        // WHAT: Tests content negotiation for application/x-yaml on telemetry endpoint.
+        // WHY:  Enforces YAML kebab-case with hyphens standard.
+        // HOW:  Issues GET with Accept: application/x-yaml header and asserts hyphenated keys.
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/system/telemetry");
+        request.Headers.Accept.ParseAdd("application/x-yaml");
+
+        HttpResponseMessage response = await _client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("application/x-yaml; charset=utf-8", response.Content.Headers.ContentType?.ToString());
+
+        string yaml = await response.Content.ReadAsStringAsync();
+        Assert.Contains("node-name:", yaml);
+        Assert.Contains("accelerator-backend:", yaml);
+        Assert.Contains("frames-parsed:", yaml);
+        Assert.DoesNotContain("node_name:", yaml);
+    }
+
+    /// <summary>
+    /// Verifies that ?format= query parameters override the response format.
+    /// </summary>
+    [Fact]
+    public async Task GetSystemTelemetry_WithFormatQuery_ShouldReturnRequestedFormat()
+    {
+        // WHAT: Tests format override via query string (?format=xml and ?format=yaml).
+        // WHY:  Allows browser navigation or curl queries without custom Accept headers.
+        // HOW:  Requests telemetry with ?format=xml and ?format=yaml, asserts corresponding Content-Type and payload.
+        HttpResponseMessage xmlResp = await _client.GetAsync("/api/system/telemetry?format=xml");
+        Assert.Equal(HttpStatusCode.OK, xmlResp.StatusCode);
+        Assert.Contains("application/xml", xmlResp.Content.Headers.ContentType?.ToString());
+
+        HttpResponseMessage yamlResp = await _client.GetAsync("/api/system/telemetry?format=yaml");
+        Assert.Equal(HttpStatusCode.OK, yamlResp.StatusCode);
+        Assert.Contains("application/x-yaml", yamlResp.Content.Headers.ContentType?.ToString());
+    }
+
+    /// <summary>
+    /// Verifies that POST /api/datasets/export accepts XML payloads and transcodes them seamlessly.
+    /// </summary>
+    [Fact]
+    public async Task ExportDataset_WithXmlContentType_ShouldSucceed()
+    {
+        // WHAT: Posts an XML payload to /api/datasets/export.
+        // WHY:  Validates inbound XML request transcoding in FormatNegotiationMiddleware.
+        // HOW:  Constructs StringContent with application/xml, sends POST, verifies 200 OK and manifest.
+        string xmlPayload = "<ExportRequest><datasetName>XmlTranscodeTest</datasetName><files><item>dna_nanotube_sample.xyz</item></files></ExportRequest>";
+        using var content = new StringContent(xmlPayload, Encoding.UTF8, "application/xml");
+
+        HttpResponseMessage response = await _client.PostAsync("/api/datasets/export", content);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        DatasetManifest? manifest = await response.Content.ReadFromJsonAsync<DatasetManifest>();
+        Assert.NotNull(manifest);
+        Assert.Equal("XmlTranscodeTest", manifest.DatasetName);
+    }
+
+    /// <summary>
+    /// Verifies that POST /api/datasets/export accepts YAML payloads with hyphenated keys and transcodes them seamlessly.
+    /// </summary>
+    [Fact]
+    public async Task ExportDataset_WithYamlContentType_ShouldSucceed()
+    {
+        // WHAT: Posts a YAML payload to /api/datasets/export.
+        // WHY:  Validates inbound YAML request transcoding with kebab-case in FormatNegotiationMiddleware.
+        // HOW:  Constructs StringContent with application/x-yaml, sends POST, verifies 200 OK and manifest.
+        string yamlPayload = """
+        dataset-name: YamlTranscodeTest
+        files:
+          - dna_nanotube_sample.xyz
+        """;
+        using var content = new StringContent(yamlPayload, Encoding.UTF8, "application/x-yaml");
+
+        HttpResponseMessage response = await _client.PostAsync("/api/datasets/export", content);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        DatasetManifest? manifest = await response.Content.ReadFromJsonAsync<DatasetManifest>();
+        Assert.NotNull(manifest);
+        Assert.Equal("YamlTranscodeTest", manifest.DatasetName);
+    }
+
+    /// <summary>
+    /// Verifies that /swagger/v1/swagger.json contains multi-format media types and examples for JSON, XML, and YAML.
+    /// </summary>
+    [Fact]
+    public async Task SwaggerSpec_ShouldContainMultiFormatExamples()
+    {
+        // WHAT: Verifies OpenAPI 3.0 schema generation contains JSON, XML, and YAML content types and examples.
+        // WHY:  Ensures Swagger and ReDoc documentation interfaces display multi-format payloads.
+        // HOW:  Fetches /swagger/v1/swagger.json and inspects contents for media types and examples.
+        HttpResponseMessage response = await _client.GetAsync("/swagger/v1/swagger.json");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        string specJson = await response.Content.ReadAsStringAsync();
+        Assert.Contains("application/json", specJson);
+        Assert.Contains("application/xml", specJson);
+        Assert.Contains("application/x-yaml", specJson);
+        Assert.Contains("example", specJson);
+    }
 }

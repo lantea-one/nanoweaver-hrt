@@ -1,6 +1,8 @@
 using System.ComponentModel;
+using System.Text.Json.Serialization;
 using Swashbuckle.AspNetCore.Annotations;
 using WeaverLammpsHrt.TrajectoryParser.Endocrine;
+using WeaverLammpsHrt.TrajectoryParser.Swagger;
 
 namespace WeaverLammpsHrt.TrajectoryParser.Fabrication;
 
@@ -9,73 +11,90 @@ namespace WeaverLammpsHrt.TrajectoryParser.Fabrication;
 /// Provides real-world therapeutic designs for Male-to-Female (MtF) and Female-to-Male (FtM) HRT nanocarriers.
 /// </summary>
 [SwaggerSchema(Title = "DnaOrigamiSample", Description = "Pre-configured digitized DNA origami sample template for synthetic biology nanocarriers.")]
-public sealed record DnaOrigamiSample
+public sealed record DnaOrigamiSample : IExamplesProvider<DnaOrigamiSample>
 {
     /// <summary>
     /// Unique identifier for the sample preset.
     /// </summary>
     [Description("Unique identifier for the sample preset.")]
+    [JsonPropertyName("id")]
     public required string Id { get; init; }
 
     /// <summary>
     /// Human-readable title of the DNA nanotechnology architecture.
     /// </summary>
     [Description("Human-readable title of the DNA nanotechnology architecture.")]
+    [JsonPropertyName("title")]
     public required string Title { get; init; }
 
     /// <summary>
     /// Associated endocrine therapeutic regimen (MtF or FtM).
     /// </summary>
     [Description("Associated endocrine therapeutic regimen (MaleToFemale or FemaleToMale).")]
+    [JsonPropertyName("regimen")]
     public required TherapeuticRegimen Regimen { get; init; }
 
     /// <summary>
     /// Delivery vehicle structural geometry (e.g., 'Hexagonal Nanotube 6HB', '3D Cuboid Cage').
     /// </summary>
     [Description("Delivery vehicle structural geometry.")]
+    [JsonPropertyName("vehicleGeometry")]
     public required string VehicleGeometry { get; init; }
 
     /// <summary>
     /// Target anatomical tissue or cellular receptor.
     /// </summary>
     [Description("Target anatomical tissue or cellular receptor.")]
+    [JsonPropertyName("targetTissue")]
     public required string TargetTissue { get; init; }
 
     /// <summary>
     /// Primary active ligand or synthetic hormone (e.g., '17β-Estradiol', 'Testosterone Enanthate').
     /// </summary>
     [Description("Primary active ligand or synthetic hormone.")]
+    [JsonPropertyName("activeLigand")]
     public required string ActiveLigand { get; init; }
 
     /// <summary>
     /// In-silico target dissociation constant (Kd) in nanomolar (lower Kd indicates higher binding affinity).
     /// </summary>
     [Description("In-silico target dissociation constant (Kd) in nanomolar.")]
+    [JsonPropertyName("targetKdNanomolar")]
     public required double TargetKdNanomolar { get; init; }
 
     /// <summary>
     /// Plain-English explanation of what this sample nanocarrier is engineered to achieve.
     /// </summary>
     [Description("Plain-English explanation of what this sample nanocarrier is engineered to achieve.")]
+    [JsonPropertyName("description")]
     public required string Description { get; init; }
 
     /// <summary>
     /// Biomedical rationale explaining why this geometry and aptamer sequence were selected.
     /// </summary>
     [Description("Biomedical rationale explaining why this geometry and aptamer sequence were selected.")]
+    [JsonPropertyName("biomedicalRationale")]
     public required string BiomedicalRationale { get; init; }
 
     /// <summary>
     /// Digitized nucleotide sequence for the active aptamer binding core.
     /// </summary>
     [Description("Digitized nucleotide sequence for the active aptamer binding core.")]
+    [JsonPropertyName("aptamerSequence")]
     public required string AptamerSequence { get; init; }
 
     /// <summary>
     /// Scaffold backbone used for the origami fold (typically single-stranded bacteriophage M13mp18, 7249 nucleotides).
     /// </summary>
     [Description("Scaffold backbone used for the origami fold.")]
+    [JsonPropertyName("scaffoldType")]
     public required string ScaffoldType { get; init; }
+
+    /// <summary>
+    /// Generates a representative example instance of <see cref="DnaOrigamiSample"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A populated DNA origami sample preset example.</returns>
+    public DnaOrigamiSample GetExamples() => GetPresetLibrary()[0];
 
     /// <summary>
     /// Returns the built-in library of verified sovereign DNA nanocarrier sample designs.

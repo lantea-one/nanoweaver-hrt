@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Text.Json.Serialization;
 using Swashbuckle.AspNetCore.Annotations;
+using WeaverLammpsHrt.TrajectoryParser.Swagger;
 
 namespace WeaverLammpsHrt.TrajectoryParser.Models;
 
@@ -18,7 +19,7 @@ namespace WeaverLammpsHrt.TrajectoryParser.Models;
 /// </para>
 /// </remarks>
 [SwaggerSchema(Title = "DatasetManifest", Description = "Cryptographic provenance manifest recording SHA-256 hashes, timestamps, and files within an archive.")]
-public sealed record DatasetManifest
+public sealed record DatasetManifest : IExamplesProvider<DatasetManifest>
 {
     /// <summary>
     /// The unique name or identifier of the dataset (e.g., "dna-origami-tile-step500k").
@@ -52,22 +53,36 @@ public sealed record DatasetManifest
     /// The total size of the archive in bytes.
     /// </summary>
     [Description("The total size of the archive in bytes.")]
-    [JsonPropertyName("size_bytes")]
+    [JsonPropertyName("sizeBytes")]
     public required long SizeInBytes { get; init; }
 
     /// <summary>
     /// Optional list of trajectory and configuration files packaged inside this archive.
     /// </summary>
     [Description("List of trajectory and configuration files packaged inside this archive.")]
-    [JsonPropertyName("included_files")]
+    [JsonPropertyName("includedFiles")]
     public string[] IncludedFiles { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Generates a representative example instance of <see cref="DatasetManifest"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A populated dataset manifest example.</returns>
+    public DatasetManifest GetExamples() => new()
+    {
+        DatasetName = "dna-origami-tile-500k",
+        TimestampUtc = "2026-10-20T18:00:00Z",
+        ArchiveFileName = "dna-origami-tile-500k.tar.gz",
+        Sha256Checksum = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        SizeInBytes = 14850200,
+        IncludedFiles = ["trajectory.xyz", "simulation.in", "manifest.json"]
+    };
 }
 
 /// <summary>
 /// Represents metadata describing a trajectory file discovered in the simulation storage volume.
 /// </summary>
 [SwaggerSchema(Title = "TrajectoryFileItem", Description = "Metadata describing an oxDNA, LAMMPS, or CHARMM trajectory file found on disk.")]
-public sealed record TrajectoryFileItem
+public sealed record TrajectoryFileItem : IExamplesProvider<TrajectoryFileItem>
 {
     /// <summary>
     /// The file name including its extension (e.g., "folding_run.xyz" or "traj.dcd").
@@ -80,21 +95,21 @@ public sealed record TrajectoryFileItem
     /// File size in bytes.
     /// </summary>
     [Description("File size in bytes.")]
-    [JsonPropertyName("size_bytes")]
+    [JsonPropertyName("sizeBytes")]
     public required long SizeBytes { get; init; }
 
     /// <summary>
     /// Human-readable file size (e.g., "14.2 MB", "1.8 GB").
     /// </summary>
     [Description("Human-readable file size (e.g., '14.2 MB').")]
-    [JsonPropertyName("size_formatted")]
+    [JsonPropertyName("sizeFormatted")]
     public required string SizeFormatted { get; init; }
 
     /// <summary>
     /// Last modified timestamp in ISO 8601 UTC.
     /// </summary>
     [Description("Last modified timestamp in ISO 8601 UTC.")]
-    [JsonPropertyName("last_modified")]
+    [JsonPropertyName("lastModified")]
     public required string LastModifiedUtc { get; init; }
 
     /// <summary>
@@ -103,4 +118,17 @@ public sealed record TrajectoryFileItem
     [Description("Detected trajectory format (e.g., 'XYZ', 'DCD', 'LAMMPS Custom').")]
     [JsonPropertyName("format")]
     public required string Format { get; init; }
+
+    /// <summary>
+    /// Generates a representative example instance of <see cref="TrajectoryFileItem"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A populated trajectory file metadata example.</returns>
+    public TrajectoryFileItem GetExamples() => new()
+    {
+        Name = "dna_nanotube_folding.xyz",
+        SizeBytes = 15728640,
+        SizeFormatted = "15.0 MB",
+        LastModifiedUtc = "2026-10-20T18:30:00Z",
+        Format = "XYZ"
+    };
 }

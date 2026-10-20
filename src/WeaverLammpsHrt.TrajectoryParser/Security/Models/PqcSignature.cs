@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Text.Json.Serialization;
 using Swashbuckle.AspNetCore.Annotations;
+using WeaverLammpsHrt.TrajectoryParser.Swagger;
 
 namespace WeaverLammpsHrt.TrajectoryParser.Security.Models;
 
@@ -20,7 +21,7 @@ namespace WeaverLammpsHrt.TrajectoryParser.Security.Models;
 /// </para>
 /// </remarks>
 [SwaggerSchema(Title = "PqcSignature", Description = "Post-quantum digital signature container providing tamper-evident authenticity and non-repudiation (NIST FIPS 204 ML-DSA-65).")]
-public sealed record PqcSignature
+public sealed record PqcSignature : IExamplesProvider<PqcSignature>
 {
     /// <summary>
     /// Gets the signature algorithm (default: "ML-DSA-65").
@@ -49,4 +50,16 @@ public sealed record PqcSignature
     [Description("UTC timestamp when this signature was generated.")]
     [JsonPropertyName("signedAtUtc")]
     public DateTimeOffset SignedAtUtc { get; init; } = DateTimeOffset.UtcNow;
+
+    /// <summary>
+    /// Generates a representative example instance of <see cref="PqcSignature"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A populated post-quantum digital signature example.</returns>
+    public PqcSignature GetExamples() => new()
+    {
+        Algorithm = "ML-DSA-65",
+        SignerKeyId = "weaver_node_master_authority",
+        SignatureBase64 = "u92L...ml_dsa_65_signature_3309_bytes...==",
+        SignedAtUtc = new DateTimeOffset(2026, 10, 20, 18, 0, 0, TimeSpan.Zero)
+    };
 }

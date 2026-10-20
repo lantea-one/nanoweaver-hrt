@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Text.Json.Serialization;
 using Swashbuckle.AspNetCore.Annotations;
 using WeaverLammpsHrt.TrajectoryParser.Endocrine;
+using WeaverLammpsHrt.TrajectoryParser.Swagger;
 
 namespace WeaverLammpsHrt.TrajectoryParser.Genomics;
 
@@ -17,13 +18,13 @@ namespace WeaverLammpsHrt.TrajectoryParser.Genomics;
 /// </para>
 /// </remarks>
 [SwaggerSchema(Title = "PatientGenomicProfile", Description = "Comprehensive pharmacogenomic profile aggregating detected genetic markers, alerts, and kinetic modifiers.")]
-public sealed record PatientGenomicProfile
+public sealed record PatientGenomicProfile : IExamplesProvider<PatientGenomicProfile>
 {
     /// <summary>
     /// Anonymized identifier for the patient or research subject.
     /// </summary>
     [Description("Anonymized identifier for the patient or research subject.")]
-    [JsonPropertyName("patient_id")]
+    [JsonPropertyName("patientId")]
     public required string PatientId { get; init; }
 
     /// <summary>
@@ -37,7 +38,7 @@ public sealed record PatientGenomicProfile
     /// Collection of verified genetic markers present in the patient's genome.
     /// </summary>
     [Description("Collection of verified genetic markers present in the patient's genome.")]
-    [JsonPropertyName("observed_markers")]
+    [JsonPropertyName("observedMarkers")]
     public required IReadOnlyList<GeneticMarker> ObservedMarkers { get; init; }
 
     /// <summary>
@@ -51,68 +52,87 @@ public sealed record PatientGenomicProfile
     /// Indicates whether one or more Critical severity alerts are active.
     /// </summary>
     [Description("Indicates whether one or more Critical severity alerts are active.")]
-    [JsonPropertyName("has_critical_alerts")]
+    [JsonPropertyName("hasCriticalAlerts")]
     public bool HasCriticalAlerts => Alerts.Any(a => a.Severity == ClinicalSeverity.Critical);
 
     /// <summary>
     /// Aggregate relative thrombosis risk index (1.0 = baseline population risk; &gt; 2.0 = elevated risk).
     /// </summary>
     [Description("Aggregate relative thrombosis risk index (1.0 = population baseline).")]
-    [JsonPropertyName("thrombosis_risk_index")]
+    [JsonPropertyName("thrombosisRiskIndex")]
     public required double ThrombosisRiskIndex { get; init; }
 
     /// <summary>
     /// Aggregate clearance rate multiplier combining hepatic Phase I and Phase II metabolism variants (1.0 = baseline).
     /// </summary>
     [Description("Aggregate clearance rate multiplier combining Phase I and Phase II metabolism.")]
-    [JsonPropertyName("overall_clearance_multiplier")]
+    [JsonPropertyName("overallClearanceMultiplier")]
     public required double OverallClearanceMultiplier { get; init; }
 
     /// <summary>
     /// Indicates whether enzymatic CpG methylation is mandatory on the DNA origami chassis to prevent TLR9 recognition.
     /// </summary>
     [Description("Indicates whether enzymatic CpG methylation is mandatory on the DNA origami chassis.")]
-    [JsonPropertyName("cpg_methylation_mandatory")]
+    [JsonPropertyName("cpgMethylationMandatory")]
     public required bool CpGMethylationMandatory { get; init; }
 
     /// <summary>
     /// Safe maximum serum 17β-estradiol concentration (pmol/L) derived from the patient's hemostatic genetic profile.
     /// </summary>
     [Description("Safe maximum serum 17β-estradiol concentration (pmol/L).")]
-    [JsonPropertyName("recommended_max_estradiol_pmol_l")]
+    [JsonPropertyName("recommendedMaxEstradiolPmolL")]
     public double? RecommendedMaxEstradiolPmolL { get; init; }
 
     /// <summary>
     /// Recommended minimum serum testosterone concentration (nmol/L) required to overcome receptor resistance.
     /// </summary>
     [Description("Recommended minimum serum testosterone concentration (nmol/L).")]
-    [JsonPropertyName("recommended_min_testosterone_nmol_l")]
+    [JsonPropertyName("recommendedMinTestosteroneNmolL")]
     public double? RecommendedMinTestosteroneNmolL { get; init; }
 
     /// <summary>
     /// Recommended binding affinity Kd offset in nanomolar (nM) to tune aptamer dissociation kinetics.
     /// </summary>
     [Description("Recommended binding affinity Kd offset in nM.")]
-    [JsonPropertyName("recommended_kd_offset_nm")]
+    [JsonPropertyName("recommendedKdOffsetNm")]
     public double RecommendedKdOffsetNanoMolar { get; init; }
 
     /// <summary>
     /// Timestamp in ISO 8601 UTC when this genomic evaluation was performed.
     /// </summary>
     [Description("Timestamp in ISO 8601 UTC when this genomic evaluation was performed.")]
-    [JsonPropertyName("calculated_at_utc")]
+    [JsonPropertyName("calculatedAtUtc")]
     public required string CalculatedAtUtc { get; init; }
+
+    /// <summary>
+    /// Generates a representative example instance of <see cref="PatientGenomicProfile"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A populated patient genomic profile example.</returns>
+    public PatientGenomicProfile GetExamples() => new()
+    {
+        PatientId = "sub_patient_42c8e",
+        Regimen = TherapeuticRegimen.MaleToFemale,
+        ObservedMarkers = [GeneticMarker.CreateExample()],
+        Alerts = [GeneticAlert.CreateExample()],
+        ThrombosisRiskIndex = 4.5,
+        OverallClearanceMultiplier = 1.0,
+        CpGMethylationMandatory = false,
+        RecommendedMaxEstradiolPmolL = 450.0,
+        RecommendedMinTestosteroneNmolL = null,
+        RecommendedKdOffsetNanoMolar = 0.0,
+        CalculatedAtUtc = "2026-10-20T18:00:00Z"
+    };
 }
 
 /// <summary>
 /// Pre-configured clinical genetic test panel or patient preset for rapid demonstration and validation.
 /// </summary>
 [SwaggerSchema(Title = "GeneticMarkerPreset", Description = "Pre-configured clinical genetic test panel for rapid demonstration.")]
-public sealed record GeneticMarkerPreset
+public sealed record GeneticMarkerPreset : IExamplesProvider<GeneticMarkerPreset>
 {
     /// <summary>Unique preset identifier.</summary>
     [Description("Unique preset identifier.")]
-    [JsonPropertyName("preset_id")]
+    [JsonPropertyName("presetId")]
     public required string PresetId { get; init; }
 
     /// <summary>User-friendly clinical preset title.</summary>
@@ -132,6 +152,25 @@ public sealed record GeneticMarkerPreset
 
     /// <summary>List of marker identifiers included in this preset.</summary>
     [Description("List of marker identifiers included in this preset.")]
-    [JsonPropertyName("marker_ids")]
+    [JsonPropertyName("markerIds")]
     public required IReadOnlyList<string> MarkerIds { get; init; }
+
+    /// <summary>
+    /// Generates a default populated instance of <see cref="GeneticMarkerPreset"/> for examples.
+    /// </summary>
+    /// <returns>A populated genetic marker preset example.</returns>
+    public static GeneticMarkerPreset CreateExample() => new()
+    {
+        PresetId = "preset-mtf-thrombosis",
+        Title = "MtF High Thrombosis Risk Panel (Factor V Leiden + Prothrombin)",
+        Description = "Simulates a patient carrying hemostatic clotting variants requiring safe estradiol titration.",
+        Regimen = TherapeuticRegimen.MaleToFemale,
+        MarkerIds = ["F5_LEIDEN", "F2_PROTHROMBIN"]
+    };
+
+    /// <summary>
+    /// Generates a representative example instance of <see cref="GeneticMarkerPreset"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A populated genetic marker preset example.</returns>
+    public GeneticMarkerPreset GetExamples() => CreateExample();
 }

@@ -44,15 +44,15 @@ flowchart TD
 
 Choose the reverse proxy option that best matches your infrastructure and comfort level:
 
-| Feature / Consideration | Caddy (Docker) | Nginx (Docker) | Cloudflare Tunnel | Tailscale (Funnel & Mesh) | Native Host Caddy | Native Host Nginx |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Ease of Setup** | **Easiest** | Moderate | Easy | **Easiest** | Easy | Moderate |
-| **SSL/TLS Certificates** | **100% Automatic** | Automated via Certbot container | Managed at Cloudflare Edge | Automatic Let's Encrypt | **100% Automatic** | Managed via Host Certbot |
-| **Requires Open Router Ports?** | Yes (80 & 443) | Yes (80 & 443) | **No (Zero open ports)** | **No (Zero open ports)** | Yes (80 & 443) | Yes (80 & 443) |
-| **CGNAT / Firewall Bypass** | No | No | **Yes** | **Yes** | No | No |
-| **Blazor WebSockets** | Automatic | Configured | Automatic | Automatic | Automatic | Configured |
-| **HTTP/3 (QUIC) Support** | Out-of-the-box | Requires Nginx 1.25+ | Out-of-the-box | Out-of-the-box | Out-of-the-box | Requires Nginx 1.25+ |
-| **Deployment Method** | Compose Overlay | Compose Overlay | Compose Overlay | Host CLI (`tailscale funnel`) | Host systemd + package | Host systemd + package |
+| Feature / Consideration | Caddy (Docker) | Nginx (Docker) | Cloudflare Tunnel | Tailscale (Funnel & Mesh) | Native Host Caddy | Native Host Nginx | Native Host Apache | Standalone Microsoft IIS |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Ease of Setup** | **Easiest** | Moderate | Easy | **Easiest** | Easy | Moderate | Moderate | Moderate |
+| **SSL/TLS Certificates** | **100% Automatic** | Automated via Certbot container | Managed at Cloudflare Edge | Automatic Let's Encrypt | **100% Automatic** | Managed via Host Certbot | Managed via Host Certbot | Automated via win-acme |
+| **Requires Open Router Ports?** | Yes (80 & 443) | Yes (80 & 443) | **No (Zero open ports)** | **No (Zero open ports)** | Yes (80 & 443) | Yes (80 & 443) | Yes (80 & 443) | Yes (80 & 443) |
+| **CGNAT / Firewall Bypass** | No | No | **Yes** | **Yes** | No | No | No | No |
+| **Blazor WebSockets** | Automatic | Configured | Automatic | Automatic | Automatic | Configured | Configured (`mod_proxy_wstunnel`) | Configured (ARR + WebSockets) |
+| **HTTP/3 (QUIC) Support** | Out-of-the-box | Requires Nginx 1.25+ | Out-of-the-box | Out-of-the-box | Out-of-the-box | Requires Nginx 1.25+ | Experimental (`mod_http2`) | Out-of-the-box (Server 2022+) |
+| **Deployment Method** | Compose Overlay | Compose Overlay | Compose Overlay | Host CLI (`tailscale funnel`) | Host systemd + package | Host systemd + package | Host systemd + package | Windows Features + ARR & Rewrite |
 
 ---
 
@@ -510,20 +510,223 @@ Caddy immediately contacts Let's Encrypt, binds ports 80 and 443, provisions the
 
 ---
 
-## 11. Interactive API Documentation (Swagger & ReDoc)
+## 11. Option 8: Native Standalone Apache (No Docker Compose)
+
+For research institutions, clinical trial networks, and university infrastructure where **Apache HTTP Server (httpd / apache2)** is the authoritative enterprise reverse proxy, the Trajectory Parser microservice integrates via `mod_proxy`, `mod_proxy_http`, and `mod_proxy_wstunnel`.
+
+### 11.1. Architecture & Module Requirements
+Apache serves as the internet-facing TLS termination gateway on ports 80 and 443, proxying regular REST requests to `http://127.0.0.1:5000/` and transparently tunneling Blazor SignalR WebSockets at `/_blazor` to `ws://127.0.0.1:5000/_blazor`.
+
+The following Apache modules are required:
+- `mod_proxy` and `mod_proxy_http`: Core reverse proxy transport to the local Kestrel microservice.
+- `mod_proxy_wstunnel`: Dedicated low-latency WebSocket tunnel for high-frequency molecular coordinate streaming.
+- `mod_ssl`: TLS termination and cipher suite negotiation.
+- `mod_headers`: Injection of HTTP security headers (`HSTS`, `X-Frame-Options`, `X-Content-Type-Options`).
+- `mod_rewrite`: URL rewriting and HTTP-to-HTTPS enforcement.
+
+Install Apache and Certbot on Debian/Ubuntu:
+```bash
+sudo apt update
+sudo apt install -y apache2 certbot python3-certbot-apache
+
+# Enable required Apache reverse proxy and SSL modules
+sudo a2enmod proxy proxy_http proxy_wstunnel ssl headers rewrite
+sudo systemctl restart apache2
+```
+
+### 11.2. Apache VirtualHost Configuration
+Create `/etc/apache2/sites-available/weaver-lammps-hrt.conf`:
+
+```apache
+# HTTP VirtualHost - Port 80 Redirect
+<VirtualHost *:80>
+    ServerName hrt.yourdomain.org
+    ServerAdmin admin@yourdomain.org
+
+    # Permanent 301 redirect to HTTPS
+    Redirect permanent / https://hrt.yourdomain.org/
+
+    ErrorLog /var/log/apache2/weaver_error.log
+    CustomLog /var/log/apache2/weaver_access.log combined
+</VirtualHost>
+
+# HTTPS VirtualHost - Port 443 Reverse Proxy & WebSocket Tunnel
+<VirtualHost *:443>
+    ServerName hrt.yourdomain.org
+    ServerAdmin admin@yourdomain.org
+
+    # Modern TLS Configuration (TLS 1.2 and 1.3 only)
+    SSLEngine on
+    SSLProtocol -all +TLSv1.2 +TLSv1.3
+    SSLCipherSuite ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384
+    SSLHonorCipherOrder off
+    SSLSessionTickets off
+
+    # Let's Encrypt Certificate Paths (provisioned by Certbot)
+    SSLCertificateFile /etc/letsencrypt/live/hrt.yourdomain.org/fullchain.pem
+    SSLCertificateKeyFile /etc/letsencrypt/live/hrt.yourdomain.org/privkey.pem
+
+    # Hardened Security Response Headers
+    Header always set Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+    # Reverse Proxy Settings
+    ProxyPreserveHost On
+    RequestHeader set X-Forwarded-Proto "https"
+    RequestHeader set X-Forwarded-Port "443"
+
+    # Blazor SignalR WebSocket Tunneling
+    # Dedicated tunnel for real-time molecular coordinate rendering
+    ProxyPass /_blazor ws://127.0.0.1:5000/_blazor
+    ProxyPassReverse /_blazor ws://127.0.0.1:5000/_blazor
+
+    # Standard REST API & Sovereign Web UI Proxying
+    ProxyPass / http://127.0.0.1:5000/
+    ProxyPassReverse / http://127.0.0.1:5000/
+
+    # Allow large trajectory bundle uploads and exports (up to 1 GB)
+    LimitRequestBody 1073741824
+
+    ErrorLog /var/log/apache2/weaver_ssl_error.log
+    CustomLog /var/log/apache2/weaver_ssl_access.log combined
+</VirtualHost>
+```
+
+### 11.3. Automated SSL Certificate Provisioning
+Obtain a free Let's Encrypt SSL/TLS certificate using Certbot:
+
+```bash
+# Enable the Apache site configuration
+sudo a2ensite weaver-lammps-hrt.conf
+
+# Obtain and install the Let's Encrypt certificate
+sudo certbot --apache -d hrt.yourdomain.org
+
+# Test Apache configuration syntax and reload
+sudo apache2ctl configtest
+sudo systemctl reload apache2
+```
+
+Certbot automatically registers a renewal timer via `certbot.timer` to refresh the certificate every 60 days.
+
+---
+
+## 12. Option 9: Standalone Microsoft IIS (No Docker Compose)
+
+In hospital laboratories, academic medical centers, and enterprise environments operating on **Windows Server** or Windows workstations, **Microsoft Internet Information Services (IIS)** can serve as a reverse proxy fronting the Kestrel microservice.
+
+### 12.1. Prerequisites & Required IIS Modules
+Before configuring IIS, ensure the following Windows features and IIS modules are installed:
+1. **IIS Web Server Role**: Installed via Server Manager or PowerShell.
+2. **WebSocket Protocol Feature**: Enables bidirectional streaming for Blazor SignalR.
+   - Install via PowerShell (Administrator):
+     ```powershell
+     Install-WindowsFeature -Name Web-WebSockets
+     ```
+3. **Application Request Routing (ARR) 3.0**: Enables HTTP reverse proxying functionality.
+   - Download from the Microsoft ARR Download Page.
+4. **URL Rewrite Module 2.1**: Enables URL matching, HTTPS enforcement, and header propagation.
+   - Download from the Microsoft URL Rewrite Page.
+5. **win-acme**: Free ACME client for automated Let's Encrypt certificate provisioning on Windows.
+   - Download from the win-acme website.
+
+### 12.2. Enabling ARR Reverse Proxy
+To enable proxying across IIS sites:
+1. Open **Internet Information Services (IIS) Manager**.
+2. In the left Connections tree, select the root server node.
+3. Double-click **Application Request Routing Cache**.
+4. In the right Actions pane, click **Server Proxy Settings...**.
+5. Check **Enable proxy**.
+6. Set **HTTP Version** to `Pass through`.
+7. Ensure **Preserve client IP in the following header** is set to `X-Forwarded-For`.
+8. Click **Apply** in the Actions pane.
+
+### 12.3. Hardened `web.config` Reverse Proxy Template
+Create an IIS Website pointing to an empty deployment directory (e.g., `C:\inetpub\weaver-proxy`), and place the following `web.config` file inside:
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <system.webServer>
+    <!-- Enable WebSockets for Blazor SignalR coordinate streaming -->
+    <webSocket enabled="true" />
+
+    <!-- Hardened Security Response Headers -->
+    <httpProtocol>
+      <customHeaders>
+        <add name="Strict-Transport-Security" value="max-age=63072000; includeSubDomains; preload" />
+        <add name="X-Content-Type-Options" value="nosniff" />
+        <add name="X-Frame-Options" value="SAMEORIGIN" />
+        <add name="Referrer-Policy" value="strict-origin-when-cross-origin" />
+      </customHeaders>
+    </httpProtocol>
+
+    <!-- Reverse Proxy and HTTPS Redirection Rules -->
+    <rewrite>
+      <rules>
+        <!-- Rule 1: Redirect plaintext HTTP (Port 80) to HTTPS (Port 443) -->
+        <rule name="Redirect to HTTPS" stopProcessing="true">
+          <match url="(.*)" />
+          <conditions>
+            <add input="{HTTPS}" pattern="off" ignoreCase="true" />
+          </conditions>
+          <action type="Redirect" url="https://{HTTP_HOST}/{R:1}" redirectType="Permanent" />
+        </rule>
+
+        <!-- Rule 2: Reverse Proxy all requests to local Kestrel port 5000 -->
+        <rule name="ReverseProxyToKestrel" stopProcessing="true">
+          <match url="(.*)" />
+          <action type="Rewrite" url="http://127.0.0.1:5000/{R:1}" />
+          <serverVariables>
+            <set name="HTTP_X_FORWARDED_PROTO" value="https" />
+            <set name="HTTP_X_FORWARDED_PORT" value="443" />
+          </serverVariables>
+        </rule>
+      </rules>
+    </rewrite>
+
+    <!-- Allow up to 1 GB dataset archive uploads -->
+    <security>
+      <requestFiltering>
+        <requestLimits maxAllowedContentLength="1073741824" />
+      </requestFiltering>
+    </security>
+  </system.webServer>
+</configuration>
+```
+
+### 12.4. Automated Let's Encrypt SSL with `win-acme`
+1. Open PowerShell as Administrator and navigate to your `win-acme` folder.
+2. Launch `wacs.exe`:
+   ```powershell
+   .\wacs.exe
+   ```
+3. In the interactive menu:
+   - Select `N: Create certificate (default settings)`.
+   - Select your IIS Website from the numbered list.
+   - Choose `All bindings` or enter `hrt.yourdomain.org`.
+   - Confirm your contact email for Let's Encrypt expiry notifications.
+   - Accept the Let's Encrypt Subscriber Agreement.
+4. `win-acme` validates domain ownership via the HTTP-01 challenge, generates the private key, installs the certificate into the Windows Certificate Store (WebHosting), binds HTTPS port 443 in IIS, and registers an automated Windows Scheduled Task that renews the certificate every 60 days.
+
+---
+
+## 13. Interactive API Documentation (Swagger & ReDoc)
 
 The sovereign node automatically hosts self-documenting OpenAPI 3.0 endpoints. These interfaces provide comprehensive API exploration for biomedical engineers, lab automation tools, and remote peers.
 
 ```mermaid
 flowchart LR
-    Proxy["Reverse Proxy<br>(Caddy / Nginx / Tailscale / Cloudflare)"]
+    Proxy["Reverse Proxy<br>(Caddy / Nginx / Tailscale / Cloudflare / Apache / IIS)"]
     
     Proxy -->|GET /swagger| SwaggerUI["Swagger UI Playground<br>(/swagger/index.html)<br>- Interactive API Calls<br>- Schema Inspection<br>- Model Validation"]
     Proxy -->|GET /documentation| ReDoc["ReDoc 3-Column Reference<br>(/documentation/index.html)<br>- Domain Specifications<br>- Structured DTOs<br>- Pharma Integration"]
     Proxy -->|GET /swagger/v1/swagger.json| Schema["OpenAPI 3.0 Specification<br>(/swagger/v1/swagger.json)<br>- Machine-Readable AST<br>- Client SDK Generators"]
 ```
 
-### 11.1. Available Documentation Endpoints
+### 13.1. Available Documentation Endpoints
 
 | Endpoint | Interface Type | Description |
 | :--- | :--- | :--- |
@@ -531,16 +734,16 @@ flowchart LR
 | **`/documentation`** | **ReDoc** | Elegant, responsive 3-column API reference. Ideal for reading comprehensive model definitions, XML summaries, and protocol specifications. Automatically redirects to `/documentation/index.html`. |
 | **`/swagger/v1/swagger.json`** | **OpenAPI 3.0 JSON** | Raw OpenAPI 3.0 specification document containing full endpoint paths, request/response models, and cryptographic data contracts. |
 
-### 11.2. Reverse Proxy Transparency
-All 7 reverse proxy options described in this guide transparently forward `/swagger`, `/documentation`, and `/swagger/v1/swagger.json` directly to the Kestrel backend on port 5000 without requiring special URL rewriting or dedicated proxy blocks.
+### 13.2. Reverse Proxy Transparency
+All 9 reverse proxy options described in this guide transparently forward `/swagger`, `/documentation`, and `/swagger/v1/swagger.json` directly to the Kestrel backend on port 5000 without requiring special URL rewriting or dedicated proxy blocks.
 
 ---
 
-## 12. Hardening Checklist & Security Verification
+## 14. Hardening Checklist & Security Verification
 
 After deploying your public reverse proxy, perform the following verification steps to ensure your instance is completely hardened:
 
-### 12.1. Verify Security Response Headers
+### 14.1. Verify Security Response Headers
 Run `curl` against your public domain and confirm all security headers are present:
 
 ```bash
@@ -556,27 +759,27 @@ x-frame-options: SAMEORIGIN
 referrer-policy: strict-origin-when-cross-origin
 ```
 
-### 12.2. Verify SSL/TLS Rating (A+ Target)
+### 14.2. Verify SSL/TLS Rating (A+ Target)
 Test your domain using the free [Qualys SSL Labs SSL Server Test](https://www.ssllabs.com/ssltest/):
 - **Target Grade:** `A+`
 - **Protocols Allowed:** TLS 1.2 and TLS 1.3 only (TLS 1.0, 1.1, and SSLv3 must be disabled).
 - **Forward Secrecy:** Supported across all modern browser suites.
 
-### 12.3. Verify Blazor SignalR & WebSocket Connectivity
+### 14.3. Verify Blazor SignalR & WebSocket Connectivity
 1. Open your browser's Developer Tools (`F12`) and select the **Network** tab.
 2. Filter by **WS** (WebSockets).
 3. Navigate to `https://hrt.yourdomain.org`.
 4. Confirm that the connection to `wss://hrt.yourdomain.org/_blazor` returns **HTTP 101 Switching Protocols**.
 5. Switch to the **Trajectory Browser** tab; coordinate updates should stream smoothly at 60 FPS without disconnecting.
 
-### 12.4. Verify Swagger & ReDoc Access
+### 14.4. Verify Swagger & ReDoc Access
 1. Navigate to `https://hrt.yourdomain.org/swagger`; verify the interactive Swagger UI loads with 34 decorated REST endpoints.
 2. Navigate to `https://hrt.yourdomain.org/documentation`; verify ReDoc loads the 3-column reference.
 3. Test an endpoint (e.g. `GET /api/datasets` or `GET /api/system/telemetry`) directly in the Swagger UI and confirm a successful `200 OK` response.
 
 ---
 
-## 13. Troubleshooting & FAQ
+## 15. Troubleshooting & FAQ
 
 ### Q: Why do I get `502 Bad Gateway`?
 - **Cause:** The reverse proxy cannot reach `trajectory-parser:5000` or local port 5000.

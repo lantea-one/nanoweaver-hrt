@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Text.Json.Serialization;
 using Swashbuckle.AspNetCore.Annotations;
+using WeaverLammpsHrt.TrajectoryParser.Swagger;
 
 namespace WeaverLammpsHrt.TrajectoryParser.Configuration;
 
@@ -30,7 +31,7 @@ public enum ConfigurationSource
 /// default fallback, human-readable description, and current authority source.
 /// </summary>
 [SwaggerSchema(Title = "ConfigurationItem", Description = "Stack configuration setting with active value, default fallback, and database precedence source.")]
-public sealed record ConfigurationItem
+public sealed record ConfigurationItem : IExamplesProvider<ConfigurationItem>
 {
     /// <summary>
     /// Unique key identifier for the configuration setting (e.g., 'Simulation:EndpointUrl').
@@ -50,7 +51,7 @@ public sealed record ConfigurationItem
     /// The built-in default value used when neither the database nor an environment variable provides one.
     /// </summary>
     [Description("The built-in default value.")]
-    [JsonPropertyName("default_value")]
+    [JsonPropertyName("defaultValue")]
     public required string DefaultValue { get; init; }
 
     /// <summary>
@@ -78,6 +79,21 @@ public sealed record ConfigurationItem
     /// Timestamp when this setting was last updated in the database, or null if using environment/default.
     /// </summary>
     [Description("Timestamp when this setting was last updated in the database.")]
-    [JsonPropertyName("last_updated_utc")]
+    [JsonPropertyName("lastUpdatedUtc")]
     public DateTime? LastUpdatedUtc { get; init; }
+
+    /// <summary>
+    /// Generates a representative example instance of <see cref="ConfigurationItem"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A populated configuration setting example.</returns>
+    public ConfigurationItem GetExamples() => new()
+    {
+        Key = "Simulation:AcceleratorBackend",
+        Value = "Intel Arc A770 Discrete GPU",
+        DefaultValue = "Intel iGPU / OpenCL (Default)",
+        Description = "Active hardware accelerator backend for high-throughput trajectory parsing.",
+        Source = ConfigurationSource.DatabaseOverride,
+        Category = "Simulation Engine",
+        LastUpdatedUtc = new DateTime(2026, 10, 20, 18, 0, 0, DateTimeKind.Utc)
+    };
 }

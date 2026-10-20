@@ -23,6 +23,8 @@ using WeaverLammpsHrt.TrajectoryParser.Security.Storage;
 using WeaverLammpsHrt.TrajectoryParser.Services;
 using WeaverLammpsHrt.TrajectoryParser.Services.Stack;
 using WeaverLammpsHrt.TrajectoryParser.Storage;
+using WeaverLammpsHrt.TrajectoryParser.Swagger;
+using WeaverLammpsHrt.TrajectoryParser.Formatting;
 
 namespace WeaverLammpsHrt.TrajectoryParser;
 
@@ -104,13 +106,16 @@ public class Program
 
             c.EnableAnnotations();
             c.IncludeXmlComments(Assembly.GetExecutingAssembly(), includeControllerXmlComments: true);
+            c.SchemaFilter<OpenApiMultiFormatExampleFilter>();
+            c.OperationFilter<OpenApiMultiFormatExampleFilter>();
         });
 
-        // Configure JSON serialization options
+        // Configure JSON serialization options: lower camelCase strictly enforced
         builder.Services.ConfigureHttpJsonOptions(options =>
         {
-            options.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower;
+            options.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
             options.SerializerOptions.WriteIndented = true;
+            options.SerializerOptions.PropertyNameCaseInsensitive = true;
         });
 
         WebApplication app = builder.Build();
@@ -121,10 +126,16 @@ public class Program
         IConfigurationRepository configRepo = app.Services.GetRequiredService<IConfigurationRepository>();
         await configRepo.InitializeAsync();
 
+        // WHAT: Enables content negotiation and multi-format transcoding (JSON, XML, YAML).
+        // WHY:  Allows callers to request or submit XML or YAML payloads transparently.
+        // HOW:  FormatNegotiationMiddleware inspects Accept and Content-Type headers before routing.
+        app.UseFormatNegotiation();
+
         // WHAT: Serves static assets (CSS, JS) and Blazor Interactive Server WebSockets.
         // WHY:  Enables sovereign Web UI navigation without requiring external NPM/Node toolchains.
         // HOW:  Standard ASP.NET Core static files and Blazor endpoint mapping.
         app.UseStaticFiles();
+        app.UseRouting();
         app.UseAntiforgery();
 
         // WHAT: Enables Swagger JSON, Swagger UI (/swagger), and ReDoc (/documentation).
@@ -183,6 +194,7 @@ public class Program
         .WithTags("Datasets & Trajectories")
         .WithSummary("Packages selected simulation files into a .tar.gz bundle with an immutable cryptographic manifest.")
         .WithDescription("Creates a tarball archive of simulation coordinate files and computes an immutable SHA-256 manifest.")
+        .Accepts<ExportRequest>("application/json", "application/xml", "application/x-yaml")
         .Produces<DatasetManifest>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status400BadRequest);
 
@@ -303,12 +315,12 @@ public class Program
 
             return Results.Ok(new
             {
-                file_name = fileName,
+                fileName = fileName,
                 format = parser.FormatName,
-                frames_parsed = framesProcessed,
-                total_atoms_processed = totalAtomsEncountered,
-                elapsed_milliseconds = sw.ElapsedMilliseconds,
-                frames_per_second = framesProcessed > 0 && sw.Elapsed.TotalSeconds > 0
+                framesParsed = framesProcessed,
+                totalAtomsProcessed = totalAtomsEncountered,
+                elapsedMilliseconds = sw.ElapsedMilliseconds,
+                framesPerSecond = framesProcessed > 0 && sw.Elapsed.TotalSeconds > 0
                     ? framesProcessed / sw.Elapsed.TotalSeconds
                     : 0
             });
@@ -959,13 +971,13 @@ public class Program
 /// Request payload for initiating a dataset export.
 /// </summary>
 [SwaggerSchema(Title = "ExportRequest", Description = "Request payload for initiating an export of molecular dynamics trajectories with SHA-256 manifests.")]
-public sealed record ExportRequest
+public sealed record ExportRequest : IExamplesProvider<ExportRequest>
 {
     /// <summary>
     /// Desired name of the exported dataset bundle.
     /// </summary>
     [Description("Desired name of the exported dataset bundle.")]
-    [JsonPropertyName("dataset_name")]
+    [JsonPropertyName("datasetName")]
     public string DatasetName { get; init; } = string.Empty;
 
     /// <summary>
@@ -974,13 +986,23 @@ public sealed record ExportRequest
     [Description("Optional subset of specific file names to package. If null or empty, all files in the directory are included.")]
     [JsonPropertyName("files")]
     public string[]? Files { get; init; }
+
+    /// <summary>
+    /// Generates a representative example instance of <see cref="ExportRequest"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A populated dataset export request example.</returns>
+    public ExportRequest GetExamples() => new()
+    {
+        DatasetName = "nanocarrier-e2-run-001",
+        Files = ["dna_nanotube_sample.xyz", "system.top"]
+    };
 }
 
 /// <summary>
 /// Request payload for persisting a configuration override to the authoritative database.
 /// </summary>
 [SwaggerSchema(Title = "ConfigOverrideRequest", Description = "Request payload for persisting an authoritative configuration override to the database.")]
-public sealed record ConfigOverrideRequest
+public sealed record ConfigOverrideRequest : IExamplesProvider<ConfigOverrideRequest>
 {
     /// <summary>
     /// Target configuration setting key.
@@ -1002,13 +1024,24 @@ public sealed record ConfigOverrideRequest
     [Description("Optional description for the setting.")]
     [JsonPropertyName("description")]
     public string? Description { get; init; }
+
+    /// <summary>
+    /// Generates a representative example instance of <see cref="ConfigOverrideRequest"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A populated configuration override request example.</returns>
+    public ConfigOverrideRequest GetExamples() => new()
+    {
+        Key = "Simulation.TargetTemperatureKelvin",
+        Value = "310.15",
+        Description = "Target physiological body temperature (37 C)"
+    };
 }
 
 /// <summary>
 /// Request payload for creating a single-use collaborative share key.
 /// </summary>
 [SwaggerSchema(Title = "CreateShareKeyRequest", Description = "Request payload for generating a cryptographically random single-use collaborative share key.")]
-public sealed record CreateShareKeyRequest
+public sealed record CreateShareKeyRequest : IExamplesProvider<CreateShareKeyRequest>
 {
     /// <summary>
     /// Label or peer description identifying the intended collaborator.
@@ -1021,14 +1054,14 @@ public sealed record CreateShareKeyRequest
     /// Expiration lifetime in hours.
     /// </summary>
     [Description("Expiration lifetime in hours.")]
-    [JsonPropertyName("lifetime_hours")]
+    [JsonPropertyName("lifetimeHours")]
     public int LifetimeHours { get; init; } = 24;
 
     /// <summary>
     /// Named expiration window ('1h', '4h', '24h', '7d', '1m', '1y', 'never').
     /// </summary>
     [Description("Named expiration window ('1h', '4h', '24h', '7d', '1m', '1y', 'never').")]
-    [JsonPropertyName("expiration_window")]
+    [JsonPropertyName("expirationWindow")]
     public string? ExpirationWindow { get; init; }
 
     /// <summary>
@@ -1037,13 +1070,25 @@ public sealed record CreateShareKeyRequest
     [Description("Permission scope granted (e.g., 'FullCollaborator', 'ReadOnlyTelemetry').")]
     [JsonPropertyName("permissions")]
     public string? Permissions { get; init; }
+
+    /// <summary>
+    /// Generates a representative example instance of <see cref="CreateShareKeyRequest"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A populated create share key request example.</returns>
+    public CreateShareKeyRequest GetExamples() => new()
+    {
+        Label = "BioFoundry Partner Node",
+        LifetimeHours = 48,
+        ExpirationWindow = "48h",
+        Permissions = "FullCollaborator"
+    };
 }
 
 /// <summary>
 /// Request payload for redeeming a single-use share key.
 /// </summary>
 [SwaggerSchema(Title = "RedeemShareKeyRequest", Description = "Request payload for redeeming a single-use share key to establish an authenticated session.")]
-public sealed record RedeemShareKeyRequest
+public sealed record RedeemShareKeyRequest : IExamplesProvider<RedeemShareKeyRequest>
 {
     /// <summary>
     /// Secret share token string (e.g., 'nanoweaver_hrt_...').
@@ -1051,19 +1096,28 @@ public sealed record RedeemShareKeyRequest
     [Description("Secret share token string (e.g., 'nanoweaver_hrt_...').")]
     [JsonPropertyName("token")]
     public string Token { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Generates a representative example instance of <see cref="RedeemShareKeyRequest"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A populated redeem share key request example.</returns>
+    public RedeemShareKeyRequest GetExamples() => new()
+    {
+        Token = "nanoweaver_hrt_a1b2c3d4e5f6789012345678abcdef01"
+    };
 }
 
 /// <summary>
 /// Request payload for generating a complete fabrication package.
 /// </summary>
 [SwaggerSchema(Title = "FabricationGenerateRequest", Description = "Request payload for generating DNA origami staple routing, annealing ramps, and manifests.")]
-public sealed record FabricationGenerateRequest
+public sealed record FabricationGenerateRequest : IExamplesProvider<FabricationGenerateRequest>
 {
     /// <summary>
     /// Raw sequence string or preset sample ID.
     /// </summary>
     [Description("Raw sequence string or preset sample ID.")]
-    [JsonPropertyName("sequence_or_sample_id")]
+    [JsonPropertyName("sequenceOrSampleId")]
     public string SequenceOrSampleId { get; init; } = string.Empty;
 
     /// <summary>
@@ -1084,28 +1138,40 @@ public sealed record FabricationGenerateRequest
     /// Target dissociation constant in nanomolar.
     /// </summary>
     [Description("Target dissociation constant in nanomolar.")]
-    [JsonPropertyName("target_kd")]
+    [JsonPropertyName("targetKd")]
     public double TargetKd { get; init; } = 4.2;
+
+    /// <summary>
+    /// Generates a representative example instance of <see cref="FabricationGenerateRequest"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A populated fabrication package generation request example.</returns>
+    public FabricationGenerateRequest GetExamples() => new()
+    {
+        SequenceOrSampleId = "CAGE-6HB-E2-001",
+        Regimen = TherapeuticRegimen.MaleToFemale,
+        Geometry = "HexagonalPrismBarrel",
+        TargetKd = 4.2
+    };
 }
 
 /// <summary>
 /// Request payload for evaluating a patient's pharmacogenomic profile from marker IDs.
 /// </summary>
 [SwaggerSchema(Title = "GenomicAnalysisRequest", Description = "Request payload for screening patient genetic markers and computing personalized kinetic modifiers.")]
-public sealed record GenomicAnalysisRequest
+public sealed record GenomicAnalysisRequest : IExamplesProvider<GenomicAnalysisRequest>
 {
     /// <summary>
     /// Patient identifier.
     /// </summary>
     [Description("Patient identifier.")]
-    [JsonPropertyName("patient_id")]
+    [JsonPropertyName("patientId")]
     public string? PatientId { get; init; } = "ANON-PATIENT-001";
 
     /// <summary>
     /// Array of observed genetic marker identifiers (e.g. 'F5_LEIDEN', 'AR_CAG_LONG').
     /// </summary>
     [Description("Array of observed genetic marker identifiers (e.g. 'F5_LEIDEN', 'AR_CAG_LONG').")]
-    [JsonPropertyName("marker_ids")]
+    [JsonPropertyName("markerIds")]
     public string[]? MarkerIds { get; init; }
 
     /// <summary>
@@ -1114,19 +1180,30 @@ public sealed record GenomicAnalysisRequest
     [Description("Active therapeutic regimen (MaleToFemale or FemaleToMale).")]
     [JsonPropertyName("regimen")]
     public TherapeuticRegimen Regimen { get; init; } = TherapeuticRegimen.MaleToFemale;
+
+    /// <summary>
+    /// Generates a representative example instance of <see cref="GenomicAnalysisRequest"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A populated genomic analysis request example.</returns>
+    public GenomicAnalysisRequest GetExamples() => new()
+    {
+        PatientId = "ANON-PATIENT-001",
+        MarkerIds = ["F5_LEIDEN", "CYP1A2_STAR1F"],
+        Regimen = TherapeuticRegimen.MaleToFemale
+    };
 }
 
 /// <summary>
 /// Request payload for scanning a DNA nucleotide sequence for CpG density and repeat motifs.
 /// </summary>
 [SwaggerSchema(Title = "SequenceAnalysisRequest", Description = "Request payload for scanning raw nucleotide sequences for immunogenicity and repeat lengths.")]
-public sealed record SequenceAnalysisRequest
+public sealed record SequenceAnalysisRequest : IExamplesProvider<SequenceAnalysisRequest>
 {
     /// <summary>
     /// Patient identifier.
     /// </summary>
     [Description("Patient identifier.")]
-    [JsonPropertyName("patient_id")]
+    [JsonPropertyName("patientId")]
     public string? PatientId { get; init; } = "ANON-PATIENT-001";
 
     /// <summary>
@@ -1142,68 +1219,100 @@ public sealed record SequenceAnalysisRequest
     [Description("Active therapeutic regimen.")]
     [JsonPropertyName("regimen")]
     public TherapeuticRegimen Regimen { get; init; } = TherapeuticRegimen.MaleToFemale;
+
+    /// <summary>
+    /// Generates a representative example instance of <see cref="SequenceAnalysisRequest"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A populated sequence analysis request example.</returns>
+    public SequenceAnalysisRequest GetExamples() => new()
+    {
+        PatientId = "ANON-PATIENT-001",
+        Sequence = "ATGCGATCGATCGATCGATCGCGCGCATATCGAT",
+        Regimen = TherapeuticRegimen.MaleToFemale
+    };
 }
 
 /// <summary>
 /// Request payload for de-identifying a patient identity and FASTA payload.
 /// </summary>
 [SwaggerSchema(Title = "DeIdentifyRequest", Description = "Request payload for HIPAA Safe Harbor de-identification and GINA/GDPR consent confirmation.")]
-public sealed record DeIdentifyRequest
+public sealed record DeIdentifyRequest : IExamplesProvider<DeIdentifyRequest>
 {
     /// <summary>
     /// Raw patient identifier or name.
     /// </summary>
     [Description("Raw patient identifier or name.")]
-    [JsonPropertyName("raw_subject_identifier")]
+    [JsonPropertyName("rawSubjectIdentifier")]
     public string RawSubjectIdentifier { get; init; } = string.Empty;
 
     /// <summary>
     /// Raw genomic sequence or SNP profile string.
     /// </summary>
     [Description("Raw genomic sequence or SNP profile string.")]
-    [JsonPropertyName("raw_genomic_data")]
+    [JsonPropertyName("rawGenomicData")]
     public string? RawGenomicData { get; init; }
 
     /// <summary>
     /// Confirmation of explicit subject consent under GDPR Article 9.
     /// </summary>
     [Description("Confirmation of explicit subject consent under GDPR Article 9.")]
-    [JsonPropertyName("gdpr_consent_confirmed")]
+    [JsonPropertyName("gdprConsentConfirmed")]
     public bool GdprConsentConfirmed { get; init; } = true;
 
     /// <summary>
     /// Confirmation that data use is purpose-limited to therapeutic nanocarrier design under GINA.
     /// </summary>
     [Description("Confirmation that data use is purpose-limited to therapeutic nanocarrier design under GINA.")]
-    [JsonPropertyName("gina_purpose_limited")]
+    [JsonPropertyName("ginaPurposeLimited")]
     public bool GinaPurposeLimited { get; init; } = true;
+
+    /// <summary>
+    /// Generates a representative example instance of <see cref="DeIdentifyRequest"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A populated de-identification request example.</returns>
+    public DeIdentifyRequest GetExamples() => new()
+    {
+        RawSubjectIdentifier = "SUBJ-98214-LOCAL",
+        RawGenomicData = ">chr1_exon_sample\nATGCGATCGATC",
+        GdprConsentConfirmed = true,
+        GinaPurposeLimited = true
+    };
 }
 
 /// <summary>
 /// Request payload for crypto-shredding an individual subject's decryption keys.
 /// </summary>
 [SwaggerSchema(Title = "CryptoShredRequest", Description = "Request payload for executing GDPR Article 17 right-to-erasure via key zeroization.")]
-public sealed record CryptoShredRequest
+public sealed record CryptoShredRequest : IExamplesProvider<CryptoShredRequest>
 {
     /// <summary>
     /// Pseudonymized subject identifier to crypto-shred.
     /// </summary>
     [Description("Pseudonymized subject identifier to crypto-shred.")]
-    [JsonPropertyName("subject_id")]
+    [JsonPropertyName("subjectId")]
     public string SubjectId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Generates a representative example instance of <see cref="CryptoShredRequest"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A populated crypto-shred request example.</returns>
+    public CryptoShredRequest GetExamples() => new()
+    {
+        SubjectId = "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+    };
 }
 
 /// <summary>
 /// Request payload for envelope-encrypting an arbitrary JSON object under a subject's post-quantum key.
 /// </summary>
 [SwaggerSchema(Title = "EncryptRecordRequest", Description = "Request payload for envelope-encrypting arbitrary health payloads with ML-KEM-768 + AES-256-GCM.")]
-public sealed record EncryptRecordRequest
+public sealed record EncryptRecordRequest : IExamplesProvider<EncryptRecordRequest>
 {
     /// <summary>
     /// Pseudonymized subject identifier.
     /// </summary>
     [Description("Pseudonymized subject identifier.")]
-    [JsonPropertyName("subject_id")]
+    [JsonPropertyName("subjectId")]
     public string SubjectId { get; init; } = string.Empty;
 
     /// <summary>
@@ -1212,19 +1321,33 @@ public sealed record EncryptRecordRequest
     [Description("Arbitrary payload object or JSON element.")]
     [JsonPropertyName("payload")]
     public object? Payload { get; init; }
+
+    /// <summary>
+    /// Generates a representative example instance of <see cref="EncryptRecordRequest"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A populated envelope encryption request example.</returns>
+    public EncryptRecordRequest GetExamples() => new()
+    {
+        SubjectId = "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+        Payload = new Dictionary<string, object>
+        {
+            ["targetEstradiolPmolL"] = 650.0,
+            ["bindingAffinityKd"] = 4.2
+        }
+    };
 }
 
 /// <summary>
 /// Request payload for decrypting an envelope-encrypted record.
 /// </summary>
 [SwaggerSchema(Title = "DecryptRecordRequest", Description = "Request payload for decrypting an authenticated post-quantum envelope.")]
-public sealed record DecryptRecordRequest
+public sealed record DecryptRecordRequest : IExamplesProvider<DecryptRecordRequest>
 {
     /// <summary>
     /// Pseudonymized subject identifier.
     /// </summary>
     [Description("Pseudonymized subject identifier.")]
-    [JsonPropertyName("subject_id")]
+    [JsonPropertyName("subjectId")]
     public string SubjectId { get; init; } = string.Empty;
 
     /// <summary>
@@ -1233,32 +1356,53 @@ public sealed record DecryptRecordRequest
     [Description("Encrypted envelope container.")]
     [JsonPropertyName("envelope")]
     public EncryptedEnvelope? Envelope { get; init; }
+
+    /// <summary>
+    /// Generates a representative example instance of <see cref="DecryptRecordRequest"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A populated envelope decryption request example.</returns>
+    public DecryptRecordRequest GetExamples() => new()
+    {
+        SubjectId = "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+        Envelope = new EncryptedEnvelope().GetExamples()
+    };
 }
 
 /// <summary>
 /// Request payload for exporting an envelope-encrypted, post-quantum signed dataset bundle.
 /// </summary>
 [SwaggerSchema(Title = "ExportEncryptedDatasetRequest", Description = "Request payload for exporting a trajectory archive envelope-encrypted with ML-KEM-768 and signed with ML-DSA-65.")]
-public sealed record ExportEncryptedDatasetRequest
+public sealed record ExportEncryptedDatasetRequest : IExamplesProvider<ExportEncryptedDatasetRequest>
 {
     /// <summary>
     /// Source trajectory filename in shared storage.
     /// </summary>
     [Description("Source trajectory filename in shared storage.")]
-    [JsonPropertyName("trajectory_file_name")]
+    [JsonPropertyName("trajectoryFileName")]
     public string TrajectoryFileName { get; init; } = string.Empty;
 
     /// <summary>
     /// Target pseudonymized subject identifier.
     /// </summary>
     [Description("Target pseudonymized subject identifier.")]
-    [JsonPropertyName("subject_id")]
+    [JsonPropertyName("subjectId")]
     public string? SubjectId { get; init; }
 
     /// <summary>
     /// Destination export directory.
     /// </summary>
     [Description("Destination export directory.")]
-    [JsonPropertyName("export_directory")]
+    [JsonPropertyName("exportDirectory")]
     public string? ExportDirectory { get; init; }
+
+    /// <summary>
+    /// Generates a representative example instance of <see cref="ExportEncryptedDatasetRequest"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A populated encrypted dataset export request example.</returns>
+    public ExportEncryptedDatasetRequest GetExamples() => new()
+    {
+        TrajectoryFileName = "dna_nanotube_sample.xyz",
+        SubjectId = "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+        ExportDirectory = "/exports"
+    };
 }

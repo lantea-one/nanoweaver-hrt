@@ -21,6 +21,7 @@
     <PackageReference Include="Swashbuckle.AspNetCore" Version="9.0.6" />
     <PackageReference Include="Swashbuckle.AspNetCore.Annotations" Version="9.0.6" />
     <PackageReference Include="Swashbuckle.AspNetCore.ReDoc" Version="9.0.6" />
+    <PackageReference Include="YamlDotNet" Version="18.1.0" />
   </ItemGroup>
 
   <ItemGroup>

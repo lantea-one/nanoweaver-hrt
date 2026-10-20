@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Text.Json.Serialization;
 using Swashbuckle.AspNetCore.Annotations;
+using WeaverLammpsHrt.TrajectoryParser.Swagger;
 
 namespace WeaverLammpsHrt.TrajectoryParser.Models;
 
@@ -19,69 +20,69 @@ namespace WeaverLammpsHrt.TrajectoryParser.Models;
 /// </para>
 /// </remarks>
 [SwaggerSchema(Title = "SystemTelemetry", Description = "Live snapshot of system health, hardware acceleration, memory footprint, and GC collections.")]
-public sealed record SystemTelemetry
+public sealed record SystemTelemetry : IExamplesProvider<SystemTelemetry>
 {
     /// <summary>
     /// The node hostname (e.g., local machine name or container ID).
     /// </summary>
     [Description("The node hostname or container identifier.")]
-    [JsonPropertyName("node_name")]
+    [JsonPropertyName("nodeName")]
     public required string NodeName { get; init; }
 
     /// <summary>
     /// Active hardware accelerator backend detected in the environment.
     /// </summary>
     [Description("Active hardware accelerator backend detected (e.g. Intel Arc, NVIDIA CUDA, CPU fallback).")]
-    [JsonPropertyName("accelerator_backend")]
+    [JsonPropertyName("acceleratorBackend")]
     public required string AcceleratorBackend { get; init; }
 
     /// <summary>
     /// Cumulative number of trajectory frames parsed since node startup.
     /// </summary>
     [Description("Cumulative number of trajectory frames parsed since node startup.")]
-    [JsonPropertyName("frames_parsed")]
+    [JsonPropertyName("framesParsed")]
     public required long FramesParsed { get; init; }
 
     /// <summary>
     /// Current frames processed per second.
     /// </summary>
     [Description("Current frames processed per second.")]
-    [JsonPropertyName("frames_per_second")]
+    [JsonPropertyName("framesPerSecond")]
     public required double FramesPerSecond { get; init; }
 
     /// <summary>
     /// Heap memory currently allocated by the .NET runtime in megabytes.
     /// </summary>
     [Description("Heap memory currently allocated by the .NET runtime in megabytes.")]
-    [JsonPropertyName("heap_memory_mb")]
+    [JsonPropertyName("heapMemoryMb")]
     public required double HeapMemoryMb { get; init; }
 
     /// <summary>
     /// Total process working set memory in megabytes.
     /// </summary>
     [Description("Total process working set memory in megabytes.")]
-    [JsonPropertyName("working_set_mb")]
+    [JsonPropertyName("workingSetMb")]
     public required double WorkingSetMb { get; init; }
 
     /// <summary>
     /// Total Garbage Collector Generation 0 collections since startup.
     /// </summary>
     [Description("Total Garbage Collector Generation 0 collections since startup.")]
-    [JsonPropertyName("gc_gen0_collections")]
+    [JsonPropertyName("gcGen0Collections")]
     public required int GcGen0Collections { get; init; }
 
     /// <summary>
     /// Total Garbage Collector Generation 1 collections since startup.
     /// </summary>
     [Description("Total Garbage Collector Generation 1 collections since startup.")]
-    [JsonPropertyName("gc_gen1_collections")]
+    [JsonPropertyName("gcGen1Collections")]
     public required int GcGen1Collections { get; init; }
 
     /// <summary>
     /// Total Garbage Collector Generation 2 (Full GC) collections since startup.
     /// </summary>
     [Description("Total Garbage Collector Generation 2 (Full GC) collections since startup.")]
-    [JsonPropertyName("gc_gen2_collections")]
+    [JsonPropertyName("gcGen2Collections")]
     public required int GcGen2Collections { get; init; }
 
     /// <summary>
@@ -90,4 +91,22 @@ public sealed record SystemTelemetry
     [Description("Service uptime in human-readable duration format.")]
     [JsonPropertyName("uptime")]
     public required string Uptime { get; init; }
+
+    /// <summary>
+    /// Generates a representative example instance of <see cref="SystemTelemetry"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A populated telemetry snapshot example.</returns>
+    public SystemTelemetry GetExamples() => new()
+    {
+        NodeName = "weaver-arc-node-01",
+        AcceleratorBackend = "Intel Arc A770 Discrete GPU (OpenCL / SYCL)",
+        FramesParsed = 125000,
+        FramesPerSecond = 59.8,
+        HeapMemoryMb = 84.5,
+        WorkingSetMb = 142.1,
+        GcGen0Collections = 0,
+        GcGen1Collections = 0,
+        GcGen2Collections = 0,
+        Uptime = "04:15:32"
+    };
 }

@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Text.Json.Serialization;
 using Swashbuckle.AspNetCore.Annotations;
+using WeaverLammpsHrt.TrajectoryParser.Swagger;
 
 namespace WeaverLammpsHrt.TrajectoryParser.Security.Models;
 
@@ -19,7 +20,7 @@ namespace WeaverLammpsHrt.TrajectoryParser.Security.Models;
 /// </para>
 /// </remarks>
 [SwaggerSchema(Title = "PqcKeyMaterial", Description = "Post-quantum cryptographic key material containing public and optional private keys (e.g. ML-KEM-768 or ML-DSA-65).")]
-public sealed record PqcKeyMaterial
+public sealed record PqcKeyMaterial : IExamplesProvider<PqcKeyMaterial>
 {
     /// <summary>
     /// Gets the unique identifier for this key pair.
@@ -55,4 +56,17 @@ public sealed record PqcKeyMaterial
     [Description("UTC timestamp when this key pair was generated.")]
     [JsonPropertyName("createdAtUtc")]
     public DateTimeOffset CreatedAtUtc { get; init; } = DateTimeOffset.UtcNow;
+
+    /// <summary>
+    /// Generates a representative example instance of <see cref="PqcKeyMaterial"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A populated post-quantum key material example.</returns>
+    public PqcKeyMaterial GetExamples() => new()
+    {
+        KeyId = "sub_pqc_key_4a91f",
+        Algorithm = "ML-KEM-768",
+        PublicKeyBase64 = "k8V...publicKey1184bytes...==",
+        PrivateKeyBase64 = null,
+        CreatedAtUtc = new DateTimeOffset(2026, 10, 20, 18, 0, 0, TimeSpan.Zero)
+    };
 }

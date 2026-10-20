@@ -142,27 +142,27 @@ public static class AptamerAffinityAnalyzer
 /// Telemetry metrics summarizing binding stability and contact dynamics across a molecular trajectory.
 /// </summary>
 [SwaggerSchema(Title = "AptamerTrajectoryMetrics", Description = "Telemetry metrics summarizing binding stability, contacts, and occupancy ratio across a molecular trajectory.")]
-public sealed record AptamerTrajectoryMetrics
+public sealed record AptamerTrajectoryMetrics : WeaverLammpsHrt.TrajectoryParser.Swagger.IExamplesProvider<AptamerTrajectoryMetrics>
 {
     /// <summary>
     /// Name of the parsed simulation trajectory file.
     /// </summary>
     [Description("Name of the parsed simulation trajectory file.")]
-    [JsonPropertyName("trajectory_file")]
+    [JsonPropertyName("trajectoryFile")]
     public required string TrajectoryFileName { get; init; }
 
     /// <summary>
     /// Total number of coordinate frames evaluated.
     /// </summary>
     [Description("Total number of coordinate frames evaluated.")]
-    [JsonPropertyName("frames_analyzed")]
+    [JsonPropertyName("framesAnalyzed")]
     public required long FramesAnalyzed { get; init; }
 
     /// <summary>
     /// Average number of active atomic contacts between the aptamer pocket and hormone ligand per frame.
     /// </summary>
     [Description("Average number of active atomic contacts between the aptamer pocket and hormone ligand per frame.")]
-    [JsonPropertyName("average_contacts_per_frame")]
+    [JsonPropertyName("averageContactsPerFrame")]
     public required double AverageContactsPerFrame { get; init; }
 
     /// <summary>
@@ -170,13 +170,26 @@ public sealed record AptamerTrajectoryMetrics
     /// Values above 0.85 indicate stable thermodynamic binding.
     /// </summary>
     [Description("Proportion of frames (between 0.0 and 1.0) where the ligand maintained stable binding contacts.")]
-    [JsonPropertyName("binding_occupancy_ratio")]
+    [JsonPropertyName("bindingOccupancyRatio")]
     public required double BindingOccupancyRatio { get; init; }
 
     /// <summary>
     /// Qualitative classification of binding stability based on trajectory occupancy.
     /// </summary>
     [Description("Qualitative classification of binding stability (e.g. 'Stable High-Affinity Complex').")]
-    [JsonPropertyName("stability_verdict")]
+    [JsonPropertyName("stabilityVerdict")]
     public required string StabilityVerdict { get; init; }
+
+    /// <summary>
+    /// Generates a representative example instance of <see cref="AptamerTrajectoryMetrics"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A populated aptamer trajectory metrics example.</returns>
+    public AptamerTrajectoryMetrics GetExamples() => new()
+    {
+        TrajectoryFileName = "estradiol_e2_aptamer_docking.xyz",
+        FramesAnalyzed = 5000,
+        AverageContactsPerFrame = 6.42,
+        BindingOccupancyRatio = 0.94,
+        StabilityVerdict = "Stable High-Affinity Complex (Kd ≈ 1.8 nM)"
+    };
 }

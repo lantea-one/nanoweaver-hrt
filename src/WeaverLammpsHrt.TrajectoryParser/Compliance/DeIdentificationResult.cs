@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Text.Json.Serialization;
 using Swashbuckle.AspNetCore.Annotations;
+using WeaverLammpsHrt.TrajectoryParser.Swagger;
 
 namespace WeaverLammpsHrt.TrajectoryParser.Compliance;
 
@@ -21,7 +22,7 @@ namespace WeaverLammpsHrt.TrajectoryParser.Compliance;
 /// </para>
 /// </remarks>
 [SwaggerSchema(Title = "DeIdentificationResult", Description = "Output of HIPAA Safe Harbor (§ 164.514) and GDPR Article 9 pseudonymization process.")]
-public sealed record DeIdentificationResult
+public sealed record DeIdentificationResult : IExamplesProvider<DeIdentificationResult>
 {
     /// <summary>
     /// Gets the pseudonymized subject identifier (e.g. "sub_3f8a9c...").
@@ -64,4 +65,18 @@ public sealed record DeIdentificationResult
     [Description("UTC timestamp when the de-identification operation was executed.")]
     [JsonPropertyName("deIdentifiedAtUtc")]
     public DateTimeOffset DeIdentifiedAtUtc { get; init; } = DateTimeOffset.UtcNow;
+
+    /// <summary>
+    /// Generates a representative example instance of <see cref="DeIdentificationResult"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A populated de-identification result example.</returns>
+    public DeIdentificationResult GetExamples() => new()
+    {
+        PseudonymSubjectId = "sub_9e4a1b5c2d7f8e3a0b",
+        SanitizedData = "F5_LEIDEN,CYP2C19_POOR,TLR9_HYPORESPONSIVE",
+        GdprConsentConfirmed = true,
+        GinaSafeguardVerified = true,
+        StrippedIdentifiers = ["Name", "MRN", "DateOfBirth", "PostalCode"],
+        DeIdentifiedAtUtc = new DateTimeOffset(2026, 10, 20, 18, 0, 0, TimeSpan.Zero)
+    };
 }

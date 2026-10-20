@@ -62,12 +62,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!response.ok) return;
 
             const data = await response.json();
-            statFrames.textContent = data.frames_parsed.toLocaleString();
-            statGc.textContent = `${data.gc_gen0_collections} / ${data.gc_gen1_collections} / ${data.gc_gen2_collections}`;
-            statMem.textContent = `${data.heap_memory_mb.toFixed(2)} / ${data.working_set_mb.toFixed(1)} MB`;
-            statUptime.textContent = data.uptime;
-            nodeNameEl.textContent = `NODE: ${data.node_name.toUpperCase()}`;
-            acceleratorEl.textContent = data.accelerator_backend.toUpperCase();
+            statFrames.textContent = (data.framesParsed ?? data.frames_parsed ?? 0).toLocaleString();
+            statGc.textContent = `${data.gcGen0Collections ?? data.gc_gen0_collections ?? 0} / ${data.gcGen1Collections ?? data.gc_gen1_collections ?? 0} / ${data.gcGen2Collections ?? data.gc_gen2_collections ?? 0}`;
+            statMem.textContent = `${((data.heapMemoryMb ?? data.heap_memory_mb) ?? 0).toFixed(2)} / ${((data.workingSetMb ?? data.working_set_mb) ?? 0).toFixed(1)} MB`;
+            statUptime.textContent = data.uptime ?? '00:00:00';
+            nodeNameEl.textContent = `NODE: ${(data.nodeName ?? data.node_name ?? 'LOCAL').toUpperCase()}`;
+            acceleratorEl.textContent = (data.acceleratorBackend ?? data.accelerator_backend ?? 'CPU').toUpperCase();
         } catch (err) {
             console.error('Failed to poll telemetry:', err);
         }
@@ -137,10 +137,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
             parseOutput.textContent += `[SUCCESS] Parsing completed.\n`
                 + `  - Format: ${result.format}\n`
-                + `  - Total Frames Parsed: ${result.frames_parsed.toLocaleString()}\n`
-                + `  - Total Atoms Processed: ${result.total_atoms_processed.toLocaleString()}\n`
-                + `  - Elapsed Time: ${result.elapsed_milliseconds} ms\n`
-                + `  - Processing Rate: ${result.frames_per_second.toFixed(1)} frames/sec\n`
+                + `  - Total Frames Parsed: ${(result.framesParsed ?? result.frames_parsed ?? 0).toLocaleString()}\n`
+                + `  - Total Atoms Processed: ${(result.totalAtomsProcessed ?? result.total_atoms_processed ?? 0).toLocaleString()}\n`
+                + `  - Elapsed Time: ${result.elapsedMilliseconds ?? result.elapsed_milliseconds ?? 0} ms\n`
+                + `  - Processing Rate: ${(result.framesPerSecond ?? result.frames_per_second ?? 0).toFixed(1)} frames/sec\n`
                 + `  - Heap Garbage Generated: 0 Bytes\n`;
 
             updateTelemetry();
@@ -161,7 +161,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch('/api/datasets/export', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ dataset_name: name })
+                body: JSON.stringify({ datasetName: name, dataset_name: name })
             });
 
             const manifest = await response.json();
@@ -170,7 +170,8 @@ document.addEventListener('DOMContentLoaded', () => {
             exportResult.classList.remove('hidden');
             exportHash.textContent = `SHA-256: ${manifest.sha256}`;
             downloadArchiveLink.href = `/api/datasets/download/${encodeURIComponent(manifest.archive)}`;
-            downloadArchiveLink.textContent = `Download ${manifest.archive} (${(manifest.size_bytes / 1024 / 1024).toFixed(2)} MB)`;
+            const archiveSize = manifest.sizeBytes ?? manifest.size_bytes ?? 0;
+            downloadArchiveLink.textContent = `Download ${manifest.archive} (${(archiveSize / 1024 / 1024).toFixed(2)} MB)`;
         } catch (err) {
             alert(`Export failed: ${err.message}`);
         } finally {

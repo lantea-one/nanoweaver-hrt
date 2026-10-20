@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Text.Json.Serialization;
 using Swashbuckle.AspNetCore.Annotations;
+using WeaverLammpsHrt.TrajectoryParser.Swagger;
 
 namespace WeaverLammpsHrt.TrajectoryParser.Security.Models;
 
@@ -21,7 +22,7 @@ namespace WeaverLammpsHrt.TrajectoryParser.Security.Models;
 /// </para>
 /// </remarks>
 [SwaggerSchema(Title = "EncryptedEnvelope", Description = "Authenticated post-quantum envelope-encrypted payload combining NIST ML-KEM-768 and AES-256-GCM.")]
-public sealed record EncryptedEnvelope
+public sealed record EncryptedEnvelope : IExamplesProvider<EncryptedEnvelope>
 {
     /// <summary>
     /// Gets the envelope encryption algorithm suite (default: "ML-KEM-768+AES-256-GCM").
@@ -71,4 +72,19 @@ public sealed record EncryptedEnvelope
     [Description("UTC timestamp when this envelope was sealed.")]
     [JsonPropertyName("sealedAtUtc")]
     public DateTimeOffset SealedAtUtc { get; init; } = DateTimeOffset.UtcNow;
+
+    /// <summary>
+    /// Generates a representative example instance of <see cref="EncryptedEnvelope"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A populated post-quantum encrypted envelope example.</returns>
+    public EncryptedEnvelope GetExamples() => new()
+    {
+        Algorithm = "ML-KEM-768+AES-256-GCM",
+        KeyId = "sub_pqc_key_4a91f",
+        EncapsulatedKeyBase64 = "g37p1v9K...example...==",
+        CiphertextBase64 = "xK92mZ...sealed_record...==",
+        NonceBase64 = "MDEyMzQ1Njc4OWFi",
+        TagBase64 = "QUJDREVGR0hJSktMTU5PUA==",
+        SealedAtUtc = new DateTimeOffset(2026, 10, 20, 18, 0, 0, TimeSpan.Zero)
+    };
 }

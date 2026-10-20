@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Text.Json.Serialization;
 using Swashbuckle.AspNetCore.Annotations;
+using WeaverLammpsHrt.TrajectoryParser.Swagger;
 
 namespace WeaverLammpsHrt.TrajectoryParser.Compliance;
 
@@ -21,7 +22,7 @@ namespace WeaverLammpsHrt.TrajectoryParser.Compliance;
 /// </para>
 /// </remarks>
 [SwaggerSchema(Title = "ComplianceStatusReport", Description = "Comprehensive regulatory compliance posture assessment covering HIPAA, GDPR, GINA, and FDA 21 CFR Part 11.")]
-public sealed record ComplianceStatusReport
+public sealed record ComplianceStatusReport : IExamplesProvider<ComplianceStatusReport>
 {
     /// <summary>
     /// Gets the primary Post-Quantum Encryption at Rest algorithm suite (e.g. "ML-KEM-768 + AES-256-GCM (NIST FIPS 203)").
@@ -106,4 +107,24 @@ public sealed record ComplianceStatusReport
     [Description("UTC timestamp when this compliance report was generated.")]
     [JsonPropertyName("generatedAtUtc")]
     public DateTimeOffset GeneratedAtUtc { get; init; } = DateTimeOffset.UtcNow;
+
+    /// <summary>
+    /// Generates a representative example instance of <see cref="ComplianceStatusReport"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A populated compliance status report example.</returns>
+    public ComplianceStatusReport GetExamples() => new()
+    {
+        EncryptionAtRestAlgorithm = "ML-KEM-768 + AES-256-GCM (NIST FIPS 203)",
+        AuditSignatureAlgorithm = "ML-DSA-65 (NIST FIPS 204)",
+        IsEncryptionAtRestActive = true,
+        IsAuditLedgerIntact = true,
+        AuditRecordCount = 142,
+        HipaaSafeHarborEnforced = true,
+        GdprArticle9And17Active = true,
+        GinaNonDiscriminationVerified = true,
+        TotalSubjectsRegistered = 18,
+        CryptoShreddedSubjectCount = 2,
+        OverallStatus = "Compliant",
+        GeneratedAtUtc = new DateTimeOffset(2026, 10, 20, 18, 0, 0, TimeSpan.Zero)
+    };
 }

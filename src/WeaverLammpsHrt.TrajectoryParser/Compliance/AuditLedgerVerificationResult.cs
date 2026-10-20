@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Text.Json.Serialization;
 using Swashbuckle.AspNetCore.Annotations;
+using WeaverLammpsHrt.TrajectoryParser.Swagger;
 
 namespace WeaverLammpsHrt.TrajectoryParser.Compliance;
 
@@ -19,7 +20,7 @@ namespace WeaverLammpsHrt.TrajectoryParser.Compliance;
 /// </para>
 /// </remarks>
 [SwaggerSchema(Title = "AuditLedgerVerificationResult", Description = "Cryptographic verification result covering hash-chain integrity and post-quantum digital signatures across the FDA 21 CFR Part 11 audit ledger.")]
-public sealed record AuditLedgerVerificationResult
+public sealed record AuditLedgerVerificationResult : IExamplesProvider<AuditLedgerVerificationResult>
 {
     /// <summary>
     /// Gets a value indicating whether every record in the ledger passed hash-chain and digital signature verification.
@@ -55,4 +56,17 @@ public sealed record AuditLedgerVerificationResult
     [Description("UTC timestamp when the ledger verification completed.")]
     [JsonPropertyName("verifiedAtUtc")]
     public DateTimeOffset VerifiedAtUtc { get; init; } = DateTimeOffset.UtcNow;
+
+    /// <summary>
+    /// Generates a representative example instance of <see cref="AuditLedgerVerificationResult"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A populated audit ledger verification report example.</returns>
+    public AuditLedgerVerificationResult GetExamples() => new()
+    {
+        IsValid = true,
+        TotalRecordsVerified = 142,
+        FirstViolationSequence = null,
+        Message = "Audit ledger cryptographically verified: 142 records intact, zero hash-chain or signature violations detected.",
+        VerifiedAtUtc = new DateTimeOffset(2026, 10, 20, 18, 0, 0, TimeSpan.Zero)
+    };
 }
