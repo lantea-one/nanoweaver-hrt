@@ -51,10 +51,10 @@ public sealed class DatasetTransferService : IDatasetManager
         // WHAT: Resolves the active data and export directory paths from environment or defaults.
         // WHY:  Permits seamless path overrides in Docker containers and bare-metal environments.
         // HOW:  Reads configuration keys TRAJECTORY_INCOMING_DIR and TRAJECTORY_EXPORT_DIR.
-        _dataDirectory = configuration["TRAJECTORY_INCOMING_DIR"] 
+        _dataDirectory = configuration["TRAJECTORY_INCOMING_DIR"]
             ?? Path.Combine(Directory.GetCurrentDirectory(), "simulations", "shared-data");
 
-        _exportDirectory = configuration["TRAJECTORY_EXPORT_DIR"] 
+        _exportDirectory = configuration["TRAJECTORY_EXPORT_DIR"]
             ?? Path.Combine(Directory.GetCurrentDirectory(), "simulations", "exports");
 
         Directory.CreateDirectory(_dataDirectory);

@@ -150,11 +150,11 @@ public class Program
         // REST API: Zero-Allocation Trajectory Parser Trigger
         // ---------------------------------------------------------------------
         app.MapPost("/api/parser/process/{fileName}", async (
-            string fileName, 
-            IConfiguration config, 
-            XyzPipeReader xyzParser, 
-            DcdPipeReader dcdParser, 
-            LammpsCustomPipeReader lammpsParser, 
+            string fileName,
+            IConfiguration config,
+            XyzPipeReader xyzParser,
+            DcdPipeReader dcdParser,
+            LammpsCustomPipeReader lammpsParser,
             CancellationToken ct) =>
         {
             string dataDir = config["TRAJECTORY_INCOMING_DIR"] ?? Path.Combine(Directory.GetCurrentDirectory(), "simulations", "shared-data");
@@ -201,8 +201,8 @@ public class Program
                 frames_parsed = framesProcessed,
                 total_atoms_processed = totalAtomsEncountered,
                 elapsed_milliseconds = sw.ElapsedMilliseconds,
-                frames_per_second = framesProcessed > 0 && sw.Elapsed.TotalSeconds > 0 
-                    ? framesProcessed / sw.Elapsed.TotalSeconds 
+                frames_per_second = framesProcessed > 0 && sw.Elapsed.TotalSeconds > 0
+                    ? framesProcessed / sw.Elapsed.TotalSeconds
                     : 0
             });
         })

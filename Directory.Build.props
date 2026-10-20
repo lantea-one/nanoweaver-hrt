@@ -2,5 +2,6 @@
   <PropertyGroup>
     <MSBuildEnableWorkloadResolver>false</MSBuildEnableWorkloadResolver>
     <NuGetAudit>false</NuGetAudit>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
   </PropertyGroup>
 </Project>

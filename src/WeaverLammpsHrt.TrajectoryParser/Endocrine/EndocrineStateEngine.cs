@@ -134,8 +134,8 @@ public sealed class EndocrineStateEngine
                 testosteroneTarget = request.TestosteroneNmolL ?? 8.0;
             }
 
-            TherapeuticRegimen regimen = request.Regimen ?? (request.TargetState == ToggleState.EstrogenicDominant 
-                ? TherapeuticRegimen.MaleToFemale 
+            TherapeuticRegimen regimen = request.Regimen ?? (request.TargetState == ToggleState.EstrogenicDominant
+                ? TherapeuticRegimen.MaleToFemale
                 : TherapeuticRegimen.FemaleToMale);
 
             TargetTissueType targetTissue = request.TargetTissue ?? _currentProfile.TargetTissue;
