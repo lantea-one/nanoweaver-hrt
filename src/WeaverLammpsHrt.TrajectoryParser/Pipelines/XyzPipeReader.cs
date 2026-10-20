@@ -144,7 +144,7 @@ public sealed class XyzPipeReader : ITrajectoryParser
                     // -------------------------------------------------------------
                     // STATE 3: Reading Atom Coordinate Lines (Symbol X Y Z)
                     // -------------------------------------------------------------
-                    bool isAtomLine = SimdCoordinateParser.TryParseCoordinateLineSimd(lineSpan, out AtomCoordinate coordinate);
+                    bool isAtomLine = ParseAtomLine(lineSpan, out AtomCoordinate coordinate);
                     if (isAtomLine)
                     {
                         atomBuffer[currentAtomIndex++] = coordinate;
@@ -214,7 +214,7 @@ public sealed class XyzPipeReader : ITrajectoryParser
     /// <param name="span">The UTF-8 encoded line byte span.</param>
     /// <param name="coordinate">The parsed 3D spatial coordinate on success.</param>
     /// <returns>True if all three spatial coordinates (X, Y, Z) were successfully parsed; otherwise false.</returns>
-    private static bool ParseAtomLine(ReadOnlySpan<byte> span, out AtomCoordinate coordinate)
+    internal static bool ParseAtomLine(ReadOnlySpan<byte> span, out AtomCoordinate coordinate)
     {
         // WHAT: Vectorized coordinate line parser delegation.
         // WHY:  Standardizes SIMD conversion routines across all pipeline readers.

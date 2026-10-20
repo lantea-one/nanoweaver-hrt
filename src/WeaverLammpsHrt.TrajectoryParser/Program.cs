@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO.Pipelines;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using WeaverLammpsHrt.TrajectoryParser.Abstractions;
 using WeaverLammpsHrt.TrajectoryParser.Endocrine;
 using WeaverLammpsHrt.TrajectoryParser.Models;
@@ -14,7 +15,7 @@ namespace WeaverLammpsHrt.TrajectoryParser;
 /// Application entry point configuring the ASP.NET Core 10 web microservice, zero-allocation trajectory 
 /// streaming pipelines, and sovereign dataset management endpoints.
 /// </summary>
-public static class Program
+public class Program
 {
     /// <summary>
     /// Service startup timestamp to track node uptime.
@@ -115,9 +116,14 @@ public static class Program
             }
 
             DatasetManifest? parsedManifest;
-            using (Stream manifestStream = manifest.OpenReadStream())
+            try
             {
+                using Stream manifestStream = manifest.OpenReadStream();
                 parsedManifest = await JsonSerializer.DeserializeAsync<DatasetManifest>(manifestStream, cancellationToken: ct);
+            }
+            catch (JsonException)
+            {
+                parsedManifest = null;
             }
 
             if (parsedManifest == null)
@@ -400,10 +406,12 @@ public sealed record ExportRequest
     /// <summary>
     /// Desired name of the exported dataset bundle.
     /// </summary>
+    [JsonPropertyName("dataset_name")]
     public string DatasetName { get; init; } = string.Empty;
 
     /// <summary>
     /// Optional subset of specific file names to package. If null or empty, all files in the directory are included.
     /// </summary>
+    [JsonPropertyName("files")]
     public string[]? Files { get; init; }
 }

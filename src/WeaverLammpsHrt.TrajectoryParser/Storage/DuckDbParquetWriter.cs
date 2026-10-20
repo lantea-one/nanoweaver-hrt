@@ -196,7 +196,7 @@ public sealed class DuckDbParquetWriter : IParquetTrajectoryWriter
     /// </summary>
     /// <param name="coordinates">The slice of Cartesian atom coordinates.</param>
     /// <returns>An <see cref="AtomCoordinate"/> representing the frame centroid.</returns>
-    private static AtomCoordinate CalculateCentroid(ReadOnlySpan<AtomCoordinate> coordinates)
+    internal static AtomCoordinate CalculateCentroid(ReadOnlySpan<AtomCoordinate> coordinates)
     {
         // WHAT: Calculates the geometric center of mass of the atomic structure.
         // WHY:  Serves as the reference origin for computing radial bead distances.

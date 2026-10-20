@@ -228,7 +228,7 @@ public sealed class LammpsCustomPipeReader : ITrajectoryParser
     /// <param name="span">The UTF-8 line byte span.</param>
     /// <param name="coordinate">The parsed 3D coordinate on success.</param>
     /// <returns>True if spatial coordinates were successfully extracted; otherwise false.</returns>
-    private static bool TryParseLammpsAtomLine(ReadOnlySpan<byte> span, out AtomCoordinate coordinate)
+    internal static bool TryParseLammpsAtomLine(ReadOnlySpan<byte> span, out AtomCoordinate coordinate)
     {
         coordinate = default;
         ReadOnlySpan<byte> remaining = SimdCoordinateParser.TrimStartWhitespaceSimd(span);

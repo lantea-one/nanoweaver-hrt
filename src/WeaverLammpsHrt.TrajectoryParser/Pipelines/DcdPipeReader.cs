@@ -163,7 +163,7 @@ public sealed class DcdPipeReader : ITrajectoryParser
     /// <param name="atomCount">The extracted number of atoms in the trajectory.</param>
     /// <param name="hasUnitCell">True if the trajectory includes periodic box dimensions in each frame.</param>
     /// <returns>True if the header was successfully parsed; otherwise false.</returns>
-    private static bool TryParseHeader(ref SequenceReader<byte> reader, out int atomCount, out bool hasUnitCell)
+    internal static bool TryParseHeader(ref SequenceReader<byte> reader, out int atomCount, out bool hasUnitCell)
     {
         atomCount = 0;
         hasUnitCell = false;
