@@ -36,6 +36,13 @@ public interface IFabricationService
     (int A, int T, int G, int C, double GcPercent, double EstimatedMwKDa) AnalyzeSequenceComposition(string sequence);
 
     /// <summary>
+    /// Calculates theoretical oligonucleotide melting temperature (Tm) for a nucleotide sequence string.
+    /// </summary>
+    /// <param name="sequence">Raw nucleotide sequence string.</param>
+    /// <returns>Theoretical melting temperature in degrees Celsius.</returns>
+    double CalculateSequenceMeltingTemperature(string sequence);
+
+    /// <summary>
     /// Saves the fabrication package as a standardized JSON manifest with SHA-256 integrity verification.
     /// </summary>
     /// <param name="package">The fabrication package to export.</param>

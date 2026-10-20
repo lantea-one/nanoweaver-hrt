@@ -269,10 +269,32 @@ public sealed class FabricationService : IFabricationService
     }
 
     /// <summary>
-    /// Calculates theoretical oligonucleotide melting temperature (Tm) using nearest-neighbor / Marmur empirical formula.
+    /// Calculates theoretical oligonucleotide melting temperature (Tm) for a nucleotide sequence string.
     /// </summary>
-    private static double CalculateMeltingTemperature(int a, int t, int g, int c)
+    /// <param name="sequence">Raw nucleotide sequence string.</param>
+    /// <returns>Theoretical melting temperature in degrees Celsius.</returns>
+    public double CalculateSequenceMeltingTemperature(string sequence)
     {
+        // WHAT: Counts bases and computes melting temperature for the nucleotide string.
+        // WHY:  Allows direct programmatic determination of annealing thresholds for arbitrary oligonucleotides.
+        // HOW:  Extracts base counts via AnalyzeSequenceComposition and passes them to CalculateMeltingTemperature.
+        (int a, int t, int g, int c, _, _) = AnalyzeSequenceComposition(sequence);
+        return CalculateMeltingTemperature(a, t, g, c);
+    }
+
+    /// <summary>
+    /// Calculates theoretical oligonucleotide melting temperature (Tm) using nearest-neighbor / Marmur empirical formula or Wallace rule for short oligos.
+    /// </summary>
+    /// <param name="a">Adenine base count.</param>
+    /// <param name="t">Thymine or Uracil base count.</param>
+    /// <param name="g">Guanine base count.</param>
+    /// <param name="c">Cytosine base count.</param>
+    /// <returns>Theoretical melting temperature in degrees Celsius.</returns>
+    public static double CalculateMeltingTemperature(int a, int t, int g, int c)
+    {
+        // WHAT: Calculates oligonucleotide melting temperature using Marmur formula or Wallace rule.
+        // WHY:  Short oligos (< 14 nt) follow Wallace's empirical rule (2*(A+T) + 4*(G+C)), while longer sequences require GC% salt adjustments.
+        // HOW:  Branches on total sequence length, returning rounded degrees Celsius.
         int total = a + t + g + c;
         if (total == 0) return 0.0;
 

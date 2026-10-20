@@ -412,4 +412,137 @@ public sealed class WebUiAndConfigurationTests : IClassFixture<WebApplicationFac
         Assert.True(proc.ExitCode == 0, $"JavaScript tests failed with exit code {proc.ExitCode}.\nStdout:\n{stdout}\nStderr:\n{stderr}");
         Assert.Contains("100.00 |   100.00 |  100.00", stdout);
     }
+
+    /// <summary>
+    /// Verifies that simultaneous concurrent redemption attempts on the same single-use share key
+    /// result in exactly one successful redemption and all other attempts fail.
+    /// </summary>
+    [Fact]
+    public async Task SingleUseShareKey_ConcurrentRedemption_GuaranteesExactlyOneWinner()
+    {
+        // WHAT: Spawns 10 concurrent redemption requests attempting to consume the same key.
+        // WHY:  Guarantees race-condition safety and atomic single-use database semantics.
+        // HOW:  Uses Task.WhenAll with parallel ConsumeShareKeyAsync calls.
+        IConfiguration config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["TRAJECTORY_INCOMING_DIR"] = _testTempDir,
+                ["POSTGRES_CONNECTION_STRING"] = "Host=nonexistent_test_host;Timeout=1"
+            })
+            .Build();
+
+        using SystemConfigurationStore store = new(config);
+        await store.InitializeAsync();
+
+        ShareKeyRecord key = await store.CreateShareKeyAsync("Concurrent Race Key", TimeSpan.FromMinutes(30), "FullCollaborator");
+
+        const int concurrencyLevel = 10;
+        Task<ShareKeyConsumeResult>[] tasks = new Task<ShareKeyConsumeResult>[concurrencyLevel];
+        for (int i = 0; i < concurrencyLevel; i++)
+        {
+            int peerId = i + 1;
+            tasks[i] = Task.Run(() => store.ConsumeShareKeyAsync(key.KeyToken, $"10.0.0.{peerId}"));
+        }
+
+        ShareKeyConsumeResult[] results = await Task.WhenAll(tasks);
+        int successCount = results.Count(r => r.Success);
+        int failureCount = results.Count(r => !r.Success);
+
+        Assert.Equal(1, successCount);
+        Assert.Equal(concurrencyLevel - 1, failureCount);
+    }
+
+    /// <summary>
+    /// Verifies 100% mathematical accuracy of oligonucleotide melting temperature calculations
+    /// across Wallace short-oligo rules (&lt; 14 nt) and Marmur empirical formulas (&gt;= 14 nt).
+    /// </summary>
+    [Fact]
+    public void FabricationService_CalculatesAccurateMeltingTemperatures_ShortAndLong()
+    {
+        // WHAT: Tests Wallace rule for short oligos, Marmur rule for long oligos, and empty sequences.
+        // WHY:  Biochemically accurate Tm is essential for DNA origami thermal annealing ramp design.
+        // HOW:  Asserts exact expected Tm for Wallace formula, Marmur formula, and RNA Uracil bases.
+        FabricationService fab = new();
+
+        // 1. Zero bases
+        Assert.Equal(0.0, FabricationService.CalculateMeltingTemperature(0, 0, 0, 0));
+        Assert.Equal(0.0, fab.CalculateSequenceMeltingTemperature(""));
+
+        // 2. Wallace rule: length < 14. Tm = 2*(A+T) + 4*(G+C)
+        // a=2, t=2, g=2, c=2 => (2+2)*2 + (2+2)*4 = 8 + 16 = 24.0°C
+        Assert.Equal(24.0, FabricationService.CalculateMeltingTemperature(2, 2, 2, 2));
+        Assert.Equal(24.0, fab.CalculateSequenceMeltingTemperature("AATTGGCC"));
+
+        // 3. Marmur rule: length >= 14. Tm = 64.9 + 41.0 * (G + C - 16.4) / total
+        // a=10, t=10, g=15, c=15 => total = 50, (g+c) = 30.
+        // Tm = 64.9 + 41.0 * (30 - 16.4) / 50 = 64.9 + 41.0 * 13.6 / 50 = 64.9 + 11.152 = 76.052 => rounded to 76.1°C
+        Assert.Equal(76.1, FabricationService.CalculateMeltingTemperature(10, 10, 15, 15));
+
+        // 4. RNA containing Uracil: 'U' treated identically to 'T'
+        (int rnaA, int rnaT, int rnaG, int rnaC, double rnaGc, double rnaMw) = fab.AnalyzeSequenceComposition("AAUUGGCC");
+        Assert.Equal(2, rnaA);
+        Assert.Equal(2, rnaT);
+        Assert.Equal(2, rnaG);
+        Assert.Equal(2, rnaC);
+        Assert.Equal(50.0, rnaGc);
+        Assert.Equal(2.64, rnaMw);
+        Assert.Equal(24.0, fab.CalculateSequenceMeltingTemperature("AAUUGGCC"));
+
+        // 5. Empty sequence composition
+        (int emptyA, int emptyT, int emptyG, int emptyC, double emptyGc, double emptyMw) = fab.AnalyzeSequenceComposition("");
+        Assert.Equal(0, emptyA);
+        Assert.Equal(0, emptyT);
+        Assert.Equal(0, emptyG);
+        Assert.Equal(0, emptyC);
+        Assert.Equal(0.0, emptyGc);
+        Assert.Equal(0.0, emptyMw);
+
+        // 6. Fabrication package with custom sequence and FemaleToMale regimen
+        FabricationPackage ftmPkg = fab.GenerateFabricationPackage(
+            "CUSTOM_SEQUENCE_ATGC",
+            TherapeuticRegimen.FemaleToMale,
+            "Spherical Nanocage (3D Octahedron)",
+            6.5);
+
+        Assert.Equal(TherapeuticRegimen.FemaleToMale, ftmPkg.Regimen);
+        Assert.Equal("Steroidogenic Receptors (Pituitary/Adrenal)", ftmPkg.TargetTissue);
+        Assert.Equal(22.5, ftmPkg.ExpectedHydrodynamicRadiusNm);
+        Assert.NotEmpty(ftmPkg.StapleOligos);
+    }
+
+    /// <summary>
+    /// Verifies edge cases of the configuration and share key store including non-existent keys,
+    /// manual revocations, and key listings.
+    /// </summary>
+    [Fact]
+    public async Task ConfigurationStore_EdgeCasesAndRevocations()
+    {
+        // WHAT: Tests non-existent key lookup, token consumption errors, and revocation returns.
+        // WHY:  Guarantees robust error handling and 100% branch reliability.
+        // HOW:  Invokes ConsumeShareKeyAsync and RevokeShareKeyAsync with unknown IDs.
+        IConfiguration config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["TRAJECTORY_INCOMING_DIR"] = _testTempDir,
+                ["POSTGRES_CONNECTION_STRING"] = "Host=nonexistent_test_host;Timeout=1"
+            })
+            .Build();
+
+        using SystemConfigurationStore store = new(config);
+        await store.InitializeAsync();
+
+        // 1. Consume unknown key
+        ShareKeyConsumeResult unknownConsume = await store.ConsumeShareKeyAsync("nanoweaver_hrt_does_not_exist", "127.0.0.1");
+        Assert.False(unknownConsume.Success);
+        Assert.Contains("not recognized", unknownConsume.Message, StringComparison.OrdinalIgnoreCase);
+
+        // 2. Revoke unknown key
+        bool revokedNonExistent = await store.RevokeShareKeyAsync("fake_token_id_9999");
+        Assert.False(revokedNonExistent);
+
+        // 3. List keys
+        ShareKeyRecord created = await store.CreateShareKeyAsync("Listing Test", TimeSpan.FromHours(1), "FullCollaborator");
+        IReadOnlyList<ShareKeyRecord> allKeys = await store.ListShareKeysAsync();
+        Assert.Contains(allKeys, k => k.TokenId == created.TokenId);
+    }
 }

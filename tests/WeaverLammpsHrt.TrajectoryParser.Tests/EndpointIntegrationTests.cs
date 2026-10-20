@@ -201,4 +201,127 @@ public sealed class EndpointIntegrationTests : IClassFixture<WebApplicationFacto
         Assert.NotNull(metrics);
         Assert.True(metrics.FramesAnalyzed > 0);
     }
+
+    /// <summary>
+    /// Verifies GET /api/datasets/download/{fileName} successfully streams existing exported files.
+    /// </summary>
+    [Fact]
+    public async Task DownloadExport_ShouldReturnFile_WhenExists()
+    {
+        // WHAT: Creates a test file in the export directory and verifies successful download.
+        // WHY:  Ensures researchers can download cryptographically signed bundles over HTTP.
+        // HOW:  Writes a temporary export file and requests it via the download endpoint.
+        string baseDir = AppContext.BaseDirectory;
+        string solutionRoot = Path.GetFullPath(Path.Combine(baseDir, "../../../../../"));
+        string exportDir = Path.Combine(solutionRoot, "simulations", "exports");
+        string testFile = Path.Combine(exportDir, "test_download.tar.gz");
+        await File.WriteAllTextAsync(testFile, "MOCK_TAR_GZ_CONTENT");
+
+        HttpResponseMessage response = await _client.GetAsync("/api/datasets/download/test_download.tar.gz");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        byte[] bytes = await response.Content.ReadAsByteArrayAsync();
+        Assert.NotEmpty(bytes);
+    }
+
+    /// <summary>
+    /// Verifies POST /api/datasets/import handles corrupted manifests and hash mismatches.
+    /// </summary>
+    [Fact]
+    public async Task ImportDataset_ShouldHandleCorruptedManifestAndMismatch()
+    {
+        // 1. Corrupted Manifest JSON
+        using (MultipartFormDataContent form1 = new())
+        {
+            form1.Add(new ByteArrayContent("TEST_ARCHIVE"u8.ToArray()), "archive", "test.tar.gz");
+            form1.Add(new ByteArrayContent("NOT_VALID_JSON"u8.ToArray()), "manifest", "manifest.json");
+
+            HttpResponseMessage resp1 = await _client.PostAsync("/api/datasets/import", form1);
+            Assert.Equal(HttpStatusCode.BadRequest, resp1.StatusCode);
+        }
+
+        // 2. Hash Mismatch Manifest
+        using (MultipartFormDataContent form2 = new())
+        {
+            DatasetManifest mismatchManifest = new()
+            {
+                DatasetName = "MismatchTest",
+                ArchiveFileName = "test.tar.gz",
+                Sha256Checksum = "0000000000000000000000000000000000000000000000000000000000000000",
+                TimestampUtc = DateTime.UtcNow.ToString("o"),
+                SizeInBytes = 12L,
+                IncludedFiles = ["test.xyz"]
+            };
+            string json = JsonSerializer.Serialize(mismatchManifest);
+
+            form2.Add(new ByteArrayContent("TEST_ARCHIVE"u8.ToArray()), "archive", "test.tar.gz");
+            form2.Add(new StringContent(json, Encoding.UTF8, "application/json"), "manifest", "manifest.json");
+
+            HttpResponseMessage resp2 = await _client.PostAsync("/api/datasets/import", form2);
+            Assert.Equal(HttpStatusCode.BadRequest, resp2.StatusCode);
+        }
+    }
+
+    /// <summary>
+    /// Verifies configuration and share key validation endpoints.
+    /// </summary>
+    [Fact]
+    public async Task ConfigAndShareKey_ValidationEndpoints()
+    {
+        // 1. POST /api/configuration/override with empty key -> 400 Bad Request
+        ConfigOverrideRequest emptyKeyReq = new() { Key = "", Value = "test" };
+        HttpResponseMessage badConfigResp = await _client.PostAsJsonAsync("/api/configuration/override", emptyKeyReq);
+        Assert.Equal(HttpStatusCode.BadRequest, badConfigResp.StatusCode);
+
+        // 2. POST /api/share-keys/redeem with invalid token -> 400 Bad Request
+        RedeemShareKeyRequest invalidTokReq = new() { Token = "nanoweaver_hrt_nonexistent_token_12345" };
+        HttpResponseMessage badRedeemResp = await _client.PostAsJsonAsync("/api/share-keys/redeem", invalidTokReq);
+        Assert.Equal(HttpStatusCode.BadRequest, badRedeemResp.StatusCode);
+
+        // 3. GET /api/share-keys -> 200 OK
+        HttpResponseMessage listResp = await _client.GetAsync("/api/share-keys");
+        Assert.Equal(HttpStatusCode.OK, listResp.StatusCode);
+    }
+
+    /// <summary>
+    /// Verifies service ping diagnostic endpoints.
+    /// </summary>
+    [Fact]
+    public async Task ServiceEndpoints_ShouldReturnStatusAndHandlePing()
+    {
+        // 1. GET /api/services -> 200 OK
+        HttpResponseMessage svcsResp = await _client.GetAsync("/api/services");
+        Assert.Equal(HttpStatusCode.OK, svcsResp.StatusCode);
+
+        // 2. POST /api/services/ping/{serviceId}
+        string[] services = ["simulation-engine", "pg-duckdb", "trajectory-parser", "peer-mesh", "unrecognized"];
+        foreach (string id in services)
+        {
+            HttpResponseMessage pingResp = await _client.PostAsync($"/api/services/ping/{id}", null);
+            Assert.Equal(HttpStatusCode.OK, pingResp.StatusCode);
+        }
+    }
+
+    /// <summary>
+    /// Verifies <see cref="Program.ParseExpirationWindow"/> covers all duration strings and fallbacks.
+    /// </summary>
+    [Fact]
+    public void Program_ParseExpirationWindow_AllBranches()
+    {
+        Assert.Equal(TimeSpan.FromHours(24), Program.ParseExpirationWindow(null));
+        Assert.Equal(TimeSpan.FromHours(10), Program.ParseExpirationWindow(null, 10));
+        Assert.Equal(TimeSpan.FromHours(24), Program.ParseExpirationWindow("", -5));
+        Assert.Equal(TimeSpan.FromHours(1), Program.ParseExpirationWindow("1h"));
+        Assert.Equal(TimeSpan.FromHours(4), Program.ParseExpirationWindow("4h"));
+        Assert.Equal(TimeSpan.FromHours(24), Program.ParseExpirationWindow("24h"));
+        Assert.Equal(TimeSpan.FromDays(7), Program.ParseExpirationWindow("7d"));
+        Assert.Equal(TimeSpan.FromDays(30), Program.ParseExpirationWindow("1m"));
+        Assert.Equal(TimeSpan.FromDays(30), Program.ParseExpirationWindow("30d"));
+        Assert.Equal(TimeSpan.FromDays(365), Program.ParseExpirationWindow("1y"));
+        Assert.Equal(TimeSpan.FromDays(365), Program.ParseExpirationWindow("365d"));
+        Assert.Equal(TimeSpan.FromDays(36525), Program.ParseExpirationWindow("never"));
+        Assert.Equal(TimeSpan.FromDays(36525), Program.ParseExpirationWindow("infinite"));
+        Assert.Equal(TimeSpan.FromHours(48), Program.ParseExpirationWindow("48"));
+        Assert.Equal(TimeSpan.FromHours(12), Program.ParseExpirationWindow("invalid", 12));
+        Assert.Equal(TimeSpan.FromHours(24), Program.ParseExpirationWindow("invalid", -1));
+    }
 }
