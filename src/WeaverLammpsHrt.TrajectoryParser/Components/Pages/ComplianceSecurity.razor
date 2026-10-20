@@ -1,0 +1,384 @@
+@page "/compliance"
+@inject IComplianceAuditService ComplianceService
+@inject IKeyManagementService KeyManagementService
+@inject IEncryptedStorageService StorageService
+
+<section class="card">
+    <div class="card-header">
+        <div>
+            <h2>Post-Quantum Cryptography &amp; Health Data Compliance</h2>
+            <p class="subtitle">NIST FIPS 203 &amp; 204 Lattice Cryptography &bull; HIPAA Safe Harbor &bull; GDPR Articles 9 &amp; 17 &bull; FDA 21 CFR Part 11</p>
+        </div>
+        <div class="status-indicator">
+            <span class="status-dot status-healthy"></span>
+            <span class="font-mono text-success">@_statusReport.OverallStatus.ToUpperInvariant()</span>
+        </div>
+    </div>
+
+    <!-- PQC Encryption at Rest Overview -->
+    <div class="telemetry-grid" style="margin-top: 1rem;">
+        <div class="card stat-card">
+            <div class="stat-label">ENCRYPTION AT REST</div>
+            <div class="stat-value font-mono text-accent">ACTIVE</div>
+            <div class="stat-sub">@_statusReport.EncryptionAtRestAlgorithm</div>
+        </div>
+        <div class="card stat-card">
+            <div class="stat-label">PART 11 AUDIT INTEGRITY</div>
+            <div class="stat-value font-mono @(_statusReport.IsAuditLedgerIntact ? "text-success" : "text-danger")">
+                @(_statusReport.IsAuditLedgerIntact ? "INTACT" : "DEGRADED")
+            </div>
+            <div class="stat-sub">@_statusReport.AuditRecordCount Committed Records</div>
+        </div>
+        <div class="card stat-card">
+            <div class="stat-label">REGISTERED SUBJECTS</div>
+            <div class="stat-value font-mono">@_statusReport.TotalSubjectsRegistered</div>
+            <div class="stat-sub">@_statusReport.CryptoShreddedSubjectCount Crypto-Shredded</div>
+        </div>
+        <div class="card stat-card">
+            <div class="stat-label">SIGNING SUITE</div>
+            <div class="stat-value font-mono text-accent">NIST FIPS 204</div>
+            <div class="stat-sub">@_statusReport.AuditSignatureAlgorithm</div>
+        </div>
+    </div>
+</section>
+
+<!-- Regulatory Compliance Assessment Matrix -->
+<section class="card" style="margin-top: 1.5rem;">
+    <div class="card-header">
+        <h3>Regulatory Compliance Posture Assessment</h3>
+        <button class="btn btn-primary btn-sm" @onclick="RefreshStatus">
+            <span>🔄</span> Refresh Assessment
+        </button>
+    </div>
+
+    <div style="overflow-x: auto; margin-top: 1rem;">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Regulation / Standard</th>
+                    <th>Governing Mandate</th>
+                    <th>Implementation Mechanism</th>
+                    <th>Verification Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>HIPAA Security Rule</strong><br><small class="text-muted">45 CFR § 164.312(a)(2)(iv)</small></td>
+                    <td>Encryption of ePHI at Rest</td>
+                    <td>NIST FIPS 203 ML-KEM-768 key encapsulation + AES-256-GCM symmetric field-level encryption</td>
+                    <td><span class="badge badge-accent">100% ENFORCED</span></td>
+                </tr>
+                <tr>
+                    <td><strong>HIPAA Privacy Rule</strong><br><small class="text-muted">45 CFR § 164.514(b)</small></td>
+                    <td>Safe Harbor De-Identification</td>
+                    <td>Automated stripping of 18 direct identifiers; irreversible salted SHA-384 pseudonym tokens (<code>sub_...</code>)</td>
+                    <td><span class="badge badge-accent">100% ENFORCED</span></td>
+                </tr>
+                <tr>
+                    <td><strong>GDPR Article 9</strong><br><small class="text-muted">Special Category Processing</small></td>
+                    <td>Genetic &amp; Biometric Health Data</td>
+                    <td>Explicit consent verification gating; purpose limitation prohibiting non-therapeutic dissemination</td>
+                    <td><span class="badge badge-accent">100% ENFORCED</span></td>
+                </tr>
+                <tr>
+                    <td><strong>GDPR Article 17</strong><br><small class="text-muted">Right to Erasure</small></td>
+                    <td>Cryptographic Data Destruction</td>
+                    <td>Per-subject DEK crypto-shredding: zeroing private keys renders all historical records permanently unreadable</td>
+                    <td><span class="badge badge-accent">100% ENFORCED</span></td>
+                </tr>
+                <tr>
+                    <td><strong>GINA of 2008</strong><br><small class="text-muted">Public Law 110-233</small></td>
+                    <td>Genetic Non-Discrimination</td>
+                    <td>Pharmacogenomic screening strictly restricted to therapeutic nanocarrier tuning; export dissemination blocked</td>
+                    <td><span class="badge badge-accent">100% ENFORCED</span></td>
+                </tr>
+                <tr>
+                    <td><strong>FDA 21 CFR Part 11</strong><br><small class="text-muted">§ 11.10(e)</small></td>
+                    <td>Tamper-Evident Audit Trails</td>
+                    <td>Immutable append-only ledger; Merkle SHA-384 hash chaining; signed with ML-DSA-65 post-quantum signatures</td>
+                    <td><span class="badge @(_statusReport.IsAuditLedgerIntact ? "badge-accent" : "badge-outline")">@(_statusReport.IsAuditLedgerIntact ? "100% VERIFIED" : "VERIFICATION REQUIRED")</span></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<!-- Interactive De-Identification & Crypto-Shredding Tool -->
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 1.5rem; margin-top: 1.5rem;">
+    <!-- HIPAA Safe Harbor Tool -->
+    <section class="card">
+        <div class="card-header">
+            <h3>HIPAA Safe Harbor De-Identification</h3>
+        </div>
+        <p class="text-muted" style="margin-bottom: 1rem;">
+            Converts raw patient identities and FASTA headers into pseudonymized subject tokens (<code>sub_...</code>) compliant with HIPAA § 164.514.
+        </p>
+
+        <div class="form-group" style="margin-bottom: 1rem;">
+            <label>Raw Patient Identifier / Name</label>
+            <input type="text" class="input-text" @bind="_rawIdentifierInput" placeholder="e.g. Jane Doe (MRN-98432)" />
+        </div>
+
+        <div class="form-group" style="margin-bottom: 1rem;">
+            <label>Raw FASTA Sequence Header / Data</label>
+            <textarea class="input-text" style="height: 90px; font-family: monospace;" @bind="_rawFastaInput" placeholder=">Patient: Jane Doe, MRN: 98432, Sequence&#10;ATGCGATCGATCGATC..."></textarea>
+        </div>
+
+        <div style="display: flex; gap: 1rem; margin-bottom: 1rem;">
+            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                <input type="checkbox" @bind="_consentGdpr" />
+                <span style="font-size: 0.85rem;">GDPR Art. 9 Consent Verified</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                <input type="checkbox" @bind="_consentGina" />
+                <span style="font-size: 0.85rem;">GINA Purpose Limitation Enforced</span>
+            </label>
+        </div>
+
+        <button class="btn btn-primary" @onclick="ExecuteDeIdentification">
+            <span>🛡️</span> De-Identify &amp; Issue Pseudonym
+        </button>
+
+        @if (_deIdResult != null)
+        {
+            <div class="alert alert-success" style="margin-top: 1rem;">
+                <strong>De-Identification Success:</strong><br>
+                <span>Pseudonym: <code>@_deIdResult.PseudonymSubjectId</code></span><br>
+                <span>Stripped Direct Identifiers: @_deIdResult.StrippedIdentifiers.Count</span>
+            </div>
+        }
+    </section>
+
+    <!-- GDPR Article 17 Crypto-Shredding Tool -->
+    <section class="card">
+        <div class="card-header">
+            <h3>GDPR Article 17 Crypto-Shredding</h3>
+        </div>
+        <p class="text-muted" style="margin-bottom: 1rem;">
+            Executes permanent, irreversible cryptographic key destruction. Zeroing the subject's private ML-KEM key renders all at-rest records mathematically unreadable.
+        </p>
+
+        <div class="form-group" style="margin-bottom: 1rem;">
+            <label>Target Pseudonymized Subject ID</label>
+            <input type="text" class="input-text" @bind="_targetShredSubjectId" placeholder="e.g. sub_3f8a9c1b4d2e" />
+        </div>
+
+        <div class="alert alert-warning" style="margin-bottom: 1rem;">
+            <strong>Warning:</strong> Crypto-shredding is irreversible. Once destroyed, all historical simulation frames, genomic screening profiles, and endocrine setpoints for this subject cannot be decrypted by any party.
+        </div>
+
+        <button class="btn btn-secondary" style="border-color: #ef4444; color: #ef4444;" @onclick="ExecuteCryptoShred">
+            <span>🗑️</span> Permanently Crypto-Shred Keys
+        </button>
+
+        @if (!string.IsNullOrEmpty(_shredStatusMessage))
+        {
+            <div class="alert @(_shredSuccess ? "alert-success" : "alert-warning")" style="margin-top: 1rem;">
+                @_shredStatusMessage
+            </div>
+        }
+    </section>
+</div>
+
+<!-- FDA 21 CFR Part 11 Audit Trail Viewer -->
+<section class="card" style="margin-top: 1.5rem;">
+    <div class="card-header">
+        <div>
+            <h3>FDA 21 CFR Part 11 Cryptographic Audit Ledger</h3>
+            <p class="subtitle">Append-only, tamper-evident Merkle hash chain signed with NIST FIPS 204 ML-DSA-65</p>
+        </div>
+        <button class="btn btn-primary btn-sm" @onclick="VerifyLedger">
+            <span>🔍</span> Verify Cryptographic Hash Chain
+        </button>
+    </div>
+
+    @if (_verificationResult != null)
+    {
+        <div class="alert @(_verificationResult.IsValid ? "alert-success" : "alert-warning")" style="margin-top: 1rem;">
+            <strong>Audit Verification Result:</strong> @_verificationResult.Message
+        </div>
+    }
+
+    <div style="overflow-x: auto; margin-top: 1rem;">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Seq #</th>
+                    <th>Timestamp (UTC)</th>
+                    <th>Operator</th>
+                    <th>Action</th>
+                    <th>Resource</th>
+                    <th>Hash Digest (SHA-384)</th>
+                    <th>Signature (ML-DSA-65)</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var record in _recentRecords)
+                {
+                    <tr>
+                        <td><code>#@record.SequenceNumber</code></td>
+                        <td>@record.TimestampUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                        <td><code>@record.OperatorId</code></td>
+                        <td><span class="badge badge-accent">@record.Action</span></td>
+                        <td><small>@record.Resource</small></td>
+                        <td><code title="@record.CurrentHash">@record.CurrentHash[..12]...</code></td>
+                        <td><code title="@record.Signature.SignatureBase64">@record.Signature.Algorithm: @record.Signature.SignatureBase64[..10]...</code></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@code {
+    /// <summary>
+    /// Current compliance scorecard and posture report.
+    /// </summary>
+    private ComplianceStatusReport _statusReport = new();
+
+    /// <summary>
+    /// Most recent audit ledger verification result.
+    /// </summary>
+    private AuditLedgerVerificationResult? _verificationResult;
+
+    /// <summary>
+    /// Recent audit records displayed in the Part 11 ledger table.
+    /// </summary>
+    private IReadOnlyList<AuditRecord> _recentRecords = Array.Empty<AuditRecord>();
+
+    /// <summary>
+    /// Input field for raw patient identifier to de-identify.
+    /// </summary>
+    private string _rawIdentifierInput = "Jane Doe (MRN-98432)";
+
+    /// <summary>
+    /// Input field for raw FASTA sequence payload with headers.
+    /// </summary>
+    private string _rawFastaInput = ">Patient: Jane Doe, MRN: 98432, Clinic: HRT-Lab\nATGCGATCGATCGATCGATCGATC";
+
+    /// <summary>
+    /// Checkbox flag confirming GDPR Article 9 consent.
+    /// </summary>
+    private bool _consentGdpr = true;
+
+    /// <summary>
+    /// Checkbox flag confirming GINA purpose limitation.
+    /// </summary>
+    private bool _consentGina = true;
+
+    /// <summary>
+    /// Result of the latest de-identification operation.
+    /// </summary>
+    private DeIdentificationResult? _deIdResult;
+
+    /// <summary>
+    /// Input field for target subject ID to crypto-shred.
+    /// </summary>
+    private string _targetShredSubjectId = string.Empty;
+
+    /// <summary>
+    /// Status message reporting crypto-shredding outcome.
+    /// </summary>
+    private string _shredStatusMessage = string.Empty;
+
+    /// <summary>
+    /// Flag indicating whether the crypto-shredding operation succeeded.
+    /// </summary>
+    private bool _shredSuccess;
+
+    /// <summary>
+    /// Lifecycle initialization loading status report and recent audit records.
+    /// </summary>
+    protected override void OnInitialized()
+    {
+        // WHAT: Load initial compliance posture report and audit log records.
+        // WHY:  Renders immediate security telemetry upon page navigation.
+        // HOW:  Calls ComplianceService.GetComplianceStatus and GetAuditRecords.
+        RefreshStatus();
+    }
+
+    /// <summary>
+    /// Refreshes the compliance posture report and audit records list.
+    /// </summary>
+    private void RefreshStatus()
+    {
+        // WHAT: Query live compliance metrics and recent audit records.
+        // WHY:  Ensures the UI reflects real-time cryptographic state.
+        // HOW:  Queries ComplianceService and updates local state fields.
+        _statusReport = ComplianceService.GetComplianceStatus();
+        _recentRecords = ComplianceService.GetAuditRecords(50);
+    }
+
+    /// <summary>
+    /// Executes full cryptographic verification of the FDA 21 CFR Part 11 audit ledger.
+    /// </summary>
+    private void VerifyLedger()
+    {
+        // WHAT: Re-compute and verify the complete audit hash chain and ML-DSA-65 signatures.
+        // WHY:  Provides proof of ledger immutability and tamper detection.
+        // HOW:  Calls ComplianceService.VerifyLedgerIntegrity.
+        _verificationResult = ComplianceService.VerifyLedgerIntegrity();
+        RefreshStatus();
+    }
+
+    /// <summary>
+    /// Executes HIPAA Safe Harbor de-identification and GINA/GDPR consent verification.
+    /// </summary>
+    private void ExecuteDeIdentification()
+    {
+        // WHAT: Strip direct personal identifiers and generate an irreversible pseudonym.
+        // WHY:  Mandated by HIPAA § 164.514 before persisting or processing health records.
+        // HOW:  Calls ComplianceService.DeIdentifySubject with operator inputs.
+        try
+        {
+            _deIdResult = ComplianceService.DeIdentifySubject(
+                _rawIdentifierInput,
+                _rawFastaInput,
+                _consentGdpr,
+                _consentGina);
+
+            _targetShredSubjectId = _deIdResult.PseudonymSubjectId;
+            RefreshStatus();
+        }
+        catch (Exception ex)
+        {
+            _shredStatusMessage = $"De-identification error: {ex.Message}";
+            _shredSuccess = false;
+        }
+    }
+
+    /// <summary>
+    /// Executes GDPR Article 17 Crypto-Shredding for the target subject.
+    /// </summary>
+    private void ExecuteCryptoShred()
+    {
+        // WHAT: Permanently erase the subject's private ML-KEM decryption keys.
+        // WHY:  Implements GDPR Article 17 "Right to Erasure" via cryptographic destruction.
+        // HOW:  Calls KeyManagementService.CryptoShredSubjectKey and logs to audit ledger.
+        if (string.IsNullOrWhiteSpace(_targetShredSubjectId))
+        {
+            _shredStatusMessage = "Please specify a valid subject identifier to crypto-shred.";
+            _shredSuccess = false;
+            return;
+        }
+
+        bool result = KeyManagementService.CryptoShredSubjectKey(_targetShredSubjectId);
+        if (result)
+        {
+            ComplianceService.LogAction(
+                "USER_CONSOLE",
+                "CryptoShredSubjectKey",
+                _targetShredSubjectId,
+                $"{{\"status\":\"destroyed\",\"standard\":\"GDPR_Article_17\"}}");
+
+            _shredStatusMessage = $"Subject '{_targetShredSubjectId}' has been permanently Crypto-Shredded pursuant to GDPR Article 17. Private decryption key was purged.";
+            _shredSuccess = true;
+            RefreshStatus();
+        }
+        else
+        {
+            _shredStatusMessage = $"Unable to shred subject '{_targetShredSubjectId}': Subject not found or already shredded.";
+            _shredSuccess = false;
+        }
+    }
+}

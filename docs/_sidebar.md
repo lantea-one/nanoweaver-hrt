@@ -11,6 +11,7 @@
 * [**Trajectory Streaming & Datasets**](trajectories-and-datasets.md)
 * [**Example Biomedical Workflows**](example-workflows.md)
 * [**DIY & HomeLab Fabrication (How-To)**](diy-fabrication-guide.md)
+* [**PQC & Regulatory Compliance**](compliance-and-security.md)
 * [**REST API Reference & Tests**](api-reference.md)
 
 ---

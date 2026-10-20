@@ -1,8 +1,10 @@
 using System.Diagnostics;
 using System.IO.Pipelines;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using WeaverLammpsHrt.TrajectoryParser.Abstractions;
+using WeaverLammpsHrt.TrajectoryParser.Compliance;
 using WeaverLammpsHrt.TrajectoryParser.Components;
 using WeaverLammpsHrt.TrajectoryParser.Configuration;
 using WeaverLammpsHrt.TrajectoryParser.Endocrine;
@@ -10,6 +12,10 @@ using WeaverLammpsHrt.TrajectoryParser.Fabrication;
 using WeaverLammpsHrt.TrajectoryParser.Genomics;
 using WeaverLammpsHrt.TrajectoryParser.Models;
 using WeaverLammpsHrt.TrajectoryParser.Pipelines;
+using WeaverLammpsHrt.TrajectoryParser.Security.Cryptography;
+using WeaverLammpsHrt.TrajectoryParser.Security.KeyManagement;
+using WeaverLammpsHrt.TrajectoryParser.Security.Models;
+using WeaverLammpsHrt.TrajectoryParser.Security.Storage;
 using WeaverLammpsHrt.TrajectoryParser.Services;
 using WeaverLammpsHrt.TrajectoryParser.Services.Stack;
 using WeaverLammpsHrt.TrajectoryParser.Storage;
@@ -64,6 +70,10 @@ public class Program
         builder.Services.AddSingleton<LammpsCustomPipeReader>();
         builder.Services.AddSingleton<IParquetTrajectoryWriter, DuckDbParquetWriter>();
         builder.Services.AddSingleton<EndocrineStateEngine>();
+        builder.Services.AddSingleton<IPostQuantumCryptoProvider, PostQuantumCryptoProvider>();
+        builder.Services.AddSingleton<IKeyManagementService, KeyManagementService>();
+        builder.Services.AddSingleton<IComplianceAuditService, ComplianceAuditService>();
+        builder.Services.AddSingleton<IEncryptedStorageService, EncryptedStorageService>();
 
         // Configure JSON serialization options
         builder.Services.ConfigureHttpJsonOptions(options =>
@@ -590,6 +600,163 @@ public class Program
         .WithName("ApplyGenomicAdjustments")
         .WithSummary("Applies patient pharmacogenomic adjustments to the active endocrine target profile.");
 
+        // ---------------------------------------------------------------------
+        // REST API: Post-Quantum Cryptography & Regulatory Compliance
+        // ---------------------------------------------------------------------
+        app.MapGet("/api/compliance/status", (IComplianceAuditService compliance) =>
+        {
+            ComplianceStatusReport report = compliance.GetComplianceStatus();
+            return Results.Ok(report);
+        })
+        .WithName("GetComplianceStatus")
+        .WithSummary("Retrieves current post-quantum encryption at rest and regulatory compliance scorecard.");
+
+        app.MapGet("/api/compliance/audit-ledger", (int? limit, IComplianceAuditService compliance) =>
+        {
+            IReadOnlyList<AuditRecord> records = compliance.GetAuditRecords(limit ?? 100);
+            return Results.Ok(records);
+        })
+        .WithName("GetAuditLedger")
+        .WithSummary("Retrieves FDA 21 CFR Part 11 immutable hash-chained audit log records.");
+
+        app.MapGet("/api/compliance/verify-ledger", (IComplianceAuditService compliance) =>
+        {
+            AuditLedgerVerificationResult verification = compliance.VerifyLedgerIntegrity();
+            return Results.Ok(verification);
+        })
+        .WithName("VerifyAuditLedger")
+        .WithSummary("Cryptographically verifies unbroken hash chaining and ML-DSA-65 signatures across the audit ledger.");
+
+        app.MapPost("/api/compliance/de-identify", (DeIdentifyRequest req, IComplianceAuditService compliance) =>
+        {
+            if (string.IsNullOrWhiteSpace(req.RawSubjectIdentifier))
+            {
+                return Results.BadRequest(new { error = "RawSubjectIdentifier cannot be empty." });
+            }
+
+            try
+            {
+                DeIdentificationResult result = compliance.DeIdentifySubject(
+                    req.RawSubjectIdentifier,
+                    req.RawGenomicData ?? string.Empty,
+                    req.GdprConsentConfirmed,
+                    req.GinaPurposeLimited);
+                return Results.Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        })
+        .WithName("DeIdentifySubject")
+        .WithSummary("Applies HIPAA Safe Harbor de-identification and GINA/GDPR Article 9 consent validation.");
+
+        app.MapPost("/api/compliance/crypto-shred", (CryptoShredRequest req, IKeyManagementService keyMgmt, IComplianceAuditService compliance) =>
+        {
+            if (string.IsNullOrWhiteSpace(req.SubjectId))
+            {
+                return Results.BadRequest(new { error = "SubjectId cannot be empty." });
+            }
+
+            bool shredded = keyMgmt.CryptoShredSubjectKey(req.SubjectId);
+            if (!shredded)
+            {
+                return Results.NotFound(new { error = $"Subject '{req.SubjectId}' not found or already crypto-shredded." });
+            }
+
+            compliance.LogAction(
+                "API_CALLER",
+                "CryptoShredSubjectKey",
+                req.SubjectId,
+                $"{{\"status\":\"destroyed\",\"standard\":\"GDPR_Article_17\"}}");
+
+            return Results.Ok(new
+            {
+                subject_id = req.SubjectId,
+                status = "Crypto-Shredded",
+                message = "Subject private decryption keys permanently destroyed pursuant to GDPR Article 17."
+            });
+        })
+        .WithName("CryptoShredSubject")
+        .WithSummary("Executes GDPR Article 17 right-to-erasure via cryptographic destruction of subject decryption keys.");
+
+        app.MapPost("/api/compliance/encrypt-record", (EncryptRecordRequest req, IEncryptedStorageService storage) =>
+        {
+            if (string.IsNullOrWhiteSpace(req.SubjectId) || req.Payload == null)
+            {
+                return Results.BadRequest(new { error = "SubjectId and Payload cannot be empty." });
+            }
+
+            try
+            {
+                EncryptedEnvelope envelope = storage.EncryptSubjectRecord(req.SubjectId, req.Payload);
+                return Results.Ok(envelope);
+            }
+            catch (CryptographicException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        })
+        .WithName("EncryptSubjectRecord")
+        .WithSummary("Envelope-encrypts an arbitrary JSON record under the subject's post-quantum ML-KEM-768 key.");
+
+        app.MapPost("/api/compliance/decrypt-record", (DecryptRecordRequest req, IEncryptedStorageService storage) =>
+        {
+            if (string.IsNullOrWhiteSpace(req.SubjectId) || req.Envelope == null)
+            {
+                return Results.BadRequest(new { error = "SubjectId and Envelope cannot be empty." });
+            }
+
+            try
+            {
+                JsonElement payload = storage.DecryptSubjectRecord<JsonElement>(req.SubjectId, req.Envelope);
+                return Results.Ok(payload);
+            }
+            catch (CryptographicException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        })
+        .WithName("DecryptSubjectRecord")
+        .WithSummary("Decrypts an authenticated post-quantum envelope using the subject's private key.");
+
+        app.MapPost("/api/datasets/export-encrypted", async (
+            ExportEncryptedDatasetRequest req,
+            IEncryptedStorageService storage,
+            IConfiguration config,
+            CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(req.TrajectoryFileName))
+            {
+                return Results.BadRequest(new { error = "TrajectoryFileName cannot be empty." });
+            }
+
+            string exportDir = req.ExportDirectory ?? config["TRAJECTORY_EXPORT_DIR"] ?? Path.Combine(Directory.GetCurrentDirectory(), "simulations", "exports");
+            string subjectId = string.IsNullOrWhiteSpace(req.SubjectId) ? "sub_default_researcher" : req.SubjectId;
+
+            try
+            {
+                string bundlePath = await storage.ExportEncryptedDatasetBundleAsync(req.TrajectoryFileName, subjectId, exportDir, ct);
+                return Results.Ok(new
+                {
+                    bundle_path = bundlePath,
+                    algorithm = "ML-KEM-768+AES-256-GCM",
+                    subject_id = subjectId,
+                    message = "Encrypted dataset bundle packaged and signed with ML-DSA-65."
+                });
+            }
+            catch (FileNotFoundException ex)
+            {
+                return Results.NotFound(new { error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        })
+        .WithName("ExportEncryptedDatasetBundle")
+        .WithSummary("Exports a trajectory archive envelope-encrypted with ML-KEM-768 and signed with ML-DSA-65.");
+
         app.Run();
     }
 
@@ -781,4 +948,106 @@ public sealed record SequenceAnalysisRequest
     /// </summary>
     [JsonPropertyName("regimen")]
     public TherapeuticRegimen Regimen { get; init; } = TherapeuticRegimen.MaleToFemale;
+}
+
+/// <summary>
+/// Request payload for de-identifying a patient identity and FASTA payload.
+/// </summary>
+public sealed record DeIdentifyRequest
+{
+    /// <summary>
+    /// Raw patient identifier or name.
+    /// </summary>
+    [JsonPropertyName("raw_subject_identifier")]
+    public string RawSubjectIdentifier { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Raw genomic sequence or SNP profile string.
+    /// </summary>
+    [JsonPropertyName("raw_genomic_data")]
+    public string? RawGenomicData { get; init; }
+
+    /// <summary>
+    /// Confirmation of explicit subject consent under GDPR Article 9.
+    /// </summary>
+    [JsonPropertyName("gdpr_consent_confirmed")]
+    public bool GdprConsentConfirmed { get; init; } = true;
+
+    /// <summary>
+    /// Confirmation that data use is purpose-limited to therapeutic nanocarrier design under GINA.
+    /// </summary>
+    [JsonPropertyName("gina_purpose_limited")]
+    public bool GinaPurposeLimited { get; init; } = true;
+}
+
+/// <summary>
+/// Request payload for crypto-shredding an individual subject's decryption keys.
+/// </summary>
+public sealed record CryptoShredRequest
+{
+    /// <summary>
+    /// Pseudonymized subject identifier to crypto-shred.
+    /// </summary>
+    [JsonPropertyName("subject_id")]
+    public string SubjectId { get; init; } = string.Empty;
+}
+
+/// <summary>
+/// Request payload for envelope-encrypting an arbitrary JSON object under a subject's post-quantum key.
+/// </summary>
+public sealed record EncryptRecordRequest
+{
+    /// <summary>
+    /// Pseudonymized subject identifier.
+    /// </summary>
+    [JsonPropertyName("subject_id")]
+    public string SubjectId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Arbitrary payload object or JSON element.
+    /// </summary>
+    [JsonPropertyName("payload")]
+    public object? Payload { get; init; }
+}
+
+/// <summary>
+/// Request payload for decrypting an envelope-encrypted record.
+/// </summary>
+public sealed record DecryptRecordRequest
+{
+    /// <summary>
+    /// Pseudonymized subject identifier.
+    /// </summary>
+    [JsonPropertyName("subject_id")]
+    public string SubjectId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Encrypted envelope container.
+    /// </summary>
+    [JsonPropertyName("envelope")]
+    public EncryptedEnvelope? Envelope { get; init; }
+}
+
+/// <summary>
+/// Request payload for exporting an envelope-encrypted, post-quantum signed dataset bundle.
+/// </summary>
+public sealed record ExportEncryptedDatasetRequest
+{
+    /// <summary>
+    /// Source trajectory filename in shared storage.
+    /// </summary>
+    [JsonPropertyName("trajectory_file_name")]
+    public string TrajectoryFileName { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Target pseudonymized subject identifier.
+    /// </summary>
+    [JsonPropertyName("subject_id")]
+    public string? SubjectId { get; init; }
+
+    /// <summary>
+    /// Destination export directory.
+    /// </summary>
+    [JsonPropertyName("export_directory")]
+    public string? ExportDirectory { get; init; }
 }

@@ -91,7 +91,9 @@ Explore the comprehensive guides and references below:
    * Concrete step-by-step examples: MtF feminizing nanotube, FtM masculinizing nanocage, and collaborative compute peering.
 10. [**DIY & HomeLab Benchtop Fabrication Guide**](diy-fabrication-guide.md)
    * Step-by-step physical instructions for community scientists: 50 µL pipetting recipe, reagents checklist, 7-step bench execution, agarose gel QC, and non-toxic safety protocols.
-11. [**REST API Reference**](api-reference.md)
+11. [**Post-Quantum Cryptography & Regulatory Compliance**](compliance-and-security.md)
+   * NIST FIPS 203 (ML-KEM-768), FIPS 204 (ML-DSA-65), HIPAA Safe Harbor, GDPR Article 17 crypto-shredding, GINA non-discrimination, and FDA 21 CFR Part 11 audit trails.
+12. [**REST API Reference**](api-reference.md)
    * Full endpoint catalog, request/response JSON schemas, and test suite execution.
 
 ---
