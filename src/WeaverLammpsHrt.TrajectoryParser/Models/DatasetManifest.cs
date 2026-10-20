@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace HrtLab.TrajectoryParser.Models;
+namespace WeaverLammpsHrt.TrajectoryParser.Models;
 
 /// <summary>
 /// Cryptographic provenance manifest for exported or imported molecular simulation datasets.

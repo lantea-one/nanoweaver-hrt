@@ -1,10 +1,10 @@
 using System.Buffers;
 using System.Buffers.Text;
 using System.IO.Pipelines;
-using HrtLab.TrajectoryParser.Abstractions;
-using HrtLab.TrajectoryParser.Models;
+using WeaverLammpsHrt.TrajectoryParser.Abstractions;
+using WeaverLammpsHrt.TrajectoryParser.Models;
 
-namespace HrtLab.TrajectoryParser.Pipelines;
+namespace WeaverLammpsHrt.TrajectoryParser.Pipelines;
 
 /// <summary>
 /// High-throughput, zero-allocation parser for the plain-text XYZ molecular trajectory file format.

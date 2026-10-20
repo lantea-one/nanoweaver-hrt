@@ -1,6 +1,6 @@
-using HrtLab.TrajectoryParser.Models;
+using WeaverLammpsHrt.TrajectoryParser.Models;
 
-namespace HrtLab.TrajectoryParser.Abstractions;
+namespace WeaverLammpsHrt.TrajectoryParser.Abstractions;
 
 /// <summary>
 /// Service contract managing decentralized dataset discovery, packaging, cryptographic verification, and export/import.

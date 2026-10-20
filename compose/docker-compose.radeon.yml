@@ -14,7 +14,7 @@
 
 services:
   simulation:
-    container_name: hrt-simulation-radeon
+    container_name: weaver-simulation-radeon
     devices:
       - "/dev/kfd:/dev/kfd"
       - "/dev/dri:/dev/dri"

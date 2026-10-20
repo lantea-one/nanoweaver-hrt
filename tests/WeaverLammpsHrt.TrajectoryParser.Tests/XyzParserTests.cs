@@ -1,10 +1,10 @@
 using System.IO.Pipelines;
 using System.Text;
-using HrtLab.TrajectoryParser.Models;
-using HrtLab.TrajectoryParser.Pipelines;
+using WeaverLammpsHrt.TrajectoryParser.Models;
+using WeaverLammpsHrt.TrajectoryParser.Pipelines;
 using Xunit;
 
-namespace HrtLab.TrajectoryParser.Tests;
+namespace WeaverLammpsHrt.TrajectoryParser.Tests;
 
 /// <summary>
 /// Unit tests verifying coordinate accuracy and frame parsing behavior of the <see cref="XyzPipeReader"/>.

@@ -1,4 +1,4 @@
-# HRT-Lab: Decentralized Nanotechnology Data Architecture
+# dotnet-weaver-lammps-hrt (weaver-lammps-hrt)
 
 A sovereign, open-source computational platform for synthetic biology and DNA origami research. This repository provides:
 1. **A Sovereign .NET 10 Microservice**: Zero-allocation trajectory parser (`System.IO.Pipelines`, `ReadOnlySpan<byte>`, `Utf8Parser`) capable of streaming massive molecular simulation trajectories (`.xyz`, `.dcd`, oxDNA).
@@ -57,13 +57,13 @@ The embedded dashboard provides:
 
 ### Run the Parser & Web Dashboard Locally
 ```bash
-dotnet run --project src/HrtLab.TrajectoryParser/HrtLab.TrajectoryParser.csproj
+dotnet run --project src/WeaverLammpsHrt.TrajectoryParser/WeaverLammpsHrt.TrajectoryParser.csproj
 ```
 
 ### Run Test Suite
 ```bash
 # Run all unit tests across parsers and cryptographic dataset services
-dotnet test hrt-lab.sln
+dotnet test dotnet-weaver-lammps-hrt.sln
 ```
 
 ---

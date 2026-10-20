@@ -11,7 +11,7 @@
 set -euo pipefail
 
 echo "=========================================================="
-echo "  HRT-Lab: Sovereign Simulation Node Initialization"
+echo "  Weaver-LAMMPS-HRT: Simulation Node Initialization"
 echo "  Node Identity: ${HOSTNAME:-simulation-node}"
 echo "  Target Backend: ${ACCELERATOR_BACKEND:-auto}"
 echo "=========================================================="

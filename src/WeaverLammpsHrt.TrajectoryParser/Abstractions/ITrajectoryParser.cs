@@ -1,7 +1,7 @@
 using System.IO.Pipelines;
-using HrtLab.TrajectoryParser.Models;
+using WeaverLammpsHrt.TrajectoryParser.Models;
 
-namespace HrtLab.TrajectoryParser.Abstractions;
+namespace WeaverLammpsHrt.TrajectoryParser.Abstractions;
 
 /// <summary>
 /// Delegate invoked whenever a complete molecular simulation frame has been parsed without heap allocation.

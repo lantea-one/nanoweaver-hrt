@@ -1,10 +1,10 @@
 using System.Buffers.Binary;
 using System.IO.Pipelines;
-using HrtLab.TrajectoryParser.Models;
-using HrtLab.TrajectoryParser.Pipelines;
+using WeaverLammpsHrt.TrajectoryParser.Models;
+using WeaverLammpsHrt.TrajectoryParser.Pipelines;
 using Xunit;
 
-namespace HrtLab.TrajectoryParser.Tests;
+namespace WeaverLammpsHrt.TrajectoryParser.Tests;
 
 /// <summary>
 /// Unit tests verifying binary stream decoding and coordinate accuracy for the <see cref="DcdPipeReader"/>.

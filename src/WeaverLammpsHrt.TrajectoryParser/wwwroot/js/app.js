@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * HRT-Lab: Sovereign Nanotechnology Web UI Frontend
+ * Weaver-LAMMPS-HRT: Sovereign Nanotechnology Web UI Frontend
  * ----------------------------------------------------------------------------
  * WHAT: Client-side logic for real-time telemetry updates, zero-allocation 
  *       parser triggers, and cryptographic dataset import/export.

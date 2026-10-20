@@ -1,7 +1,7 @@
-# GitHub Copilot Instructions: HRT-Lab Project
+# GitHub Copilot Instructions: Weaver-LAMMPS-HRT (dotnet-weaver-lammps-hrt) Project
 
 ## Context
-HRT-Lab is a decentralized, open-source synthetic biology and DNA origami research laboratory platform.
+Weaver-LAMMPS-HRT (`dotnet-weaver-lammps-hrt`) is a decentralized, open-source synthetic biology and DNA origami research laboratory platform.
 The primary codebase includes a .NET 10 zero-allocation trajectory parsing microservice, an embedded web UI for cryptographic dataset transfer, and Docker infrastructure supporting Intel Arc A770, NVIDIA, AMD Radeon, and Intel iGPU hardware acceleration for LAMMPS and oxDNA.
 
 ## Mandatory Coding & Commenting Directives

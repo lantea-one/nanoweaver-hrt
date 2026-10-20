@@ -1,5 +1,5 @@
 # ==============================================================================
-# HRT-Lab: Sovereign Simulation & Zero-Allocation Parser Stack
+# Weaver-LAMMPS-HRT: Sovereign Simulation & Zero-Allocation Parser Stack
 # ------------------------------------------------------------------------------
 # WHAT: Default Docker Compose stack running the hardware-accelerated simulation 
 #       engine and .NET 10 trajectory streaming parser.
@@ -14,7 +14,7 @@
 #   - AMD Radeon:      docker compose -f docker-compose.yml -f compose/docker-compose.radeon.yml up -d
 # ==============================================================================
 
-name: hrt-lab
+name: weaver-lammps-hrt
 
 services:
   # ----------------------------------------------------------------------------
@@ -25,8 +25,8 @@ services:
     build:
       context: .
       dockerfile: docker/simulation/Dockerfile.simulation
-    image: ghcr.io/${GITHUB_REPOSITORY:-hrt-lab}/simulation-engine:${TAG:-latest}
-    container_name: hrt-simulation
+    image: ghcr.io/${GITHUB_REPOSITORY:-lantea-one/dotnet-weaver-lammps-hrt}/simulation-engine:${TAG:-latest}
+    container_name: weaver-simulation
     hostname: simulation-node
     devices:
       - "/dev/dri:/dev/dri"
@@ -53,8 +53,8 @@ services:
     build:
       context: .
       dockerfile: docker/parser/Dockerfile.parser
-    image: ghcr.io/${GITHUB_REPOSITORY:-hrt-lab}/trajectory-parser:${TAG:-latest}
-    container_name: hrt-parser
+    image: ghcr.io/${GITHUB_REPOSITORY:-lantea-one/dotnet-weaver-lammps-hrt}/trajectory-parser:${TAG:-latest}
+    container_name: weaver-parser
     hostname: parser-node
     ports:
       - "5000:5000"

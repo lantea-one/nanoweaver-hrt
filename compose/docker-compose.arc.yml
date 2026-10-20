@@ -14,7 +14,7 @@
 
 services:
   simulation:
-    container_name: hrt-simulation-arc
+    container_name: weaver-simulation-arc
     environment:
       - ACCELERATOR_BACKEND=arc-a770
       - ONEAPI_DEVICE_SELECTOR=level_zero:gpu

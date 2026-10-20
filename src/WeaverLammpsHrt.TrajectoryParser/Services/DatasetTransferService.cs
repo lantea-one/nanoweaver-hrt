@@ -2,10 +2,10 @@ using System.Formats.Tar;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text.Json;
-using HrtLab.TrajectoryParser.Abstractions;
-using HrtLab.TrajectoryParser.Models;
+using WeaverLammpsHrt.TrajectoryParser.Abstractions;
+using WeaverLammpsHrt.TrajectoryParser.Models;
 
-namespace HrtLab.TrajectoryParser.Services;
+namespace WeaverLammpsHrt.TrajectoryParser.Services;
 
 /// <summary>
 /// Provides high-level dataset export, import, packaging, and cryptographic verification services.

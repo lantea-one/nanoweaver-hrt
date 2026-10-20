@@ -17,7 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\HrtLab.TrajectoryParser\HrtLab.TrajectoryParser.csproj" />
+    <ProjectReference Include="..\..\src\WeaverLammpsHrt.TrajectoryParser\WeaverLammpsHrt.TrajectoryParser.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,4 +1,4 @@
-# Cursor Rules for HRT-Lab Project
+# Cursor Rules for Weaver-LAMMPS-HRT (dotnet-weaver-lammps-hrt) Project
 
 - Target: .NET 10 (C# 13), Docker Compose, SYCL/OpenCL, oxDNA, LAMMPS.
 - Style:

@@ -1,10 +1,10 @@
 using System.Buffers;
 using System.Buffers.Binary;
 using System.IO.Pipelines;
-using HrtLab.TrajectoryParser.Abstractions;
-using HrtLab.TrajectoryParser.Models;
+using WeaverLammpsHrt.TrajectoryParser.Abstractions;
+using WeaverLammpsHrt.TrajectoryParser.Models;
 
-namespace HrtLab.TrajectoryParser.Pipelines;
+namespace WeaverLammpsHrt.TrajectoryParser.Pipelines;
 
 /// <summary>
 /// High-performance zero-allocation binary parser for the DCD (CHARMM/NAMD/LAMMPS) trajectory file format.

@@ -1,7 +1,7 @@
 # AGENTS.md: Universal AI Assistant & Contributor Guide
 
 > **Note for AI Coding Assistants (Claude, Cursor, Copilot, Gemini, ChatGPT):**
-> You are acting as a Principal Systems Architect and Computational Nanotechnologist working on **HRT-Lab**, an open-source decentralized synthetic biology and DNA origami research platform.
+> You are acting as a Principal Systems Architect and Computational Nanotechnologist working on **weaver-lammps-hrt** (`dotnet-weaver-lammps-hrt`), an open-source decentralized synthetic biology and DNA origami research platform.
 > Read this document completely before generating or editing code in this repository.
 
 ---
@@ -50,7 +50,7 @@
 ```
 
 ### Components
-1. **`src/HrtLab.TrajectoryParser`**:
+1. **`src/WeaverLammpsHrt.TrajectoryParser`**:
    - High-throughput ASP.NET Core minimal service and background trajectory parser.
    - Hosts the sovereign Web UI on port 5000 (`/`) with endpoints for zero-dependency dataset export/import (`/api/datasets/export`, `/api/datasets/import`) and live GPU telemetry (`/api/system/telemetry`).
 2. **`compose/` & `docker-compose.yml`**:
@@ -68,10 +68,10 @@
 ### How to Build & Run Locally
 ```bash
 # Build the .NET 10 microservice
-dotnet build src/HrtLab.TrajectoryParser/HrtLab.TrajectoryParser.csproj
+dotnet build src/WeaverLammpsHrt.TrajectoryParser/WeaverLammpsHrt.TrajectoryParser.csproj
 
 # Run the web dashboard & parser service locally
-dotnet run --project src/HrtLab.TrajectoryParser/HrtLab.TrajectoryParser.csproj
+dotnet run --project src/WeaverLammpsHrt.TrajectoryParser/WeaverLammpsHrt.TrajectoryParser.csproj
 ```
 
 ### How to Run Simulation Stack (Docker Compose)
@@ -92,7 +92,7 @@ docker compose -f docker-compose.yml -f compose/docker-compose.radeon.yml up -d
 ### Testing & Verification
 ```bash
 # Run unit and benchmark tests
-dotnet test tests/HrtLab.TrajectoryParser.Tests/
+dotnet test dotnet-weaver-lammps-hrt.sln
 ```
 
 ---

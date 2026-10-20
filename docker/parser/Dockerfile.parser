@@ -16,13 +16,13 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
 # Copy project manifest and restore dependencies
-COPY ["src/HrtLab.TrajectoryParser/HrtLab.TrajectoryParser.csproj", "HrtLab.TrajectoryParser/"]
-RUN dotnet restore "HrtLab.TrajectoryParser/HrtLab.TrajectoryParser.csproj"
+COPY ["src/WeaverLammpsHrt.TrajectoryParser/WeaverLammpsHrt.TrajectoryParser.csproj", "WeaverLammpsHrt.TrajectoryParser/"]
+RUN dotnet restore "WeaverLammpsHrt.TrajectoryParser/WeaverLammpsHrt.TrajectoryParser.csproj"
 
 # Copy full source and publish with ReadyToRun ahead-of-time compilation
 COPY src/ .
-WORKDIR "/src/HrtLab.TrajectoryParser"
-RUN dotnet publish "HrtLab.TrajectoryParser.csproj" \
+WORKDIR "/src/WeaverLammpsHrt.TrajectoryParser"
+RUN dotnet publish "WeaverLammpsHrt.TrajectoryParser.csproj" \
     -c Release \
     -o /app/publish \
     --no-restore \
@@ -50,4 +50,4 @@ VOLUME ["/workspace/data", "/workspace/exports"]
 
 EXPOSE 5000
 
-ENTRYPOINT ["dotnet", "HrtLab.TrajectoryParser.dll"]
+ENTRYPOINT ["dotnet", "WeaverLammpsHrt.TrajectoryParser.dll"]

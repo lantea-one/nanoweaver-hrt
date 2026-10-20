@@ -1,12 +1,12 @@
 using System.Diagnostics;
 using System.IO.Pipelines;
 using System.Text.Json;
-using HrtLab.TrajectoryParser.Abstractions;
-using HrtLab.TrajectoryParser.Models;
-using HrtLab.TrajectoryParser.Pipelines;
-using HrtLab.TrajectoryParser.Services;
+using WeaverLammpsHrt.TrajectoryParser.Abstractions;
+using WeaverLammpsHrt.TrajectoryParser.Models;
+using WeaverLammpsHrt.TrajectoryParser.Pipelines;
+using WeaverLammpsHrt.TrajectoryParser.Services;
 
-namespace HrtLab.TrajectoryParser;
+namespace WeaverLammpsHrt.TrajectoryParser;
 
 /// <summary>
 /// Application entry point configuring the ASP.NET Core 10 web microservice, zero-allocation trajectory 

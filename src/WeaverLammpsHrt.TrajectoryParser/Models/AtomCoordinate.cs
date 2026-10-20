@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace HrtLab.TrajectoryParser.Models;
+namespace WeaverLammpsHrt.TrajectoryParser.Models;
 
 /// <summary>
 /// Represents a single atom, nucleotide base, or coarse-grained particle in 3D computational space.

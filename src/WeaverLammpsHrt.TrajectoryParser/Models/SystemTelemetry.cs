@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace HrtLab.TrajectoryParser.Models;
+namespace WeaverLammpsHrt.TrajectoryParser.Models;
 
 /// <summary>
 /// Telemetry metrics capturing hardware accelerator status, memory performance, and GC pressure.

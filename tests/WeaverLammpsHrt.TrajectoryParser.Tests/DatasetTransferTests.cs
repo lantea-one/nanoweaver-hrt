@@ -1,13 +1,13 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using HrtLab.TrajectoryParser.Models;
-using HrtLab.TrajectoryParser.Services;
+using WeaverLammpsHrt.TrajectoryParser.Models;
+using WeaverLammpsHrt.TrajectoryParser.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
-namespace HrtLab.TrajectoryParser.Tests;
+namespace WeaverLammpsHrt.TrajectoryParser.Tests;
 
 /// <summary>
 /// Unit tests verifying cryptographic packaging, provenance verification, and tamper detection in <see cref="DatasetTransferService"/>.
