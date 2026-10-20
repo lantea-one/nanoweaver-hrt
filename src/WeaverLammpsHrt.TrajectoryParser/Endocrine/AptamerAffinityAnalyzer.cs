@@ -1,4 +1,6 @@
+using System.ComponentModel;
 using System.Text.Json.Serialization;
+using Swashbuckle.AspNetCore.Annotations;
 using WeaverLammpsHrt.TrajectoryParser.Models;
 
 namespace WeaverLammpsHrt.TrajectoryParser.Endocrine;
@@ -139,23 +141,27 @@ public static class AptamerAffinityAnalyzer
 /// <summary>
 /// Telemetry metrics summarizing binding stability and contact dynamics across a molecular trajectory.
 /// </summary>
+[SwaggerSchema(Title = "AptamerTrajectoryMetrics", Description = "Telemetry metrics summarizing binding stability, contacts, and occupancy ratio across a molecular trajectory.")]
 public sealed record AptamerTrajectoryMetrics
 {
     /// <summary>
     /// Name of the parsed simulation trajectory file.
     /// </summary>
+    [Description("Name of the parsed simulation trajectory file.")]
     [JsonPropertyName("trajectory_file")]
     public required string TrajectoryFileName { get; init; }
 
     /// <summary>
     /// Total number of coordinate frames evaluated.
     /// </summary>
+    [Description("Total number of coordinate frames evaluated.")]
     [JsonPropertyName("frames_analyzed")]
     public required long FramesAnalyzed { get; init; }
 
     /// <summary>
     /// Average number of active atomic contacts between the aptamer pocket and hormone ligand per frame.
     /// </summary>
+    [Description("Average number of active atomic contacts between the aptamer pocket and hormone ligand per frame.")]
     [JsonPropertyName("average_contacts_per_frame")]
     public required double AverageContactsPerFrame { get; init; }
 
@@ -163,12 +169,14 @@ public sealed record AptamerTrajectoryMetrics
     /// Proportion of frames (between 0.0 and 1.0) where the ligand maintained at least 3 active contacts in the pocket.
     /// Values above 0.85 indicate stable thermodynamic binding.
     /// </summary>
+    [Description("Proportion of frames (between 0.0 and 1.0) where the ligand maintained stable binding contacts.")]
     [JsonPropertyName("binding_occupancy_ratio")]
     public required double BindingOccupancyRatio { get; init; }
 
     /// <summary>
     /// Qualitative classification of binding stability based on trajectory occupancy.
     /// </summary>
+    [Description("Qualitative classification of binding stability (e.g. 'Stable High-Affinity Complex').")]
     [JsonPropertyName("stability_verdict")]
     public required string StabilityVerdict { get; init; }
 }

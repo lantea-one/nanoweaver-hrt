@@ -1,4 +1,6 @@
+using System.ComponentModel;
 using System.Text.Json.Serialization;
+using Swashbuckle.AspNetCore.Annotations;
 using WeaverLammpsHrt.TrajectoryParser.Genomics;
 
 namespace WeaverLammpsHrt.TrajectoryParser.Endocrine;
@@ -229,17 +231,21 @@ public sealed class EndocrineStateEngine
 /// <summary>
 /// Represents a discrete sample point along a simulated hormone concentration timeline.
 /// </summary>
+[SwaggerSchema(Title = "HormoneCurvePoint", Description = "Discrete sample point along a simulated 72-hour hormone concentration timeline.")]
 public sealed record HormoneCurvePoint
 {
     /// <summary>Elapsed hours from the initiation of the toggle transition.</summary>
+    [Description("Elapsed hours from the initiation of the toggle transition.")]
     [JsonPropertyName("hour")]
     public required int Hour { get; init; }
 
     /// <summary>Estradiol concentration in pmol/L.</summary>
+    [Description("17β-estradiol serum concentration in pmol/L.")]
     [JsonPropertyName("estradiol_pmol_l")]
     public required double EstradiolPmolL { get; init; }
 
     /// <summary>Testosterone concentration in nmol/L.</summary>
+    [Description("Total testosterone serum concentration in nmol/L.")]
     [JsonPropertyName("testosterone_nmol_l")]
     public required double TestosteroneNmolL { get; init; }
 }

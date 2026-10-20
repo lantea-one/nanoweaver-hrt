@@ -1,4 +1,6 @@
+using System.ComponentModel;
 using System.Text.Json.Serialization;
+using Swashbuckle.AspNetCore.Annotations;
 
 namespace WeaverLammpsHrt.TrajectoryParser.Security.Models;
 
@@ -16,35 +18,41 @@ namespace WeaverLammpsHrt.TrajectoryParser.Security.Models;
 /// <strong>How it works:</strong> Stores algorithm names, key identifiers, and Base64-encoded binary key spans.
 /// </para>
 /// </remarks>
+[SwaggerSchema(Title = "PqcKeyMaterial", Description = "Post-quantum cryptographic key material containing public and optional private keys (e.g. ML-KEM-768 or ML-DSA-65).")]
 public sealed record PqcKeyMaterial
 {
     /// <summary>
     /// Gets the unique identifier for this key pair.
     /// </summary>
+    [Description("Unique key identifier or fingerprint.")]
     [JsonPropertyName("keyId")]
     public string KeyId { get; init; } = string.Empty;
 
     /// <summary>
     /// Gets the formal cryptographic algorithm identifier (e.g. "ML-KEM-768" or "ML-DSA-65").
     /// </summary>
+    [Description("Post-quantum cryptographic algorithm identifier (e.g. ML-KEM-768, ML-DSA-65).")]
     [JsonPropertyName("algorithm")]
     public string Algorithm { get; init; } = string.Empty;
 
     /// <summary>
     /// Gets the Base64-encoded public key bytes.
     /// </summary>
+    [Description("Base64-encoded public key bytes.")]
     [JsonPropertyName("publicKey")]
     public string PublicKeyBase64 { get; init; } = string.Empty;
 
     /// <summary>
     /// Gets the Base64-encoded private key bytes, or null if this instance represents a public-only key.
     /// </summary>
+    [Description("Base64-encoded private key bytes, or null if this is a public-only key container.")]
     [JsonPropertyName("privateKey")]
     public string? PrivateKeyBase64 { get; init; }
 
     /// <summary>
     /// Gets the UTC timestamp when this key pair was generated.
     /// </summary>
+    [Description("UTC timestamp when this key pair was generated.")]
     [JsonPropertyName("createdAtUtc")]
     public DateTimeOffset CreatedAtUtc { get; init; } = DateTimeOffset.UtcNow;
 }

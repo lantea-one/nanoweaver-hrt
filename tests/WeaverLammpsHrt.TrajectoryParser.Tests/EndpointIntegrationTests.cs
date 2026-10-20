@@ -510,4 +510,62 @@ public sealed class EndpointIntegrationTests : IClassFixture<WebApplicationFacto
         Assert.Equal("GGCC", seqMutated.Sequence);
         Assert.Equal(TherapeuticRegimen.FemaleToMale, seqMutated.Regimen);
     }
+
+    /// <summary>
+    /// Verifies that the Swagger JSON specification and interactive UI pages return HTTP 200 OK with expected content.
+    /// </summary>
+    /// <returns>A <see cref="Task"/> representing the asynchronous test operation.</returns>
+    [Fact]
+    public async Task SwaggerAndReDoc_Endpoints_ShouldReturnOkAndValidContent()
+    {
+        // WHAT: Tests GET /swagger/v1/swagger.json, /swagger/index.html, and /documentation/index.html.
+        // WHY:  Ensures the OpenAPI specification, Swagger UI, and ReDoc documentation are successfully hosted.
+        // HOW:  Issues HTTP GET requests to each endpoint and asserts 200 OK and matching markup/JSON signatures.
+
+        // Path 1: Swagger JSON specification
+        HttpResponseMessage specResponse = await _client.GetAsync("/swagger/v1/swagger.json");
+        Assert.Equal(HttpStatusCode.OK, specResponse.StatusCode);
+        string specJson = await specResponse.Content.ReadAsStringAsync();
+        Assert.Contains("\"openapi\": \"3.0", specJson);
+        Assert.Contains("/api/datasets", specJson);
+        Assert.Contains("EncryptedEnvelope", specJson);
+
+        // Path 2: Swagger UI HTML page
+        HttpResponseMessage swaggerUiResponse = await _client.GetAsync("/swagger/index.html");
+        Assert.Equal(HttpStatusCode.OK, swaggerUiResponse.StatusCode);
+        string swaggerUiHtml = await swaggerUiResponse.Content.ReadAsStringAsync();
+        Assert.Contains("swagger-ui", swaggerUiHtml);
+
+        // Path 3: ReDoc HTML documentation page
+        HttpResponseMessage redocResponse = await _client.GetAsync("/documentation/index.html");
+        Assert.Equal(HttpStatusCode.OK, redocResponse.StatusCode);
+        string redocHtml = await redocResponse.Content.ReadAsStringAsync();
+        Assert.Contains("redoc", redocHtml);
+    }
+
+    /// <summary>
+    /// Verifies that /swagger and /documentation redirect to their respective index.html files.
+    /// </summary>
+    /// <returns>A <see cref="Task"/> representing the asynchronous test operation.</returns>
+    [Fact]
+    public async Task SwaggerAndReDoc_Redirects_ShouldRedirectToIndex()
+    {
+        // WHAT: Tests redirect endpoints GET /swagger and GET /documentation without following redirects.
+        // WHY:  Guarantees that users navigating to clean URLs receive 302 redirects to index.html.
+        // HOW:  Creates an HttpClient with AllowAutoRedirect disabled and validates status code and Location header.
+        HttpClient redirectClient = _factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        // Path 1: /swagger -> swagger/index.html
+        HttpResponseMessage swaggerRedirect = await redirectClient.GetAsync("/swagger");
+        Assert.True(swaggerRedirect.StatusCode == HttpStatusCode.MovedPermanently || swaggerRedirect.StatusCode == HttpStatusCode.Redirect);
+        Assert.EndsWith("swagger/index.html", swaggerRedirect.Headers.Location?.OriginalString);
+
+        // Path 2: /documentation -> documentation/index.html
+        HttpResponseMessage docRedirect = await redirectClient.GetAsync("/documentation");
+        Assert.True(docRedirect.StatusCode == HttpStatusCode.MovedPermanently || docRedirect.StatusCode == HttpStatusCode.Redirect);
+        Assert.EndsWith("documentation/index.html", docRedirect.Headers.Location?.OriginalString);
+    }
 }

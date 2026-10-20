@@ -44,14 +44,15 @@ flowchart TD
 
 Choose the reverse proxy option that best matches your infrastructure and comfort level:
 
-| Feature / Consideration | Caddy (Recommended) | Nginx + Certbot | Traefik v3 | Cloudflare Tunnel |
-| :--- | :--- | :--- | :--- | :--- |
-| **Ease of Setup** | **Easiest (1 config file)** | Moderate | Moderate | Easy |
-| **SSL/TLS Certificates** | **100% Automatic** | Automated via companion | Automatic ACME | Automatic at Cloudflare Edge |
-| **Requires Open Router Ports?** | Yes (80 & 443) | Yes (80 & 443) | Yes (80 & 443) | **No (Bypasses CGNAT)** |
-| **Blazor WebSockets** | Automatic passthrough | Requires `map` directive | Automatic | Automatic |
-| **HTTP/3 (QUIC) Support** | Out-of-the-box | Requires Nginx 1.25+ | Out-of-the-box | Out-of-the-box |
-| **Hardened Compose File** | `compose/docker-compose.public-caddy.yml` | `compose/docker-compose.public-nginx.yml` | In-line snippet below | `compose/docker-compose.public-cloudflare.yml` |
+| Feature / Consideration | Caddy (Docker) | Nginx (Docker) | Cloudflare Tunnel | Tailscale (Funnel & Mesh) | Native Host Caddy | Native Host Nginx |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Ease of Setup** | **Easiest** | Moderate | Easy | **Easiest** | Easy | Moderate |
+| **SSL/TLS Certificates** | **100% Automatic** | Automated via Certbot container | Managed at Cloudflare Edge | Automatic Let's Encrypt | **100% Automatic** | Managed via Host Certbot |
+| **Requires Open Router Ports?** | Yes (80 & 443) | Yes (80 & 443) | **No (Zero open ports)** | **No (Zero open ports)** | Yes (80 & 443) | Yes (80 & 443) |
+| **CGNAT / Firewall Bypass** | No | No | **Yes** | **Yes** | No | No |
+| **Blazor WebSockets** | Automatic | Configured | Automatic | Automatic | Automatic | Configured |
+| **HTTP/3 (QUIC) Support** | Out-of-the-box | Requires Nginx 1.25+ | Out-of-the-box | Out-of-the-box | Out-of-the-box | Requires Nginx 1.25+ |
+| **Deployment Method** | Compose Overlay | Compose Overlay | Compose Overlay | Host CLI (`tailscale funnel`) | Host systemd + package | Host systemd + package |
 
 ---
 
@@ -267,11 +268,279 @@ Within seconds, your sovereign Web UI will be securely reachable at `https://hrt
 
 ---
 
-## 8. Hardening Checklist & Security Verification
+## 8. Option 5: Tailscale (Encrypted Mesh, MagicDNS, Serve & Funnel)
+
+**Tailscale** is an open-source-based mesh VPN built directly on WireGuard. It connects your servers, developer workstations, laptops, and mobile devices into a private, encrypted peer-to-peer network (called a **tailnet**).
+
+Tailscale provides two distinct patterns for accessing your sovereign node:
+1. **Private Mesh Access (MagicDNS & Tailscale Serve):** Grants secure, end-to-end encrypted access strictly to your authenticated devices with zero internet exposure.
+2. **Public Internet Access (Tailscale Funnel):** Publishes your sovereign node to the global internet with automated Let's Encrypt certificates without opening router ports or configuring DDNS.
+
+```mermaid
+flowchart TD
+    subgraph TailscaleOptions["Tailscale Connectivity Modes"]
+        subgraph ModeA["Mode A: Private Mesh (Zero Exposure)"]
+            AuthDevice["Authorized Device<br>(Laptop / Phone)"] -->|WireGuard Mesh| TSNode["weaver-node:5000<br>(Private MagicDNS)"]
+        end
+        subgraph ModeB["Mode B: Tailscale Funnel (Public Internet)"]
+            PublicUser["Public User<br>(Any Browser)"] -->|Public HTTPS :443| TSFunnelEdge["Tailscale Funnel Edge<br>(Automated Let's Encrypt)"]
+            TSFunnelEdge -->|Encrypted WireGuard| TSHost["Local Node :5000<br>(Zero Router Ports)"]
+        end
+    end
+```
+
+### 8.1. Installing Tailscale on Host
+Install Tailscale on your Linux host machine:
+
+```bash
+# 1. Install Tailscale package
+curl -fsSL https://tailscale.com/install.sh | sh
+
+# 2. Authenticate and join your tailnet
+sudo tailscale up
+```
+
+### 8.2. Mode A: Private Mesh Access via MagicDNS
+If you only need private access for yourself and trusted lab collaborators:
+- Once connected, Tailscale assigns your node a unique **MagicDNS** name (e.g. `weaver-node.your-tailnet.ts.net`).
+- Any device connected to your tailnet can navigate directly to `http://weaver-node:5000` or use Tailscale Serve to enable automatic HTTPS:
+  ```bash
+  # Enable local TLS termination inside your tailnet
+  sudo tailscale serve --bg 5000
+  ```
+- Your node is reachable via `https://weaver-node.your-tailnet.ts.net` with zero TLS warnings and zero public exposure.
+
+### 8.3. Mode B: Public Access via Tailscale Funnel (No Open Ports)
+If you want anyone on the public internet to reach your sovereign node (e.g. for external patients, open-science collaborators, or public API access), use **Tailscale Funnel**:
+
+1. In your [Tailscale Admin Console](https://login.tailscale.com/admin/acls), ensure the `funnel` capability is enabled in Access Controls (`tailscale.com/cap/funnel`).
+2. Run the funnel command on your host:
+   ```bash
+   # Enable Tailscale Funnel on port 443 forwarding to internal port 5000
+   sudo tailscale funnel 443 on
+   sudo tailscale serve --bg 5000
+   ```
+3. Check status:
+   ```bash
+   sudo tailscale funnel status
+   ```
+
+Tailscale automatically provisions a Let's Encrypt certificate for your node's public hostname. The public internet can reach your sovereign Web UI and API at `https://weaver-node.your-tailnet.ts.net` with zero firewall holes on your local router.
+
+---
+
+## 9. Option 6: Native Standalone Nginx (No Docker Compose)
+
+For bare-metal dedicated servers, high-performance computing (HPC) nodes, or Linux virtual machines running the Trajectory Parser directly via `systemd`, configure a native host Nginx reverse proxy.
+
+### 9.1. Create Systemd Service Unit
+Create `/etc/systemd/system/weaver-hrt.service` to manage the .NET 10 microservice:
+
+```ini
+[Unit]
+Description=Weaver-LAMMPS-HRT Trajectory Parser & Sovereign Web UI
+After=network.target
+
+[Service]
+Type=simple
+User=weaver
+WorkingDirectory=/opt/weaver-lammps-hrt
+ExecStart=/usr/bin/dotnet run --project /opt/weaver-lammps-hrt/src/WeaverLammpsHrt.TrajectoryParser/WeaverLammpsHrt.TrajectoryParser.csproj --configuration Release --no-restore
+Restart=always
+RestartSec=5
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=ASPNETCORE_URLS=http://127.0.0.1:5000
+Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start the service:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now weaver-hrt
+sudo systemctl status weaver-hrt
+```
+
+### 9.2. Standalone Nginx Configuration
+Create `/etc/nginx/sites-available/weaver-lammps-hrt`:
+
+```nginx
+upstream weaver_backend {
+    server 127.0.0.1:5000;
+}
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name hrt.yourdomain.org;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
+
+    location / {
+        return 301 https://hrt.yourdomain.org$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name hrt.yourdomain.org;
+
+    ssl_certificate /etc/letsencrypt/live/hrt.yourdomain.org/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/hrt.yourdomain.org/privkey.pem;
+
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
+    ssl_prefer_server_ciphers off;
+
+    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+
+    client_max_body_size 500M;
+
+    location / {
+        proxy_pass http://weaver_backend;
+
+        # WebSocket upgrades for Blazor Server & SignalR
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        # Forwarded identity headers
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Zero buffering for real-time 60 FPS trajectory streams
+        proxy_buffering off;
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
+    }
+}
+```
+
+### 9.3. Issue Free Let's Encrypt Certificate
+Install Certbot, link the site configuration, and request the certificate:
+
+```bash
+# 1. Install Nginx and Certbot
+sudo apt update && sudo apt install -y nginx certbot python3-certbot-nginx
+
+# 2. Enable site configuration
+sudo ln -s /etc/nginx/sites-available/weaver-lammps-hrt /etc/nginx/sites-enabled/
+sudo nginx -t
+
+# 3. Obtain certificate via Certbot Nginx plugin
+sudo certbot --nginx -d hrt.yourdomain.org --agree-tos --email admin@yourdomain.org
+
+# 4. Reload Nginx
+sudo systemctl reload nginx
+```
+
+---
+
+## 10. Option 7: Native Standalone Caddy (No Docker Compose)
+
+For researchers preferring the simplest native reverse proxy on bare metal or VMs, Caddy runs as a native system package with automatic Let's Encrypt SSL.
+
+### 10.1. Install Caddy on Host
+```bash
+sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+sudo apt update && sudo apt install -y caddy
+```
+
+### 10.2. Standalone Caddyfile Configuration
+Edit `/etc/caddy/Caddyfile`:
+
+```caddy
+{
+    email admin@yourdomain.org
+}
+
+hrt.yourdomain.org {
+    # Response compression
+    encode zstd gzip
+
+    # Support up to 500MB dataset and trajectory uploads
+    request_body {
+        max_size 500MB
+    }
+
+    # Hardened Security Headers
+    header {
+        Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        -Server
+    }
+
+    # Low-latency proxying to local Kestrel service
+    reverse_proxy 127.0.0.1:5000 {
+        flush_interval -1
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-Host {host}
+        header_up X-Real-IP {remote_host}
+    }
+}
+```
+
+### 10.3. Apply and Validate Caddy Configuration
+```bash
+# Validate syntax
+sudo caddy validate --config /etc/caddy/Caddyfile
+
+# Reload Caddy service
+sudo systemctl reload caddy
+```
+
+Caddy immediately contacts Let's Encrypt, binds ports 80 and 443, provisions the certificate, and begins proxying traffic to your local Trajectory Parser service.
+
+---
+
+## 11. Interactive API Documentation (Swagger & ReDoc)
+
+The sovereign node automatically hosts self-documenting OpenAPI 3.0 endpoints. These interfaces provide comprehensive API exploration for biomedical engineers, lab automation tools, and remote peers.
+
+```mermaid
+flowchart LR
+    Proxy["Reverse Proxy<br>(Caddy / Nginx / Tailscale / Cloudflare)"]
+    
+    Proxy -->|GET /swagger| SwaggerUI["Swagger UI Playground<br>(/swagger/index.html)<br>- Interactive API Calls<br>- Schema Inspection<br>- Model Validation"]
+    Proxy -->|GET /documentation| ReDoc["ReDoc 3-Column Reference<br>(/documentation/index.html)<br>- Domain Specifications<br>- Structured DTOs<br>- Pharma Integration"]
+    Proxy -->|GET /swagger/v1/swagger.json| Schema["OpenAPI 3.0 Specification<br>(/swagger/v1/swagger.json)<br>- Machine-Readable AST<br>- Client SDK Generators"]
+```
+
+### 11.1. Available Documentation Endpoints
+
+| Endpoint | Interface Type | Description |
+| :--- | :--- | :--- |
+| **`/swagger`** | **Swagger UI** | Interactive testing playground. Executes live HTTP calls, shows request schemas, parameter constraints, and real-time responses. Automatically redirects to `/swagger/index.html`. |
+| **`/documentation`** | **ReDoc** | Elegant, responsive 3-column API reference. Ideal for reading comprehensive model definitions, XML summaries, and protocol specifications. Automatically redirects to `/documentation/index.html`. |
+| **`/swagger/v1/swagger.json`** | **OpenAPI 3.0 JSON** | Raw OpenAPI 3.0 specification document containing full endpoint paths, request/response models, and cryptographic data contracts. |
+
+### 11.2. Reverse Proxy Transparency
+All 7 reverse proxy options described in this guide transparently forward `/swagger`, `/documentation`, and `/swagger/v1/swagger.json` directly to the Kestrel backend on port 5000 without requiring special URL rewriting or dedicated proxy blocks.
+
+---
+
+## 12. Hardening Checklist & Security Verification
 
 After deploying your public reverse proxy, perform the following verification steps to ensure your instance is completely hardened:
 
-### 8.1. Verify Security Response Headers
+### 12.1. Verify Security Response Headers
 Run `curl` against your public domain and confirm all security headers are present:
 
 ```bash
@@ -287,31 +556,40 @@ x-frame-options: SAMEORIGIN
 referrer-policy: strict-origin-when-cross-origin
 ```
 
-### 8.2. Verify SSL/TLS Rating (A+ Target)
+### 12.2. Verify SSL/TLS Rating (A+ Target)
 Test your domain using the free [Qualys SSL Labs SSL Server Test](https://www.ssllabs.com/ssltest/):
 - **Target Grade:** `A+`
 - **Protocols Allowed:** TLS 1.2 and TLS 1.3 only (TLS 1.0, 1.1, and SSLv3 must be disabled).
 - **Forward Secrecy:** Supported across all modern browser suites.
 
-### 8.3. Verify Blazor SignalR & WebSocket Connectivity
+### 12.3. Verify Blazor SignalR & WebSocket Connectivity
 1. Open your browser's Developer Tools (`F12`) and select the **Network** tab.
 2. Filter by **WS** (WebSockets).
 3. Navigate to `https://hrt.yourdomain.org`.
 4. Confirm that the connection to `wss://hrt.yourdomain.org/_blazor` returns **HTTP 101 Switching Protocols**.
 5. Switch to the **Trajectory Browser** tab; coordinate updates should stream smoothly at 60 FPS without disconnecting.
 
+### 12.4. Verify Swagger & ReDoc Access
+1. Navigate to `https://hrt.yourdomain.org/swagger`; verify the interactive Swagger UI loads with 34 decorated REST endpoints.
+2. Navigate to `https://hrt.yourdomain.org/documentation`; verify ReDoc loads the 3-column reference.
+3. Test an endpoint (e.g. `GET /api/datasets` or `GET /api/system/telemetry`) directly in the Swagger UI and confirm a successful `200 OK` response.
+
 ---
 
-## 9. Troubleshooting & FAQ
+## 13. Troubleshooting & FAQ
 
 ### Q: Why do I get `502 Bad Gateway`?
-- **Cause:** The reverse proxy cannot reach `trajectory-parser:5000`.
-- **Solution:** Verify both containers share the same Docker network:
+- **Cause:** The reverse proxy cannot reach `trajectory-parser:5000` or local port 5000.
+- **Solution:** Verify the backend service is running and listening:
   ```bash
+  # For Docker Compose:
   docker compose ps
   docker network inspect weaver-lammps-hrt_default
+
+  # For Native Host systemd:
+  sudo systemctl status weaver-hrt
+  curl -I http://127.0.0.1:5000/api/datasets
   ```
-  Ensure `weaver-parser` is healthy and listening on port 5000.
 
 ### Q: Why does the Blazor UI frequently disconnect or display "Attempting to reconnect"?
 - **Cause:** The reverse proxy's read/write timeout is terminating idle WebSocket connections.
@@ -319,4 +597,4 @@ Test your domain using the free [Qualys SSL Labs SSL Server Test](https://www.ss
 
 ### Q: Let's Encrypt fails with `Connection Refused` on port 80?
 - **Cause:** Port 80 is blocked by your ISP or not forwarded on your router.
-- **Solution:** Let's Encrypt requires port 80 to complete HTTP-01 domain ownership challenges. If port 80 is permanently blocked by your internet provider, switch to **Option 4 (Cloudflare Tunnels)** or use DNS-01 challenges via Caddy's Cloudflare DNS plugin.
+- **Solution:** Let's Encrypt requires port 80 to complete HTTP-01 domain ownership challenges. If port 80 is permanently blocked by your internet provider, switch to **Option 4 (Cloudflare Tunnels)** or **Option 5 (Tailscale Funnel)**, which bypass port 80 completely.

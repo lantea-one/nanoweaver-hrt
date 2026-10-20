@@ -1,4 +1,6 @@
+using System.ComponentModel;
 using System.Text.Json.Serialization;
+using Swashbuckle.AspNetCore.Annotations;
 
 namespace WeaverLammpsHrt.TrajectoryParser.Compliance;
 
@@ -18,41 +20,48 @@ namespace WeaverLammpsHrt.TrajectoryParser.Compliance;
 /// strips prohibited direct identifiers, and enforces GINA consent and purpose limitation flags.
 /// </para>
 /// </remarks>
+[SwaggerSchema(Title = "DeIdentificationResult", Description = "Output of HIPAA Safe Harbor (§ 164.514) and GDPR Article 9 pseudonymization process.")]
 public sealed record DeIdentificationResult
 {
     /// <summary>
     /// Gets the pseudonymized subject identifier (e.g. "sub_3f8a9c...").
     /// </summary>
+    [Description("Cryptographically derived pseudonymized subject identifier (e.g. sub_3f8a9c...).")]
     [JsonPropertyName("pseudonymSubjectId")]
     public string PseudonymSubjectId { get; init; } = string.Empty;
 
     /// <summary>
     /// Gets the cleaned, sanitized genomic sequence or SNP payload free of patient identity metadata.
     /// </summary>
+    [Description("Sanitized genomic or analytical data stripped of direct patient identifiers.")]
     [JsonPropertyName("sanitizedData")]
     public string SanitizedData { get; init; } = string.Empty;
 
     /// <summary>
     /// Gets a value indicating whether explicit subject consent was confirmed for GDPR Article 9 special category processing.
     /// </summary>
+    [Description("Indicates whether explicit subject consent was confirmed for GDPR Article 9 processing.")]
     [JsonPropertyName("gdprConsentConfirmed")]
     public bool GdprConsentConfirmed { get; init; }
 
     /// <summary>
     /// Gets a value indicating whether GINA non-discrimination and purpose limitation safeguards were verified.
     /// </summary>
+    [Description("Indicates whether GINA non-discrimination and purpose limitation safeguards were verified.")]
     [JsonPropertyName("ginaSafeguardVerified")]
     public bool GinaSafeguardVerified { get; init; }
 
     /// <summary>
     /// Gets the list of stripped direct identifier names detected in the input payload.
     /// </summary>
+    [Description("Collection of prohibited direct identifiers detected and removed from the payload.")]
     [JsonPropertyName("strippedIdentifiers")]
     public IReadOnlyList<string> StrippedIdentifiers { get; init; } = Array.Empty<string>();
 
     /// <summary>
     /// Gets the UTC timestamp when the de-identification operation occurred.
     /// </summary>
+    [Description("UTC timestamp when the de-identification operation was executed.")]
     [JsonPropertyName("deIdentifiedAtUtc")]
     public DateTimeOffset DeIdentifiedAtUtc { get; init; } = DateTimeOffset.UtcNow;
 }
