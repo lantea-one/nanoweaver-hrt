@@ -2,6 +2,7 @@
 
 * [**Overview & Vision**](index.md)
 * [**Getting Started & Deployment**](getting-started.md)
+* [**Secure Public Access & Reverse Proxies**](secure-public-access.md)
 * [**Guided DNA Workflow Wizard**](workflow-wizard.md)
 * [**Endocrine Hub & Pharmacodynamics**](endocrine-hub.md)
 * [**Configuration & Sovereign Peering**](configuration-peers.md)

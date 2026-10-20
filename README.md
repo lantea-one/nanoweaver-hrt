@@ -90,6 +90,26 @@ Utilizes the Kernel Fusion Driver (`/dev/kfd`):
 docker compose -f docker-compose.yml -f compose/docker-compose.radeon.yml up -d
 ```
 
+### 3. Run with Secure Public Access & Automated SSL Overlays
+Deploy to a public VPS, research lab server, or homelab with production TLS 1.3 encryption, automatic Let's Encrypt SSL certificates, and zero direct exposure of port 5000:
+- **Caddy (Automatic Let's Encrypt SSL - Recommended):**
+  ```bash
+  export DOMAIN="hrt.yourdomain.org"
+  export ACME_EMAIL="admin@yourdomain.org"
+  docker compose -f docker-compose.yml -f compose/docker-compose.public-caddy.yml up -d
+  ```
+- **Hardened Nginx with Certbot Companion:**
+  ```bash
+  export DOMAIN="hrt.yourdomain.org"
+  docker compose -f docker-compose.yml -f compose/docker-compose.public-nginx.yml up -d
+  ```
+- **Cloudflare Zero Trust Tunnel (Bypasses CGNAT & ISP Port Blocks):**
+  ```bash
+  export TUNNEL_TOKEN="eyJhIjoi..."
+  docker compose -f docker-compose.yml -f compose/docker-compose.public-cloudflare.yml up -d
+  ```
+> Consult the [**Secure Public Access & Reverse Proxies Guide**](docs/secure-public-access.md) for domain setup, firewall hardening, and A+ SSL configurations.
+
 ---
 
 ## 📊 Sovereign Web Dashboard (`http://localhost:5000`)
@@ -108,6 +128,7 @@ Comprehensive documentation, biomedical engineering primers, architectural diagr
 
 * **[Live Documentation Portal](https://lantea-one.github.io/dotnet-weaver-lammps-hrt/)** (GitHub Pages)
 * **[Getting Started & Deployment Guide](docs/getting-started.md)**: Local .NET 10 setup and Docker GPU overrides (Intel Arc, NVIDIA, AMD).
+* **[Secure Public Access & Reverse Proxies](docs/secure-public-access.md)**: Production deployment architectures, free Let's Encrypt SSL/TLS, Caddy, Nginx, Traefik, and Cloudflare Tunnels.
 * **[Guided DNA Origami Workflow Wizard](docs/workflow-wizard.md)**: 6-stage engineering pipeline from FASTA scaffold to benchtop synthesis.
 * **[Endocrine Hub & Pharmacodynamics](docs/endocrine-hub.md)**: In-vivo HPG axis feedback, bistable setpoints, and 72-hour kinetics.
 * **[Configuration & Sovereign Peering](docs/configuration-peers.md)**: Database precedence law, single-use share keys, and remote federation.

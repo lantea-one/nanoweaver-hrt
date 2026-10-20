@@ -93,6 +93,23 @@ Passes through `/dev/kfd` and `/dev/dri` with ROCm user permissions:
 docker compose -f docker-compose.yml -f compose/docker-compose.radeon.yml up -d
 ```
 
+### Scenario E: Secure Public Access with Automated Let's Encrypt SSL
+When deploying to a public VPS or homelab domain, use one of the hardened reverse proxy overlays (Caddy, Nginx, or Cloudflare Tunnel) to enforce HTTPS, eliminate cleartext HTTP, and auto-renew Let's Encrypt certificates:
+```bash
+# Option 1: Automatic Let's Encrypt TLS via Caddy (Recommended)
+export DOMAIN="hrt.yourdomain.org"
+export ACME_EMAIL="admin@yourdomain.org"
+docker compose -f docker-compose.yml -f compose/docker-compose.public-caddy.yml up -d
+
+# Option 2: Hardened Nginx with Certbot
+docker compose -f docker-compose.yml -f compose/docker-compose.public-nginx.yml up -d
+
+# Option 3: Cloudflare Zero Trust Tunnel (Bypasses CGNAT & ISP Port Blocks)
+export TUNNEL_TOKEN="your-token"
+docker compose -f docker-compose.yml -f compose/docker-compose.public-cloudflare.yml up -d
+```
+> For complete instructions on DNS setup, firewall rules, and reverse proxy architectures, consult the [**Secure Public Access & Reverse Proxies Guide**](secure-public-access.md).
+
 ### Verifying Container Health
 Check the status of running containers:
 ```bash
@@ -130,10 +147,17 @@ cd ../../..
 
 ```
 dotnet-weaver-lammps-hrt/
-├── compose/                              # Docker Compose GPU hardware overrides
+├── compose/                              # Docker Compose overrides (Hardware & Public Access)
+│   ├── caddy/                            # Hardened Caddy reverse proxy configuration
+│   │   └── Caddyfile                     # Automatic Let's Encrypt TLS & WebSocket proxy
+│   ├── nginx/                            # Hardened Nginx configuration template
+│   │   └── nginx.conf                    # Zero-buffering reverse proxy template
 │   ├── docker-compose.arc.yml            # Intel Arc A770 Level Zero override
 │   ├── docker-compose.nvidia.yml         # NVIDIA CUDA override
-│   └── docker-compose.radeon.yml         # AMD ROCm override
+│   ├── docker-compose.radeon.yml         # AMD ROCm override
+│   ├── docker-compose.public-caddy.yml   # Hardened Caddy + Let's Encrypt SSL override
+│   ├── docker-compose.public-nginx.yml   # Hardened Nginx + Certbot SSL override
+│   └── docker-compose.public-cloudflare.yml # Cloudflare Zero Trust Tunnel override
 ├── docs/                                 # GitHub Pages wiki documentation & images
 │   ├── images/                           # High-resolution UI screenshots
 │   └── index.md                          # Portal home
@@ -153,5 +177,6 @@ dotnet-weaver-lammps-hrt/
 ---
 
 ## Next Steps
+* Configure [**Secure Public Access & Reverse Proxies**](secure-public-access.md) if deploying your node to the internet.
 * Proceed to the [**Guided DNA Workflow Wizard**](workflow-wizard.md) to design your first targeted nanocarrier.
 * Explore the [**Endocrine Hub & Pharmacodynamics**](endocrine-hub.md) to understand in-vivo setpoint stabilization.

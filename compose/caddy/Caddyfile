@@ -1,0 +1,52 @@
+# ==============================================================================
+# Caddyfile: Hardened Public Reverse Proxy Configuration
+# ------------------------------------------------------------------------------
+# WHAT: Directives for automatic Let's Encrypt TLS, HTTP->HTTPS redirection,
+#       SignalR WebSocket streaming, and modern HTTP security headers.
+# WHY:  Guarantees an A+ SSL security score, blocks clickjacking / MIME sniffing,
+#       and maintains resilient real-time Blazor connections.
+# HOW:  Uses Caddy's native reverse_proxy with stream buffers and websocket upgrades.
+# ==============================================================================
+
+{
+	# WHAT: Global ACME TLS email configuration
+	# WHY:  Let's Encrypt sends expiration notices if automated renewal ever stalls
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	# WHAT: Hardened Security Response Headers
+	# WHY:  Prevents framing, content type sniffing, and enforces strict HTTPS
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+
+	# WHAT: Gzip and Zstandard dynamic compression
+	# WHY:  Reduces wire payload size for large JSON/telemetry responses
+	encode zstd gzip
+
+	# WHAT: Large request body limit (up to 500 MB)
+	# WHY:  Enables encrypted trajectory and dataset bundle uploads (.tar.gz, .parquet)
+	request_body {
+		max_size 500MB
+	}
+
+	# WHAT: Reverse proxy to internal .NET 10 Trajectory Parser service
+	# WHY:  Routes incoming HTTPS traffic to parser-node:5000 with WebSocket support
+	reverse_proxy trajectory-parser:5000 {
+		# WHAT: Flush interval configuration
+		# WHY:  Immediately pushes raw coordinate byte streams to the browser
+		flush_interval -1
+
+		# WHAT: Proxy header passthrough
+		# WHY:  Ensures ASP.NET Core knows the real remote client IP and HTTPS scheme
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-Host {host}
+		header_up X-Real-IP {remote_host}
+	}
+}

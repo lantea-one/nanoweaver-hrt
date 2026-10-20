@@ -1,0 +1,44 @@
+# ==============================================================================
+# Docker Compose Override: Cloudflare Zero Trust Tunnel (CGNAT / No Open Ports)
+# ------------------------------------------------------------------------------
+# WHAT: Outbound-only tunnel exposing the Trajectory Parser via Cloudflare's edge.
+# WHY:  Perfect for HomeLab / DIY researchers whose ISPs block inbound ports 80/443,
+#       or who operate behind Carrier-Grade NAT (CGNAT) without a public IPv4.
+# HOW:  Runs the lightweight `cloudflared` daemon which establishes an encrypted
+#       outbound QUIC/TLS tunnel to Cloudflare. No open router ports required!
+#
+# USAGE:
+#   # 1. Obtain your Tunnel Token from Cloudflare Zero Trust Dashboard:
+#   export TUNNEL_TOKEN="eyJhIjoi..."
+#
+#   # 2. Launch the stack:
+#   docker compose -f docker-compose.yml -f compose/docker-compose.public-cloudflare.yml up -d
+# ==============================================================================
+
+name: weaver-lammps-hrt
+
+services:
+  # ----------------------------------------------------------------------------
+  # Trajectory Parser Internal Port Rebinding
+  # Binds strictly to 127.0.0.1:5000 so the local host can inspect it if needed.
+  # ----------------------------------------------------------------------------
+  trajectory-parser:
+    ports: !override
+      - "127.0.0.1:5000:5000"
+
+  # ----------------------------------------------------------------------------
+  # Cloudflare Tunnel Daemon (cloudflared)
+  # ----------------------------------------------------------------------------
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: weaver-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+    depends_on:
+      - trajectory-parser
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true

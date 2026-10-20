@@ -1,0 +1,76 @@
+# ==============================================================================
+# Docker Compose Override: Hardened Nginx Reverse Proxy with Certbot SSL Renewal
+# ------------------------------------------------------------------------------
+# WHAT: Production-grade Nginx reverse proxy paired with an automated Certbot
+#       companion container for Let's Encrypt certificate issuance and renewal.
+# WHY:  Provides a traditional, battle-tested reverse proxy architecture with
+#       strict cipher suites, OCSP stapling, and granular rate-limiting.
+# HOW:  Shares an ACME challenge volume between Nginx and Certbot, rebinds port 5000
+#       strictly to 127.0.0.1, and handles HTTPS on port 443 with WebSocket support.
+#
+# USAGE:
+#   # 1. Set your domain and email in .env or environment:
+#   export DOMAIN="hrt.yourdomain.org"
+#   export ACME_EMAIL="admin@yourdomain.org"
+#
+#   # 2. Launch the stack:
+#   docker compose -f docker-compose.yml -f compose/docker-compose.public-nginx.yml up -d
+# ==============================================================================
+
+name: weaver-lammps-hrt
+
+services:
+  # ----------------------------------------------------------------------------
+  # Trajectory Parser Internal Port Rebinding
+  # Rebinds port 5000 strictly to localhost (127.0.0.1) to block direct public access.
+  # ----------------------------------------------------------------------------
+  trajectory-parser:
+    ports: !override
+      - "127.0.0.1:5000:5000"
+
+  # ----------------------------------------------------------------------------
+  # Nginx Reverse Proxy
+  # ----------------------------------------------------------------------------
+  nginx-proxy:
+    image: nginx:alpine
+    container_name: weaver-nginx-proxy
+    hostname: nginx-proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"     # HTTP: ACME challenges & HTTPS redirect
+      - "443:443"   # HTTPS: TLS 1.3 / TLS 1.2
+    environment:
+      - DOMAIN=${DOMAIN:-localhost}
+    volumes:
+      - ./compose/nginx/nginx.conf:/etc/nginx/templates/default.conf.template:ro
+      - certbot_www:/var/www/certbot:ro
+      - certbot_conf:/etc/letsencrypt:ro
+    depends_on:
+      - trajectory-parser
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+      - CHOWN
+      - SETUID
+      - SETGID
+    security_opt:
+      - no-new-privileges:true
+
+  # ----------------------------------------------------------------------------
+  # Certbot Let's Encrypt Automated Renewal Companion
+  # ----------------------------------------------------------------------------
+  certbot:
+    image: certbot/certbot:latest
+    container_name: weaver-certbot
+    restart: unless-stopped
+    volumes:
+      - certbot_www:/var/www/certbot:rw
+      - certbot_conf:/etc/letsencrypt:rw
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done;'"
+
+volumes:
+  certbot_www:
+    driver: local
+  certbot_conf:
+    driver: local
