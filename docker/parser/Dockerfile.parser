@@ -1,0 +1,53 @@
+# ==============================================================================
+# .NET 10 Zero-Allocation Parser & Sovereign Web Dashboard Container
+# ------------------------------------------------------------------------------
+# WHAT: High-performance microservice container running the ASP.NET Core 10 
+#       runtime, zero-allocation trajectory parser, and embedded Web UI.
+# WHY:  Enables sovereign lab nodes to stream, slice, and export massive molecular 
+#       simulations without GC overhead or host runtime dependencies.
+# HOW:  Multi-stage Dockerfile compiling with ReadyToRun optimizations and running 
+#       under server GC mode in a lightweight Linux container.
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# Build Stage (.NET 10 SDK)
+# ------------------------------------------------------------------------------
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+
+# Copy project manifest and restore dependencies
+COPY ["src/HrtLab.TrajectoryParser/HrtLab.TrajectoryParser.csproj", "HrtLab.TrajectoryParser/"]
+RUN dotnet restore "HrtLab.TrajectoryParser/HrtLab.TrajectoryParser.csproj"
+
+# Copy full source and publish with ReadyToRun ahead-of-time compilation
+COPY src/ .
+WORKDIR "/src/HrtLab.TrajectoryParser"
+RUN dotnet publish "HrtLab.TrajectoryParser.csproj" \
+    -c Release \
+    -o /app/publish \
+    --no-restore \
+    /p:PublishReadyToRun=true
+
+# ------------------------------------------------------------------------------
+# Runtime Stage (.NET 10 ASP.NET Runtime)
+# ------------------------------------------------------------------------------
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+WORKDIR /app
+
+# Copy compiled binaries from build stage
+COPY --from=build /app/publish .
+
+# High-performance server GC configuration
+ENV ASPNETCORE_URLS=http://+:5000 \
+    DOTNET_EnableDiagnostics=0 \
+    DOTNET_gcServer=1 \
+    DOTNET_GCName="" \
+    TRAJECTORY_INCOMING_DIR=/workspace/data \
+    TRAJECTORY_EXPORT_DIR=/workspace/exports
+
+# Mount points for shared simulation streams and cryptographic dataset exports
+VOLUME ["/workspace/data", "/workspace/exports"]
+
+EXPOSE 5000
+
+ENTRYPOINT ["dotnet", "HrtLab.TrajectoryParser.dll"]

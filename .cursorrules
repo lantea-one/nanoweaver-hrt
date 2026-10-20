@@ -1,0 +1,12 @@
+# Cursor Rules for HRT-Lab Project
+
+- Target: .NET 10 (C# 13), Docker Compose, SYCL/OpenCL, oxDNA, LAMMPS.
+- Style:
+  1. Every single type, method, property, field, and constant (public, internal, private) MUST have comprehensive XML docblocks (`/// <summary>`, `<param>`, `<returns>`, `<remarks>`).
+  2. Every complex block or loop must use the "What / Why / How" comment triad:
+     - `// WHAT: ...`
+     - `// WHY: ...`
+     - `// HOW: ...`
+  3. No string allocations (e.g. `string.Split`, regex, LINQ `.Select()`) in trajectory parsing code. Use `System.IO.Pipelines`, `ReadOnlySpan<byte>`, `SequenceReader<byte>`, and `Utf8Parser`.
+  4. Always explain biological / nanotechnology domain concepts in plain English so any software engineer or molecular biologist can understand and modify the code.
+  5. All structs representing coordinates or physics boundaries must be `readonly record struct` with sequential layout (`[StructLayout(LayoutKind.Sequential, Pack = 4)]`).

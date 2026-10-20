@@ -1,0 +1,29 @@
+# ==============================================================================
+# Sample oxDNA Input Configuration: DNA Origami Simulation Protocol
+# ------------------------------------------------------------------------------
+# WHAT: oxDNA input deck specifying simulation parameters, virtual temperature, 
+#       and backend hardware acceleration.
+# WHY:  Serves as the foundational template for coarse-grained DNA folding experiments.
+# HOW:  Configured for OpenCL/SYCL GPU acceleration with trajectory output to shared volume.
+# ==============================================================================
+
+# Simulation steps & integration
+steps = 10000
+dt = 0.003
+T = 300K
+salt_concentration = 1.0
+
+# Input files
+topology = /workspace/configs/duplex.top
+conf_file = /workspace/configs/duplex.conf
+
+# Output trajectories
+trajectory_file = /workspace/data/oxdna_trajectory.dat
+energy_file = /workspace/data/energy.dat
+print_conf_interval = 1000
+print_energy_every = 500
+
+# Accelerator backend (GPU / OpenCL)
+backend = OpenCL
+backend_precision = mixed
+device_id = 0

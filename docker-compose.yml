@@ -1,0 +1,72 @@
+# ==============================================================================
+# HRT-Lab: Sovereign Simulation & Zero-Allocation Parser Stack
+# ------------------------------------------------------------------------------
+# WHAT: Default Docker Compose stack running the hardware-accelerated simulation 
+#       engine and .NET 10 trajectory streaming parser.
+# WHY:  Provides a completely self-contained, reproducible environment ready to run 
+#       immediately with out-of-the-box support for Intel iGPUs and CPUs.
+# HOW:  Mounts /dev/dri for GPU acceleration, creates shared in-memory volumes, 
+#       and exposes the sovereign Web Dashboard on http://localhost:5000.
+#
+# HARDWARE OVERRIDES:
+#   - Intel Arc A770:  docker compose -f docker-compose.yml -f compose/docker-compose.arc.yml up -d
+#   - NVIDIA CUDA:     docker compose -f docker-compose.yml -f compose/docker-compose.nvidia.yml up -d
+#   - AMD Radeon:      docker compose -f docker-compose.yml -f compose/docker-compose.radeon.yml up -d
+# ==============================================================================
+
+name: hrt-lab
+
+services:
+  # ----------------------------------------------------------------------------
+  # Molecular Simulation Node (oxDNA & LAMMPS)
+  # Default Profile: Intel Integrated GPU (iGPU) & CPU Fallback
+  # ----------------------------------------------------------------------------
+  simulation:
+    build:
+      context: .
+      dockerfile: docker/simulation/Dockerfile.simulation
+    image: ghcr.io/${GITHUB_REPOSITORY:-hrt-lab}/simulation-engine:${TAG:-latest}
+    container_name: hrt-simulation
+    hostname: simulation-node
+    devices:
+      - "/dev/dri:/dev/dri"
+    group_add:
+      - "44"   # Host 'video' GID (verify with `getent group video | cut -d: -f3`)
+      - "109"  # Host 'render' GID (verify with `getent group render | cut -d: -f3`)
+    environment:
+      - ACCELERATOR_BACKEND=igpu
+      - ONEAPI_DEVICE_SELECTOR=opencl:gpu,cpu
+      - OCL_ICD_VENDORS=/etc/OpenCL/vendors
+    volumes:
+      - ./simulations/configs:/workspace/configs:ro
+      - ./simulations/shared-data:/workspace/data:rw
+      - ./simulations/exports:/workspace/exports:rw
+    ipc: host
+    shm_size: 4gb
+    restart: unless-stopped
+    command: ["sleep", "infinity"]
+
+  # ----------------------------------------------------------------------------
+  # Sovereign .NET 10 Zero-Allocation Parser & Web Dashboard
+  # ----------------------------------------------------------------------------
+  trajectory-parser:
+    build:
+      context: .
+      dockerfile: docker/parser/Dockerfile.parser
+    image: ghcr.io/${GITHUB_REPOSITORY:-hrt-lab}/trajectory-parser:${TAG:-latest}
+    container_name: hrt-parser
+    hostname: parser-node
+    ports:
+      - "5000:5000"
+    environment:
+      - ASPNETCORE_URLS=http://+:5000
+      - DOTNET_EnableDiagnostics=0
+      - DOTNET_gcServer=1
+      - TRAJECTORY_INCOMING_DIR=/workspace/data
+      - TRAJECTORY_EXPORT_DIR=/workspace/exports
+    volumes:
+      - ./simulations/shared-data:/workspace/data:rw
+      - ./simulations/exports:/workspace/exports:rw
+    depends_on:
+      - simulation
+    restart: unless-stopped

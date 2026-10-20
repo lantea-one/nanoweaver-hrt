@@ -1,0 +1,26 @@
+# ==============================================================================
+# Docker Compose Override: AMD Radeon GPUs (ROCm / OpenCL)
+# ------------------------------------------------------------------------------
+# WHAT: Hardware override configuring the simulation container to utilize AMD 
+#       Radeon GPUs via ROCm kernel drivers (/dev/kfd and /dev/dri).
+# WHY:  Ensures decentralized interoperability on nodes equipped with AMD Radeon 
+#       or Radeon Pro accelerators.
+# HOW:  Passes the Kernel Fusion Driver (/dev/kfd) and unconfines seccomp filter 
+#       to allow low-level GPU ring buffer access.
+#
+# USAGE:
+#   docker compose -f docker-compose.yml -f compose/docker-compose.radeon.yml up -d
+# ==============================================================================
+
+services:
+  simulation:
+    container_name: hrt-simulation-radeon
+    devices:
+      - "/dev/kfd:/dev/kfd"
+      - "/dev/dri:/dev/dri"
+    security_opt:
+      - seccomp=unconfined
+    environment:
+      - ACCELERATOR_BACKEND=amd-rocm
+      - ROC_ENABLE_PRE_VEGA=1
+      - HSA_OVERRIDE_GFX_VERSION=10.3.0

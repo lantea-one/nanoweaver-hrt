@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HRT-Lab: Sovereign Nanotechnology Node</title>
+    <link rel="stylesheet" href="css/app.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header class="navbar">
+        <div class="brand">
+            <span class="logo-dot"></span>
+            <div>
+                <h1>HRT-LAB <span class="tag">SOVEREIGN NODE</span></h1>
+                <p class="subtitle">Decentralized Synthetic Biology & DNA Origami Data Architecture</p>
+            </div>
+        </div>
+        <div class="node-status">
+            <div class="status-indicator">
+                <span class="pulse"></span>
+                <span id="node-name">NODE: CONNECTED</span>
+            </div>
+            <div class="badge badge-accent" id="accelerator-backend">DETECTING ACCELERATOR...</div>
+        </div>
+    </header>
+
+    <!-- Real-Time Zero-Allocation & Hardware Telemetry -->
+    <section class="telemetry-grid">
+        <div class="card stat-card">
+            <div class="stat-label">TOTAL FRAMES PARSED</div>
+            <div class="stat-value" id="stat-frames">0</div>
+            <div class="stat-sub">Zero-Allocation Pipelines</div>
+        </div>
+        <div class="card stat-card">
+            <div class="stat-label">GC PRESSURE (GEN 0 / 1 / 2)</div>
+            <div class="stat-value font-mono" id="stat-gc">0 / 0 / 0</div>
+            <div class="stat-sub text-success">Target: Zero GC Invocations</div>
+        </div>
+        <div class="card stat-card">
+            <div class="stat-label">HEAP MEMORY / WORKING SET</div>
+            <div class="stat-value font-mono" id="stat-mem">0.0 / 0.0 MB</div>
+            <div class="stat-sub">Server GC Mode Enabled</div>
+        </div>
+        <div class="card stat-card">
+            <div class="stat-label">NODE UPTIME</div>
+            <div class="stat-value font-mono" id="stat-uptime">00:00:00</div>
+            <div class="stat-sub">Continuous Operation</div>
+        </div>
+    </section>
+
+    <main class="content-grid">
+        <!-- Trajectory File Browser & Pipeline Slicer -->
+        <section class="card panel">
+            <div class="panel-header">
+                <h2>Active Simulation Trajectories</h2>
+                <button class="btn btn-secondary btn-sm" id="btn-refresh">Refresh List</button>
+            </div>
+            <p class="panel-desc">Molecular trajectory files discovered in the shared memory volume (<code>/workspace/data</code>).</p>
+            
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>File Name</th>
+                            <th>Format</th>
+                            <th>Size</th>
+                            <th>Last Modified</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="trajectories-body">
+                        <tr>
+                            <td colspan="5" class="empty-state">Loading simulation files...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="parse-console" class="console-box hidden">
+                <div class="console-header">PARSER OUTPUT TELEMETRY</div>
+                <div class="console-body" id="parse-output"></div>
+            </div>
+        </section>
+
+        <!-- Sovereign Import / Export Hub -->
+        <section class="card panel">
+            <div class="panel-header">
+                <h2>Sovereign Data Exchange</h2>
+            </div>
+            <p class="panel-desc">Cryptographically verified dataset export and import for decentralized research sharing.</p>
+
+            <!-- Export Section -->
+            <div class="transfer-box">
+                <h3>Package & Sign Dataset</h3>
+                <p class="subtext">Compiles trajectory data into a compressed tarball with a deterministic SHA-256 provenance manifest.</p>
+                <div class="form-group">
+                    <input type="text" id="export-name" class="input-text" placeholder="e.g., dna-origami-lattice-run1" />
+                    <button class="btn btn-primary" id="btn-export">Export Dataset</button>
+                </div>
+                <div id="export-result" class="result-box hidden">
+                    <div class="result-title">Provenance Manifest Generated:</div>
+                    <div class="hash-badge" id="export-hash">SHA-256: ...</div>
+                    <div class="mt-2">
+                        <a href="#" id="download-archive" class="btn btn-outline btn-sm">Download Archive (.tar.gz)</a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Import Section -->
+            <div class="transfer-box mt-4">
+                <h3>Verify & Import Peer Dataset</h3>
+                <p class="subtext">Upload a dataset tarball and its manifest. The cryptographic hash is verified before extracting.</p>
+                
+                <form id="import-form" class="drop-zone" enctype="multipart/form-data">
+                    <div class="drop-icon">🛡️</div>
+                    <p>Select both the <strong>.tar.gz</strong> archive and its <strong>.manifest.json</strong></p>
+                    <div class="file-inputs">
+                        <label class="file-label">
+                            <span>Archive (.tar.gz):</span>
+                            <input type="file" id="import-archive" accept=".tar.gz,.gz,.tar" required />
+                        </label>
+                        <label class="file-label">
+                            <span>Manifest (.json):</span>
+                            <input type="file" id="import-manifest" accept=".json" required />
+                        </label>
+                    </div>
+                    <button type="submit" class="btn btn-secondary mt-2" id="btn-import">Verify & Import</button>
+                </form>
+
+                <div id="import-status" class="result-box hidden"></div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <p>Decentralized Synthetic Biology & DNA Nanotechnology Platform &bull; HRT-Lab &bull; Open-Source & Sovereign</p>
+    </footer>
+
+    <script src="js/app.js"></script>
+</body>
+</html>

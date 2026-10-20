@@ -1,0 +1,27 @@
+# ==============================================================================
+# Docker Compose Override: Intel Arc A770 Discrete GPU (DG2 / Alchemist)
+# ------------------------------------------------------------------------------
+# WHAT: Hardware override configuring the simulation container to utilize the 
+#       full compute capacity of an Intel Arc discrete GPU (such as the A770 16GB).
+# WHY:  Enables hardware-accelerated Level Zero / SYCL / OpenCL execution on 
+#       supported compute nodes, scaling molecular simulation throughput.
+# HOW:  Passes DRI render nodes, configures oneAPI Level Zero device selector, 
+#       enables GPU sysman telemetry, and scales shared memory to 16GB.
+#
+# USAGE:
+#   docker compose -f docker-compose.yml -f compose/docker-compose.arc.yml up -d
+# ==============================================================================
+
+services:
+  simulation:
+    container_name: hrt-simulation-arc
+    environment:
+      - ACCELERATOR_BACKEND=arc-a770
+      - ONEAPI_DEVICE_SELECTOR=level_zero:gpu
+      - ZES_ENABLE_SYSMAN=1
+      - NEOReadDebugKeys=1
+      - IGC_EnableShaderCache=1
+    shm_size: 16gb
+    devices:
+      - "/dev/dri/card0:/dev/dri/card0"
+      - "/dev/dri/renderD128:/dev/dri/renderD128"

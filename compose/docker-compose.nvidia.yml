@@ -1,0 +1,27 @@
+# ==============================================================================
+# Docker Compose Override: NVIDIA CUDA / Container Toolkit
+# ------------------------------------------------------------------------------
+# WHAT: Hardware override configuring the simulation container to utilize 
+#       NVIDIA GPUs via NVIDIA Container Toolkit and CUDA/OpenCL.
+# WHY:  Allows collaborators running workstations or servers with NVIDIA hardware 
+#       to run the identical sovereign simulation pipeline.
+# HOW:  Requests GPU reservations via Docker Compose CDI/NVIDIA runtime driver.
+#
+# USAGE:
+#   docker compose -f docker-compose.yml -f compose/docker-compose.nvidia.yml up -d
+# ==============================================================================
+
+services:
+  simulation:
+    container_name: hrt-simulation-nvidia
+    environment:
+      - ACCELERATOR_BACKEND=nvidia-cuda
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: ["gpu"]
