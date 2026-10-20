@@ -15,17 +15,19 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
+# Copy Directory.Build.props to ensure workload resolver settings persist
+COPY Directory.Build.props ./
+
 # Copy project manifest and restore dependencies
 COPY ["src/WeaverLammpsHrt.TrajectoryParser/WeaverLammpsHrt.TrajectoryParser.csproj", "WeaverLammpsHrt.TrajectoryParser/"]
 RUN dotnet restore "WeaverLammpsHrt.TrajectoryParser/WeaverLammpsHrt.TrajectoryParser.csproj"
 
-# Copy full source and publish with ReadyToRun ahead-of-time compilation
-COPY src/ .
+# Copy source code and publish with ReadyToRun optimizations
+COPY src/WeaverLammpsHrt.TrajectoryParser/ WeaverLammpsHrt.TrajectoryParser/
 WORKDIR "/src/WeaverLammpsHrt.TrajectoryParser"
 RUN dotnet publish "WeaverLammpsHrt.TrajectoryParser.csproj" \
     -c Release \
     -o /app/publish \
-    --no-restore \
     /p:PublishReadyToRun=true
 
 # ------------------------------------------------------------------------------

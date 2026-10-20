@@ -9,7 +9,6 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}/trajectory-parser
 
 jobs:
   build-test-and-publish:
@@ -32,6 +31,14 @@ jobs:
 
       - name: Build and Test Solution
         run: dotnet test dotnet-weaver-lammps-hrt.sln --no-restore --configuration Release --verbosity normal
+
+      - name: Set Lowercase Image Name for GHCR
+        # WHAT: Format the container repository destination in all-lowercase.
+        # WHY:  The Open Container Initiative (OCI) and GitHub Container Registry (GHCR) enforce
+        #       lowercase image tags; any capitalized repository names cause immediate 400 rejection.
+        # HOW:  Transform $GITHUB_REPOSITORY using bash parameter expansion (${VAR,,}).
+        run: |
+          echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}/trajectory-parser" >> $GITHUB_ENV
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

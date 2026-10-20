@@ -1,0 +1,7 @@
+**/.git
+**/.github
+**/bin/
+**/obj/
+simulations/shared-data/
+simulations/exports/
+*.tar.gz
