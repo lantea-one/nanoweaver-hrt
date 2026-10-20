@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -366,5 +367,49 @@ public sealed class WebUiAndConfigurationTests : IClassFixture<WebApplicationFac
         Assert.NotNull(pkg);
         Assert.Equal(TherapeuticRegimen.FemaleToMale, pkg.Regimen);
         Assert.NotEmpty(pkg.StapleOligos);
+    }
+
+    /// <summary>
+    /// Verifies the native JavaScript charting and visualization engine executes with 100%
+    /// line and branch test coverage enforced via the Node.js native test runner.
+    /// </summary>
+    [Fact]
+    public void JavaScriptVisualizer_FullTestSuite_Achieves100PercentLineAndBranchCoverage()
+    {
+        // WHAT: Executes the native JavaScript visualization test suite.
+        // WHY:  Enforces identical build and coverage constraints (100% line and branch coverage) across JS and .NET code.
+        // HOW:  Runs 'node --test --experimental-test-coverage --test-coverage-branches=100 --test-coverage-lines=100 --test-coverage-functions=100'.
+        string repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+        string testFile = Path.Combine(repoRoot, "tests", "weaver-visualizer.test.mjs");
+
+        if (!File.Exists(testFile))
+        {
+            repoRoot = Directory.GetCurrentDirectory();
+            while (!File.Exists(Path.Combine(repoRoot, "tests", "weaver-visualizer.test.mjs")) && Directory.GetParent(repoRoot) != null)
+            {
+                repoRoot = Directory.GetParent(repoRoot)!.FullName;
+            }
+            testFile = Path.Combine(repoRoot, "tests", "weaver-visualizer.test.mjs");
+        }
+
+        Assert.True(File.Exists(testFile), $"Test file not found: {testFile}");
+
+        ProcessStartInfo psi = new()
+        {
+            FileName = "node",
+            Arguments = "--test --experimental-test-coverage --test-coverage-branches=100 --test-coverage-lines=100 --test-coverage-functions=100 tests/weaver-visualizer.test.mjs",
+            WorkingDirectory = repoRoot,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false
+        };
+
+        using Process proc = Process.Start(psi) ?? throw new InvalidOperationException("Failed to spawn node process");
+        string stdout = proc.StandardOutput.ReadToEnd();
+        string stderr = proc.StandardError.ReadToEnd();
+        proc.WaitForExit();
+
+        Assert.True(proc.ExitCode == 0, $"JavaScript tests failed with exit code {proc.ExitCode}.\nStdout:\n{stdout}\nStderr:\n{stderr}");
+        Assert.Contains("100.00 |   100.00 |  100.00", stdout);
     }
 }

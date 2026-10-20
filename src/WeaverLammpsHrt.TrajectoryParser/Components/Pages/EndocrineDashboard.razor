@@ -96,6 +96,21 @@
             </table>
         </div>
     </div>
+
+    <!-- Hypothalamic-Pituitary-Gonadal (HPG) Axis & Tissue Tropism -->
+    <div class="card panel mt-4">
+        <div class="panel-header">
+            <h3>Hypothalamic-Pituitary-Gonadal (HPG) Axis &amp; Nanocarrier Biodistribution</h3>
+            <span class="badge badge-accent">@(_activeProfile.TargetTissue)</span>
+        </div>
+        <p class="subtext">
+            Biomedical anatomical feedback circuit demonstrating localized anterior pituitary gonadotrope delivery, negative feedback loop suppression, and systemic receptor distribution.
+        </p>
+
+        <div class="canvas-box mt-3 mb-2" style="background: rgba(0,0,0,0.3); border-radius: 8px; padding: 1rem; border: 1px solid var(--border-color);">
+            <canvas id="canvas-anatomical-target" style="width: 100%; height: 340px;"></canvas>
+        </div>
+    </div>
 </div>
 
 @code {
@@ -139,6 +154,7 @@
         {
             var pts = _kineticsPoints.Select(p => new { hour = p.Hour, estradiolPmolL = p.EstradiolPmolL, testosteroneNmolL = p.TestosteroneNmolL }).ToArray();
             await JS.InvokeVoidAsync("WeaverVisualizer.renderKineticsChart", "canvas-endocrine-kinetics", pts, _activeProfile.TargetEstradiolPmolL, _activeProfile.TargetTestosteroneNmolL);
+            await JS.InvokeVoidAsync("WeaverVisualizer.renderAnatomicalTargeting", "canvas-anatomical-target", new { regimen = _activeProfile.Regimen.ToString(), targetTissue = _activeProfile.TargetTissue.ToString(), kdNanoMolar = _activeProfile.BindingAffinityKdTargetNanoMolar, targetE2 = _activeProfile.TargetEstradiolPmolL, targetT = _activeProfile.TargetTestosteroneNmolL });
         }
         catch (JSDisconnectedException)
         {

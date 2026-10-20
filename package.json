@@ -1,0 +1,20 @@
+{
+  "name": "dotnet-weaver-lammps-hrt",
+  "version": "1.0.0",
+  "description": "Decentralized Synthetic Biology, DNA Origami & Hormone Replacement Therapy Research Platform",
+  "private": true,
+  "scripts": {
+    "test": "node --test --experimental-test-coverage --test-coverage-branches=100 --test-coverage-lines=100 --test-coverage-functions=100 tests/weaver-visualizer.test.mjs"
+  },
+  "keywords": [
+    "synthetic-biology",
+    "dna-origami",
+    "hrt",
+    "lammps",
+    "oxdna",
+    "blazor",
+    "zero-allocation"
+  ],
+  "author": "Weaver-LAMMPS-HRT Contributors",
+  "license": "MIT"
+}

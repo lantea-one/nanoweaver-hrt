@@ -133,6 +133,20 @@
                 </div>
             </div>
 
+            <!-- Interactive 3D B-DNA Double Helix Folding & Base Pairing -->
+            <div class="card subpanel mt-3">
+                <div class="panel-header">
+                    <h4>3D B-DNA Double Helix Folding &amp; Base Pairing Projection</h4>
+                    <span class="badge badge-accent">10.5 bp/turn • 3.4 nm Pitch</span>
+                </div>
+                <p class="subtext">
+                    Orthographic 3D projection of anti-parallel 5'-to-3' and 3'-to-5' strands with color-coded hydrogen bond rungs (A-T cyan/rose, G-C emerald/amber) and natural major/minor groove geometry.
+                </p>
+                <div class="canvas-box mt-2 flex-center" style="background: rgba(0,0,0,0.3); border-radius: 8px; padding: 1rem; border: 1px solid var(--border-color);">
+                    <canvas id="canvas-dna-helix" style="width: 100%; height: 380px;"></canvas>
+                </div>
+            </div>
+
             <div class="wizard-actions mt-4 text-right">
                 <button class="btn btn-primary" @onclick="() => SetStep(2)">Proceed to Target Configuration →</button>
             </div>
@@ -214,6 +228,20 @@
                         <input type="range" min="1.0" max="30.0" step="0.5" class="slider" @bind="TargetKd" />
                         <span class="subtext">Lower Kd = tighter binding affinity. Ideal range for targeted sustained delivery is 2 to 10 nM.</span>
                     </div>
+                </div>
+            </div>
+
+            <!-- Anatomical HPG Axis & Patient Target Tropism -->
+            <div class="card subpanel mt-3">
+                <div class="panel-header">
+                    <h4>Hypothalamic-Pituitary-Gonadal (HPG) Axis &amp; Nanocarrier Biodistribution</h4>
+                    <span class="badge badge-outline">Patient Target Tropism</span>
+                </div>
+                <p class="subtext">
+                    Biomedical anatomical schematic illustrating aptamer-mediated nanocarrier delivery to anterior pituitary gonadotropes and negative feedback loop suppression.
+                </p>
+                <div class="canvas-box mt-2 flex-center" style="background: rgba(0,0,0,0.3); border-radius: 8px; padding: 1rem; border: 1px solid var(--border-color);">
+                    <canvas id="canvas-anatomical-target" style="width: 100%; height: 340px;"></canvas>
                 </div>
             </div>
 
@@ -974,6 +1002,11 @@
             if (CurrentStep == 1)
             {
                 await JS.InvokeVoidAsync("WeaverVisualizer.renderCompositionDoughnut", "canvas-composition", _baseA, _baseT, _baseG, _baseC, _gcPercent);
+                await JS.InvokeVoidAsync("WeaverVisualizer.renderDnaHelix", "canvas-dna-helix", new { sequence = InputSequence, numBasePairs = 18 });
+            }
+            else if (CurrentStep == 2)
+            {
+                await JS.InvokeVoidAsync("WeaverVisualizer.renderAnatomicalTargeting", "canvas-anatomical-target", new { regimen = SelectedRegimen.ToString(), targetTissue = "AnteriorPituitaryGonadotrope", kdNanoMolar = TargetKd, targetE2 = TargetEstradiolPmol, targetT = TargetTestosteroneNmol });
             }
             else if (CurrentStep == 5)
             {
