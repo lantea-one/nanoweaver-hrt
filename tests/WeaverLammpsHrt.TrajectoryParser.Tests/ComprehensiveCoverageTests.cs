@@ -334,7 +334,7 @@ public sealed class ComprehensiveCoverageTests : IClassFixture<WebApplicationFac
             await File.WriteAllTextAsync(Path.Combine(dataDir, "model.conf"), "conf");
             await File.WriteAllTextAsync(Path.Combine(dataDir, "script.in"), "in");
             await File.WriteAllTextAsync(Path.Combine(dataDir, "sample.dcd"), "dcd");
-            await File.WriteAllTextAsync(Path.Combine(dataDir, "sample.xyz"), "xyz");
+            await File.WriteAllTextAsync(Path.Combine(dataDir, "sample.xyz"), new string('X', 2048));
             await File.WriteAllTextAsync(Path.Combine(dataDir, "unknown.bin"), "bin");
 
             IConfiguration config = new ConfigurationBuilder()
@@ -374,6 +374,25 @@ public sealed class ComprehensiveCoverageTests : IClassFixture<WebApplicationFac
                 Directory.Delete(tempDir, recursive: true);
             }
         }
+    }
+
+    /// <summary>
+    /// Tests byte formatting across all order magnitudes and boundary conditions in <see cref="DatasetTransferService.FormatBytes"/>.
+    /// </summary>
+    [Fact]
+    public void DatasetTransferService_FormatBytes_AllMagnitudes()
+    {
+        // WHAT: Tests zero, small, kilobyte, megabyte, gigabyte, terabyte, and maximum integer scales.
+        // WHY:  Guarantees 100% line and branch coverage across both conditions in the scaling while loop.
+        // HOW:  Asserts formatted string suffixes and numeric values for each order boundary.
+        Assert.Equal("0 B", DatasetTransferService.FormatBytes(0));
+        Assert.Equal("500 B", DatasetTransferService.FormatBytes(500));
+        Assert.Equal("1 KB", DatasetTransferService.FormatBytes(1024));
+        Assert.Equal("1.5 KB", DatasetTransferService.FormatBytes(1536));
+        Assert.Equal("1 MB", DatasetTransferService.FormatBytes(1024 * 1024));
+        Assert.Equal("1 GB", DatasetTransferService.FormatBytes(1024L * 1024 * 1024));
+        Assert.Equal("1 TB", DatasetTransferService.FormatBytes(1024L * 1024 * 1024 * 1024));
+        Assert.Equal("8388608 TB", DatasetTransferService.FormatBytes(long.MaxValue));
     }
 
     /// <summary>

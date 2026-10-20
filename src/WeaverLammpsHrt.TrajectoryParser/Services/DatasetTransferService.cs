@@ -259,8 +259,11 @@ public sealed class DatasetTransferService : IDatasetManager
     /// </summary>
     /// <param name="bytes">The number of bytes to format.</param>
     /// <returns>A formatted string with size unit (e.g., "1.2 MB").</returns>
-    private static string FormatBytes(long bytes)
+    internal static string FormatBytes(long bytes)
     {
+        // WHAT: Converts a raw integer byte count into scaled decimal units (B, KB, MB, GB, TB).
+        // WHY:  Presents human-readable trajectory dataset file sizes in UI telemetry and directory listings.
+        // HOW:  Iteratively divides byte count by 1024 while advancing the unit suffix index.
         string[] suffixes = { "B", "KB", "MB", "GB", "TB" };
         int order = 0;
         double len = bytes;

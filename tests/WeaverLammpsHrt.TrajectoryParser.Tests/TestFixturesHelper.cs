@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace WeaverLammpsHrt.TrajectoryParser.Tests;
@@ -10,10 +11,36 @@ namespace WeaverLammpsHrt.TrajectoryParser.Tests;
 public static class TestFixturesHelper
 {
     /// <summary>
+    /// Initializes test fixtures automatically upon test assembly load.
+    /// </summary>
+    [ModuleInitializer]
+    internal static void InitializeModuleFixtures()
+    {
+        // WHAT: Guarantees test fixtures exist prior to the execution of any unit or integration tests.
+        // WHY:  Prevents race conditions in parallel xUnit test execution on fresh Git checkouts.
+        // HOW:  Resolves solution directory and invokes EnsureTestFixtures during module initialization.
+        string? current = AppContext.BaseDirectory;
+        while (!string.IsNullOrEmpty(current) && !File.Exists(Path.Combine(current, "dotnet-weaver-lammps-hrt.sln")))
+        {
+            string? parent = Directory.GetParent(current)?.FullName;
+            if (parent == current)
+            {
+                break;
+            }
+            current = parent;
+        }
+
+        if (!string.IsNullOrEmpty(current) && File.Exists(Path.Combine(current, "dotnet-weaver-lammps-hrt.sln")))
+        {
+            EnsureTestFixtures(Path.Combine(current, "simulations", "shared-data"));
+        }
+    }
+
+    /// <summary>
     /// Minimal multi-frame XYZ coordinate trajectory content.
     /// </summary>
     private const string SampleXyzContent =
-@"8
+@"16
 Timestep: 0 Lattice=""100.0 0.0 0.0 0.0 100.0 0.0 0.0 0.0 100.0""
 P   0.000000   10.000000    0.000000
 O   1.500000   10.200000    0.500000
@@ -23,7 +50,15 @@ P   0.000000   -10.000000   0.000000
 O   1.500000   -10.200000   0.500000
 C   2.200000   -11.000000   1.200000
 N   3.100000   -10.800000   2.000000
-8
+P   4.000000   10.000000    0.000000
+O   5.500000   10.200000    0.500000
+C   6.200000   11.000000    1.200000
+N   7.100000   10.800000    2.000000
+P   4.000000   -10.000000   0.000000
+O   5.500000   -10.200000   0.500000
+C   6.200000   -11.000000   1.200000
+N   7.100000   -10.800000   2.000000
+16
 Timestep: 100 Lattice=""100.0 0.0 0.0 0.0 100.0 0.0 0.0 0.0 100.0""
 P   0.120000   10.050000    0.080000
 O   1.580000   10.240000    0.550000
@@ -33,6 +68,14 @@ P  -0.080000   -9.940000    0.040000
 O   1.460000   -10.150000   0.480000
 C   2.180000   -10.930000   1.170000
 N   3.070000   -10.740000   1.950000
+P   4.120000   10.050000    0.080000
+O   5.580000   10.240000    0.550000
+C   6.270000   11.080000    1.240000
+N   7.150000   10.860000    2.060000
+P   3.920000   -9.940000    0.040000
+O   5.460000   -10.150000   0.480000
+C   6.180000   -10.930000   1.170000
+N   7.070000   -10.740000   1.950000
 ";
 
     /// <summary>

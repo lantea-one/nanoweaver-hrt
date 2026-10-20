@@ -1,4 +1,5 @@
 name: Build & Publish Trajectory Parser to GHCR
+run-name: "Gemini CLI Agent: ${{ github.event.head_commit.message || 'Build & Publish' }}"
 
 on:
   push:
@@ -67,6 +68,21 @@ jobs:
 
           print(f'Line Coverage: {line_rate:.2f}%')
           print(f'Branch Coverage: {branch_rate:.2f}%')
+
+          if line_rate < 100.0 or branch_rate < 100.0:
+              for pkg in root.findall('.//package'):
+                  for cls in pkg.findall('.//class'):
+                      c_line = float(cls.attrib.get('line-rate', 1)) * 100
+                      c_branch = float(cls.attrib.get('branch-rate', 1)) * 100
+                      if c_line < 100 or c_branch < 100:
+                          fname = cls.attrib.get('filename', '')
+                          cname = cls.attrib.get('name', '')
+                          print(f'::error file={fname}::{cname} uncovered (Line: {c_line:.2f}%, Branch: {c_branch:.2f}%)')
+                          for l in cls.findall('.//line'):
+                              if int(l.attrib.get('hits', 0)) == 0:
+                                  print(f'  Uncovered line: {l.attrib.get("number")}')
+                              if 'condition-coverage' in l.attrib and '100%' not in l.attrib['condition-coverage']:
+                                  print(f'  Uncovered branch: {l.attrib.get("number")} [{l.attrib.get("condition-coverage")}]')
 
           if line_rate < 100.0:
               print(f'::error::Line coverage ({line_rate:.2f}%) is below required 100.0% threshold!')
