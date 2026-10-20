@@ -1,0 +1,382 @@
+@page "/configuration"
+@inject IConfigurationRepository ConfigRepo
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<div class="config-container">
+    <div class="panel-header">
+        <div>
+            <h2>Authoritative Configuration &amp; Peer Collaboration</h2>
+            <p class="panel-desc">Configure external services, enforce database-wins overrides, and generate cryptographic single-use share links.</p>
+        </div>
+        <div class="badge badge-accent">BACKEND: @ConfigRepo.ActiveBackendName</div>
+    </div>
+
+    <!-- Precedence Callout Rule -->
+    <div class="callout-box mt-3">
+        <div class="callout-title">⚖️ Sovereign Architectural Rule: Database Precedence ("Database Wins")</div>
+        <div class="callout-item"><strong>WHAT:</strong> System settings stored in the persistent database supersede all other sources.</div>
+        <div class="callout-item"><strong>WHY:</strong> Stack environment variables do nothing if configuration exists in the database. This allows runtime reconfiguration for collaborative computing without taking down containers or modifying docker-compose files.</div>
+        <div class="callout-item"><strong>HOW:</strong> When you save a setting below, it is written to the database with an authoritative timestamp. Clicking 'Revert' purges the database override, restoring environment or default fallbacks.</div>
+    </div>
+
+    <!-- Active Configurations Table by Category -->
+    @foreach (string category in _categories)
+    {
+        <div class="card panel mt-4">
+            <div class="panel-header">
+                <h3>@category</h3>
+                <span class="badge badge-outline">@_configurations.Count(c => c.Category == category) Parameters</span>
+            </div>
+
+            <div class="table-container mt-2">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 25%;">Setting Key</th>
+                            <th style="width: 35%;">Active Value &amp; Source</th>
+                            <th style="width: 25%;">Description</th>
+                            <th style="width: 15%; text-align: right;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (ConfigurationItem item in _configurations.Where(c => c.Category == category))
+                        {
+                            <tr>
+                                <td>
+                                    <div class="font-mono text-accent">@item.Key</div>
+                                    <div class="subtext">Default: <code>@item.DefaultValue</code></div>
+                                </td>
+                                <td>
+                                    <div class="config-input-group">
+                                        <input type="text" class="input-text font-mono" @bind="_editValues[item.Key]" />
+                                        <span class="badge @GetSourceBadgeClass(item.Source)">
+                                            @GetSourceBadgeLabel(item.Source)
+                                        </span>
+                                    </div>
+                                    @if (item.LastUpdatedUtc.HasValue)
+                                    {
+                                        <div class="subtext">Overridden at @item.LastUpdatedUtc.Value.ToString("u")</div>
+                                    }
+                                </td>
+                                <td class="subtext">@item.Description</td>
+                                <td class="text-right">
+                                    <div class="btn-group">
+                                        <button class="btn btn-sm btn-primary" @onclick="() => SaveOverrideAsync(item.Key)">
+                                            Save DB
+                                        </button>
+                                        @if (item.Source == ConfigurationSource.DatabaseOverride)
+                                        {
+                                            <button class="btn btn-sm btn-outline" @onclick="() => RevertDefaultAsync(item.Key)">
+                                                Revert
+                                            </button>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+
+    <!-- ================================================================= -->
+    <!-- SECTION 2: Single-Use Share Keys & Peer Federation               -->
+    <!-- ================================================================= -->
+    <div class="card panel mt-5">
+        <div class="panel-header">
+            <div>
+                <h2>Collaborative Computing &amp; Single-Use Share Links</h2>
+                <p class="panel-desc">Generate secure, single-use federation links to connect external UI instances to this local node.</p>
+            </div>
+            <span class="badge badge-accent">AUTHENTICATED PEER FEDERATION</span>
+        </div>
+
+        <div class="callout-box mt-2">
+            <div class="callout-title">🔗 How Single-Use Collaborative Links Work</div>
+            <div class="callout-item"><strong>WHAT:</strong> Single-use invitation tokens allow a peer researcher running another UI instance to securely peer with your local node.</div>
+            <div class="callout-item"><strong>WHY:</strong> Eliminates the need to expose long-lived master passwords or open unrestricted endpoints over the public network.</div>
+            <div class="callout-item"><strong>HOW:</strong> The link contains a 256-bit cryptographic token (<code>nanoweaver_hrt_...</code>). Once an external instance opens the link or redeems the key, it is consumed atomically in the database and cannot be used again.</div>
+        </div>
+
+        <!-- Share Key Creation Form -->
+        <div class="share-generator-card card mt-3">
+            <h4>Generate New Single-Use Share Link</h4>
+            <div class="form-grid-3col mt-2">
+                <div>
+                    <label class="form-label">Collaborator Label / Host Description:</label>
+                    <input type="text" class="input-text" @bind="_newKeyLabel" placeholder="e.g., Remote Analysis Laptop - Lab 4" />
+                </div>
+                <div>
+                    <label class="form-label">Link Expiration Window:</label>
+                    <select class="input-select" @bind="_newKeyExpirationWindow">
+                        <option value="1h">1 Hour (Single Session)</option>
+                        <option value="4h">4 Hours (Standard Working Session)</option>
+                        <option value="24h">24 Hours (Full Day Collaboration)</option>
+                        <option value="7d">7 Days (Extended Compute Run)</option>
+                        <option value="1m">1 Month (Monthly Research Sprint)</option>
+                        <option value="1y">1 Year (Long-Term Peer Node)</option>
+                        <option value="never">Never (Permanent Sovereign Key)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label">Access Permissions Scope:</label>
+                    <select class="input-select" @bind="_newKeyPermissions">
+                        <option value="FullCollaborator">Full Collaborator (Simulate, Stream, Export)</option>
+                        <option value="ReadOnlyTelemetry">Read-Only Telemetry &amp; Trajectory Viewer</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="mt-3 text-right">
+                <button class="btn btn-accent" @onclick="CreateShareKeyAsync">
+                    🔑 Generate Single-Use Share Link
+                </button>
+            </div>
+
+            @if (_newlyGeneratedKey != null)
+            {
+                <div class="generated-link-box mt-3">
+                    <div class="link-header">
+                        <span class="text-success font-bold">✔ Single-Use Share Link Generated Successfully!</span>
+                        <span class="subtext">Expiration Window: @_newKeyExpirationWindow</span>
+                    </div>
+                    <div class="link-display font-mono mt-1">@_generatedShareUrl</div>
+                    <div class="mt-2 flex-between">
+                        <span class="subtext text-warning">⚠ This link can only be redeemed once. Once connected, it is consumed.</span>
+                        <button class="btn btn-sm btn-primary" @onclick="CopyShareLinkToClipboard">
+                            📋 Copy Link to Clipboard
+                        </button>
+                    </div>
+                </div>
+            }
+        </div>
+
+        <!-- Existing Share Keys Catalog -->
+        <div class="mt-4">
+            <h4>Generated Share Keys &amp; Connected Remote Instances</h4>
+            <div class="table-container mt-2">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Token ID</th>
+                            <th>Collaborator Label</th>
+                            <th>Created</th>
+                            <th>Expires</th>
+                            <th>Single-Use Status</th>
+                            <th>Remote Peer Connected</th>
+                            <th class="text-right">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (_shareKeys.Count == 0)
+                        {
+                            <tr><td colspan="7" class="empty-state">No share links have been generated yet. Create one above to collaborate.</td></tr>
+                        }
+                        else
+                        {
+                            @foreach (ShareKeyRecord key in _shareKeys)
+                            {
+                                <tr>
+                                    <td class="font-mono text-accent">@key.TokenId</td>
+                                    <td><strong>@key.Label</strong> <span class="subtext">(@key.Permissions)</span></td>
+                                    <td class="subtext">@key.CreatedAtUtc.ToString("MM/dd HH:mm")</td>
+                                    <td class="subtext font-mono">@(key.IsNeverExpires ? "Never" : key.ExpiresAtUtc.ToString("MM/dd HH:mm"))</td>
+                                    <td>
+                                        @if (key.IsConsumed)
+                                        {
+                                            <span class="badge badge-accent">Consumed (Active Session)</span>
+                                        }
+                                        else if (key.IsActive)
+                                        {
+                                            <span class="badge badge-success">Active (Single-Use Ready)</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge badge-rose">Expired</span>
+                                        }
+                                    </td>
+                                    <td class="font-mono">
+                                        @(key.RemotePeerInfo ?? "-- Awaiting Connection --")
+                                    </td>
+                                    <td class="text-right">
+                                        @if (key.IsActive)
+                                        {
+                                            <button class="btn btn-sm btn-outline text-rose" @onclick="() => RevokeKeyAsync(key.TokenId)">
+                                                Revoke
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <span class="subtext">Closed</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// Master collection of system configuration items.
+    /// </summary>
+    private IReadOnlyList<ConfigurationItem> _configurations = [];
+
+    /// <summary>
+    /// Distinct configuration category names.
+    /// </summary>
+    private List<string> _categories = [];
+
+    /// <summary>
+    /// In-memory dictionary tracking edit values for each setting.
+    /// </summary>
+    private Dictionary<string, string> _editValues = [];
+
+    /// <summary>
+    /// Collection of single-use share keys from the database.
+    /// </summary>
+    private IReadOnlyList<ShareKeyRecord> _shareKeys = [];
+
+    /// <summary>
+    /// Label for newly generated share key.
+    /// </summary>
+    private string _newKeyLabel = "Remote Analysis Instance";
+
+    /// <summary>
+    /// Selected expiration window code ('1h', '4h', '24h', '7d', '1m', '1y', 'never').
+    /// </summary>
+    private string _newKeyExpirationWindow = "24h";
+
+    /// <summary>
+    /// Permissions scope for newly generated share key.
+    /// </summary>
+    private string _newKeyPermissions = "FullCollaborator";
+
+    /// <summary>
+    /// Most recently generated share key record.
+    /// </summary>
+    private ShareKeyRecord? _newlyGeneratedKey;
+
+    /// <summary>
+    /// Fully formatted invitation URL.
+    /// </summary>
+    private string? _generatedShareUrl;
+
+    /// <summary>
+    /// Loads configuration settings and active share keys from the database.
+    /// </summary>
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadConfigurationsAsync();
+        await LoadShareKeysAsync();
+    }
+
+    /// <summary>
+    /// Loads configuration items from the authoritative repository.
+    /// </summary>
+    private async Task LoadConfigurationsAsync()
+    {
+        _configurations = await ConfigRepo.GetAllConfigurationsAsync();
+        _categories = _configurations.Select(c => c.Category).Distinct().ToList();
+        _editValues = _configurations.ToDictionary(c => c.Key, c => c.Value);
+    }
+
+    /// <summary>
+    /// Loads share key records from the database.
+    /// </summary>
+    private async Task LoadShareKeysAsync()
+    {
+        _shareKeys = await ConfigRepo.ListShareKeysAsync();
+    }
+
+    /// <summary>
+    /// Persists a configuration value as an authoritative database override.
+    /// </summary>
+    /// <param name="key">The configuration key name.</param>
+    private async Task SaveOverrideAsync(string key)
+    {
+        if (_editValues.TryGetValue(key, out string? val))
+        {
+            await ConfigRepo.SetDatabaseOverrideAsync(key, val);
+            await LoadConfigurationsAsync();
+        }
+    }
+
+    /// <summary>
+    /// Purges a database override, allowing the setting to revert to environment or code default.
+    /// </summary>
+    /// <param name="key">The configuration key name.</param>
+    private async Task RevertDefaultAsync(string key)
+    {
+        await ConfigRepo.RevertToDefaultAsync(key);
+        await LoadConfigurationsAsync();
+    }
+
+    /// <summary>
+    /// Generates a new single-use share key and formats the invitation URL.
+    /// </summary>
+    private async Task CreateShareKeyAsync()
+    {
+        TimeSpan lifetime = Program.ParseExpirationWindow(_newKeyExpirationWindow);
+        _newlyGeneratedKey = await ConfigRepo.CreateShareKeyAsync(_newKeyLabel, lifetime, _newKeyPermissions);
+
+        string baseUri = Nav.BaseUri.TrimEnd('/');
+        _generatedShareUrl = $"{baseUri}/connect?token={_newlyGeneratedKey.KeyToken}";
+
+        await LoadShareKeysAsync();
+    }
+
+    /// <summary>
+    /// Revokes an unconsumed share key.
+    /// </summary>
+    /// <param name="tokenId">The token identifier.</param>
+    private async Task RevokeKeyAsync(string tokenId)
+    {
+        await ConfigRepo.RevokeShareKeyAsync(tokenId);
+        await LoadShareKeysAsync();
+    }
+
+    /// <summary>
+    /// Copies the generated share link to the user's clipboard.
+    /// </summary>
+    private async Task CopyShareLinkToClipboard()
+    {
+        if (!string.IsNullOrEmpty(_generatedShareUrl))
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("navigator.clipboard.writeText", _generatedShareUrl);
+            }
+            catch
+            {
+                // Fallback handled gracefully in browser
+            }
+        }
+    }
+
+    /// <summary>
+    /// Returns CSS class for configuration source badges.
+    /// </summary>
+    private static string GetSourceBadgeClass(ConfigurationSource source) => source switch
+    {
+        ConfigurationSource.DatabaseOverride => "badge-accent font-bold",
+        ConfigurationSource.EnvironmentVariable => "badge-warning",
+        _ => "badge-outline"
+    };
+
+    /// <summary>
+    /// Returns human-readable label for configuration sources.
+    /// </summary>
+    private static string GetSourceBadgeLabel(ConfigurationSource source) => source switch
+    {
+        ConfigurationSource.DatabaseOverride => "Database Override (Active)",
+        ConfigurationSource.EnvironmentVariable => "Environment Variable",
+        _ => "Default Fallback"
+    };
+}

@@ -3,17 +3,21 @@ using System.IO.Pipelines;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using WeaverLammpsHrt.TrajectoryParser.Abstractions;
+using WeaverLammpsHrt.TrajectoryParser.Components;
+using WeaverLammpsHrt.TrajectoryParser.Configuration;
 using WeaverLammpsHrt.TrajectoryParser.Endocrine;
+using WeaverLammpsHrt.TrajectoryParser.Fabrication;
 using WeaverLammpsHrt.TrajectoryParser.Models;
 using WeaverLammpsHrt.TrajectoryParser.Pipelines;
 using WeaverLammpsHrt.TrajectoryParser.Services;
+using WeaverLammpsHrt.TrajectoryParser.Services.Stack;
 using WeaverLammpsHrt.TrajectoryParser.Storage;
 
 namespace WeaverLammpsHrt.TrajectoryParser;
 
 /// <summary>
 /// Application entry point configuring the ASP.NET Core 10 web microservice, zero-allocation trajectory 
-/// streaming pipelines, and sovereign dataset management endpoints.
+/// streaming pipelines, Blazor interactive server UI, and sovereign dataset management endpoints.
 /// </summary>
 public class Program
 {
@@ -28,6 +32,11 @@ public class Program
     private static long _totalFramesParsed;
 
     /// <summary>
+    /// Gets the global count of total frames processed by the zero-allocation parser.
+    /// </summary>
+    public static long TotalFramesParsed => Interlocked.Read(ref _totalFramesParsed);
+
+    /// <summary>
     /// Main entry point for the microservice.
     /// </summary>
     /// <param name="args">Command-line arguments.</param>
@@ -35,9 +44,18 @@ public class Program
     {
         WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
-        // WHAT: Registers core sovereign data services and zero-allocation parser components.
+        // WHAT: Registers Blazor Interactive Server services for single-source C# UI management.
+        // WHY:  Unifies web interface, service telemetry, and domain algorithms into a single high-performance C# 13 codebase.
+        // HOW:  Adds Razor Components and Interactive Server Render Mode into ASP.NET Core 10 DI.
+        builder.Services.AddRazorComponents().AddInteractiveServerComponents();
+        builder.Services.AddHttpContextAccessor();
+
+        // WHAT: Registers core sovereign data services, database configuration repository, and zero-allocation parser components.
         // WHY:  Decouples the web presentation and cryptographic transfer layer from the low-level pipeline readers.
         // HOW:  Registers singleton services into the Microsoft.Extensions.DependencyInjection container.
+        builder.Services.AddSingleton<IConfigurationRepository, SystemConfigurationStore>();
+        builder.Services.AddSingleton<IStackServiceManager, StackServiceManager>();
+        builder.Services.AddSingleton<IFabricationService, FabricationService>();
         builder.Services.AddSingleton<IDatasetManager, DatasetTransferService>();
         builder.Services.AddSingleton<XyzPipeReader>();
         builder.Services.AddSingleton<DcdPipeReader>();
@@ -54,11 +72,19 @@ public class Program
 
         WebApplication app = builder.Build();
 
-        // WHAT: Serves the sovereign Web UI from the wwwroot directory.
-        // WHY:  Allows researchers and engineers to manage trajectories and monitor telemetry via browser without CLI dependencies.
-        // HOW:  Standard ASP.NET Core static file middleware.
-        app.UseDefaultFiles();
+        // WHAT: Initializes authoritative database tables for configuration and single-use share keys.
+        // WHY:  Guarantees that database-first precedence is active before requests arrive.
+        // HOW:  Executes table verification via IConfigurationRepository.
+        IConfigurationRepository configRepo = app.Services.GetRequiredService<IConfigurationRepository>();
+        await configRepo.InitializeAsync();
+
+        // WHAT: Serves static assets (CSS, JS) and Blazor Interactive Server WebSockets.
+        // WHY:  Enables sovereign Web UI navigation without requiring external NPM/Node toolchains.
+        // HOW:  Standard ASP.NET Core static files and Blazor endpoint mapping.
         app.UseStaticFiles();
+        app.UseAntiforgery();
+
+        app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
 
         // ---------------------------------------------------------------------
         // REST API: Trajectory Discovery
@@ -394,7 +420,141 @@ public class Program
         .WithName("AnalyzeAptamerAffinity")
         .WithSummary("Streams trajectory coordinates to compute real-time ligand-pocket contact ratios and binding stability.");
 
+        // ---------------------------------------------------------------------
+        // REST API: Authoritative Configuration Management ("Database Wins")
+        // ---------------------------------------------------------------------
+        app.MapGet("/api/configuration", async (IConfigurationRepository repo, CancellationToken ct) =>
+        {
+            IReadOnlyList<ConfigurationItem> configs = await repo.GetAllConfigurationsAsync(ct);
+            return Results.Ok(configs);
+        })
+        .WithName("GetAllConfigurations")
+        .WithSummary("Retrieves all stack configurations, enforcing database overrides over environment variables.");
+
+        app.MapPost("/api/configuration/override", async (ConfigOverrideRequest req, IConfigurationRepository repo, CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(req.Key))
+            {
+                return Results.BadRequest(new { error = "Configuration key cannot be empty." });
+            }
+
+            await repo.SetDatabaseOverrideAsync(req.Key, req.Value, req.Description ?? "", ct);
+            return Results.Ok(new { message = $"Database override saved for '{req.Key}'. Database setting is now active.", key = req.Key, value = req.Value });
+        })
+        .WithName("SetConfigurationOverride")
+        .WithSummary("Persists an authoritative configuration override to the database.");
+
+        app.MapDelete("/api/configuration/override/{key}", async (string key, IConfigurationRepository repo, CancellationToken ct) =>
+        {
+            await repo.RevertToDefaultAsync(key, ct);
+            return Results.Ok(new { message = $"Database override for '{key}' reverted to default/environment fallback." });
+        })
+        .WithName("RevertConfigurationOverride")
+        .WithSummary("Purges a database override, reverting the setting to its environment variable or default fallback.");
+
+        // ---------------------------------------------------------------------
+        // REST API: Collaborative Single-Use Share Keys & Peer Federation
+        // ---------------------------------------------------------------------
+        app.MapGet("/api/share-keys", async (IConfigurationRepository repo, CancellationToken ct) =>
+        {
+            IReadOnlyList<ShareKeyRecord> keys = await repo.ListShareKeysAsync(ct);
+            return Results.Ok(keys);
+        })
+        .WithName("ListShareKeys")
+        .WithSummary("Retrieves all created single-use share keys and connected remote peer instances.");
+
+        app.MapPost("/api/share-keys/create", async (CreateShareKeyRequest req, IConfigurationRepository repo, CancellationToken ct) =>
+        {
+            TimeSpan lifetime = ParseExpirationWindow(req.ExpirationWindow, req.LifetimeHours);
+            ShareKeyRecord record = await repo.CreateShareKeyAsync(req.Label, lifetime, req.Permissions ?? "FullCollaborator", ct);
+            return Results.Ok(record);
+        })
+        .WithName("CreateShareKey")
+        .WithSummary("Generates a single-use collaborative share key and persists it to the database.");
+
+        app.MapPost("/api/share-keys/redeem", async (RedeemShareKeyRequest req, IConfigurationRepository repo, HttpContext http, CancellationToken ct) =>
+        {
+            string remoteIp = http.Connection.RemoteIpAddress?.ToString() ?? "External UI Instance";
+            ShareKeyConsumeResult result = await repo.ConsumeShareKeyAsync(req.Token, remoteIp, ct);
+            if (!result.Success)
+            {
+                return Results.BadRequest(result);
+            }
+            return Results.Ok(result);
+        })
+        .WithName("RedeemShareKey")
+        .WithSummary("Validates and atomically consumes a single-use share key, establishing an authenticated peer session.");
+
+        // ---------------------------------------------------------------------
+        // REST API: Stack Service Management & Diagnostic Topology
+        // ---------------------------------------------------------------------
+        app.MapGet("/api/services", async (IStackServiceManager stackMgr, CancellationToken ct) =>
+        {
+            IReadOnlyList<StackServiceInfo> svcs = await stackMgr.GetStackServicesAsync(ct);
+            return Results.Ok(svcs);
+        })
+        .WithName("GetStackServices")
+        .WithSummary("Returns real-time status and telemetry for each service in the stack.");
+
+        app.MapPost("/api/services/ping/{serviceId}", async (string serviceId, IStackServiceManager stackMgr, CancellationToken ct) =>
+        {
+            StackServiceInfo svc = await stackMgr.PingServiceAsync(serviceId, ct);
+            return Results.Ok(svc);
+        })
+        .WithName("PingStackService")
+        .WithSummary("Tests connectivity and returns fresh telemetry for a specific stack service.");
+
+        // ---------------------------------------------------------------------
+        // REST API: DNA Origami Fabrication Specifications
+        // ---------------------------------------------------------------------
+        app.MapGet("/api/fabrication/presets", (IFabricationService fab) =>
+        {
+            return Results.Ok(fab.GetPresetSamples());
+        })
+        .WithName("GetFabricationPresets")
+        .WithSummary("Returns built-in sample digitized DNA designs available for immediate testing.");
+
+        app.MapPost("/api/fabrication/generate", (FabricationGenerateRequest req, IFabricationService fab) =>
+        {
+            FabricationPackage pkg = fab.GenerateFabricationPackage(
+                req.SequenceOrSampleId,
+                req.Regimen,
+                req.Geometry ?? "Hexagonal 6-Helix Bundle Nanotube (6HB)",
+                req.TargetKd > 0 ? req.TargetKd : 4.2);
+
+            return Results.Ok(pkg);
+        })
+        .WithName("GenerateFabricationPackage")
+        .WithSummary("Synthesizes a complete staple routing manifest, annealing schedule, and SHA-256 provenance hash.");
+
         app.Run();
+    }
+
+    /// <summary>
+    /// Parses an expiration window string or falls back to lifetime hours.
+    /// Supports standard duration windows: '1h', '4h', '24h', '7d', '1m', '1y', and 'never'.
+    /// </summary>
+    /// <param name="window">Expiration window code (e.g. '1m', '1y', 'never').</param>
+    /// <param name="fallbackHours">Numeric fallback hours if window string is not provided.</param>
+    /// <returns>A TimeSpan representing the expiration duration.</returns>
+    public static TimeSpan ParseExpirationWindow(string? window, int fallbackHours = 24)
+    {
+        if (string.IsNullOrWhiteSpace(window))
+        {
+            return TimeSpan.FromHours(fallbackHours > 0 ? fallbackHours : 24);
+        }
+
+        return window.Trim().ToLowerInvariant() switch
+        {
+            "1h" => TimeSpan.FromHours(1),
+            "4h" => TimeSpan.FromHours(4),
+            "24h" => TimeSpan.FromHours(24),
+            "7d" => TimeSpan.FromDays(7),
+            "1m" or "30d" => TimeSpan.FromDays(30),
+            "1y" or "365d" => TimeSpan.FromDays(365),
+            "never" or "infinite" => TimeSpan.FromDays(36525), // 100 years
+            _ => int.TryParse(window, out int parsedHours) ? TimeSpan.FromHours(parsedHours) : TimeSpan.FromHours(fallbackHours > 0 ? fallbackHours : 24)
+        };
     }
 }
 
@@ -414,4 +574,100 @@ public sealed record ExportRequest
     /// </summary>
     [JsonPropertyName("files")]
     public string[]? Files { get; init; }
+}
+
+/// <summary>
+/// Request payload for persisting a configuration override to the authoritative database.
+/// </summary>
+public sealed record ConfigOverrideRequest
+{
+    /// <summary>
+    /// Target configuration setting key.
+    /// </summary>
+    [JsonPropertyName("key")]
+    public string Key { get; init; } = string.Empty;
+
+    /// <summary>
+    /// New setting value to persist.
+    /// </summary>
+    [JsonPropertyName("value")]
+    public string Value { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Optional description for the setting.
+    /// </summary>
+    [JsonPropertyName("description")]
+    public string? Description { get; init; }
+}
+
+/// <summary>
+/// Request payload for creating a single-use collaborative share key.
+/// </summary>
+public sealed record CreateShareKeyRequest
+{
+    /// <summary>
+    /// Label or peer description identifying the intended collaborator.
+    /// </summary>
+    [JsonPropertyName("label")]
+    public string Label { get; init; } = "External Collaborator";
+
+    /// <summary>
+    /// Expiration lifetime in hours.
+    /// </summary>
+    [JsonPropertyName("lifetime_hours")]
+    public int LifetimeHours { get; init; } = 24;
+
+    /// <summary>
+    /// Named expiration window ('1h', '4h', '24h', '7d', '1m', '1y', 'never').
+    /// </summary>
+    [JsonPropertyName("expiration_window")]
+    public string? ExpirationWindow { get; init; }
+
+    /// <summary>
+    /// Permission scope granted (e.g., 'FullCollaborator', 'ReadOnlyTelemetry').
+    /// </summary>
+    [JsonPropertyName("permissions")]
+    public string? Permissions { get; init; }
+}
+
+/// <summary>
+/// Request payload for redeeming a single-use share key.
+/// </summary>
+public sealed record RedeemShareKeyRequest
+{
+    /// <summary>
+    /// Secret share token string (e.g., 'nanoweaver_hrt_...').
+    /// </summary>
+    [JsonPropertyName("token")]
+    public string Token { get; init; } = string.Empty;
+}
+
+/// <summary>
+/// Request payload for generating a complete fabrication package.
+/// </summary>
+public sealed record FabricationGenerateRequest
+{
+    /// <summary>
+    /// Raw sequence string or preset sample ID.
+    /// </summary>
+    [JsonPropertyName("sequence_or_sample_id")]
+    public string SequenceOrSampleId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Target therapeutic regimen (MaleToFemale or FemaleToMale).
+    /// </summary>
+    [JsonPropertyName("regimen")]
+    public TherapeuticRegimen Regimen { get; init; } = TherapeuticRegimen.MaleToFemale;
+
+    /// <summary>
+    /// Target chassis delivery geometry.
+    /// </summary>
+    [JsonPropertyName("geometry")]
+    public string? Geometry { get; init; }
+
+    /// <summary>
+    /// Target dissociation constant in nanomolar.
+    /// </summary>
+    [JsonPropertyName("target_kd")]
+    public double TargetKd { get; init; } = 4.2;
 }

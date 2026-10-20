@@ -1,0 +1,230 @@
+@page "/services"
+@inject IStackServiceManager StackManager
+@inject IConfigurationRepository ConfigRepo
+
+<div class="services-container">
+    <div class="panel-header">
+        <div>
+            <h2>Stack Services Management &amp; Topology</h2>
+            <p class="panel-desc">Single point of control, diagnostic health, and hardware telemetry for all components in the sovereign stack.</p>
+        </div>
+        <div class="actions">
+            <button class="btn btn-secondary btn-sm" disabled="@_isRefreshing" @onclick="RefreshServicesAsync">
+                @(_isRefreshing ? "Probing Stack..." : "⟳ Refresh Services")
+            </button>
+        </div>
+    </div>
+
+    <!-- Stack Service Topology Visual Cards -->
+    <div class="services-grid mt-3">
+        @foreach (StackServiceInfo svc in _services)
+        {
+            <div class="service-card card @GetCardBorderClass(svc.Health)">
+                <div class="service-header">
+                    <div>
+                        <h3>@svc.DisplayName</h3>
+                        <div class="service-tech font-mono">@svc.TechnologyStack</div>
+                    </div>
+                    <span class="badge @GetBadgeClass(svc.Health)">@svc.Health</span>
+                </div>
+
+                <p class="service-role subtext mt-2">@svc.RoleDescription</p>
+
+                <div class="service-endpoint font-mono mt-2">
+                    <span class="endpoint-label">ENDPOINT:</span>
+                    <span class="endpoint-val">@svc.EndpointOrLocation</span>
+                </div>
+
+                <div class="service-status-bar mt-2">
+                    <span class="status-indicator-dot @(svc.Health == ServiceHealthState.Healthy ? "dot-green" : "dot-amber")"></span>
+                    <span class="status-text">@svc.StatusMessage</span>
+                </div>
+
+                <!-- Service-Specific Telemetry Metrics -->
+                <div class="service-metrics mt-3">
+                    <div class="metrics-title">DIAGNOSTIC TELEMETRY</div>
+                    <div class="metrics-list font-mono">
+                        @foreach (KeyValuePair<string, string> metric in svc.Metrics)
+                        {
+                            <div class="metric-row">
+                                <span class="metric-name">@metric.Key:</span>
+                                <span class="metric-val text-accent">@metric.Value</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <div class="service-actions mt-3 text-right">
+                    <button class="btn btn-outline btn-sm" @onclick="() => PingServiceAsync(svc.ServiceId)">
+                        ⚡ Test Connectivity
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+
+    <!-- Deep-Dive Stack Volume Explorers -->
+    <div class="grid-2col mt-4">
+        <!-- Simulation Presets Explorer -->
+        <div class="card panel">
+            <div class="panel-header">
+                <h3>Simulation Presets &amp; Input Decks</h3>
+                <span class="badge badge-outline">Volume: /workspace/configs</span>
+            </div>
+            <p class="subtext">Engine control decks discovered in <code>simulations/configs/</code> ready for oxDNA or LAMMPS.</p>
+            <div class="table-container mt-2">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Deck File Name</th>
+                            <th>Engine Target</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (_simulationConfigs.Count == 0)
+                        {
+                            <tr><td colspan="3" class="empty-state">No config templates discovered in simulations/configs/.</td></tr>
+                        }
+                        else
+                        {
+                            @foreach (string cfg in _simulationConfigs)
+                            {
+                                <tr>
+                                    <td class="font-mono text-accent">@cfg</td>
+                                    <td class="font-mono">@(cfg.EndsWith(".in") ? "LAMMPS" : "oxDNA")</td>
+                                    <td><span class="badge badge-accent">Ready</span></td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Parquet Analytics Catalog -->
+        <div class="card panel">
+            <div class="panel-header">
+                <h3>Columnar Parquet Storage (pg_duckdb)</h3>
+                <span class="badge badge-outline">Volume: /workspace/parquet</span>
+            </div>
+            <p class="subtext">Columnar Apache Parquet partitions queried with SIMD-vectorized zero-copy SQL.</p>
+            <div class="table-container mt-2">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Parquet Partition</th>
+                            <th>Compression</th>
+                            <th>Analytics Engine</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (_parquetFiles.Count == 0)
+                        {
+                            <tr><td colspan="3" class="empty-state">No Parquet files serialized yet. Convert trajectories in Stage 4.</td></tr>
+                        }
+                        else
+                        {
+                            @foreach (string pf in _parquetFiles)
+                            {
+                                <tr>
+                                    <td class="font-mono text-accent">@pf</td>
+                                    <td class="font-mono">SNAPPY</td>
+                                    <td class="subtext">DuckDB SIMD Queryable</td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// Collection of stack service telemetry objects.
+    /// </summary>
+    private IReadOnlyList<StackServiceInfo> _services = [];
+
+    /// <summary>
+    /// Discovered simulation configuration files on disk.
+    /// </summary>
+    private IReadOnlyList<string> _simulationConfigs = [];
+
+    /// <summary>
+    /// Discovered columnar Parquet files on disk.
+    /// </summary>
+    private List<string> _parquetFiles = [];
+
+    /// <summary>
+    /// Refreshing state flag.
+    /// </summary>
+    private bool _isRefreshing;
+
+    /// <summary>
+    /// Loads initial service states and volume catalogs.
+    /// </summary>
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshServicesAsync();
+    }
+
+    /// <summary>
+    /// Re-probes all stack services and refreshes volume listings.
+    /// </summary>
+    private async Task RefreshServicesAsync()
+    {
+        _isRefreshing = true;
+        try
+        {
+            _services = await StackManager.GetStackServicesAsync();
+            _simulationConfigs = StackManager.GetDiscoveredSimulationConfigs();
+
+            string parquetDir = await ConfigRepo.GetValueAsync("Storage:TrajectoryParquetDir", "./simulations/parquet");
+            if (Directory.Exists(parquetDir))
+            {
+                _parquetFiles = Directory.GetFiles(parquetDir, "*.parquet")
+                    .Select(Path.GetFileName)
+                    .Where(f => !string.IsNullOrEmpty(f))
+                    .Cast<string>()
+                    .ToList();
+            }
+        }
+        finally
+        {
+            _isRefreshing = false;
+        }
+    }
+
+    /// <summary>
+    /// Pings an individual service by identifier.
+    /// </summary>
+    /// <param name="serviceId">The service identifier.</param>
+    private async Task PingServiceAsync(string serviceId)
+    {
+        await StackManager.PingServiceAsync(serviceId);
+        _services = await StackManager.GetStackServicesAsync();
+    }
+
+    /// <summary>
+    /// Resolves CSS badge classes for health status.
+    /// </summary>
+    private static string GetBadgeClass(ServiceHealthState state) => state switch
+    {
+        ServiceHealthState.Healthy => "badge-accent",
+        ServiceHealthState.DegradedOrFallback => "badge-outline",
+        ServiceHealthState.Busy => "badge-accent",
+        _ => "badge-rose"
+    };
+
+    /// <summary>
+    /// Resolves CSS border highlight classes for health cards.
+    /// </summary>
+    private static string GetCardBorderClass(ServiceHealthState state) => state switch
+    {
+        ServiceHealthState.Healthy => "border-healthy",
+        ServiceHealthState.DegradedOrFallback => "border-fallback",
+        _ => "border-offline"
+    };
+}

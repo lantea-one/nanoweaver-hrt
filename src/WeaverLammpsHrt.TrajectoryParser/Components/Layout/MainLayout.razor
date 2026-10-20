@@ -1,0 +1,152 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject IConfigurationRepository ConfigRepo
+
+<header class="navbar">
+    <div class="brand">
+        <span class="logo-dot"></span>
+        <div>
+            <h1>WEAVER-LAMMPS-HRT <span class="tag">SOVEREIGN CONTROL</span></h1>
+            <p class="subtitle">Decentralized Synthetic Biology &amp; DNA Origami Engineering Platform</p>
+        </div>
+    </div>
+    <div class="node-status">
+        <div class="status-indicator">
+            <span class="pulse"></span>
+            <span>NODE: @Environment.MachineName.ToUpperInvariant()</span>
+        </div>
+        <div class="badge badge-accent">@_acceleratorBackend.ToUpperInvariant()</div>
+        <div class="badge badge-outline">DB: @ConfigRepo.ActiveBackendName</div>
+    </div>
+</header>
+
+<nav class="sub-navbar">
+    <div class="nav-links">
+        <NavLink href="/" class="nav-link" Match="NavLinkMatch.All">
+            <span class="nav-icon">🧬</span> Guided DNA Wizard
+        </NavLink>
+        <NavLink href="/services" class="nav-link">
+            <span class="nav-icon">⚙️</span> Stack Services
+        </NavLink>
+        <NavLink href="/configuration" class="nav-link">
+            <span class="nav-icon">🛡️</span> Configuration &amp; Peers
+        </NavLink>
+        <NavLink href="/trajectories" class="nav-link">
+            <span class="nav-icon">📁</span> Trajectory Browser
+        </NavLink>
+        <NavLink href="/endocrine" class="nav-link">
+            <span class="nav-icon">⚖️</span> Endocrine Hub
+        </NavLink>
+    </div>
+</nav>
+
+<!-- Real-Time Hardware & Zero-Allocation GC Telemetry Banner -->
+<section class="telemetry-grid">
+    <div class="card stat-card">
+        <div class="stat-label">TOTAL FRAMES PARSED</div>
+        <div class="stat-value font-mono">@_framesParsed.ToString("N0")</div>
+        <div class="stat-sub">Zero-Allocation SIMD Pipeline</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-label">GC PRESSURE (GEN 0 / 1 / 2)</div>
+        <div class="stat-value font-mono">@_gcCollections</div>
+        <div class="stat-sub text-success">Target: Zero GC Invocations</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-label">HEAP / WORKING SET</div>
+        <div class="stat-value font-mono">@_memoryFormatted</div>
+        <div class="stat-sub">Server GC Mode Enabled</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-label">NODE UPTIME</div>
+        <div class="stat-value font-mono">@_uptimeFormatted</div>
+        <div class="stat-sub">Continuous Operation</div>
+    </div>
+</section>
+
+<main class="main-container">
+    @Body
+</main>
+
+<footer class="footer">
+    <p>Decentralized Synthetic Biology &amp; DNA Nanotechnology Platform &bull; Weaver-LAMMPS-HRT &bull; Open-Source &amp; Sovereign</p>
+</footer>
+
+@code {
+    /// <summary>
+    /// Background periodic timer polling node telemetry.
+    /// </summary>
+    private System.Threading.Timer? _telemetryTimer;
+
+    /// <summary>
+    /// Total simulation frames parsed.
+    /// </summary>
+    private long _framesParsed;
+
+    /// <summary>
+    /// Formatted GC collection counts across generations.
+    /// </summary>
+    private string _gcCollections = "0 / 0 / 0";
+
+    /// <summary>
+    /// Memory consumption statistics string.
+    /// </summary>
+    private string _memoryFormatted = "0.0 / 0.0 MB";
+
+    /// <summary>
+    /// Process uptime formatted string.
+    /// </summary>
+    private string _uptimeFormatted = "00:00:00";
+
+    /// <summary>
+    /// Active hardware accelerator backend name.
+    /// </summary>
+    private string _acceleratorBackend = "Detecting Accelerator...";
+
+    /// <summary>
+    /// Service startup reference timestamp.
+    /// </summary>
+    private static readonly DateTime StartTimeUtc = DateTime.UtcNow;
+
+    /// <summary>
+    /// Initializes layout and starts real-time telemetry polling.
+    /// </summary>
+    protected override async Task OnInitializedAsync()
+    {
+        _acceleratorBackend = await ConfigRepo.GetValueAsync("Simulation:AcceleratorBackend", "Intel iGPU / OpenCL");
+        UpdateTelemetry();
+        _telemetryTimer = new System.Threading.Timer(_ =>
+        {
+            InvokeAsync(() =>
+            {
+                UpdateTelemetry();
+                StateHasChanged();
+            });
+        }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
+    }
+
+    /// <summary>
+    /// Samples memory, garbage collection, and process statistics.
+    /// </summary>
+    private void UpdateTelemetry()
+    {
+        System.Diagnostics.Process proc = System.Diagnostics.Process.GetCurrentProcess();
+        TimeSpan uptime = DateTime.UtcNow - StartTimeUtc;
+
+        double heapMb = GC.GetTotalMemory(forceFullCollection: false) / (1024.0 * 1024.0);
+        double wsMb = proc.WorkingSet64 / (1024.0 * 1024.0);
+
+        _framesParsed = Program.TotalFramesParsed;
+        _gcCollections = $"{GC.CollectionCount(0)} / {GC.CollectionCount(1)} / {GC.CollectionCount(2)}";
+        _memoryFormatted = $"{heapMb:F1} / {wsMb:F1} MB";
+        _uptimeFormatted = $"{uptime.Days}d {uptime.Hours:D2}:{uptime.Minutes:D2}:{uptime.Seconds:D2}";
+    }
+
+    /// <summary>
+    /// Disposes timer resources.
+    /// </summary>
+    public void Dispose()
+    {
+        _telemetryTimer?.Dispose();
+    }
+}

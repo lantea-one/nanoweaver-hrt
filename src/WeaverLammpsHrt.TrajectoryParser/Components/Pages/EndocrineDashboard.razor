@@ -1,0 +1,128 @@
+@page "/endocrine"
+@inject EndocrineStateEngine Engine
+@inject IConfigurationRepository ConfigRepo
+
+<div class="endocrine-container">
+    <div class="panel-header">
+        <div>
+            <h2>Patient-Targeted Endocrine Regulatory Hub</h2>
+            <p class="panel-desc">Bistable molecular toggle state management, target hormonal setpoints, and pharmacodynamic kinetics.</p>
+        </div>
+        <div class="badge @(_activeProfile.Regimen == TherapeuticRegimen.MaleToFemale ? "badge-accent" : "badge-outline")">
+            ACTIVE: @_activeProfile.Regimen.ToString().ToUpperInvariant()
+        </div>
+    </div>
+
+    <!-- Bistable Toggle Switch Panel -->
+    <div class="card panel mt-3">
+        <div class="panel-header">
+            <h3>Bistable Synthetic Hormone Toggle Controller</h3>
+            <span class="subtext">Autonomous feedback regulation</span>
+        </div>
+
+        <div class="endocrine-controls mt-2">
+            <div class="toggle-switch-group">
+                <button class="toggle-btn @(_activeProfile.TargetState == ToggleState.EstrogenicDominant ? "active-estrogen" : "")"
+                        @onclick="() => SetToggleState(ToggleState.EstrogenicDominant)">
+                    <span class="symbol">♀</span> Male-to-Female (MtF / E2 Dominant)
+                </button>
+                <button class="toggle-btn @(_activeProfile.TargetState == ToggleState.AndrogenicDominant ? "active-testosterone" : "")"
+                        @onclick="() => SetToggleState(ToggleState.AndrogenicDominant)">
+                    <span class="symbol">♂</span> Female-to-Male (FtM / T Dominant)
+                </button>
+            </div>
+
+            <!-- Setpoint Metrics Display -->
+            <div class="setpoints-display mt-3">
+                <div class="setpoint-item">
+                    <span class="setpoint-label">TARGET 17β-ESTRADIOL</span>
+                    <span class="setpoint-val font-mono">@_activeProfile.TargetEstradiolPmolL.ToString("F1") <small>pmol/L</small></span>
+                </div>
+                <div class="setpoint-item">
+                    <span class="setpoint-label">TARGET TESTOSTERONE</span>
+                    <span class="setpoint-val font-mono">@_activeProfile.TargetTestosteroneNmolL.ToString("F2") <small>nmol/L</small></span>
+                </div>
+                <div class="setpoint-item">
+                    <span class="setpoint-label">APTAMER TARGET Kd</span>
+                    <span class="setpoint-val font-mono">@_activeProfile.BindingAffinityKdTargetNanoMolar.ToString("F1") <small>nM</small></span>
+                </div>
+                <div class="setpoint-item">
+                    <span class="setpoint-label">TARGET TISSUE</span>
+                    <span class="setpoint-val font-mono">@_activeProfile.TargetTissue</span>
+                </div>
+                <div class="setpoint-item">
+                    <span class="setpoint-label">DELIVERY CHASSIS</span>
+                    <span class="setpoint-val font-mono">@_activeProfile.DeliveryVehicle.Geometry</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pharmacodynamic Stabilization Simulation -->
+    <div class="card panel mt-4">
+        <div class="panel-header">
+            <h3>72-Hour Hormone Pharmacodynamic Stabilization Curves</h3>
+            <span class="badge badge-outline">Continuous Target Plateau</span>
+        </div>
+        <p class="subtext">Kinetics curve calculated over a 72-hour horizon as aptamer-mediated release reaches homeostatic equilibrium.</p>
+
+        <div class="table-container mt-3">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Time (Hours)</th>
+                        <th>Circulating 17β-Estradiol (pmol/L)</th>
+                        <th>Circulating Testosterone (nmol/L)</th>
+                        <th>Regulatory State</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (HormoneCurvePoint pt in _kineticsPoints)
+                    {
+                        <tr>
+                            <td class="font-mono text-accent">@pt.Hour h</td>
+                            <td class="font-mono">@pt.EstradiolPmolL.ToString("F1") pmol/L</td>
+                            <td class="font-mono">@pt.TestosteroneNmolL.ToString("F2") nmol/L</td>
+                            <td><span class="badge badge-accent">@(_activeProfile.TargetState)</span></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// Active endocrine target profile.
+    /// </summary>
+    private EndocrineTargetProfile _activeProfile = null!;
+
+    /// <summary>
+    /// Simulated kinetics curve data points over 72 hours.
+    /// </summary>
+    private IReadOnlyList<HormoneCurvePoint> _kineticsPoints = [];
+
+    /// <summary>
+    /// Loads active endocrine profile and kinetics simulation.
+    /// </summary>
+    protected override void OnInitialized()
+    {
+        _activeProfile = Engine.GetActiveProfile();
+        _kineticsPoints = Engine.SimulateKinetics();
+    }
+
+    /// <summary>
+    /// Updates the bistable toggle state and refreshes kinetics.
+    /// </summary>
+    /// <param name="targetState">The target toggle state (Estrogenic vs Androgenic).</param>
+    private void SetToggleState(ToggleState targetState)
+    {
+        ToggleSwitchRequest req = new()
+        {
+            TargetState = targetState
+        };
+        _activeProfile = Engine.UpdateToggleState(req);
+        _kineticsPoints = Engine.SimulateKinetics();
+    }
+}

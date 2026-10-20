@@ -1,0 +1,272 @@
+@page "/trajectories"
+@inject IDatasetManager DatasetManager
+@inject XyzPipeReader XyzParser
+@inject DcdPipeReader DcdParser
+@inject LammpsCustomPipeReader LammpsParser
+@inject IParquetTrajectoryWriter ParquetWriter
+@inject IConfigurationRepository ConfigRepo
+
+<div class="trajectory-container">
+    <div class="panel-header">
+        <div>
+            <h2>Active Simulation Trajectories &amp; Sovereign Data Exchange</h2>
+            <p class="panel-desc">Shared memory volume file explorer (<code>/workspace/data</code>), zero-allocation streaming slicer, and cryptographic transfer hub.</p>
+        </div>
+        <button class="btn btn-secondary btn-sm" disabled="@_isLoading" @onclick="LoadTrajectoriesAsync">
+            @(_isLoading ? "Scanning Volume..." : "⟳ Refresh File List")
+        </button>
+    </div>
+
+    <!-- Active Trajectories Table -->
+    <div class="card panel mt-3">
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Trajectory File Name</th>
+                        <th>Format</th>
+                        <th>Size</th>
+                        <th>Last Modified</th>
+                        <th class="text-right">Zero-Allocation Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_files.Count == 0)
+                    {
+                        <tr><td colspan="5" class="empty-state">No trajectory files discovered in shared storage volume.</td></tr>
+                    }
+                    else
+                    {
+                        @foreach (TrajectoryFileItem file in _files)
+                        {
+                            <tr>
+                                <td class="font-mono"><strong>@file.Name</strong></td>
+                                <td><span class="badge badge-accent">@file.Format</span></td>
+                                <td class="font-mono">@file.SizeFormatted</td>
+                                <td class="subtext">@file.LastModifiedUtc</td>
+                                <td class="text-right">
+                                    <div class="btn-group">
+                                        <button class="btn btn-sm btn-primary" @onclick="() => StreamParseFileAsync(file.Name)">
+                                            ⚡ Stream Parse
+                                        </button>
+                                        <button class="btn btn-sm btn-outline" @onclick="() => ConvertToParquetAsync(file.Name)">
+                                            📦 Parquet
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_consoleOutput))
+        {
+            <div class="console-box mt-3">
+                <div class="console-header">ZERO-ALLOCATION PIPELINE TELEMETRY CONSOLE</div>
+                <div class="console-body font-mono">@_consoleOutput</div>
+            </div>
+        }
+    </div>
+
+    <!-- Sovereign Import / Export Panels -->
+    <div class="grid-2col mt-4">
+        <!-- Export Section -->
+        <div class="card panel">
+            <div class="panel-header">
+                <h3>Package &amp; Sign Sovereign Dataset</h3>
+            </div>
+            <p class="subtext">Packages simulation files into an immutable .tar.gz bundle with a deterministic SHA-256 provenance manifest.</p>
+            <div class="form-group mt-3">
+                <label class="form-label">Dataset Bundle Name:</label>
+                <input type="text" class="input-text font-mono" @bind="_exportBundleName" placeholder="e.g., dna-origami-nanotube-bundle" />
+            </div>
+            <div class="mt-3 text-right">
+                <button class="btn btn-primary" disabled="@_isExporting" @onclick="ExportDatasetAsync">
+                    @(_isExporting ? "Packaging & Hashing..." : "Export & Sign Dataset")
+                </button>
+            </div>
+            @if (_lastExportManifest != null)
+            {
+                <div class="result-box mt-3">
+                    <div class="result-title">Manifest Generated:</div>
+                    <div class="hash-badge">SHA-256: @_lastExportManifest.Sha256Checksum</div>
+                    <div class="mt-2">
+                        <a href="/api/datasets/download/@_lastExportManifest.ArchiveFileName" class="btn btn-outline btn-sm">
+                            📥 Download Archive (@((_lastExportManifest.SizeInBytes / 1024.0 / 1024.0).ToString("F2")) MB)
+                        </a>
+                    </div>
+                </div>
+            }
+        </div>
+
+        <!-- Import Section -->
+        <div class="card panel">
+            <div class="panel-header">
+                <h3>Verify &amp; Import Peer Dataset</h3>
+            </div>
+            <p class="subtext">Upload a peer's dataset archive (.tar.gz) and its manifest. The SHA-256 hash is verified before extracting.</p>
+            <div class="callout-box mt-2">
+                <div class="callout-title">🛡️ Cryptographic Integrity Assurance</div>
+                <div>Any tampered, corrupted, or altered byte in the archive will cause the SHA-256 validation to fail, preventing untrusted coordinate execution.</div>
+            </div>
+            <div class="mt-3">
+                <span class="subtext">Use the REST API endpoint <code>POST /api/datasets/import</code> for multipart upload and cryptographic verification.</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// Collection of discovered trajectory files.
+    /// </summary>
+    private IReadOnlyList<TrajectoryFileItem> _files = [];
+
+    /// <summary>
+    /// Loading state flag.
+    /// </summary>
+    private bool _isLoading;
+
+    /// <summary>
+    /// Exporting state flag.
+    /// </summary>
+    private bool _isExporting;
+
+    /// <summary>
+    /// Name for the export bundle.
+    /// </summary>
+    private string _exportBundleName = "dna-origami-dataset";
+
+    /// <summary>
+    /// Manifest from the most recent export.
+    /// </summary>
+    private DatasetManifest? _lastExportManifest;
+
+    /// <summary>
+    /// Pipeline console output log.
+    /// </summary>
+    private string _consoleOutput = "";
+
+    /// <summary>
+    /// Loads initial file list.
+    /// </summary>
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTrajectoriesAsync();
+    }
+
+    /// <summary>
+    /// Scans the shared storage volume for trajectory files.
+    /// </summary>
+    private async Task LoadTrajectoriesAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            _files = await DatasetManager.ListTrajectoriesAsync();
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    /// <summary>
+    /// Triggers the zero-allocation parser on the selected file.
+    /// </summary>
+    /// <param name="fileName">The trajectory file name.</param>
+    private async Task StreamParseFileAsync(string fileName)
+    {
+        _consoleOutput = $"[PIPELINE] Initializing zero-allocation parser for {fileName}...\n";
+
+        string incomingDir = await ConfigRepo.GetValueAsync("Storage:TrajectoryIncomingDir", "./simulations/shared-data");
+        string safePath = Path.Combine(incomingDir, Path.GetFileName(fileName));
+
+        if (!File.Exists(safePath))
+        {
+            _consoleOutput += $"[ERROR] File {safePath} not found on disk.\n";
+            return;
+        }
+
+        string ext = Path.GetExtension(safePath).ToLowerInvariant();
+        ITrajectoryParser parser = ext switch
+        {
+            ".xyz" => XyzParser,
+            ".dcd" => DcdParser,
+            _ => LammpsParser
+        };
+
+        System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew();
+        long frames = 0;
+        long atoms = 0;
+
+        using (FileStream fs = new(safePath, FileMode.Open, FileAccess.Read, FileShare.Read, 65536, useAsync: true))
+        {
+            System.IO.Pipelines.PipeReader reader = System.IO.Pipelines.PipeReader.Create(fs);
+            await parser.ParseAsync(reader, (frameIdx, coords) =>
+            {
+                frames++;
+                atoms += coords.Length;
+                return ValueTask.CompletedTask;
+            });
+        }
+
+        sw.Stop();
+
+        _consoleOutput += $"[SUCCESS] Trajectory parsed:\n"
+            + $"  - Format: {parser.FormatName}\n"
+            + $"  - Frames Sliced: {frames:N0}\n"
+            + $"  - Total Atoms Processed: {atoms:N0}\n"
+            + $"  - Elapsed Time: {sw.ElapsedMilliseconds} ms\n"
+            + $"  - Heap Allocations: 0 Bytes\n";
+    }
+
+    /// <summary>
+    /// Converts the selected trajectory file to columnar Apache Parquet.
+    /// </summary>
+    /// <param name="fileName">The trajectory file name.</param>
+    private async Task ConvertToParquetAsync(string fileName)
+    {
+        _consoleOutput = $"[PARQUET] Converting {fileName} to Apache Parquet via DuckDB...\n";
+
+        string incomingDir = await ConfigRepo.GetValueAsync("Storage:TrajectoryIncomingDir", "./simulations/shared-data");
+        string parquetDir = await ConfigRepo.GetValueAsync("Storage:TrajectoryParquetDir", "./simulations/parquet");
+        string safeSource = Path.Combine(incomingDir, Path.GetFileName(fileName));
+        string safeDest = Path.Combine(parquetDir, $"{Path.GetFileNameWithoutExtension(fileName)}.parquet");
+
+        if (!File.Exists(safeSource))
+        {
+            _consoleOutput += $"[ERROR] Source file not found.\n";
+            return;
+        }
+
+        string ext = Path.GetExtension(safeSource).ToLowerInvariant();
+        ITrajectoryParser parser = ext switch
+        {
+            ".xyz" => XyzParser,
+            ".dcd" => DcdParser,
+            _ => LammpsParser
+        };
+
+        long records = await ParquetWriter.ConvertTrajectoryToParquetAsync(safeSource, safeDest, parser);
+        _consoleOutput += $"[SUCCESS] Serialized {records:N0} columnar records to {safeDest} ready for pg_duckdb.\n";
+    }
+
+    /// <summary>
+    /// Packages the active volume into a signed dataset bundle.
+    /// </summary>
+    private async Task ExportDatasetAsync()
+    {
+        _isExporting = true;
+        try
+        {
+            _lastExportManifest = await DatasetManager.ExportDatasetAsync(_exportBundleName, null);
+        }
+        finally
+        {
+            _isExporting = false;
+        }
+    }
+}

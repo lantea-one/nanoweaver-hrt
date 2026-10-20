@@ -1,0 +1,104 @@
+@page "/connect"
+@inject IConfigurationRepository ConfigRepo
+@inject NavigationManager Nav
+@inject Microsoft.AspNetCore.Http.IHttpContextAccessor HttpContextAccessor
+
+<div class="connect-container">
+    <div class="card panel max-w-xl mx-auto mt-5">
+        <div class="panel-header text-center">
+            <div>
+                <h2>Federated Peer Connection Portal</h2>
+                <p class="panel-desc">Redeem a single-use invitation key to connect an external UI instance to this sovereign node.</p>
+            </div>
+        </div>
+
+        <div class="callout-box mt-3">
+            <div class="callout-title">🔒 Single-Use Cryptographic Authentication</div>
+            <div class="callout-item">Each share key is single-use. Once redeemed, it binds your peer instance to this node and cannot be used again by another party.</div>
+        </div>
+
+        <div class="form-group mt-4">
+            <label class="form-label">Invitation Token (<code>nanoweaver_hrt_...</code>):</label>
+            <input type="text" class="input-text font-mono" @bind="TokenInput" placeholder="nanoweaver_hrt_..." />
+        </div>
+
+        <div class="mt-3 text-center">
+            <button class="btn btn-primary btn-lg w-100" disabled="@_isConnecting" @onclick="RedeemTokenAsync">
+                @(_isConnecting ? "Verifying & Consuming Single-Use Token..." : "🔗 Connect & Authenticate Session")
+            </button>
+        </div>
+
+        @if (_result != null)
+        {
+            <div class="mt-4 @(_result.Success ? "result-box-success" : "result-box-error")">
+                @if (_result.Success)
+                {
+                    <h4>🎉 Sovereign Peering Established!</h4>
+                    <p class="subtext">@_result.Message</p>
+                    <div class="font-mono mt-2">
+                        <div>Peer Session Token: <span class="text-accent">@_result.PeerSessionToken</span></div>
+                        <div>Permissions Scope: <span class="badge badge-accent">@_result.Record?.Permissions</span></div>
+                        <div>Session Created: <span>@_result.Record?.ConsumedAtUtc?.ToString("u")</span></div>
+                    </div>
+                    <div class="mt-3 text-center">
+                        <a href="/" class="btn btn-accent">Launch Guided DNA Wizard →</a>
+                    </div>
+                }
+                else
+                {
+                    <h4>❌ Connection Rejected</h4>
+                    <p class="text-rose font-mono">@_result.Message</p>
+                    <span class="subtext">Please request a new single-use invitation link from the host node administrator.</span>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// Inbound token input string.
+    /// </summary>
+    [SupplyParameterFromQuery(Name = "token")]
+    public string? TokenInput { get; set; }
+
+    /// <summary>
+    /// Connection in progress flag.
+    /// </summary>
+    private bool _isConnecting;
+
+    /// <summary>
+    /// Result outcome of the share key consumption attempt.
+    /// </summary>
+    private ShareKeyConsumeResult? _result;
+
+    /// <summary>
+    /// Evaluates if a token was supplied via URL query parameter on initial page load.
+    /// </summary>
+    protected override async Task OnInitializedAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(TokenInput))
+        {
+            await RedeemTokenAsync();
+        }
+    }
+
+    /// <summary>
+    /// Validates and redeems the single-use token against the authoritative database.
+    /// </summary>
+    private async Task RedeemTokenAsync()
+    {
+        if (string.IsNullOrWhiteSpace(TokenInput)) return;
+
+        _isConnecting = true;
+        try
+        {
+            string remoteIp = HttpContextAccessor.HttpContext?.Connection.RemoteIpAddress?.ToString() ?? "External UI Instance";
+            _result = await ConfigRepo.ConsumeShareKeyAsync(TokenInput.Trim(), remoteIp);
+        }
+        finally
+        {
+            _isConnecting = false;
+        }
+    }
+}
