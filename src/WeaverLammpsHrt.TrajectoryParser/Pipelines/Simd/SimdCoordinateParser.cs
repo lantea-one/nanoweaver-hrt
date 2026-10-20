@@ -1,6 +1,7 @@
 using System.Buffers.Text;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using WeaverLammpsHrt.TrajectoryParser.Models;
 
@@ -102,9 +103,9 @@ public static class SimdCoordinateParser
         int offset = 0;
         int length = span.Length;
 
-        if (Vector128.IsHardwareAccelerated && length >= Vector128<byte>.Count)
+        if (length >= Vector128<byte>.Count)
         {
-            ref byte start = ref Unsafe.AsRef(in span[0]);
+            ref byte start = ref MemoryMarshal.GetReference(span);
 
             while (offset <= length - Vector128<byte>.Count)
             {
@@ -148,9 +149,9 @@ public static class SimdCoordinateParser
         int index = 0;
         int length = span.Length;
 
-        if (Vector128.IsHardwareAccelerated && length >= Vector128<byte>.Count)
+        if (length >= Vector128<byte>.Count)
         {
-            ref byte start = ref Unsafe.AsRef(in span[0]);
+            ref byte start = ref MemoryMarshal.GetReference(span);
 
             while (index <= length - Vector128<byte>.Count)
             {
@@ -372,16 +373,19 @@ public static class SimdCoordinateParser
         int index = 0;
 
         // Vectorized path: 4 atoms per step (12 floats total)
-        if (Vector128.IsHardwareAccelerated && count >= 4)
+        if (count >= 4)
         {
             int vectorLimit = count - 4;
+            ref float xStart = ref MemoryMarshal.GetReference(xCoords);
+            ref float yStart = ref MemoryMarshal.GetReference(yCoords);
+            ref float zStart = ref MemoryMarshal.GetReference(zCoords);
 
             while (index <= vectorLimit)
             {
                 // Load 4 contiguous coordinates from each planar component
-                Vector128<float> vx = Vector128.Create(xCoords[index], xCoords[index + 1], xCoords[index + 2], xCoords[index + 3]);
-                Vector128<float> vy = Vector128.Create(yCoords[index], yCoords[index + 1], yCoords[index + 2], yCoords[index + 3]);
-                Vector128<float> vz = Vector128.Create(zCoords[index], zCoords[index + 1], zCoords[index + 2], zCoords[index + 3]);
+                Vector128<float> vx = Vector128.LoadUnsafe(ref xStart, (uint)index);
+                Vector128<float> vy = Vector128.LoadUnsafe(ref yStart, (uint)index);
+                Vector128<float> vz = Vector128.LoadUnsafe(ref zStart, (uint)index);
 
                 // Interleave into 4 AtomCoordinate structs
                 destination[index] = new AtomCoordinate(vx.GetElement(0), vy.GetElement(0), vz.GetElement(0));

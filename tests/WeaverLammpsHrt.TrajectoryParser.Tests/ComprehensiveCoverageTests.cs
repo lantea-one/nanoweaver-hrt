@@ -345,6 +345,14 @@ public sealed class ComprehensiveCoverageTests : IClassFixture<WebApplicationFac
                 })
                 .Build();
 
+            // Null logger validation
+            Assert.Throws<ArgumentNullException>(() => new DatasetTransferService(config, null!));
+
+            // Default directory resolution when configuration keys are omitted
+            IConfiguration emptyConfig = new ConfigurationBuilder().Build();
+            DatasetTransferService defaultService = new(emptyConfig, NullLogger<DatasetTransferService>.Instance);
+            Assert.NotNull(defaultService);
+
             DatasetTransferService service = new(config, NullLogger<DatasetTransferService>.Instance);
 
             IReadOnlyList<TrajectoryFileItem> items = await service.ListTrajectoriesAsync();
@@ -445,7 +453,26 @@ public sealed class ComprehensiveCoverageTests : IClassFixture<WebApplicationFac
         // WHY:  Guarantees robust error boundaries without unhandled exceptions or state-machine leaks.
         // HOW:  Feeds specially crafted byte sequences into TryParseHeader and ParseAsync.
 
-        // 1. Corrupted signature: Fortran record length 84, but signature is "ABCD" instead of "CORD"
+        // 1. Empty buffer (TryReadLittleEndian returns false on line 172)
+        ReadOnlySequence<byte> emptySeq = new(Array.Empty<byte>());
+        SequenceReader<byte> emptyReader = new(emptySeq);
+        Assert.False(DcdPipeReader.TryParseHeader(ref emptyReader, out _, out _));
+
+        // 2. Record length < 84 (recordLength < 84 evaluates true on line 172)
+        byte[] shortRecord = new byte[4];
+        BinaryPrimitives.WriteInt32LittleEndian(shortRecord, 50);
+        ReadOnlySequence<byte> shortRecordSeq = new(shortRecord);
+        SequenceReader<byte> shortRecordReader = new(shortRecordSeq);
+        Assert.False(DcdPipeReader.TryParseHeader(ref shortRecordReader, out _, out _));
+
+        // 3. Buffer truncated before magic (TryCopyTo magic returns false on line 178)
+        byte[] truncMagic = new byte[6];
+        BinaryPrimitives.WriteInt32LittleEndian(truncMagic.AsSpan(0, 4), 84);
+        ReadOnlySequence<byte> truncMagicSeq = new(truncMagic);
+        SequenceReader<byte> truncMagicReader = new(truncMagicSeq);
+        Assert.False(DcdPipeReader.TryParseHeader(ref truncMagicReader, out _, out _));
+
+        // 4. Corrupted signature: Fortran record length 84, but signature is "ABCD" instead of "CORD"
         byte[] badMagic = new byte[104];
         BinaryPrimitives.WriteInt32LittleEndian(badMagic.AsSpan(0, 4), 84);
         "ABCD"u8.CopyTo(badMagic.AsSpan(4, 4));
@@ -453,8 +480,24 @@ public sealed class ComprehensiveCoverageTests : IClassFixture<WebApplicationFac
         SequenceReader<byte> badReader = new(badSeq);
         Assert.False(DcdPipeReader.TryParseHeader(ref badReader, out _, out _));
 
-        // 2. Mismatched trailing record length: leading 84, signature "CORD", but trailing marker is 999
-        byte[] badTrailing = new byte[104];
+        // 5. Buffer truncated before header ints (TryCopyTo headerInts returns false on line 188)
+        byte[] truncHeaderInts = new byte[20];
+        BinaryPrimitives.WriteInt32LittleEndian(truncHeaderInts.AsSpan(0, 4), 84);
+        "CORD"u8.CopyTo(truncHeaderInts.AsSpan(4, 4));
+        ReadOnlySequence<byte> truncHeaderSeq = new(truncHeaderInts);
+        SequenceReader<byte> truncHeaderReader = new(truncHeaderSeq);
+        Assert.False(DcdPipeReader.TryParseHeader(ref truncHeaderReader, out _, out _));
+
+        // 6. Missing trailing record marker (TryReadLittleEndian trailing returns false on line 196)
+        byte[] noTrailing = new byte[84];
+        BinaryPrimitives.WriteInt32LittleEndian(noTrailing.AsSpan(0, 4), 84);
+        "CORD"u8.CopyTo(noTrailing.AsSpan(4, 4));
+        ReadOnlySequence<byte> noTrailingSeq = new(noTrailing);
+        SequenceReader<byte> noTrailingReader = new(noTrailingSeq);
+        Assert.False(DcdPipeReader.TryParseHeader(ref noTrailingReader, out _, out _));
+
+        // 7. Mismatched trailing record length: leading 84, signature "CORD", but trailing marker is 999
+        byte[] badTrailing = new byte[88];
         BinaryPrimitives.WriteInt32LittleEndian(badTrailing.AsSpan(0, 4), 84);
         "CORD"u8.CopyTo(badTrailing.AsSpan(4, 4));
         BinaryPrimitives.WriteInt32LittleEndian(badTrailing.AsSpan(84, 4), 999);
@@ -462,7 +505,71 @@ public sealed class ComprehensiveCoverageTests : IClassFixture<WebApplicationFac
         SequenceReader<byte> badTrailingReader = new(badTrailingSeq);
         Assert.False(DcdPipeReader.TryParseHeader(ref badTrailingReader, out _, out _));
 
-        // 3. Short stream (< 104 bytes) that completes
+        // 8. Truncated before titleLength (line 202)
+        byte[] noTitleLen = new byte[88];
+        BinaryPrimitives.WriteInt32LittleEndian(noTitleLen.AsSpan(0, 4), 84);
+        "CORD"u8.CopyTo(noTitleLen.AsSpan(4, 4));
+        BinaryPrimitives.WriteInt32LittleEndian(noTitleLen.AsSpan(84, 4), 84);
+        ReadOnlySequence<byte> noTitleLenSeq = new(noTitleLen);
+        SequenceReader<byte> noTitleLenReader = new(noTitleLenSeq);
+        Assert.False(DcdPipeReader.TryParseHeader(ref noTitleLenReader, out _, out _));
+
+        // 9. Truncated before trailing title marker (line 204)
+        byte[] noTitleEnd = new byte[96];
+        BinaryPrimitives.WriteInt32LittleEndian(noTitleEnd.AsSpan(0, 4), 84);
+        "CORD"u8.CopyTo(noTitleEnd.AsSpan(4, 4));
+        BinaryPrimitives.WriteInt32LittleEndian(noTitleEnd.AsSpan(84, 4), 84);
+        BinaryPrimitives.WriteInt32LittleEndian(noTitleEnd.AsSpan(88, 4), 4);
+        "TEST"u8.CopyTo(noTitleEnd.AsSpan(92, 4));
+        ReadOnlySequence<byte> noTitleEndSeq = new(noTitleEnd);
+        SequenceReader<byte> noTitleEndReader = new(noTitleEndSeq);
+        Assert.False(DcdPipeReader.TryParseHeader(ref noTitleEndReader, out _, out _));
+
+        // 10. Truncated before natomRecordLength (line 207 part 1)
+        byte[] validToTitle = new byte[100];
+        BinaryPrimitives.WriteInt32LittleEndian(validToTitle.AsSpan(0, 4), 84);
+        "CORD"u8.CopyTo(validToTitle.AsSpan(4, 4));
+        BinaryPrimitives.WriteInt32LittleEndian(validToTitle.AsSpan(84, 4), 84);
+        BinaryPrimitives.WriteInt32LittleEndian(validToTitle.AsSpan(88, 4), 4);
+        "TEST"u8.CopyTo(validToTitle.AsSpan(92, 4));
+        BinaryPrimitives.WriteInt32LittleEndian(validToTitle.AsSpan(96, 4), 4);
+        ReadOnlySequence<byte> validToTitleSeq = new(validToTitle);
+        SequenceReader<byte> validToTitleReader = new(validToTitleSeq);
+        Assert.False(DcdPipeReader.TryParseHeader(ref validToTitleReader, out _, out _));
+
+        // 11. natomRecordLength != 4 (line 207 part 2)
+        byte[] badNatomLen = new byte[104];
+        validToTitle.CopyTo(badNatomLen, 0);
+        BinaryPrimitives.WriteInt32LittleEndian(badNatomLen.AsSpan(100, 4), 8); // != 4
+        ReadOnlySequence<byte> badNatomLenSeq = new(badNatomLen);
+        SequenceReader<byte> badNatomLenReader = new(badNatomLenSeq);
+        Assert.False(DcdPipeReader.TryParseHeader(ref badNatomLenReader, out _, out _));
+
+        // 12. Truncated before atomCount (line 208 part 1)
+        byte[] noAtomCount = new byte[104];
+        validToTitle.CopyTo(noAtomCount, 0);
+        BinaryPrimitives.WriteInt32LittleEndian(noAtomCount.AsSpan(100, 4), 4);
+        ReadOnlySequence<byte> noAtomCountSeq = new(noAtomCount);
+        SequenceReader<byte> noAtomCountReader = new(noAtomCountSeq);
+        Assert.False(DcdPipeReader.TryParseHeader(ref noAtomCountReader, out _, out _));
+
+        // 13. atomCount <= 0 (line 208 part 2)
+        byte[] zeroAtomCount = new byte[108];
+        noAtomCount.CopyTo(zeroAtomCount, 0);
+        BinaryPrimitives.WriteInt32LittleEndian(zeroAtomCount.AsSpan(104, 4), 0); // <= 0
+        ReadOnlySequence<byte> zeroAtomCountSeq = new(zeroAtomCount);
+        SequenceReader<byte> zeroAtomCountReader = new(zeroAtomCountSeq);
+        Assert.False(DcdPipeReader.TryParseHeader(ref zeroAtomCountReader, out _, out _));
+
+        // 14. Truncated before trailing natom marker (line 209)
+        byte[] noTrailingNatom = new byte[108];
+        noAtomCount.CopyTo(noTrailingNatom, 0);
+        BinaryPrimitives.WriteInt32LittleEndian(noTrailingNatom.AsSpan(104, 4), 2); // > 0
+        ReadOnlySequence<byte> noTrailingNatomSeq = new(noTrailingNatom);
+        SequenceReader<byte> noTrailingNatomReader = new(noTrailingNatomSeq);
+        Assert.False(DcdPipeReader.TryParseHeader(ref noTrailingNatomReader, out _, out _));
+
+        // 15. Short stream (< 104 bytes) that completes in ParseAsync
         byte[] shortStream = new byte[50];
         PipeReader shortPipeReader = PipeReader.Create(new MemoryStream(shortStream));
         DcdPipeReader dcdParser = new();
@@ -549,7 +656,9 @@ public sealed class ComprehensiveCoverageTests : IClassFixture<WebApplicationFac
         // WHY:  Exercises buffer growth branches and scalar/SIMD coordinate validation paths.
         // HOW:  Feeds synthetic dump text into ParseAsync and tests TryParseLammpsAtomLine directly.
 
-        // 1. Direct validation tests for TryParseLammpsAtomLine
+        // 1. Direct validation tests for TryParseLammpsAtomLine (sep1, sep2, and bad floats)
+        Assert.False(LammpsCustomPipeReader.TryParseLammpsAtomLine("1"u8, out _));
+        Assert.False(LammpsCustomPipeReader.TryParseLammpsAtomLine("1 2"u8, out _));
         Assert.False(LammpsCustomPipeReader.TryParseLammpsAtomLine("1 1 not_a_float 2.0 3.0"u8, out _));
         Assert.False(LammpsCustomPipeReader.TryParseLammpsAtomLine("1 1 1.0 not_a_float 3.0"u8, out _));
         Assert.False(LammpsCustomPipeReader.TryParseLammpsAtomLine("1 1 1.0 2.0 not_a_float"u8, out _));
@@ -705,6 +814,22 @@ public sealed class ComprehensiveCoverageTests : IClassFixture<WebApplicationFac
         Assert.Equal(ToggleState.Transitioning, profile.TargetState);
         Assert.Equal(300.0, profile.TargetEstradiolPmolL);
         Assert.Equal(8.0, profile.TargetTestosteroneNmolL);
+
+        // Default Regimen when null: EstrogenicDominant defaults to MaleToFemale
+        EndocrineTargetProfile pMtf = engine.UpdateToggleState(new ToggleSwitchRequest
+        {
+            TargetState = ToggleState.EstrogenicDominant,
+            Regimen = null
+        });
+        Assert.Equal(TherapeuticRegimen.MaleToFemale, pMtf.Regimen);
+
+        // Default Regimen when null: AndrogenicDominant defaults to FemaleToMale
+        EndocrineTargetProfile pFtm = engine.UpdateToggleState(new ToggleSwitchRequest
+        {
+            TargetState = ToggleState.AndrogenicDominant,
+            Regimen = null
+        });
+        Assert.Equal(TherapeuticRegimen.FemaleToMale, pFtm.Regimen);
     }
 
     /// <summary>
