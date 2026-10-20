@@ -43,6 +43,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const dispTargetE2 = document.getElementById('disp-target-e2');
     const dispTargetT = document.getElementById('disp-target-t');
     const dispTargetKd = document.getElementById('disp-target-kd');
+    const dispTargetTissue = document.getElementById('disp-target-tissue');
+    const dispDeliveryVehicle = document.getElementById('disp-delivery-vehicle');
 
     const metricOccupancy = document.getElementById('metric-occupancy');
     const metricContacts = document.getElementById('metric-contacts');
@@ -237,17 +239,27 @@ document.addEventListener('DOMContentLoaded', () => {
         dispTargetT.innerHTML = `${profile.target_testosterone_nmol_l.toFixed(2)} <small>nmol/L</small>`;
         dispTargetKd.innerHTML = `${profile.kd_target_nanomolar.toFixed(1)} <small>nM</small>`;
 
-        const isEstrogen = profile.target_state === 0 || profile.target_state === 'EstrogenicDominant';
+        if (dispTargetTissue) {
+            dispTargetTissue.innerHTML = profile.target_tissue === 0 || profile.target_tissue === 'AnteriorPituitaryGonadotrope'
+                ? 'Pituitary <small>GnRH-R</small>'
+                : 'Steroidogenic <small>Adrenal</small>';
+        }
 
-        if (isEstrogen) {
+        if (dispDeliveryVehicle && profile.delivery_vehicle) {
+            dispDeliveryVehicle.innerHTML = escapeHtml(profile.delivery_vehicle.geometry.split(' ')[0]);
+        }
+
+        const isMtF = profile.regimen === 0 || profile.regimen === 'MaleToFemale' || profile.target_state === 0 || profile.target_state === 'EstrogenicDominant';
+
+        if (isMtF) {
             btnToggleEstrogen.className = 'toggle-btn active-estrogen';
             btnToggleTestosterone.className = 'toggle-btn';
-            activeStateBadge.textContent = 'ESTROGENIC DOMINANT';
+            activeStateBadge.textContent = 'MALE-TO-FEMALE (MtF)';
             activeStateBadge.className = 'badge badge-accent';
         } else {
             btnToggleEstrogen.className = 'toggle-btn';
             btnToggleTestosterone.className = 'toggle-btn active-testosterone';
-            activeStateBadge.textContent = 'ANDROGENIC DOMINANT';
+            activeStateBadge.textContent = 'FEMALE-TO-MALE (FtM)';
             activeStateBadge.className = 'badge badge-accent';
         }
     }

@@ -31,20 +31,61 @@ public sealed class EndocrineStateEngine
     /// </summary>
     public EndocrineStateEngine()
     {
-        // WHAT: Initializes a default target profile tuned for Estrogenic Dominance (Feminizing HRT).
+        // WHAT: Initializes a default target profile tuned for Male-to-Female (MtF) Feminizing HRT.
         // WHY:  Provides a valid baseline for immediate clinical simulation upon service boot.
         // HOW:  Sets E2 to 550 pmol/L (approx 150 pg/mL) and T to 1.2 nmol/L (suppressed).
         _currentProfile = new EndocrineTargetProfile
         {
             PatientId = "ANON-PATIENT-001",
+            Regimen = TherapeuticRegimen.MaleToFemale,
             TargetState = ToggleState.EstrogenicDominant,
+            TargetTissue = TargetTissueType.AnteriorPituitaryGonadotrope,
             TargetEstradiolPmolL = 550.0,
             TargetTestosteroneNmolL = 1.2,
             TargetProgesteroneNmolL = 5.0,
             BindingAffinityKdTargetNanoMolar = 4.2,
+            DeliveryVehicle = NanocarrierDeliveryVehicle.Default,
             UpdatedUtc = DateTime.UtcNow.ToString("o")
         };
     }
+
+    /// <summary>
+    /// Generates a standardized clinical preset profile for Male-to-Female (MtF) permanent HRT.
+    /// </summary>
+    /// <param name="patientId">Unique patient identifier.</param>
+    /// <returns>A target profile configured for estrogenic dominance and complete androgen suppression.</returns>
+    public static EndocrineTargetProfile CreateMtfPreset(string patientId) => new()
+    {
+        PatientId = patientId,
+        Regimen = TherapeuticRegimen.MaleToFemale,
+        TargetState = ToggleState.EstrogenicDominant,
+        TargetTissue = TargetTissueType.AnteriorPituitaryGonadotrope,
+        TargetEstradiolPmolL = 550.0,
+        TargetTestosteroneNmolL = 1.1,
+        TargetProgesteroneNmolL = 5.0,
+        BindingAffinityKdTargetNanoMolar = 3.8,
+        DeliveryVehicle = NanocarrierDeliveryVehicle.Default,
+        UpdatedUtc = DateTime.UtcNow.ToString("o")
+    };
+
+    /// <summary>
+    /// Generates a standardized clinical preset profile for Female-to-Male (FtM) permanent HRT.
+    /// </summary>
+    /// <param name="patientId">Unique patient identifier.</param>
+    /// <returns>A target profile configured for androgenic dominance and estrogen suppression.</returns>
+    public static EndocrineTargetProfile CreateFtmPreset(string patientId) => new()
+    {
+        PatientId = patientId,
+        Regimen = TherapeuticRegimen.FemaleToMale,
+        TargetState = ToggleState.AndrogenicDominant,
+        TargetTissue = TargetTissueType.AnteriorPituitaryGonadotrope,
+        TargetEstradiolPmolL = 100.0,
+        TargetTestosteroneNmolL = 20.0,
+        TargetProgesteroneNmolL = 0.5,
+        BindingAffinityKdTargetNanoMolar = 4.5,
+        DeliveryVehicle = NanocarrierDeliveryVehicle.Default,
+        UpdatedUtc = DateTime.UtcNow.ToString("o")
+    };
 
     /// <summary>
     /// Retrieves a snapshot of the currently active endocrine target profile.
@@ -93,14 +134,23 @@ public sealed class EndocrineStateEngine
                 testosteroneTarget = request.TestosteroneNmolL ?? 8.0;
             }
 
+            TherapeuticRegimen regimen = request.Regimen ?? (request.TargetState == ToggleState.EstrogenicDominant 
+                ? TherapeuticRegimen.MaleToFemale 
+                : TherapeuticRegimen.FemaleToMale);
+
+            TargetTissueType targetTissue = request.TargetTissue ?? _currentProfile.TargetTissue;
+
             _currentProfile = new EndocrineTargetProfile
             {
                 PatientId = _currentProfile.PatientId,
+                Regimen = regimen,
                 TargetState = request.TargetState,
+                TargetTissue = targetTissue,
                 TargetEstradiolPmolL = Math.Clamp(estradiolTarget, 50.0, 2000.0),
                 TargetTestosteroneNmolL = Math.Clamp(testosteroneTarget, 0.2, 50.0),
                 TargetProgesteroneNmolL = _currentProfile.TargetProgesteroneNmolL,
                 BindingAffinityKdTargetNanoMolar = _currentProfile.BindingAffinityKdTargetNanoMolar,
+                DeliveryVehicle = _currentProfile.DeliveryVehicle,
                 UpdatedUtc = DateTime.UtcNow.ToString("o")
             };
 

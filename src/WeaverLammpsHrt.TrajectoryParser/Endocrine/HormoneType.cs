@@ -63,3 +63,65 @@ public enum ToggleState
     /// </summary>
     Transitioning
 }
+
+/// <summary>
+/// Clinical and synthetic biology regimen objective for permanent hormone replacement therapy.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <strong>Plain-English Summary:</strong> Specifies whether the delivery vehicle is programmed to 
+/// establish permanent female-typical endocrine signaling (Male-to-Female / MtF) or male-typical 
+/// endocrine signaling (Female-to-Male / FtM).
+/// </para>
+/// </remarks>
+public enum TherapeuticRegimen
+{
+    /// <summary>
+    /// Male-to-Female (MtF) HRT: Prioritizes 17β-estradiol synthesis and receptor activation 
+    /// while continuously suppressing endogenous androgen levels to cisgender female physiological targets (&lt; 1.8 nmol/L).
+    /// </summary>
+    MaleToFemale,
+
+    /// <summary>
+    /// Female-to-Male (FtM) HRT: Prioritizes testosterone signaling and androgen receptor activation 
+    /// while suppressing cyclic estrogen synthesis to cisgender male physiological targets (12 to 28 nmol/L).
+    /// </summary>
+    FemaleToMale,
+
+    /// <summary>
+    /// Customized non-binary or micro-dosed endocrine setpoint tailored to specific patient requirements.
+    /// </summary>
+    Custom
+}
+
+/// <summary>
+/// Anatomical and cellular delivery target for the DNA origami nanocarrier vehicle.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <strong>Plain-English Summary:</strong> To avoid off-target side effects, the DNA origami nanocarrier displays 
+/// surface aptamers that home in on specific cell types in the body, releasing or sequestering hormones only where intended.
+/// </para>
+/// </remarks>
+public enum TargetTissueType
+{
+    /// <summary>
+    /// Anterior pituitary gonadotrope cells (GnRH receptors) for central feedback modulation of LH and FSH.
+    /// </summary>
+    AnteriorPituitaryGonadotrope,
+
+    /// <summary>
+    /// Adrenal cortex steroidogenic cells (modulating CYP enzymes for steroidogenesis).
+    /// </summary>
+    AdrenalSteroidogenic,
+
+    /// <summary>
+    /// Gonadal steroid-producing cells (Leydig or Theca/Granulosa cell pathways).
+    /// </summary>
+    GonadalTarget,
+
+    /// <summary>
+    /// Peripheral somatic tissues (breast, hair follicles, bone, adipose tissue) expressing ER or AR receptors.
+    /// </summary>
+    PeripheralReceptor
+}

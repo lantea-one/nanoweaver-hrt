@@ -125,4 +125,42 @@ public sealed class EndocrineAnalyzerTests
         // At hour 72, concentration should be close to target setpoint (550.0 pmol/L)
         Assert.InRange(curve[^1].EstradiolPmolL, 500.0, 560.0);
     }
+
+    /// <summary>
+    /// Verifies that <see cref="EndocrineStateEngine.CreateMtfPreset"/> configures therapeutic feminizing ranges and suppressed androgens.
+    /// </summary>
+    [Fact]
+    public void CreateMtfPreset_ShouldConfigureFeminizingTargetsAndSuppressedAndrogens()
+    {
+        // WHAT: Creates a standardized Male-to-Female preset profile.
+        // WHY:  Guarantees clinical compliance for MtF HRT protocols.
+        // HOW:  Validates that E2 is within 350-750 pmol/L and T is suppressed below 1.8 nmol/L.
+        EndocrineTargetProfile mtf = EndocrineStateEngine.CreateMtfPreset("PATIENT-MTF-001");
+
+        Assert.Equal(TherapeuticRegimen.MaleToFemale, mtf.Regimen);
+        Assert.Equal(ToggleState.EstrogenicDominant, mtf.TargetState);
+        Assert.InRange(mtf.TargetEstradiolPmolL, 350.0, 750.0);
+        Assert.True(mtf.TargetTestosteroneNmolL < 1.8);
+        Assert.Equal(TargetTissueType.AnteriorPituitaryGonadotrope, mtf.TargetTissue);
+        Assert.NotNull(mtf.DeliveryVehicle);
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="EndocrineStateEngine.CreateFtmPreset"/> configures therapeutic masculinizing ranges and suppressed estrogens.
+    /// </summary>
+    [Fact]
+    public void CreateFtmPreset_ShouldConfigureMasculinizingTargetsAndSuppressedEstrogens()
+    {
+        // WHAT: Creates a standardized Female-to-Male preset profile.
+        // WHY:  Guarantees clinical compliance for FtM HRT protocols.
+        // HOW:  Validates that T is within 12-28 nmol/L and E2 is suppressed below 150 pmol/L.
+        EndocrineTargetProfile ftm = EndocrineStateEngine.CreateFtmPreset("PATIENT-FTM-001");
+
+        Assert.Equal(TherapeuticRegimen.FemaleToMale, ftm.Regimen);
+        Assert.Equal(ToggleState.AndrogenicDominant, ftm.TargetState);
+        Assert.InRange(ftm.TargetTestosteroneNmolL, 12.0, 28.0);
+        Assert.True(ftm.TargetEstradiolPmolL <= 150.0);
+        Assert.Equal(TargetTissueType.AnteriorPituitaryGonadotrope, ftm.TargetTissue);
+        Assert.NotNull(ftm.DeliveryVehicle);
+    }
 }

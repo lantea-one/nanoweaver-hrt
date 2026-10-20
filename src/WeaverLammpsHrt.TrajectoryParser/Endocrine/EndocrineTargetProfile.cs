@@ -21,10 +21,22 @@ public sealed record EndocrineTargetProfile
     public required string PatientId { get; init; }
 
     /// <summary>
+    /// The primary clinical objective: Male-to-Female (MtF) or Female-to-Male (FtM) permanent HRT.
+    /// </summary>
+    [JsonPropertyName("regimen")]
+    public required TherapeuticRegimen Regimen { get; init; }
+
+    /// <summary>
     /// The desired dominant hormonal state (Estrogenic vs. Androgenic).
     /// </summary>
     [JsonPropertyName("target_state")]
     public required ToggleState TargetState { get; init; }
+
+    /// <summary>
+    /// The specific cellular tissue targeted by the delivery nanocarrier.
+    /// </summary>
+    [JsonPropertyName("target_tissue")]
+    public required TargetTissueType TargetTissue { get; init; }
 
     /// <summary>
     /// Target 17β-estradiol serum concentration in picomoles per liter (pmol/L).
@@ -54,10 +66,47 @@ public sealed record EndocrineTargetProfile
     public double BindingAffinityKdTargetNanoMolar { get; init; } = 5.0;
 
     /// <summary>
+    /// Structural parameters of the patient-targeted DNA origami delivery vehicle.
+    /// </summary>
+    [JsonPropertyName("delivery_vehicle")]
+    public NanocarrierDeliveryVehicle DeliveryVehicle { get; init; } = NanocarrierDeliveryVehicle.Default;
+
+    /// <summary>
     /// Timestamp when this hormonal profile was established or modified.
     /// </summary>
     [JsonPropertyName("updated_utc")]
     public required string UpdatedUtc { get; init; }
+}
+
+/// <summary>
+/// Physical parameters of the patient-targeted DNA origami nanocarrier modeled and fabricated for HRT delivery.
+/// </summary>
+public sealed record NanocarrierDeliveryVehicle
+{
+    /// <summary>Default delivery vehicle template for anterior pituitary receptor targeting.</summary>
+    public static readonly NanocarrierDeliveryVehicle Default = new()
+    {
+        Geometry = "Hexagonal Nanotube (6-helix bundle)",
+        TargetingLigandAptamer = "GnRHR-Aptamer-42nt",
+        PayloadCapacityMolecules = 48,
+        EstimatedStabilityHalfLifeHours = 120.0
+    };
+
+    /// <summary>Physical geometry of the folded DNA origami container (e.g. Nanotube, Nanobox, Cage).</summary>
+    [JsonPropertyName("geometry")]
+    public required string Geometry { get; init; }
+
+    /// <summary>Nucleotide aptamer sequence identifier responsible for cell-surface receptor targeting.</summary>
+    [JsonPropertyName("targeting_ligand_aptamer")]
+    public required string TargetingLigandAptamer { get; init; }
+
+    /// <summary>Estimated molecular payload capacity per nanocarrier.</summary>
+    [JsonPropertyName("payload_capacity_molecules")]
+    public required int PayloadCapacityMolecules { get; init; }
+
+    /// <summary>Estimated enzymatic stability half-life in human serum at 37°C in hours.</summary>
+    [JsonPropertyName("estimated_stability_half_life_hours")]
+    public required double EstimatedStabilityHalfLifeHours { get; init; }
 }
 
 /// <summary>
@@ -70,6 +119,18 @@ public sealed record ToggleSwitchRequest
     /// </summary>
     [JsonPropertyName("target_state")]
     public required ToggleState TargetState { get; init; }
+
+    /// <summary>
+    /// Target HRT regimen (MaleToFemale or FemaleToMale).
+    /// </summary>
+    [JsonPropertyName("regimen")]
+    public TherapeuticRegimen? Regimen { get; init; }
+
+    /// <summary>
+    /// Target tissue type for the delivery vehicle.
+    /// </summary>
+    [JsonPropertyName("target_tissue")]
+    public TargetTissueType? TargetTissue { get; init; }
 
     /// <summary>
     /// Optional override for target estradiol concentration (pmol/L).

@@ -2,6 +2,7 @@
 
 > **Note for AI Coding Assistants (Claude, Cursor, Copilot, Gemini, ChatGPT):**
 > You are acting as a Principal Systems Architect and Computational Nanotechnologist working on **weaver-lammps-hrt** (`dotnet-weaver-lammps-hrt`), an open-source decentralized synthetic biology and DNA origami research platform.
+> **Project Goal:** To develop and fabricate a permanent Female to Male (FtM) and Male to Female (MtF) Hormone Replacement Therapy (HRT) using patient-targeted delivery.
 > Read this document completely before generating or editing code in this repository.
 
 ---
