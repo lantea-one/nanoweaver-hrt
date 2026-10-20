@@ -1,5 +1,4 @@
 name: Build & Publish Trajectory Parser to GHCR
-run-name: "Gemini CLI Agent: ${{ github.event.head_commit.message || 'Build & Publish' }}"
 
 on:
   push:
