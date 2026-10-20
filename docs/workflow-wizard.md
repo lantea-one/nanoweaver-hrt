@@ -121,15 +121,26 @@ Before ordering synthetic oligos for wet-lab synthesis, the wizard exports simul
 
 ---
 
-### Stage 6: Benchtop Synthesis & Export Manifest
+### Stage 6: Benchtop Synthesis, DIY Instructions & Export Manifest
 
-The final stage generates complete bench synthesis files:
-1. **Staple Synthesis Order Sheet (`.csv`)**: Ready for direct upload to oligonucleotide synthesis providers (e.g., IDT, Twist Bioscience, Eurofins), specifying well coordinates, sequence, purification method, and scale.
-2. **Thermal Cycler Script (`.pcr` / `.txt`)**: Automated program files for Bio-Rad, Eppendorf, or Applied Biosystems thermocyclers.
-3. **Cryptographic Provenance Manifest (`manifest.json`)**: Contains SHA-256 integrity hashes for all sequence inputs, staple mappings, and annealing protocols, ensuring reproducible science.
+Once in-silico simulation results are verified, the wizard automatically generates the complete bench synthesis specification, staple routing tables, and **actionable DIY / HomeLab fabrication instructions**:
+
+![DIY & HomeLab Benchtop Fabrication Instructions](images/07_diy_fabrication_guide.png)
+
+#### Included Fabrication Deliverables:
+1. **Interactive DIY & HomeLab Bench Protocol ("How-To")**:
+   * **7-Step Physical Protocol**: Step-by-step instructions from dry oligo pellet reconstitution to master pooling, reaction pipetting, thermal cycling, and non-toxic storage.
+   * **Exact 50 µL Stoichiometric Pipetting Table**: Explicit component addition order, stock concentrations, microliter volumes, and final concentrations.
+   * **Reagents & Equipment Checklist**: Transparent comparison between institutional laboratory suppliers and accessible community lab / DIY substitutes (e.g., sous-vide circulators or OpenPCR vs. commercial cyclers).
+   * **Quality Control & Agarose Gel Electrophoresis**: Detailed guide on preparing $1.5\%$ agarose gels with $11\text{ mM Mg}^{2+}$, reading bands, and troubleshooting aggregates.
+   * *For the complete exhaustive manual, see the dedicated [**DIY & HomeLab Benchtop Fabrication Guide**](diy-fabrication-guide.md).*
+2. **Staple Synthesis Order Sheet (`.csv`)**: Ready for direct upload to oligonucleotide synthesis providers (e.g., IDT, Twist Bioscience, Eurofins), specifying well coordinates, sequence, purification method, and scale.
+3. **Thermal Cycler Script (`.pcr` / `.txt`)**: Automated program files for Bio-Rad, Eppendorf, or Applied Biosystems thermocyclers.
+4. **Cryptographic Provenance Manifest (`manifest.json`)**: Contains SHA-256 integrity hashes for all sequence inputs, staple mappings, annealing protocols, and the complete DIY fabrication guide.
 
 ---
 
 ## Next Steps
+* Read the comprehensive [**DIY & HomeLab Benchtop Fabrication Guide**](diy-fabrication-guide.md) for detailed wet-lab instructions.
 * Proceed to the [**Endocrine Hub & Pharmacodynamics**](endocrine-hub.md) to simulate closed-loop therapeutic release.
 * Review [**Configuration & Sovereign Peering**](configuration-peers.md) to manage node parameters.

@@ -93,6 +93,8 @@ Explore the comprehensive guides and references below:
    * Concrete step-by-step examples: MtF feminizing nanotube, FtM masculinizing nanocage, and collaborative compute peering.
 8. [**REST API Reference**](api-reference.md)
    * Full endpoint catalog, request/response JSON schemas, and test suite execution.
+9. [**DIY & HomeLab Benchtop Fabrication Guide**](diy-fabrication-guide.md)
+   * Step-by-step physical instructions for community scientists: 50 µL pipetting recipe, reagents checklist, 7-step bench execution, agarose gel QC, and non-toxic safety protocols.
 
 ---
 

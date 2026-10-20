@@ -209,6 +209,14 @@ public sealed class WebUiAndConfigurationTests : IClassFixture<WebApplicationFac
         Assert.Equal(6, package.AnnealingSchedule.Count); // All 6 thermal stages
         Assert.NotNull(package.Sha256Manifest);
 
+        // Verify DIY / HomeLab fabrication guide
+        Assert.NotNull(package.DiyFabricationGuide);
+        Assert.NotEmpty(package.DiyFabricationGuide.Materials);
+        Assert.NotEmpty(package.DiyFabricationGuide.PipettingTable);
+        Assert.Equal(7, package.DiyFabricationGuide.Steps.Count); // All 7 bench steps
+        Assert.NotEmpty(package.DiyFabricationGuide.QualityControlGuide);
+        Assert.NotEmpty(package.DiyFabricationGuide.SafetyAndHandlingNotes);
+
         // Export to disk and verify SHA-256
         (string path, string sha256) = await fab.ExportFabricationManifestJsonAsync(package, _testTempDir);
         Assert.True(File.Exists(path));

@@ -89,6 +89,151 @@ public sealed record AnnealingRampStep
 }
 
 /// <summary>
+/// Represents a laboratory reagent or equipment item needed for DNA origami folding,
+/// detailing both professional laboratory and DIY / HomeLab alternatives.
+/// </summary>
+public sealed record FabricationMaterialItem
+{
+    /// <summary>
+    /// Common chemical or material name.
+    /// </summary>
+    [JsonPropertyName("material_name")]
+    public required string MaterialName { get; init; }
+
+    /// <summary>
+    /// Recommended commercial or research supplier source (e.g., NEB, IDT, Sigma-Aldrich).
+    /// </summary>
+    [JsonPropertyName("standard_source")]
+    public required string StandardSource { get; init; }
+
+    /// <summary>
+    /// Accessible DIY, community lab, or bio-hacker alternative.
+    /// </summary>
+    [JsonPropertyName("diy_alternative")]
+    public required string DiyAlternative { get; init; }
+
+    /// <summary>
+    /// Required quantity or concentration.
+    /// </summary>
+    [JsonPropertyName("quantity")]
+    public required string Quantity { get; init; }
+
+    /// <summary>
+    /// Functional biophysical purpose in the assembly reaction.
+    /// </summary>
+    [JsonPropertyName("purpose")]
+    public required string Purpose { get; init; }
+}
+
+/// <summary>
+/// Defines a single pipetting component in the stoichiometric folding reaction recipe.
+/// </summary>
+public sealed record ReactionPipettingComponent
+{
+    /// <summary>
+    /// Recommended sequential pipetting order (1-indexed).
+    /// </summary>
+    [JsonPropertyName("addition_order")]
+    public required int AdditionOrder { get; init; }
+
+    /// <summary>
+    /// Name of the reaction component (e.g., Nuclease-Free ddH2O, Scaffold, Staples).
+    /// </summary>
+    [JsonPropertyName("component_name")]
+    public required string ComponentName { get; init; }
+
+    /// <summary>
+    /// Stock concentration before addition.
+    /// </summary>
+    [JsonPropertyName("stock_concentration")]
+    public required string StockConcentration { get; init; }
+
+    /// <summary>
+    /// Volume to pipette for a standard 50 microliter folding reaction.
+    /// </summary>
+    [JsonPropertyName("volume_microliters")]
+    public required double VolumeMicroliters { get; init; }
+
+    /// <summary>
+    /// Final concentration in the completed 50 microliter reaction.
+    /// </summary>
+    [JsonPropertyName("final_concentration")]
+    public required string FinalConcentration { get; init; }
+
+    /// <summary>
+    /// Essential handling tip or note for this component.
+    /// </summary>
+    [JsonPropertyName("handling_tip")]
+    public required string HandlingTip { get; init; }
+}
+
+/// <summary>
+/// Actionable step in the DIY / HomeLab benchtop fabrication protocol.
+/// </summary>
+public sealed record FabricationStepInstruction
+{
+    /// <summary>
+    /// Sequential step number (1 to 7).
+    /// </summary>
+    [JsonPropertyName("step_number")]
+    public required int StepNumber { get; init; }
+
+    /// <summary>
+    /// Title of the protocol phase.
+    /// </summary>
+    [JsonPropertyName("phase_title")]
+    public required string PhaseTitle { get; init; }
+
+    /// <summary>
+    /// Plain-English, step-by-step practical instructions written for DIYers and beginners.
+    /// </summary>
+    [JsonPropertyName("detailed_instructions")]
+    public required string DetailedInstructions { get; init; }
+
+    /// <summary>
+    /// Practical advice, cautionary notes, or DIY equipment substitutions for homelab environments.
+    /// </summary>
+    [JsonPropertyName("diy_homelab_note")]
+    public required string DiyHomeLabNote { get; init; }
+}
+
+/// <summary>
+/// Comprehensive DIY / HomeLab fabrication guide included in every synthesized result manifest.
+/// </summary>
+public sealed record DiyFabricationGuide
+{
+    /// <summary>
+    /// Checklist of reagents and equipment with DIY substitutes.
+    /// </summary>
+    [JsonPropertyName("materials")]
+    public required IReadOnlyList<FabricationMaterialItem> Materials { get; init; }
+
+    /// <summary>
+    /// Exact pipetting table for a 50 microliter benchtop folding reaction.
+    /// </summary>
+    [JsonPropertyName("pipetting_table")]
+    public required IReadOnlyList<ReactionPipettingComponent> PipettingTable { get; init; }
+
+    /// <summary>
+    /// Step-by-step physical bench protocol (from reconstitution to storage).
+    /// </summary>
+    [JsonPropertyName("steps")]
+    public required IReadOnlyList<FabricationStepInstruction> Steps { get; init; }
+
+    /// <summary>
+    /// Quality control procedures accessible to non-institutional researchers (e.g. Agarose Gel Electrophoresis with Mg2+).
+    /// </summary>
+    [JsonPropertyName("quality_control_guide")]
+    public required string QualityControlGuide { get; init; }
+
+    /// <summary>
+    /// Critical safety, sterility, and disposal guidelines for home and community lab environments.
+    /// </summary>
+    [JsonPropertyName("safety_and_handling_notes")]
+    public required string SafetyAndHandlingNotes { get; init; }
+}
+
+/// <summary>
 /// Comprehensive, actionable bench fabrication package containing all oligonucleotide sequences,
 /// stoichiometric mixing ratios, cryogenic thermal annealing ramps, and quality control criteria.
 /// </summary>
@@ -159,6 +304,12 @@ public sealed record FabricationPackage
     /// </summary>
     [JsonPropertyName("sha256_manifest")]
     public required string Sha256Manifest { get; init; }
+
+    /// <summary>
+    /// Comprehensive DIY and HomeLab bench fabrication instructions ('how-to') tailored for community researchers.
+    /// </summary>
+    [JsonPropertyName("diy_fabrication_guide")]
+    public required DiyFabricationGuide DiyFabricationGuide { get; init; }
 
     /// <summary>
     /// Timestamp when this fabrication package was synthesized by the system.

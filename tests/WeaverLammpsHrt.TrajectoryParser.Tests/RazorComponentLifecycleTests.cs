@@ -325,6 +325,16 @@ public sealed class RazorComponentLifecycleTests : IDisposable
         // 9. Test Fabrication Package Re-generation and Export
         InvokeMethod(wizard, "RegenerateFabrication");
         await InvokeAsyncMethod(wizard, "ExportFabricationPackageAsync");
+
+        // 10. Test DIY & HomeLab Fabrication Guide tab navigation
+        InvokeMethod(wizard, "SetDiyTab", "pipetting");
+        RenderComponent(wizard);
+        InvokeMethod(wizard, "SetDiyTab", "materials");
+        RenderComponent(wizard);
+        InvokeMethod(wizard, "SetDiyTab", "qc");
+        RenderComponent(wizard);
+        InvokeMethod(wizard, "SetDiyTab", "protocol");
+        RenderComponent(wizard);
     }
 
     /// <summary>

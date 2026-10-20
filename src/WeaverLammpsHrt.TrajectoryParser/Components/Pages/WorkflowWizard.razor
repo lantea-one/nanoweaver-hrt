@@ -630,6 +630,157 @@
                 </div>
             </div>
 
+            <!-- ===================================================================== -->
+            <!-- DIY & HOMELAB BENCHTOP FABRICATION GUIDE ("HOW-TO")                   -->
+            <!-- ===================================================================== -->
+            <div class="diy-guide-card card mt-4">
+                <div class="panel-header">
+                    <div>
+                        <div class="flex-align gap-2">
+                            <span class="badge badge-accent">DIY / HOMELAB HOW-TO</span>
+                            <span class="badge badge-outline">COMMUNITY SCIENCE READY</span>
+                        </div>
+                        <h3 class="mt-1">🔬 Benchtop Fabrication Instructions ("How-To")</h3>
+                        <p class="panel-desc">Accessible, step-by-step physical protocol designed for independent researchers, community biology labs, and bio-hackers with zero institutional jargon.</p>
+                    </div>
+                </div>
+
+                <!-- Navigation Tabs -->
+                <div class="diy-tab-bar mt-3">
+                    <button type="button" class="diy-tab-btn @(_activeDiyTab == "protocol" ? "active" : "")" @onclick='() => SetDiyTab("protocol")'>
+                        📋 7-Step Bench Protocol
+                    </button>
+                    <button type="button" class="diy-tab-btn @(_activeDiyTab == "pipetting" ? "active" : "")" @onclick='() => SetDiyTab("pipetting")'>
+                        🧪 50 µL Reaction Pipetting Table
+                    </button>
+                    <button type="button" class="diy-tab-btn @(_activeDiyTab == "materials" ? "active" : "")" @onclick='() => SetDiyTab("materials")'>
+                        🛒 Reagents &amp; Equipment Checklist (Lab vs. DiY)
+                    </button>
+                    <button type="button" class="diy-tab-btn @(_activeDiyTab == "qc" ? "active" : "")" @onclick='() => SetDiyTab("qc")'>
+                        🔍 Gel Electrophoresis QC &amp; Safety
+                    </button>
+                </div>
+
+                <!-- TAB 1: 7-STEP PROTOCOL -->
+                @if (_activeDiyTab == "protocol" && _currentPackage?.DiyFabricationGuide != null)
+                {
+                    <div class="protocol-steps">
+                        @foreach (FabricationStepInstruction step in _currentPackage.DiyFabricationGuide.Steps)
+                        {
+                            <div class="step-card">
+                                <div class="step-card-header">
+                                    <h4 class="text-white m-0">@step.PhaseTitle</h4>
+                                    <span class="step-badge">STEP @step.StepNumber OF 7</span>
+                                </div>
+                                <p class="text-main mt-1 mb-2">@step.DetailedInstructions</p>
+                                <div class="homelab-tip-box">
+                                    <strong>💡 HomeLab &amp; DiY Advice:</strong> @step.DiyHomeLabNote
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+
+                <!-- TAB 2: PIPETTING RECIPE -->
+                @if (_activeDiyTab == "pipetting" && _currentPackage?.DiyFabricationGuide != null)
+                {
+                    <div class="pipetting-section">
+                        <div class="callout-box mb-3">
+                            <div class="callout-title">🧪 Standard 50 µL Stoichiometric Folding Recipe</div>
+                            <div class="callout-item">Mix components in the strict sequential order listed below. Always use sterile barrier pipette tips. Keep reaction tubes chilled on ice until placing in the thermal cycler.</div>
+                        </div>
+
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Order</th>
+                                        <th>Component Name</th>
+                                        <th>Stock Concentration</th>
+                                        <th>Volume (µL)</th>
+                                        <th>Final Concentration</th>
+                                        <th>Handling Tip</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (ReactionPipettingComponent item in _currentPackage.DiyFabricationGuide.PipettingTable)
+                                    {
+                                        <tr>
+                                            <td class="font-mono text-accent">#@item.AdditionOrder</td>
+                                            <td class="font-semibold text-white">@item.ComponentName</td>
+                                            <td class="font-mono">@item.StockConcentration</td>
+                                            <td class="font-mono text-accent font-bold">@item.VolumeMicroliters.ToString("F1") µL</td>
+                                            <td class="font-mono">@item.FinalConcentration</td>
+                                            <td class="subtext">@item.HandlingTip</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                                <tfoot>
+                                    <tr style="background: rgba(0, 229, 255, 0.05); font-weight: bold;">
+                                        <td colspan="3" class="text-right">Total Reaction Volume:</td>
+                                        <td class="font-mono text-accent font-bold">50.0 µL</td>
+                                        <td colspan="2" class="text-muted font-normal">(Scalable: double all volumes for 100 µL batches)</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                }
+
+                <!-- TAB 3: MATERIALS & REAGENTS -->
+                @if (_activeDiyTab == "materials" && _currentPackage?.DiyFabricationGuide != null)
+                {
+                    <div class="materials-section">
+                        <div class="callout-box mb-3">
+                            <div class="callout-title">🛒 Materials Sourcing: Institutional Lab vs. HomeLab / DiY</div>
+                            <div class="callout-item">DNA origami requires no hazardous or controlled substances. All components can be sourced through standard research vendors or non-institutional bio-hacker suppliers.</div>
+                        </div>
+
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Reagent / Material</th>
+                                        <th>Standard Laboratory Supplier</th>
+                                        <th>DiY / Community Lab Equivalent</th>
+                                        <th>Reaction Quantity</th>
+                                        <th>Biophysical Function</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (FabricationMaterialItem mat in _currentPackage.DiyFabricationGuide.Materials)
+                                    {
+                                        <tr>
+                                            <td class="font-semibold text-white">@mat.MaterialName</td>
+                                            <td class="subtext">@mat.StandardSource</td>
+                                            <td class="text-accent">@mat.DiyAlternative</td>
+                                            <td class="font-mono">@mat.Quantity</td>
+                                            <td class="subtext">@mat.Purpose</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                }
+
+                <!-- TAB 4: QC & SAFETY -->
+                @if (_activeDiyTab == "qc" && _currentPackage?.DiyFabricationGuide != null)
+                {
+                    <div class="qc-section">
+                        <div class="qc-notice-box">
+                            <h4>🔍 Quality Control Analysis (Agarose Gel Electrophoresis)</h4>
+                            <div style="white-space: pre-line; line-height: 1.6;">@_currentPackage.DiyFabricationGuide.QualityControlGuide</div>
+                        </div>
+
+                        <div class="callout-box mt-3">
+                            <div class="callout-title">🛡️ Safety, Sterility &amp; Bio-Hacking Hygiene</div>
+                            <div style="white-space: pre-line; line-height: 1.6;">@_currentPackage.DiyFabricationGuide.SafetyAndHandlingNotes</div>
+                        </div>
+                    </div>
+                }
+            </div>
+
             <!-- Export Actions -->
             <div class="mt-4 text-center">
                 <button class="btn btn-primary btn-lg" @onclick="ExportFabricationPackageAsync">
@@ -653,6 +804,18 @@
 </div>
 
 @code {
+    /// <summary>
+    /// Optional step query parameter allowing direct deep linking to a specific wizard stage (e.g. ?step=6).
+    /// </summary>
+    [SupplyParameterFromQuery(Name = "step")]
+    public int? StepQuery { get; set; }
+
+    /// <summary>
+    /// Optional DIY guide tab query parameter (e.g. ?step=6&amp;tab=pipetting).
+    /// </summary>
+    [SupplyParameterFromQuery(Name = "tab")]
+    public string? TabQuery { get; set; }
+
     /// <summary>
     /// Current active step index in the 6-stage wizard.
     /// </summary>
@@ -819,6 +982,23 @@
     private string? _exportedFilePath;
 
     /// <summary>
+    /// Active tab in the DIY &amp; HomeLab benchtop fabrication guide ('protocol', 'pipetting', 'materials', 'qc').
+    /// </summary>
+    private string _activeDiyTab = "protocol";
+
+    /// <summary>
+    /// Selects the active tab in the DIY &amp; HomeLab benchtop fabrication guide.
+    /// </summary>
+    /// <param name="tab">The tab identifier to activate.</param>
+    private void SetDiyTab(string tab)
+    {
+        // WHAT: Updates the active tab selection in the DIY fabrication instructions view.
+        // WHY:  Allows users to toggle between the 7-step protocol, pipetting recipe, materials checklist, and QC advice.
+        // HOW:  Sets the string state property triggering Blazor UI re-render.
+        _activeDiyTab = tab;
+    }
+
+    /// <summary>
     /// Initializes wizard state, loads preset DNA samples, and computes initial sequence metrics.
     /// </summary>
     protected override void OnInitialized()
@@ -833,6 +1013,25 @@
             OnSequenceChanged();
         }
         RegenerateFabrication();
+    }
+
+    /// <summary>
+    /// Processes component parameters and activates the requested step or tab from query strings if provided.
+    /// </summary>
+    protected override void OnParametersSet()
+    {
+        // WHAT: Inspects optional query string parameters for direct stage and tab navigation.
+        // WHY:  Allows deep linking directly to results and fabrication instructions via URL (?step=6&tab=pipetting).
+        // HOW:  If StepQuery is valid, transitions wizard to that stage; if TabQuery is valid, activates that DIY tab.
+        if (StepQuery.HasValue && StepQuery.Value >= 1 && StepQuery.Value <= 6)
+        {
+            SetStep(StepQuery.Value);
+        }
+
+        if (!string.IsNullOrEmpty(TabQuery))
+        {
+            SetDiyTab(TabQuery);
+        }
     }
 
     /// <summary>
