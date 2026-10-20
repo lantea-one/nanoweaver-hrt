@@ -64,9 +64,11 @@ services:
       - DOTNET_gcServer=1
       - TRAJECTORY_INCOMING_DIR=/workspace/data
       - TRAJECTORY_EXPORT_DIR=/workspace/exports
+      - TRAJECTORY_PARQUET_DIR=/workspace/parquet
     volumes:
       - ./simulations/shared-data:/workspace/data:rw
       - ./simulations/exports:/workspace/exports:rw
+      - ./simulations/parquet:/workspace/parquet:rw
     depends_on:
       - simulation
     restart: unless-stopped

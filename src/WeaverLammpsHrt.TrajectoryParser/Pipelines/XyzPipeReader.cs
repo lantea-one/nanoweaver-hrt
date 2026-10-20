@@ -3,6 +3,7 @@ using System.Buffers.Text;
 using System.IO.Pipelines;
 using WeaverLammpsHrt.TrajectoryParser.Abstractions;
 using WeaverLammpsHrt.TrajectoryParser.Models;
+using WeaverLammpsHrt.TrajectoryParser.Pipelines.Simd;
 
 namespace WeaverLammpsHrt.TrajectoryParser.Pipelines;
 
@@ -38,14 +39,9 @@ public sealed class XyzPipeReader : ITrajectoryParser
     private static readonly byte CarriageReturnByte = (byte)'\r';
 
     /// <summary>
-    /// ASCII byte code representing the space character (' ').
+    /// UTF-8 Byte Order Mark (BOM) preamble (0xEF, 0xBB, 0xBF).
     /// </summary>
-    private static readonly byte SpaceByte = (byte)' ';
-
-    /// <summary>
-    /// ASCII byte code representing the horizontal tab character ('\t').
-    /// </summary>
-    private static readonly byte TabByte = (byte)'\t';
+    private static readonly byte[] Utf8Bom = [0xEF, 0xBB, 0xBF];
 
     /// <inheritdoc/>
     public string FormatName => "XYZ";
@@ -100,6 +96,12 @@ public sealed class XyzPipeReader : ITrajectoryParser
                         continue;
                     }
 
+                    ReadOnlySpan<byte> lineSpan = lineByteBuffer.AsSpan(0, effectiveLength);
+                    if (lineSpan.StartsWith(Utf8Bom))
+                    {
+                        lineSpan = lineSpan[Utf8Bom.Length..];
+                    }
+
                     // -------------------------------------------------------------
                     // STATE 1: Reading Atom Count Header Line
                     // -------------------------------------------------------------
@@ -108,7 +110,7 @@ public sealed class XyzPipeReader : ITrajectoryParser
                         // WHAT: Parses the integer count of atoms in this snapshot directly from UTF-8 bytes.
                         // WHY:  Avoids converting the count to a C# string before calling int.Parse.
                         // HOW:  Utf8Parser.TryParse decodes the numeric value in-place.
-                        if (Utf8Parser.TryParse(lineByteBuffer.AsSpan(0, effectiveLength), out int count, out _) && count > 0)
+                        if (Utf8Parser.TryParse(lineSpan, out int count, out _) && count > 0)
                         {
                             expectedAtomCount = count;
                             commentLineRead = false;
@@ -142,7 +144,7 @@ public sealed class XyzPipeReader : ITrajectoryParser
                     // -------------------------------------------------------------
                     // STATE 3: Reading Atom Coordinate Lines (Symbol X Y Z)
                     // -------------------------------------------------------------
-                    bool isAtomLine = ParseAtomLine(lineByteBuffer.AsSpan(0, effectiveLength), out AtomCoordinate coordinate);
+                    bool isAtomLine = SimdCoordinateParser.TryParseCoordinateLineSimd(lineSpan, out AtomCoordinate coordinate);
                     if (isAtomLine)
                     {
                         atomBuffer[currentAtomIndex++] = coordinate;
@@ -206,65 +208,17 @@ public sealed class XyzPipeReader : ITrajectoryParser
     }
 
     /// <summary>
-    /// Trims leading ASCII space and tab characters from a byte span without allocations.
-    /// </summary>
-    /// <param name="span">The input byte span.</param>
-    /// <returns>A slice of <paramref name="span"/> with leading whitespace removed.</returns>
-    private static ReadOnlySpan<byte> TrimStartWhitespace(ReadOnlySpan<byte> span)
-    {
-        int index = 0;
-        while (index < span.Length && (span[index] == SpaceByte || span[index] == TabByte))
-        {
-            index++;
-        }
-        return span[index..];
-    }
-
-    /// <summary>
-    /// Parses a single XYZ coordinate line formatted as "Identifier X Y Z" into an <see cref="AtomCoordinate"/>.
+    /// Parses a single XYZ coordinate line formatted as "Identifier X Y Z" into an <see cref="AtomCoordinate"/>
+    /// using SIMD-accelerated whitespace scanning and float decoding.
     /// </summary>
     /// <param name="span">The UTF-8 encoded line byte span.</param>
     /// <param name="coordinate">The parsed 3D spatial coordinate on success.</param>
     /// <returns>True if all three spatial coordinates (X, Y, Z) were successfully parsed; otherwise false.</returns>
     private static bool ParseAtomLine(ReadOnlySpan<byte> span, out AtomCoordinate coordinate)
     {
-        coordinate = default;
-        ReadOnlySpan<byte> remaining = TrimStartWhitespace(span);
-
-        // WHAT: Skips the leading atom symbol or bead identifier (e.g., "C", "N", "P", "1").
-        // WHY:  We only need the Cartesian floats for spatial analysis and bounding computations.
-        // HOW:  Finds the first whitespace delimiter (space or tab) and slices past it.
-        int separatorIndex = remaining.IndexOfAny(SpaceByte, TabByte);
-        if (separatorIndex == -1)
-        {
-            return false;
-        }
-
-        remaining = TrimStartWhitespace(remaining[separatorIndex..]);
-
-        // WHAT: Parses the X coordinate float directly from UTF-8 bytes.
-        // WHY:  Zero string allocations.
-        // HOW:  Utf8Parser.TryParse directly writes out float value and consumed byte count.
-        if (!Utf8Parser.TryParse(remaining, out float x, out int bytesReadX))
-        {
-            return false;
-        }
-        remaining = TrimStartWhitespace(remaining[bytesReadX..]);
-
-        // Parse Y coordinate
-        if (!Utf8Parser.TryParse(remaining, out float y, out int bytesReadY))
-        {
-            return false;
-        }
-        remaining = TrimStartWhitespace(remaining[bytesReadY..]);
-
-        // Parse Z coordinate
-        if (!Utf8Parser.TryParse(remaining, out float z, out _))
-        {
-            return false;
-        }
-
-        coordinate = new AtomCoordinate(x, y, z);
-        return true;
+        // WHAT: Vectorized coordinate line parser delegation.
+        // WHY:  Standardizes SIMD conversion routines across all pipeline readers.
+        // HOW:  Delegates directly to SimdCoordinateParser.TryParseCoordinateLineSimd.
+        return SimdCoordinateParser.TryParseCoordinateLineSimd(span, out coordinate);
     }
 }

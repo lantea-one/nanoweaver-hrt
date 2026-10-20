@@ -6,6 +6,7 @@ using WeaverLammpsHrt.TrajectoryParser.Endocrine;
 using WeaverLammpsHrt.TrajectoryParser.Models;
 using WeaverLammpsHrt.TrajectoryParser.Pipelines;
 using WeaverLammpsHrt.TrajectoryParser.Services;
+using WeaverLammpsHrt.TrajectoryParser.Storage;
 
 namespace WeaverLammpsHrt.TrajectoryParser;
 
@@ -39,6 +40,8 @@ public static class Program
         builder.Services.AddSingleton<IDatasetManager, DatasetTransferService>();
         builder.Services.AddSingleton<XyzPipeReader>();
         builder.Services.AddSingleton<DcdPipeReader>();
+        builder.Services.AddSingleton<LammpsCustomPipeReader>();
+        builder.Services.AddSingleton<IParquetTrajectoryWriter, DuckDbParquetWriter>();
         builder.Services.AddSingleton<EndocrineStateEngine>();
 
         // Configure JSON serialization options
@@ -145,6 +148,7 @@ public static class Program
             IConfiguration config, 
             XyzPipeReader xyzParser, 
             DcdPipeReader dcdParser, 
+            LammpsCustomPipeReader lammpsParser, 
             CancellationToken ct) =>
         {
             string dataDir = config["TRAJECTORY_INCOMING_DIR"] ?? Path.Combine(Directory.GetCurrentDirectory(), "simulations", "shared-data");
@@ -160,6 +164,7 @@ public static class Program
             {
                 ".xyz" => xyzParser,
                 ".dcd" => dcdParser,
+                ".lammpstrj" or ".dump" or ".custom" => lammpsParser,
                 _ => throw new NotSupportedException($"Unsupported trajectory format extension: {ext}")
             };
 
@@ -197,6 +202,62 @@ public static class Program
         })
         .WithName("ProcessTrajectory")
         .WithSummary("Triggers the zero-allocation parser on a specific trajectory file and returns performance metrics.");
+
+        // ---------------------------------------------------------------------
+        // REST API: Columnar Parquet Serialization via DuckDB
+        // ---------------------------------------------------------------------
+        app.MapPost("/api/parser/export-parquet/{fileName}", async (
+            string fileName,
+            IConfiguration config,
+            IParquetTrajectoryWriter parquetWriter,
+            XyzPipeReader xyzParser,
+            DcdPipeReader dcdParser,
+            LammpsCustomPipeReader lammpsParser,
+            CancellationToken ct) =>
+        {
+            string dataDir = config["TRAJECTORY_INCOMING_DIR"] ?? Path.Combine(Directory.GetCurrentDirectory(), "simulations", "shared-data");
+            string safeSourcePath = Path.Combine(dataDir, Path.GetFileName(fileName));
+
+            if (!File.Exists(safeSourcePath))
+            {
+                return Results.NotFound(new { error = "Target trajectory file does not exist." });
+            }
+
+            string parquetDir = config["TRAJECTORY_PARQUET_DIR"] ?? Path.Combine(Directory.GetCurrentDirectory(), "simulations", "parquet");
+            string parquetFileName = $"{Path.GetFileNameWithoutExtension(fileName)}.parquet";
+            string safeDestinationPath = Path.Combine(parquetDir, parquetFileName);
+
+            string ext = Path.GetExtension(safeSourcePath).ToLowerInvariant();
+            ITrajectoryParser parser = ext switch
+            {
+                ".xyz" => xyzParser,
+                ".dcd" => dcdParser,
+                ".lammpstrj" or ".dump" or ".custom" => lammpsParser,
+                _ => throw new NotSupportedException($"Unsupported trajectory format extension: {ext}")
+            };
+
+            Stopwatch sw = Stopwatch.StartNew();
+            long totalRecords = await parquetWriter.ConvertTrajectoryToParquetAsync(
+                safeSourcePath,
+                safeDestinationPath,
+                parser,
+                ct);
+            sw.Stop();
+
+            FileInfo parquetInfo = new(safeDestinationPath);
+
+            return Results.Ok(new
+            {
+                source_file = fileName,
+                parquet_file = parquetFileName,
+                format = parser.FormatName,
+                total_records_serialized = totalRecords,
+                file_size_bytes = parquetInfo.Exists ? parquetInfo.Length : 0,
+                elapsed_milliseconds = sw.ElapsedMilliseconds
+            });
+        })
+        .WithName("ExportTrajectoryToParquet")
+        .WithSummary("Converts a raw trajectory stream to a columnar Apache Parquet file using DuckDB and SIMD intrinsics.");
 
         // ---------------------------------------------------------------------
         // REST API: Node Telemetry & Accelerator Monitoring
@@ -257,6 +318,7 @@ public static class Program
             IConfiguration config,
             XyzPipeReader xyzParser,
             DcdPipeReader dcdParser,
+            LammpsCustomPipeReader lammpsParser,
             CancellationToken ct) =>
         {
             string dataDir = config["TRAJECTORY_INCOMING_DIR"] ?? Path.Combine(Directory.GetCurrentDirectory(), "simulations", "shared-data");
@@ -272,6 +334,7 @@ public static class Program
             {
                 ".xyz" => xyzParser,
                 ".dcd" => dcdParser,
+                ".lammpstrj" or ".dump" or ".custom" => lammpsParser,
                 _ => throw new NotSupportedException($"Unsupported trajectory format extension: {ext}")
             };
 

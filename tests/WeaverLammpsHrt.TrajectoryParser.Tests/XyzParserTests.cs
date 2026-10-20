@@ -64,4 +64,37 @@ public sealed class XyzParserTests
         Assert.Equal(20.40f, collectedFrames[1].coordinates[0].Y);
         Assert.Equal(30.90f, collectedFrames[1].coordinates[0].Z);
     }
+
+    /// <summary>
+    /// Verifies parsing of a 3-atom 2-frame trajectory.
+    /// </summary>
+    [Fact]
+    public async Task ParseAsync_ThreeAtomsPerFrame_ShouldParseBothFrames()
+    {
+        string sample =
+            "3\n" +
+            "Frame 0 DNA origami aptamer\n" +
+            "C 10.0 20.0 30.0\n" +
+            "N 15.0 25.0 35.0\n" +
+            "P 18.0 28.0 38.0\n" +
+            "3\n" +
+            "Frame 1 DNA origami aptamer\n" +
+            "C 10.5 20.5 30.5\n" +
+            "N 15.5 25.5 35.5\n" +
+            "P 18.5 28.5 38.5\n";
+
+        byte[] bytes = Encoding.UTF8.GetBytes(sample);
+        using MemoryStream stream = new(bytes);
+        PipeReader pipeReader = PipeReader.Create(stream);
+
+        XyzPipeReader parser = new();
+        int frames = 0;
+        await parser.ParseAsync(pipeReader, (idx, coords) =>
+        {
+            frames++;
+            return ValueTask.CompletedTask;
+        });
+
+        Assert.Equal(2, frames);
+    }
 }

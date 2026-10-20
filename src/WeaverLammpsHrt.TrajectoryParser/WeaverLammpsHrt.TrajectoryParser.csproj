@@ -9,7 +9,12 @@
     <GarbageCollectionAdaptationMode>1</GarbageCollectionAdaptationMode>
     <InvariantGlobalization>true</InvariantGlobalization>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <NoWarn>$(NoWarn);1591</NoWarn>
+    <NoWarn>$(NoWarn);1591;NU1900</NoWarn>
+    <WarningsNotAsErrors>NU1900</WarningsNotAsErrors>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="DuckDB.NET.Data.Full" Version="1.5.6.1" />
+  </ItemGroup>
 
 </Project>
