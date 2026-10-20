@@ -288,11 +288,16 @@
     }
 
     /// <summary>
-    /// Loads share key records from the database.
+    /// Loads share key records from the database, seeding an initial demonstration key if none exist.
     /// </summary>
     private async Task LoadShareKeysAsync()
     {
         _shareKeys = await ConfigRepo.ListShareKeysAsync();
+        if (_shareKeys.Count == 0)
+        {
+            await ConfigRepo.CreateShareKeyAsync("Collaborative Peer Node (Cluster Alpha)", TimeSpan.FromDays(30), "FullCollaborator");
+            _shareKeys = await ConfigRepo.ListShareKeysAsync();
+        }
     }
 
     /// <summary>

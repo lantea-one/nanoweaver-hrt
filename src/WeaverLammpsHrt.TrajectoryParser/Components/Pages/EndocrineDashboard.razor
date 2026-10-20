@@ -1,6 +1,7 @@
 @page "/endocrine"
 @inject EndocrineStateEngine Engine
 @inject IConfigurationRepository ConfigRepo
+@inject IJSRuntime JS
 
 <div class="endocrine-container">
     <div class="panel-header">
@@ -66,6 +67,11 @@
         </div>
         <p class="subtext">Kinetics curve calculated over a 72-hour horizon as aptamer-mediated release reaches homeostatic equilibrium.</p>
 
+        <!-- Dynamic Dual-Axis HTML5 Canvas Kinetics Visualization -->
+        <div class="canvas-box mt-3 mb-4" style="background: rgba(0,0,0,0.3); border-radius: 8px; padding: 1rem; border: 1px solid var(--border-color);">
+            <canvas id="canvas-endocrine-kinetics" style="width: 100%; height: 320px;"></canvas>
+        </div>
+
         <div class="table-container mt-3">
             <table class="data-table">
                 <thead>
@@ -113,10 +119,38 @@
     }
 
     /// <summary>
+    /// Renders the HTML5 canvas kinetics curve after DOM is updated.
+    /// </summary>
+    /// <param name="firstRender">True on initial render.</param>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await RenderChartAsync();
+    }
+
+    /// <summary>
+    /// Invokes the native JavaScript chart renderer with current kinetics points and setpoints.
+    /// </summary>
+    private async Task RenderChartAsync()
+    {
+        // WHAT: Invokes the zero-dependency HTML5 Canvas chart renderer for hormone stabilization.
+        // WHY: Visualizes the non-linear saturation plateau over the 72-hour pharmacodynamic period.
+        // HOW: Transforms the C# points into an anonymous payload passed via Blazor JSInterop.
+        try
+        {
+            var pts = _kineticsPoints.Select(p => new { hour = p.Hour, estradiolPmolL = p.EstradiolPmolL, testosteroneNmolL = p.TestosteroneNmolL }).ToArray();
+            await JS.InvokeVoidAsync("WeaverVisualizer.renderKineticsChart", "canvas-endocrine-kinetics", pts, _activeProfile.TargetEstradiolPmolL, _activeProfile.TargetTestosteroneNmolL);
+        }
+        catch (JSDisconnectedException)
+        {
+            // Circuit disconnected gracefully during navigation
+        }
+    }
+
+    /// <summary>
     /// Updates the bistable toggle state and refreshes kinetics.
     /// </summary>
     /// <param name="targetState">The target toggle state (Estrogenic vs Androgenic).</param>
-    private void SetToggleState(ToggleState targetState)
+    private async Task SetToggleState(ToggleState targetState)
     {
         ToggleSwitchRequest req = new()
         {
@@ -124,5 +158,6 @@
         };
         _activeProfile = Engine.UpdateToggleState(req);
         _kineticsPoints = Engine.SimulateKinetics();
+        await RenderChartAsync();
     }
 }
