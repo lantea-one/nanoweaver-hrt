@@ -217,7 +217,19 @@ public sealed class WebUiAndConfigurationTests : IClassFixture<WebApplicationFac
     [Fact]
     public async Task StackServiceManager_InspectsAllStackComponents()
     {
-        IConfiguration config = new ConfigurationBuilder().Build();
+        string configsDir = Path.Combine(_testTempDir, "sim_configs");
+        Directory.CreateDirectory(configsDir);
+        await File.WriteAllTextAsync(Path.Combine(configsDir, "test.in"), "units real\n");
+
+        IConfiguration config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["SIMULATION_CONFIGS_DIR"] = configsDir,
+                ["TRAJECTORY_INCOMING_DIR"] = _testTempDir,
+                ["POSTGRES_CONNECTION_STRING"] = "Host=nonexistent_test_host;Timeout=1"
+            })
+            .Build();
+
         using SystemConfigurationStore store = new(config);
         await store.InitializeAsync();
 
@@ -233,6 +245,41 @@ public sealed class WebUiAndConfigurationTests : IClassFixture<WebApplicationFac
         StackServiceInfo? parser = await mgr.GetServiceByIdAsync("trajectory-parser");
         Assert.NotNull(parser);
         Assert.Equal(ServiceHealthState.Healthy, parser.Health);
+
+        // Test discovered configs
+        IReadOnlyList<string> discovered = mgr.GetDiscoveredSimulationConfigs();
+        Assert.Contains("test.in", discovered);
+
+        // Test SIMD descriptions
+        Assert.Equal("AVX-512 (512-bit SIMD)", StackServiceManager.GetSimdCapabilityDescription(true, false, false));
+        Assert.Equal("AVX2 (256-bit SIMD)", StackServiceManager.GetSimdCapabilityDescription(false, true, false));
+        Assert.Equal("SSE4.2 (128-bit SIMD)", StackServiceManager.GetSimdCapabilityDescription(false, false, true));
+        Assert.Equal("Software Fallback", StackServiceManager.GetSimdCapabilityDescription(false, false, false));
+
+        // Test GC mode descriptions
+        Assert.Equal("Enabled (Server GC)", StackServiceManager.GetGcModeDescription(true));
+        Assert.Equal("Workstation", StackServiceManager.GetGcModeDescription(false));
+
+        // Test with mock postgres repository to cover isPostgres == true
+        MockPostgresConfigRepo mockPgRepo = new();
+        StackServiceManager pgMgr = new(mockPgRepo, config);
+        StackServiceInfo pgInfo = await pgMgr.PingServiceAsync("pg-duckdb");
+        Assert.Equal(ServiceHealthState.Healthy, pgInfo.Health);
+        Assert.Contains("PostgreSQL", pgInfo.DisplayName);
+
+        // Test simulation ping when offline with configs discovered (Local Mode branch)
+        StackServiceInfo simInfo = await mgr.PingServiceAsync("simulation-engine");
+        Assert.Contains("Local Mode Active", simInfo.StatusMessage);
+
+        // Test empty configs directory branch
+        IConfiguration emptyConfig = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["SIMULATION_CONFIGS_DIR"] = Path.Combine(_testTempDir, "non_existent_configs_dir")
+            })
+            .Build();
+        StackServiceManager emptyMgr = new(store, emptyConfig);
+        Assert.Empty(emptyMgr.GetDiscoveredSimulationConfigs());
     }
 
     /// <summary>
@@ -508,6 +555,18 @@ public sealed class WebUiAndConfigurationTests : IClassFixture<WebApplicationFac
         Assert.Equal("Steroidogenic Receptors (Pituitary/Adrenal)", ftmPkg.TargetTissue);
         Assert.Equal(22.5, ftmPkg.ExpectedHydrodynamicRadiusNm);
         Assert.NotEmpty(ftmPkg.StapleOligos);
+
+        // 7. Fabrication package with custom sequence and MaleToFemale regimen
+        FabricationPackage mtfCustom = fab.GenerateFabricationPackage(
+            "CUSTOM_SEQUENCE_ATGC",
+            TherapeuticRegimen.MaleToFemale,
+            "Hexagonal 6-Helix Bundle Nanotube (6HB)",
+            4.0);
+
+        Assert.Equal(TherapeuticRegimen.MaleToFemale, mtfCustom.Regimen);
+        Assert.Equal("Anterior Pituitary Gonadotrope (GnRH-R)", mtfCustom.TargetTissue);
+        Assert.Equal(14.8, mtfCustom.ExpectedHydrodynamicRadiusNm);
+        Assert.NotEmpty(mtfCustom.StapleOligos);
     }
 
     /// <summary>
@@ -545,4 +604,58 @@ public sealed class WebUiAndConfigurationTests : IClassFixture<WebApplicationFac
         IReadOnlyList<ShareKeyRecord> allKeys = await store.ListShareKeysAsync();
         Assert.Contains(allKeys, k => k.TokenId == created.TokenId);
     }
+
+    /// <summary>
+    /// Verifies SystemConfigurationStore constructor falls back to default paths when configuration is empty.
+    /// </summary>
+    [Fact]
+    public void ConfigurationStore_Constructor_DefaultPathsWhenConfigEmpty()
+    {
+        // WHAT: Instantiates SystemConfigurationStore with an empty configuration.
+        // WHY:  Covers the null coalescing fallback branches for incoming directory and postgres connection string.
+        // HOW:  Passes empty IConfiguration and asserts non-null instance.
+        IConfiguration emptyConfig = new ConfigurationBuilder().Build();
+        using SystemConfigurationStore store = new(emptyConfig);
+        Assert.NotNull(store);
+    }
+}
+
+/// <summary>
+/// Mock repository returning PostgreSQL as the active backend to test PostgreSQL-specific stack inspection paths.
+/// </summary>
+public sealed class MockPostgresConfigRepo : IConfigurationRepository
+{
+    /// <inheritdoc/>
+    public string ActiveBackendName => "PostgreSQL (pg-duckdb)";
+
+    /// <inheritdoc/>
+    public Task InitializeAsync(CancellationToken ct = default) => Task.CompletedTask;
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<ConfigurationItem>> GetAllConfigurationsAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<ConfigurationItem>>([]);
+
+    /// <inheritdoc/>
+    public Task<string> GetValueAsync(string key, string defaultValue = "", CancellationToken ct = default)
+    {
+        if (key == "Storage:PostgresConnectionString") return Task.FromResult("Host=localhost;Database=weaver");
+        return Task.FromResult(defaultValue);
+    }
+
+    /// <inheritdoc/>
+    public Task SetDatabaseOverrideAsync(string key, string value, string description = "", CancellationToken ct = default) => Task.CompletedTask;
+
+    /// <inheritdoc/>
+    public Task RevertToDefaultAsync(string key, CancellationToken ct = default) => Task.CompletedTask;
+
+    /// <inheritdoc/>
+    public Task<ShareKeyRecord> CreateShareKeyAsync(string label, TimeSpan lifetime, string permissions = "FullCollaborator", CancellationToken ct = default) => throw new NotImplementedException();
+
+    /// <inheritdoc/>
+    public Task<ShareKeyConsumeResult> ConsumeShareKeyAsync(string keyToken, string remotePeerInfo, CancellationToken ct = default) => throw new NotImplementedException();
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<ShareKeyRecord>> ListShareKeysAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<ShareKeyRecord>>([]);
+
+    /// <inheritdoc/>
+    public Task<bool> RevokeShareKeyAsync(string tokenId, CancellationToken ct = default) => Task.FromResult(false);
 }

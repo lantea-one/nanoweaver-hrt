@@ -95,8 +95,10 @@ public sealed class StackServiceManager : IStackServiceManager
     /// <returns>List of config file paths and names.</returns>
     public IReadOnlyList<string> GetDiscoveredSimulationConfigs()
     {
-        string baseDir = Directory.GetCurrentDirectory();
-        string configsDir = Path.Combine(baseDir, "simulations", "configs");
+        // WHAT: Discovers simulation configuration decks (*.in, *.oxdna) in the configs volume.
+        // WHY:  Permits researchers to select simulation decks from the UI without manual path entry.
+        // HOW:  Enumerates files in SIMULATION_CONFIGS_DIR or fallback simulations/configs.
+        string configsDir = _hostConfig["SIMULATION_CONFIGS_DIR"] ?? Path.Combine(Directory.GetCurrentDirectory(), "simulations", "configs");
 
         if (!Directory.Exists(configsDir))
         {
@@ -203,6 +205,37 @@ public sealed class StackServiceManager : IStackServiceManager
     }
 
     /// <summary>
+    /// Evaluates SIMD instruction width capability into a human-readable display string.
+    /// </summary>
+    /// <param name="v512">True if 512-bit vector SIMD is hardware-accelerated.</param>
+    /// <param name="v256">True if 256-bit vector SIMD is hardware-accelerated.</param>
+    /// <param name="v128">True if 128-bit vector SIMD is hardware-accelerated.</param>
+    /// <returns>Readable SIMD hardware acceleration capability string.</returns>
+    internal static string GetSimdCapabilityDescription(bool v512, bool v256, bool v128)
+    {
+        // WHAT: Evaluates CPU SIMD instruction vector width capability.
+        // WHY:  Allows deterministic testing of all vector width fallback levels.
+        // HOW:  Checks descending vector bitwidths: 512-bit -> 256-bit -> 128-bit -> scalar fallback.
+        if (v512) return "AVX-512 (512-bit SIMD)";
+        if (v256) return "AVX2 (256-bit SIMD)";
+        if (v128) return "SSE4.2 (128-bit SIMD)";
+        return "Software Fallback";
+    }
+
+    /// <summary>
+    /// Formats garbage collector operating mode description.
+    /// </summary>
+    /// <param name="isServerGc">True if Server GC mode is active.</param>
+    /// <returns>Readable garbage collection mode string.</returns>
+    internal static string GetGcModeDescription(bool isServerGc)
+    {
+        // WHAT: Formats runtime garbage collection mode string.
+        // WHY:  Allows deterministic verification of both Server GC and Workstation GC paths.
+        // HOW:  Ternary branch evaluating isServerGc.
+        return isServerGc ? "Enabled (Server GC)" : "Workstation";
+    }
+
+    /// <summary>
     /// Inspects the in-process .NET 10 trajectory streaming parser node.
     /// </summary>
     private StackServiceInfo InspectParserNode()
@@ -210,10 +243,10 @@ public sealed class StackServiceManager : IStackServiceManager
         Process process = Process.GetCurrentProcess();
         TimeSpan uptime = DateTime.UtcNow - process.StartTime.ToUniversalTime();
 
-        string simdCapability = Vector512.IsHardwareAccelerated ? "AVX-512 (512-bit SIMD)"
-            : Vector256.IsHardwareAccelerated ? "AVX2 (256-bit SIMD)"
-            : Vector128.IsHardwareAccelerated ? "SSE4.2 (128-bit SIMD)"
-            : "Software Fallback";
+        string simdCapability = GetSimdCapabilityDescription(
+            Vector512.IsHardwareAccelerated,
+            Vector256.IsHardwareAccelerated,
+            Vector128.IsHardwareAccelerated);
 
         return new StackServiceInfo
         {
@@ -227,7 +260,7 @@ public sealed class StackServiceManager : IStackServiceManager
             Metrics = new Dictionary<string, string>
             {
                 ["GC Allocation Policy"] = "Strict Zero-Allocation (ArrayPool<T>.Shared)",
-                ["GC Server Mode"] = System.Runtime.GCSettings.IsServerGC ? "Enabled (Server GC)" : "Workstation",
+                ["GC Server Mode"] = GetGcModeDescription(System.Runtime.GCSettings.IsServerGC),
                 ["Process Working Set"] = $"{process.WorkingSet64 / (1024.0 * 1024.0):F1} MB",
                 ["Uptime"] = $"{uptime.Days}d {uptime.Hours}h {uptime.Minutes}m {uptime.Seconds}s"
             }

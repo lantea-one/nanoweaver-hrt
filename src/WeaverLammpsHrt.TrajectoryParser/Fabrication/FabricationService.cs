@@ -28,6 +28,14 @@ public sealed class FabricationService : IFabricationService
     /// <param name="sequence">Raw nucleotide sequence string.</param>
     /// <returns>Base counts, GC percentage, and molecular weight in kilodaltons.</returns>
     public (int A, int T, int G, int C, double GcPercent, double EstimatedMwKDa) AnalyzeSequenceComposition(string sequence)
+        => AnalyzeSequenceCompositionStatic(sequence);
+
+    /// <summary>
+    /// Internal static base composition analyzer operating zero-allocations on character spans.
+    /// </summary>
+    /// <param name="sequence">Raw nucleotide sequence string.</param>
+    /// <returns>Base counts, GC percentage, and molecular weight in kilodaltons.</returns>
+    internal static (int A, int T, int G, int C, double GcPercent, double EstimatedMwKDa) AnalyzeSequenceCompositionStatic(string sequence)
     {
         int a = 0, t = 0, g = 0, c = 0;
 
@@ -252,20 +260,11 @@ public sealed class FabricationService : IFabricationService
     /// </summary>
     private static (int A, int T, int G, int C, double Gc, double Mw) AnalyzeCoreSeq(string seq)
     {
-        int a = 0, t = 0, g = 0, c = 0;
-        foreach (char ch in seq)
-        {
-            switch (char.ToUpperInvariant(ch))
-            {
-                case 'A': a++; break;
-                case 'T': case 'U': t++; break;
-                case 'G': g++; break;
-                case 'C': c++; break;
-            }
-        }
-        int total = a + t + g + c;
-        double gc = total > 0 ? (double)(g + c) / total * 100.0 : 0.0;
-        return (a, t, g, c, Math.Round(gc, 1), total * 0.33);
+        // WHAT: Delegates nucleotide base composition analysis to unified analyzer.
+        // WHY:  Avoids redundant loop logic while maintaining zero-allocation performance.
+        // HOW:  Calls AnalyzeSequenceCompositionStatic and unpacks result.
+        (int a, int t, int g, int c, double gc, double mw) = AnalyzeSequenceCompositionStatic(seq);
+        return (a, t, g, c, gc, mw);
     }
 
     /// <summary>
