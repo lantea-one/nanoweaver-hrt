@@ -951,3 +951,14 @@ simulations/parquet/*
 *.dump
 *.lammpstrj
 .msCoverageSourceRootsMapping*
+
+# Local SQLite databases and runtime shared directories
+*.db
+*.db-shm
+*.db-wal
+**/simulations/shared-data/*
+!**/simulations/shared-data/.gitkeep
+!**/simulations/shared-data/README.md
+**/simulations/exports/*
+!**/simulations/exports/.gitkeep
+!**/simulations/exports/README.md
