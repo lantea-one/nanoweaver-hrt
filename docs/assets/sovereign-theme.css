@@ -1,0 +1,266 @@
+/* ==========================================================================
+   Sovereign Theme for Weaver-LAMMPS-HRT Documentation Wiki
+   Zero external CSS frameworks - pure sovereign responsive stylesheet
+   ========================================================================== */
+
+:root {
+  --bg-primary: #0a0e17;
+  --bg-secondary: #0f172a;
+  --bg-tertiary: #162032;
+  --bg-code: #050811;
+  --text-main: #f1f5f9;
+  --text-muted: #94a3b8;
+  --text-dim: #64748b;
+  --border-color: #1e293b;
+  --border-highlight: #334155;
+  --accent-cyan: #00e5ff;
+  --accent-cyan-dim: rgba(0, 229, 255, 0.15);
+  --accent-magenta: #e040fb;
+  --accent-magenta-dim: rgba(224, 64, 251, 0.15);
+  --accent-green: #00e676;
+  --accent-amber: #ffd600;
+  --sidebar-width: 290px;
+  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", Menlo, Monaco, Consolas, monospace;
+}
+
+/* Base Body & Reset */
+body {
+  background-color: var(--bg-primary) !important;
+  color: var(--text-main) !important;
+  font-family: var(--font-family) !important;
+  line-height: 1.65;
+  margin: 0;
+  padding: 0;
+}
+
+/* Sidebar Navigation */
+.sidebar {
+  background-color: #070a12 !important;
+  border-right: 1px solid var(--border-color) !important;
+  width: var(--sidebar-width) !important;
+  padding: 24px 0 !important;
+}
+
+.sidebar .app-name-link {
+  color: var(--accent-cyan) !important;
+  font-weight: 700 !important;
+  font-size: 1.15rem !important;
+  letter-spacing: 0.5px !important;
+  padding: 0 20px !important;
+  display: block !important;
+  text-decoration: none !important;
+}
+
+.sidebar ul li a {
+  color: var(--text-muted) !important;
+  font-size: 0.92rem !important;
+  padding: 7px 20px !important;
+  transition: all 0.15s ease !important;
+  border-left: 2px solid transparent !important;
+  text-decoration: none !important;
+}
+
+.sidebar ul li a:hover {
+  color: var(--accent-cyan) !important;
+  background: var(--accent-cyan-dim) !important;
+}
+
+.sidebar ul li.active > a {
+  color: var(--accent-cyan) !important;
+  border-left-color: var(--accent-cyan) !important;
+  background: var(--accent-cyan-dim) !important;
+  font-weight: 600 !important;
+}
+
+/* Top Navigation Bar */
+.app-nav {
+  margin: 20px 30px 0 0 !important;
+}
+
+.app-nav a {
+  color: var(--text-muted) !important;
+  text-decoration: none !important;
+  font-size: 0.88rem !important;
+  font-weight: 500 !important;
+  padding: 6px 12px !important;
+  border-radius: 4px !important;
+  transition: all 0.15s ease !important;
+}
+
+.app-nav a:hover {
+  color: var(--accent-cyan) !important;
+  background: var(--accent-cyan-dim) !important;
+}
+
+/* Main Content Area */
+.content {
+  padding-top: 30px !important;
+  max-width: 960px !important;
+  margin: 0 auto !important;
+}
+
+.markdown-section {
+  color: var(--text-main) !important;
+  max-width: 920px !important;
+  padding: 20px 40px 60px 40px !important;
+}
+
+/* Headings */
+.markdown-section h1 {
+  color: #ffffff !important;
+  font-size: 2.2rem !important;
+  font-weight: 700 !important;
+  border-bottom: 1px solid var(--border-color) !important;
+  padding-bottom: 12px !important;
+  margin-top: 0 !important;
+}
+
+.markdown-section h2 {
+  color: var(--accent-cyan) !important;
+  font-size: 1.55rem !important;
+  font-weight: 600 !important;
+  border-bottom: 1px solid rgba(0, 229, 255, 0.15) !important;
+  padding-bottom: 8px !important;
+  margin-top: 36px !important;
+}
+
+.markdown-section h3 {
+  color: #e2e8f0 !important;
+  font-size: 1.25rem !important;
+  font-weight: 600 !important;
+  margin-top: 24px !important;
+}
+
+.markdown-section h4 {
+  color: var(--accent-magenta) !important;
+  font-size: 1.05rem !important;
+  font-weight: 600 !important;
+}
+
+/* Links */
+.markdown-section a {
+  color: var(--accent-cyan) !important;
+  text-decoration: none !important;
+  border-bottom: 1px dashed rgba(0, 229, 255, 0.4) !important;
+  transition: all 0.15s ease !important;
+}
+
+.markdown-section a:hover {
+  color: #38bdf8 !important;
+  border-bottom-style: solid !important;
+}
+
+/* Blockquotes / Alerts */
+.markdown-section blockquote {
+  background: var(--bg-secondary) !important;
+  border-left: 4px solid var(--accent-cyan) !important;
+  color: #cbd5e1 !important;
+  padding: 12px 20px !important;
+  border-radius: 0 6px 6px 0 !important;
+  margin: 20px 0 !important;
+}
+
+/* Tables */
+.markdown-section table {
+  width: 100% !important;
+  border-collapse: collapse !important;
+  margin: 24px 0 !important;
+  background: var(--bg-secondary) !important;
+  border-radius: 6px !important;
+  overflow: hidden !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+.markdown-section th {
+  background: #090e1a !important;
+  color: var(--accent-cyan) !important;
+  font-weight: 600 !important;
+  padding: 10px 16px !important;
+  border-bottom: 2px solid var(--border-color) !important;
+  text-align: left !important;
+}
+
+.markdown-section td {
+  padding: 10px 16px !important;
+  border-bottom: 1px solid var(--border-color) !important;
+  color: #e2e8f0 !important;
+  font-size: 0.92rem !important;
+}
+
+.markdown-section tr:hover td {
+  background: rgba(0, 229, 255, 0.03) !important;
+}
+
+/* Code & Preformatted Blocks */
+.markdown-section code {
+  background: var(--bg-code) !important;
+  color: #38bdf8 !important;
+  font-family: var(--font-mono) !important;
+  font-size: 0.88em !important;
+  padding: 2px 6px !important;
+  border-radius: 4px !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+.markdown-section pre {
+  background: var(--bg-code) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: 6px !important;
+  padding: 16px !important;
+  overflow-x: auto !important;
+}
+
+.markdown-section pre code {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  color: #e2e8f0 !important;
+}
+
+/* Embedded Screenshots & Visuals */
+.markdown-section img {
+  max-width: 100% !important;
+  height: auto !important;
+  border-radius: 8px !important;
+  border: 1px solid var(--border-highlight) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5) !important;
+  margin: 20px 0 !important;
+  display: block !important;
+}
+
+/* Horizontal Rules */
+.markdown-section hr {
+  border: none !important;
+  border-top: 1px solid var(--border-color) !important;
+  margin: 36px 0 !important;
+}
+
+/* Search Box */
+.search input {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border-color) !important;
+  color: var(--text-main) !important;
+  border-radius: 6px !important;
+  padding: 8px 12px !important;
+}
+
+.search input:focus {
+  border-color: var(--accent-cyan) !important;
+  outline: none !important;
+}
+
+.search .matching-post {
+  border-bottom: 1px solid var(--border-color) !important;
+}
+
+.search .matching-post h2 {
+  color: var(--accent-cyan) !important;
+}
+
+/* Mobile Responsiveness */
+@media screen and (max-width: 768px) {
+  .markdown-section {
+    padding: 15px 20px !important;
+  }
+}
