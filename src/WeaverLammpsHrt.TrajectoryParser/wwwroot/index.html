@@ -51,6 +51,67 @@
         </div>
     </section>
 
+    <!-- Synthetic Biology & Endocrine Toggle Controller -->
+    <section class="endocrine-hub">
+        <div class="card endocrine-panel">
+            <div class="panel-header">
+                <div>
+                    <h2>Endocrine Switch: Estrogen / Testosterone Controller</h2>
+                    <p class="panel-desc">Bistable genetic feedback regulation &amp; DNA origami aptamer hormone sequestration.</p>
+                </div>
+                <div class="badge" id="active-state-badge">ESTROGENIC DOMINANT</div>
+            </div>
+
+            <div class="endocrine-controls">
+                <div class="toggle-switch-group">
+                    <button class="toggle-btn active-estrogen" id="btn-toggle-estrogen">
+                        <span class="symbol">♀</span> Estrogenic Dominance (E2)
+                    </button>
+                    <button class="toggle-btn" id="btn-toggle-testosterone">
+                        <span class="symbol">♂</span> Androgenic Dominance (T)
+                    </button>
+                </div>
+
+                <div class="setpoints-display">
+                    <div class="setpoint-item">
+                        <span class="setpoint-label">TARGET 17β-ESTRADIOL</span>
+                        <span class="setpoint-val font-mono" id="disp-target-e2">550.0 <small>pmol/L</small></span>
+                    </div>
+                    <div class="setpoint-item">
+                        <span class="setpoint-label">TARGET TESTOSTERONE</span>
+                        <span class="setpoint-val font-mono" id="disp-target-t">1.20 <small>nmol/L</small></span>
+                    </div>
+                    <div class="setpoint-item">
+                        <span class="setpoint-label">APTAMER TARGET Kd</span>
+                        <span class="setpoint-val font-mono" id="disp-target-kd">4.2 <small>nM</small></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- In-Silico Aptamer Affinity Telemetry -->
+            <div class="affinity-telemetry" id="affinity-telemetry">
+                <div class="affinity-header">
+                    <h4>In-Silico Aptamer Docking &amp; Binding Telemetry</h4>
+                    <span class="subtext">Select a trajectory below and click "Analyze Docking"</span>
+                </div>
+                <div class="affinity-metrics-grid">
+                    <div class="metric-card">
+                        <div class="metric-label">BINDING OCCUPANCY</div>
+                        <div class="metric-value font-mono" id="metric-occupancy">--%</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">AVG CONTACTS / FRAME</div>
+                        <div class="metric-value font-mono" id="metric-contacts">--</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">STABILITY VERDICT</div>
+                        <div class="metric-value" id="metric-verdict">Awaiting Analysis</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
     <main class="content-grid">
         <!-- Trajectory File Browser & Pipeline Slicer -->
         <section class="card panel">

@@ -424,6 +424,144 @@ body {
 .mt-2 { margin-top: 0.5rem; }
 .mt-4 { margin-top: 1rem; }
 
+/* Endocrine Switch Hub */
+.endocrine-hub {
+    padding: 1.5rem 2rem 0;
+}
+
+.endocrine-panel {
+    border-color: rgba(0, 210, 255, 0.25);
+    background: linear-gradient(180deg, #121824 0%, #0d131d 100%);
+}
+
+.endocrine-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.5rem;
+    margin-top: 1rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.toggle-switch-group {
+    display: flex;
+    background-color: var(--bg-dark);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 4px;
+    gap: 4px;
+}
+
+.toggle-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 0.85rem;
+    padding: 0.6rem 1.25rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.toggle-btn .symbol {
+    font-size: 1.1rem;
+}
+
+.toggle-btn:hover {
+    color: var(--text-main);
+}
+
+.toggle-btn.active-estrogen {
+    background: linear-gradient(135deg, rgba(244, 63, 94, 0.2), rgba(244, 63, 94, 0.4));
+    color: #ff7597;
+    border: 1px solid rgba(244, 63, 94, 0.5);
+    box-shadow: 0 0 12px rgba(244, 63, 94, 0.25);
+}
+
+.toggle-btn.active-testosterone {
+    background: linear-gradient(135deg, rgba(0, 112, 243, 0.2), rgba(0, 242, 254, 0.3));
+    color: var(--accent-cyan);
+    border: 1px solid rgba(0, 242, 254, 0.5);
+    box-shadow: 0 0 12px rgba(0, 242, 254, 0.25);
+}
+
+.setpoints-display {
+    display: flex;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.setpoint-item {
+    display: flex;
+    flex-direction: column;
+}
+
+.setpoint-label {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+.setpoint-val {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.setpoint-val small {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-weight: 400;
+}
+
+.affinity-telemetry {
+    margin-top: 1rem;
+}
+
+.affinity-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.affinity-header h4 {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-main);
+}
+
+.affinity-metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+}
+
+.metric-card {
+    background-color: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 0.75rem 1rem;
+}
+
+.metric-label {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+.metric-value {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin-top: 0.25rem;
+}
+
 /* Footer */
 .footer {
     padding: 1.5rem;

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO.Pipelines;
 using System.Text.Json;
 using WeaverLammpsHrt.TrajectoryParser.Abstractions;
+using WeaverLammpsHrt.TrajectoryParser.Endocrine;
 using WeaverLammpsHrt.TrajectoryParser.Models;
 using WeaverLammpsHrt.TrajectoryParser.Pipelines;
 using WeaverLammpsHrt.TrajectoryParser.Services;
@@ -38,6 +39,7 @@ public static class Program
         builder.Services.AddSingleton<IDatasetManager, DatasetTransferService>();
         builder.Services.AddSingleton<XyzPipeReader>();
         builder.Services.AddSingleton<DcdPipeReader>();
+        builder.Services.AddSingleton<EndocrineStateEngine>();
 
         // Configure JSON serialization options
         builder.Services.ConfigureHttpJsonOptions(options =>
@@ -224,6 +226,104 @@ public static class Program
         })
         .WithName("GetSystemTelemetry")
         .WithSummary("Provides real-time telemetry on GC allocations, memory consumption, and GPU status.");
+
+        // ---------------------------------------------------------------------
+        // REST API: Endocrine Target Profile & Toggle Switch
+        // ---------------------------------------------------------------------
+        app.MapGet("/api/endocrine/profile", (EndocrineStateEngine engine) =>
+        {
+            return Results.Ok(engine.GetActiveProfile());
+        })
+        .WithName("GetEndocrineProfile")
+        .WithSummary("Retrieves the currently active patient endocrine target profile and operational toggle state.");
+
+        app.MapPost("/api/endocrine/toggle", (ToggleSwitchRequest request, EndocrineStateEngine engine) =>
+        {
+            EndocrineTargetProfile updated = engine.UpdateToggleState(request);
+            return Results.Ok(updated);
+        })
+        .WithName("UpdateEndocrineToggle")
+        .WithSummary("Toggles the synthetic endocrine regulatory state between Estrogenic and Androgenic dominance.");
+
+        app.MapGet("/api/endocrine/kinetics", (EndocrineStateEngine engine) =>
+        {
+            return Results.Ok(engine.SimulateKinetics());
+        })
+        .WithName("GetHormoneKinetics")
+        .WithSummary("Calculates pharmacodynamic hormone concentration stabilization curves over a 72-hour horizon.");
+
+        app.MapPost("/api/endocrine/analyze/{fileName}", async (
+            string fileName,
+            IConfiguration config,
+            XyzPipeReader xyzParser,
+            DcdPipeReader dcdParser,
+            CancellationToken ct) =>
+        {
+            string dataDir = config["TRAJECTORY_INCOMING_DIR"] ?? Path.Combine(Directory.GetCurrentDirectory(), "simulations", "shared-data");
+            string safePath = Path.Combine(dataDir, Path.GetFileName(fileName));
+
+            if (!File.Exists(safePath))
+            {
+                return Results.NotFound(new { error = "Target trajectory file does not exist." });
+            }
+
+            string ext = Path.GetExtension(safePath).ToLowerInvariant();
+            ITrajectoryParser parser = ext switch
+            {
+                ".xyz" => xyzParser,
+                ".dcd" => dcdParser,
+                _ => throw new NotSupportedException($"Unsupported trajectory format extension: {ext}")
+            };
+
+            long framesAnalyzed = 0;
+            long totalContacts = 0;
+            long boundFramesCount = 0;
+
+            using FileStream fileStream = new(safePath, FileMode.Open, FileAccess.Read, FileShare.Read, 65536, useAsync: true);
+            PipeReader pipeReader = PipeReader.Create(fileStream);
+
+            // Define simulated pocket indices (first 4 atoms) and ligand index (last atom) for sample evaluation
+            await parser.ParseAsync(pipeReader, (frameIndex, coordinates) =>
+            {
+                if (coordinates.Length >= 2)
+                {
+                    framesAnalyzed++;
+                    int pocketCount = Math.Min(4, coordinates.Length - 1);
+                    Span<int> pocketIndices = stackalloc int[pocketCount];
+                    for (int i = 0; i < pocketCount; i++) pocketIndices[i] = i;
+                    int ligandIndex = coordinates.Length - 1;
+
+                    int contacts = AptamerAffinityAnalyzer.CountBindingContacts(coordinates, pocketIndices, ligandIndex);
+                    totalContacts += contacts;
+
+                    // Bound criteria: at least 2 simultaneous contacts within 5.0 Å
+                    if (contacts >= 2)
+                    {
+                        boundFramesCount++;
+                    }
+                }
+                return ValueTask.CompletedTask;
+            }, ct);
+
+            double avgContacts = framesAnalyzed > 0 ? (double)totalContacts / framesAnalyzed : 0;
+            double occupancyRatio = framesAnalyzed > 0 ? (double)boundFramesCount / framesAnalyzed : 0;
+            string verdict = occupancyRatio >= 0.85 ? "Stable High-Affinity Complex"
+                           : occupancyRatio >= 0.50 ? "Moderate / Dynamic Equilibrium"
+                           : "Unstable / Dissociated Complex";
+
+            AptamerTrajectoryMetrics metrics = new()
+            {
+                TrajectoryFileName = fileName,
+                FramesAnalyzed = framesAnalyzed,
+                AverageContactsPerFrame = Math.Round(avgContacts, 2),
+                BindingOccupancyRatio = Math.Round(occupancyRatio, 3),
+                StabilityVerdict = verdict
+            };
+
+            return Results.Ok(metrics);
+        })
+        .WithName("AnalyzeAptamerAffinity")
+        .WithSummary("Streams trajectory coordinates to compute real-time ligand-pocket contact ratios and binding stability.");
 
         app.Run();
     }

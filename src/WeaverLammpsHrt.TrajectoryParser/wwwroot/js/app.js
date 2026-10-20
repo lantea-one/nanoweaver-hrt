@@ -36,6 +36,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const importForm = document.getElementById('import-form');
     const importStatus = document.getElementById('import-status');
 
+    // Endocrine Toggle Elements
+    const btnToggleEstrogen = document.getElementById('btn-toggle-estrogen');
+    const btnToggleTestosterone = document.getElementById('btn-toggle-testosterone');
+    const activeStateBadge = document.getElementById('active-state-badge');
+    const dispTargetE2 = document.getElementById('disp-target-e2');
+    const dispTargetT = document.getElementById('disp-target-t');
+    const dispTargetKd = document.getElementById('disp-target-kd');
+
+    const metricOccupancy = document.getElementById('metric-occupancy');
+    const metricContacts = document.getElementById('metric-contacts');
+    const metricVerdict = document.getElementById('metric-verdict');
+
     // -------------------------------------------------------------------------
     // Telemetry Polling (Every 2 seconds)
     // -------------------------------------------------------------------------
@@ -86,7 +98,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td class="subtext">${new Date(file.last_modified).toLocaleString()}</td>
                     <td>
                         ${isParsable 
-                            ? `<button class="btn btn-secondary btn-sm" onclick="triggerParse('${escapeHtml(file.name)}')">Stream Parse</button>`
+                            ? `<div style="display:flex; gap:0.4rem;">
+                                 <button class="btn btn-secondary btn-sm" onclick="triggerParse('${escapeHtml(file.name)}')">Stream Parse</button>
+                                 <button class="btn btn-outline btn-sm" onclick="analyzeAptamerDocking('${escapeHtml(file.name)}')">Aptamer Docking</button>
+                               </div>`
                             : `<span class="subtext">Static Config</span>`}
                     </td>
                 `;
@@ -203,6 +218,99 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // -------------------------------------------------------------------------
+    // Endocrine Bistable Toggle State Management
+    // -------------------------------------------------------------------------
+    async function loadEndocrineProfile() {
+        try {
+            const res = await fetch('/api/endocrine/profile');
+            if (!res.ok) return;
+
+            const profile = await res.json();
+            renderEndocrineProfile(profile);
+        } catch (err) {
+            console.error('Failed to load endocrine profile:', err);
+        }
+    }
+
+    function renderEndocrineProfile(profile) {
+        dispTargetE2.innerHTML = `${profile.target_estradiol_pmol_l.toFixed(1)} <small>pmol/L</small>`;
+        dispTargetT.innerHTML = `${profile.target_testosterone_nmol_l.toFixed(2)} <small>nmol/L</small>`;
+        dispTargetKd.innerHTML = `${profile.kd_target_nanomolar.toFixed(1)} <small>nM</small>`;
+
+        const isEstrogen = profile.target_state === 0 || profile.target_state === 'EstrogenicDominant';
+
+        if (isEstrogen) {
+            btnToggleEstrogen.className = 'toggle-btn active-estrogen';
+            btnToggleTestosterone.className = 'toggle-btn';
+            activeStateBadge.textContent = 'ESTROGENIC DOMINANT';
+            activeStateBadge.className = 'badge badge-accent';
+        } else {
+            btnToggleEstrogen.className = 'toggle-btn';
+            btnToggleTestosterone.className = 'toggle-btn active-testosterone';
+            activeStateBadge.textContent = 'ANDROGENIC DOMINANT';
+            activeStateBadge.className = 'badge badge-accent';
+        }
+    }
+
+    async function setToggleState(targetState) {
+        try {
+            const res = await fetch('/api/endocrine/toggle', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ target_state: targetState })
+            });
+
+            if (!res.ok) throw new Error('Toggle request failed');
+            const updated = await res.json();
+            renderEndocrineProfile(updated);
+        } catch (err) {
+            alert(`Error switching endocrine state: ${err.message}`);
+        }
+    }
+
+    btnToggleEstrogen.addEventListener('click', () => setToggleState(0));      // EstrogenicDominant
+    btnToggleTestosterone.addEventListener('click', () => setToggleState(1));  // AndrogenicDominant
+
+    // -------------------------------------------------------------------------
+    // In-Silico Aptamer Docking Analysis
+    // -------------------------------------------------------------------------
+    window.analyzeAptamerDocking = async function (fileName) {
+        metricOccupancy.textContent = 'Evaluating...';
+        metricContacts.textContent = 'Slicing...';
+        metricVerdict.textContent = 'Computing contact map...';
+
+        parseConsole.classList.remove('hidden');
+        parseOutput.textContent = `[ENDOCRINE DOCKING] Slicing trajectory ${fileName} for aptamer-steroid contact geometry...\n`;
+
+        try {
+            const res = await fetch(`/api/endocrine/analyze/${encodeURIComponent(fileName)}`, {
+                method: 'POST'
+            });
+
+            const metrics = await res.json();
+            if (!res.ok) {
+                metricVerdict.textContent = 'Analysis Failed';
+                parseOutput.textContent += `[ERROR] ${metrics.error || 'Aptamer analysis failed.'}\n`;
+                return;
+            }
+
+            metricOccupancy.textContent = `${(metrics.binding_occupancy_ratio * 100).toFixed(1)}%`;
+            metricContacts.textContent = `${metrics.average_contacts_per_frame.toFixed(2)}`;
+            metricVerdict.textContent = metrics.stability_verdict;
+
+            parseOutput.textContent += `[SUCCESS] Aptamer Docking Analysis Completed.\n`
+                + `  - Target Trajectory: ${metrics.trajectory_file}\n`
+                + `  - Frames Evaluated: ${metrics.frames_analyzed.toLocaleString()}\n`
+                + `  - Binding Occupancy Ratio: ${(metrics.binding_occupancy_ratio * 100).toFixed(1)}%\n`
+                + `  - Mean Contacts / Frame: ${metrics.average_contacts_per_frame.toFixed(2)}\n`
+                + `  - Thermodynamic Verdict: ${metrics.stability_verdict}\n`;
+        } catch (err) {
+            metricVerdict.textContent = 'Network Error';
+            parseOutput.textContent += `[CRITICAL] Network error: ${err.message}\n`;
+        }
+    };
+
+    // -------------------------------------------------------------------------
     // Helper Utilities
     // -------------------------------------------------------------------------
     function escapeHtml(str) {
@@ -219,5 +327,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initial boot sequence
     updateTelemetry();
     loadTrajectories();
+    loadEndocrineProfile();
     setInterval(updateTelemetry, 2000);
 });
