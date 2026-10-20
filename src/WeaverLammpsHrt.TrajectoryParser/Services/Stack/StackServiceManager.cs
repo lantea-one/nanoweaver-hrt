@@ -133,7 +133,7 @@ public sealed class StackServiceManager : IStackServiceManager
             if (resp.IsSuccessStatusCode)
             {
                 isOnline = true;
-                statusMsg = $"Online &amp; Connected ({accelerator})";
+                statusMsg = $"Online & Connected ({accelerator})";
             }
         }
         catch
@@ -188,7 +188,7 @@ public sealed class StackServiceManager : IStackServiceManager
         return new StackServiceInfo
         {
             ServiceId = "pg-duckdb",
-            DisplayName = isPostgres ? "PostgreSQL &amp; pg_duckdb Columnar Analytics" : "Embedded SQLite &amp; DuckDB Parquet Storage",
+            DisplayName = isPostgres ? "PostgreSQL & pg_duckdb Columnar Analytics" : "Embedded SQLite & DuckDB Parquet Storage",
             RoleDescription = "Vectorized SQL analytical query execution and zero-copy columnar Apache Parquet storage.",
             EndpointOrLocation = isPostgres ? connStr.Split(';')[0] : "Local Embedded Storage",
             Health = isPostgres ? ServiceHealthState.Healthy : ServiceHealthState.DegradedOrFallback,
@@ -279,7 +279,7 @@ public sealed class StackServiceManager : IStackServiceManager
         return new StackServiceInfo
         {
             ServiceId = "peer-mesh",
-            DisplayName = "Collaborative Computing &amp; Peer Federation",
+            DisplayName = "Collaborative Computing & Peer Federation",
             RoleDescription = "Generates cryptographically signed single-use share keys and links for secure remote node collaboration.",
             EndpointOrLocation = "Federated Peering Protocol (port 5000 / /connect)",
             Health = ServiceHealthState.Healthy,

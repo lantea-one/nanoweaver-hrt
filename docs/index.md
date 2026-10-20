@@ -52,15 +52,15 @@ By folding single-stranded viral DNA (bacteriophage M13mp18) into rigid 3D nanos
 
 ### 2. Guided DNA Origami Bench Fabrication Wizard
 - Step-by-step interactive workflow guiding researchers from digitized FASTA/nucleotide sequences to synthesis manifests.
-- Mathematical sequence analysis: Base composition ($A, T/U, G, C$), GC-content percentage, and Dalton molecular weight.
+- Mathematical sequence analysis: Base composition (A, T/U, G, C), GC-content percentage, and Dalton molecular weight.
 - Algorithmic staple routing: Generation of structural crossover staples, ligand binding pockets, and receptor targeting poly-T anchors.
-- Stoichiometric thermal annealing protocol: 6-stage cryogenic-to-ambient cooling schedule ($90^\circ\text{C} \to 4^\circ\text{C}$).
+- Stoichiometric thermal annealing protocol: 6-stage cryogenic-to-ambient cooling schedule (90°C → 4°C).
 - Cryptographic provenance manifests with deterministic SHA-256 integrity verification.
 
 ### 3. Patient-Targeted Endocrine Regulatory Hub
 - Mathematical bistable state machine modeling in-vivo hormone setpoints:
-  - **Feminizing HRT (MtF)**: $E_2 \approx 550\text{ pmol/L}$, $T < 1.8\text{ nmol/L}$, progesterone setpoint.
-  - **Masculinizing HRT (FtM)**: $T \approx 20.0\text{ nmol/L}$, $E_2 < 150\text{ pmol/L}$.
+  - **Feminizing HRT (MtF)**: E2 ≈ 550 pmol/L, T < 1.8 nmol/L, progesterone setpoint.
+  - **Masculinizing HRT (FtM)**: T ≈ 20.0 nmol/L, E2 < 150 pmol/L.
 - 72-hour closed-loop pharmacodynamics simulation with reciprocal negative feedback.
 - Real-time HTML5 Canvas kinetics charting and 3D double helix projections.
 

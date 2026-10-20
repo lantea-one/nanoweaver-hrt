@@ -102,9 +102,9 @@ finally
 
 | Format | File Extension | Structure | Throughput |
 | :--- | :--- | :--- | :--- |
-| **Extended XYZ** | `.xyz` | Atom count header, comment line, per-atom `element x y z [vx vy vz]` | $\approx 450\text{ MB/sec}$ |
-| **LAMMPS Dump** | `.dump`, `.lammps` | `ITEM: TIMESTEP`, `ITEM: NUMBER OF ATOMS`, `ITEM: BOX BOUNDS`, `ITEM: ATOMS` | $\approx 420\text{ MB/sec}$ |
-| **CHARMM / NAMD / LAMMPS Binary** | `.dcd` | Fortran unformatted 32-bit float coordinate arrays with timestep headers | $\approx 1.2\text{ GB/sec}$ |
+| **Extended XYZ** | `.xyz` | Atom count header, comment line, per-atom `element x y z [vx vy vz]` | ~450 MB/sec |
+| **LAMMPS Dump** | `.dump`, `.lammps` | `ITEM: TIMESTEP`, `ITEM: NUMBER OF ATOMS`, `ITEM: BOX BOUNDS`, `ITEM: ATOMS` | ~420 MB/sec |
+| **CHARMM / NAMD / LAMMPS Binary** | `.dcd` | Fortran unformatted 32-bit float coordinate arrays with timestep headers | ~1.2 GB/sec |
 
 ---
 
@@ -114,8 +114,8 @@ While raw text trajectory files are convenient for simulation engines, they are 
 
 ### Columnar Transformation
 The platform automatically converts completed trajectories into compressed columnar **Apache Parquet** files:
-* **Storage Reduction**: Typically achieves an **$85\%\text{ to }92\%$ reduction in disk size** compared to raw `.xyz` or `.dump` files using Zstandard compression.
-* **Column-Oriented Access**: Queries that only need $Z$-axis coordinates or specific atom types read only those columns, bypassing gigabytes of irrelevant data.
+* **Storage Reduction**: Typically achieves an **85% to 92% reduction in disk size** compared to raw `.xyz` or `.dump` files using Zstandard compression.
+* **Column-Oriented Access**: Queries that only need Z-axis coordinates or specific atom types read only those columns, bypassing gigabytes of irrelevant data.
 
 ### SIMD Spatial Analytics via DuckDB
 Using embedded DuckDB with SIMD vectorization, researchers can execute SQL queries over millions of coordinates in milliseconds:

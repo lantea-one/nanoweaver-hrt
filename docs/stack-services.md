@@ -68,8 +68,8 @@ The dashboard executes automated, non-blocking health checks against all local a
 * **Simulation Engine Heartbeat**: Inspects container process state via Docker socket or shared lockfiles.
 
 ### Health Status States
-* **Healthy (Green)**: Round-trip latency $< 20\text{ ms}$; all storage mounts writable; simulation engine running.
-* **Degraded (Amber)**: Elevated response latency ($> 200\text{ ms}$); disk storage $> 90\%$ full; or database operating in fallback SQLite mode.
+* **Healthy (Green)**: Round-trip latency < 20 ms; all storage mounts writable; simulation engine running.
+* **Degraded (Amber)**: Elevated response latency (> 200 ms); disk storage > 90% full; or database operating in fallback SQLite mode.
 * **Offline (Red)**: Target microservice unreachable; connection refused.
 
 ---

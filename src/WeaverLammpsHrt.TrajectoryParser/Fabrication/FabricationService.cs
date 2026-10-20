@@ -138,7 +138,7 @@ public sealed class FabricationService : IFabricationService
                 TargetTemperatureCelsius = 4.0,
                 HoldDurationMinutes = 0,
                 RampRateCelsiusPerMinute = 1.0,
-                BiophysicalPurpose = "Cryogenic Quenching &amp; Storage: Long-term preservation in 1x TAE + 12.5 mM MgCl2 buffer."
+                BiophysicalPurpose = "Cryogenic Quenching & Storage: Long-term preservation in 1x TAE + 12.5 mM MgCl2 buffer."
             }
         ];
 

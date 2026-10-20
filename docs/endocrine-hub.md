@@ -46,10 +46,10 @@ To understand how targeted DNA nanocarriers function as sovereign Hormone Replac
 ```
 
 ### The Endogenous Feedback Loop
-1. **Hypothalamic Driving**: The hypothalamus secretes pulses of Gonadotropin-Releasing Hormone ($\text{GnRH}$).
-2. **Pituitary Response**: $\text{GnRH}$ binds to receptors on gonadotrope cells in the anterior pituitary, triggering the synthesis and pulsatile release of **Luteinizing Hormone (LH)** and **Follicle-Stimulating Hormone (FSH)**.
-3. **Gonadal Steroidogenesis**: LH and FSH circulate via the bloodstream to gonadal tissues, where enzymes (such as Cytochrome P450 aromatase and $17\beta$-hydroxysteroid dehydrogenase) convert cholesterol into testosterone, estrogens, and progesterone.
-4. **Reciprocal Negative Feedback**: When circulating steroid hormone concentrations rise above physiological setpoints, they cross the blood-brain barrier and bind to estrogen/androgen receptors in the hypothalamus and pituitary. This **suppresses** further $\text{GnRH}$, $\text{LH}$, and $\text{FSH}$ release, preventing runaway hormone production.
+1. **Hypothalamic Driving**: The hypothalamus secretes pulses of Gonadotropin-Releasing Hormone (GnRH).
+2. **Pituitary Response**: GnRH binds to receptors on gonadotrope cells in the anterior pituitary, triggering the synthesis and pulsatile release of **Luteinizing Hormone (LH)** and **Follicle-Stimulating Hormone (FSH)**.
+3. **Gonadal Steroidogenesis**: LH and FSH circulate via the bloodstream to gonadal tissues, where enzymes (such as Cytochrome P450 aromatase and 17β-hydroxysteroid dehydrogenase) convert cholesterol into testosterone, estrogens, and progesterone.
+4. **Reciprocal Negative Feedback**: When circulating steroid hormone concentrations rise above physiological setpoints, they cross the blood-brain barrier and bind to estrogen/androgen receptors in the hypothalamus and pituitary. This **suppresses** further GnRH, LH, and FSH release, preventing runaway hormone production.
 
 ### The Failure of Conventional HRT
 Conventional HRT relies on periodic exogenous depot injections (e.g., intramuscular estradiol valerate or testosterone cypionate weekly or biweekly), daily transdermal patches/gels, or oral pills.
@@ -94,16 +94,16 @@ The Endocrine Regulatory Hub implements a mathematical state machine modeling th
 ```
 
 ### State 1: Feminizing Hormone Therapy (MtF)
-* **Estradiol ($E_2$) Target Setpoint**: $500\text{ to }600\text{ pmol/L}$ ($136\text{ to }163\text{ pg/mL}$).
+* **Estradiol (E2) Target Setpoint**: 500 to 600 pmol/L (136 to 163 pg/mL).
   * High enough to induce secondary female sex characteristics, breast tissue development, and feminine fat redistribution.
   * Sufficiently elevated to mediate pituitary negative feedback without requiring synthetic anti-androgens (spironolactone or cyproterone acetate).
-* **Testosterone ($T$) Target Suppression**: $< 1.8\text{ nmol/L}$ ($< 50\text{ ng/dL}$).
-* **Progesterone ($P_4$) Stabilization**: Optional third-trace co-factor for alveolar tissue maturation and neuroprotection.
+* **Testosterone (T) Target Suppression**: < 1.8 nmol/L (< 50 ng/dL).
+* **Progesterone (P4) Stabilization**: Optional third-trace co-factor for alveolar tissue maturation and neuroprotection.
 
 ### State 2: Masculinizing Hormone Therapy (FtM)
-* **Testosterone ($T$) Target Setpoint**: $15.0\text{ to }25.0\text{ nmol/L}$ ($430\text{ to }720\text{ ng/dL}$).
+* **Testosterone (T) Target Setpoint**: 15.0 to 25.0 nmol/L (430 to 720 ng/dL).
   * Promotes virilization, vocal fold thickening, clitoral hypertrophy, lean muscle accretion, and cessation of menses.
-* **Estradiol ($E_2$) Target Suppression**: $< 150\text{ pmol/L}$ ($< 40\text{ pg/mL}$).
+* **Estradiol (E2) Target Suppression**: < 150 pmol/L (< 40 pg/mL).
   * Downregulated naturally via androgen-mediated negative feedback on hypothalamic GnRH pulsatility.
 
 ---
@@ -113,9 +113,9 @@ The Endocrine Regulatory Hub implements a mathematical state machine modeling th
 The Hub includes a high-resolution 72-hour kinetics engine implemented via interactive HTML5 Canvas charting:
 
 ### Multi-Trace Dynamic Curves
-* **Cyan Trace ($E_2$)**: Displays circulating $17\beta$-estradiol in $\text{pmol/L}$.
-* **Magenta Trace ($T$)**: Displays circulating testosterone in $\text{nmol/L}$.
-* **Amber / Green Trace ($\text{LH / FSH}$)**: Displays anterior pituitary gonadotropin signaling in $\text{IU/L}$.
+* **Cyan Trace (E2)**: Displays circulating 17β-estradiol in pmol/L.
+* **Magenta Trace (T)**: Displays circulating testosterone in nmol/L.
+* **Amber / Green Trace (LH / FSH)**: Displays anterior pituitary gonadotropin signaling in IU/L.
 
 ### Closed-Loop Perturbation Testing
 Using the interactive UI controls, researchers can simulate acute physiological perturbations:
@@ -128,15 +128,15 @@ Using the interactive UI controls, researchers can simulate acute physiological 
 
 ### Interactive 3D B-DNA Helix Projection
 The hub renders a real-time 3D mathematical projection of the DNA double helix directly on the sovereign HTML5 Canvas:
-* Rotates smoothly along its longitudinal axis ($36^\circ\text{ rotation per base pair}$).
-* Visualizes major and minor grooves, phosphate-sugar backbones, and complementary base pairs ($A\text{-}T$ in cyan, $G\text{-}C$ in magenta).
+* Rotates smoothly along its longitudinal axis (36° rotation per base pair).
+* Visualizes major and minor grooves, phosphate-sugar backbones, and complementary base pairs (A-T in cyan, G-C in magenta).
 * Allows researchers to visually inspect where targeting aptamer loops are inserted into the staple arrangement.
 
 ### Anatomical Targeting Map
 Provides an anatomical schema linking the nanocarrier's physical route:
-1. **Intravenous / Subcutaneous Depot** $\to$
-2. **Capillary Fenestrations** $\to$
-3. **Pituitary Gonadotrope Binding** $\to$
+1. **Intravenous / Subcutaneous Depot** →
+2. **Capillary Fenestrations** →
+3. **Pituitary Gonadotrope Binding** →
 4. **Circulatory Systemic Stabilization**.
 
 ---

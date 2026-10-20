@@ -43,16 +43,16 @@ Current clinical Hormone Replacement Therapy (HRT) requires lifelong exogenous a
 ```
 
 ### 1. Male-to-Female (MtF) Regimen
-- **Target Hormonal Setpoints:** Sustained $17\beta\text{-estradiol}$ ($\text{E}_2$) within cisgender female physiological range ($350\text{ to }750\text{ pmol/L}$) and active negative-feedback suppression of endogenous testosterone to $< 1.8\text{ nmol/L}$.
-- **Mechanism:** DNA origami nanocarriers functionalized with targeting aptamers directed to anterior pituitary gonadotrope cells (GnRH receptors) to modulate LH/FSH secretion and promote steady-state estrogen receptor (ER$\alpha$/ER$\beta$) agonism.
+- **Target Hormonal Setpoints:** Sustained 17β-estradiol (E2) within cisgender female physiological range (350 to 750 pmol/L) and active negative-feedback suppression of endogenous testosterone to < 1.8 nmol/L.
+- **Mechanism:** DNA origami nanocarriers functionalized with targeting aptamers directed to anterior pituitary gonadotrope cells (GnRH receptors) to modulate LH/FSH secretion and promote steady-state estrogen receptor (ERα/ERβ) agonism.
 
 ### 2. Female-to-Male (FtM) Regimen
-- **Target Hormonal Setpoints:** Sustained total testosterone ($\text{T}$) within cisgender male physiological range ($12\text{ to }28\text{ nmol/L}$) and suppression of cyclic estrogen synthesis ($< 150\text{ pmol/L}$).
-- **Mechanism:** Nanocarrier-mediated androgen receptor (AR) activation and targeted steroidogenic enzyme modulation (upregulating 17$\beta$-HSD while suppressing aromatase CYP19A1).
+- **Target Hormonal Setpoints:** Sustained total testosterone (T) within cisgender male physiological range (12 to 28 nmol/L) and suppression of cyclic estrogen synthesis (< 150 pmol/L).
+- **Mechanism:** Nanocarrier-mediated androgen receptor (AR) activation and targeted steroidogenic enzyme modulation (upregulating 17β-HSD while suppressing aromatase CYP19A1).
 
 ### 3. Patient-Targeted Delivery via DNA Origami Nanostructures
-- **Coarse-Grained oxDNA Simulation:** Simulates the structural integrity, melting temperature, and mechanical folding of 3D DNA origami nanocarriers (hexagonal nanotubes, nanoboxes) under physiological human serum conditions ($37^\circ\text{C}$, $150\text{ mM NaCl}$, $2\text{--}10\text{ mM Mg}^{2+}$).
-- **Atomistic LAMMPS Simulation:** Hardware-accelerated molecular dynamics (Intel Arc A770, NVIDIA, AMD Radeon) measuring non-covalent binding contacts ($< 5.0\text{ \AA}$) and dissociation constants ($K_d$) between surface-displayed aptamers and target cell receptors.
+- **Coarse-Grained oxDNA Simulation:** Simulates the structural integrity, melting temperature, and mechanical folding of 3D DNA origami nanocarriers (hexagonal nanotubes, nanoboxes) under physiological human serum conditions (37°C, 150 mM NaCl, 2–10 mM Mg²⁺).
+- **Atomistic LAMMPS Simulation:** Hardware-accelerated molecular dynamics (Intel Arc A770, NVIDIA, AMD Radeon) measuring non-covalent binding contacts (< 5.0 Å) and dissociation constants (Kd) between surface-displayed aptamers and target cell receptors.
 
 ### 4. Sovereign .NET 10 Microservice & Zero-Allocation Pipelines
 - **Zero-Allocation Parsing:** Ingests massive multi-gigabyte trajectory streams (`.xyz`, `.dcd`, oxDNA) using `System.IO.Pipelines`, `ReadOnlySpan<byte>`, and `Utf8Parser` with zero GC allocations in steady state.
@@ -95,8 +95,8 @@ docker compose -f docker-compose.yml -f compose/docker-compose.radeon.yml up -d
 ## 📊 Sovereign Web Dashboard (`http://localhost:5000`)
 
 The embedded dashboard provides:
-- **Endocrine Toggle Hub:** One-click switching between **`Male-to-Female (MtF / E2 Dominant)`** and **`Female-to-Male (FtM / T Dominant)`** regimens, with real-time patient setpoints for target $\text{E}_2$, $\text{T}$, and aptamer $K_d$.
-- **In-Silico Docking Telemetry:** Live trajectory analysis reporting binding occupancy ratios ($0.0\text{--}1.0$), average pocket contacts per frame, and thermodynamic stability classifications.
+- **Endocrine Toggle Hub:** One-click switching between **`Male-to-Female (MtF / E2 Dominant)`** and **`Female-to-Male (FtM / T Dominant)`** regimens, with real-time patient setpoints for target E2, T, and aptamer Kd.
+- **In-Silico Docking Telemetry:** Live trajectory analysis reporting binding occupancy ratios (0.0 to 1.0), average pocket contacts per frame, and thermodynamic stability classifications.
 - **Zero-Allocation Telemetry:** Real-time monitoring of GC Generation 0, 1, and 2 collections to ensure the zero-allocation invariant is maintained during continuous trajectory processing.
 - **Cryptographic Dataset Export & Import:** Package simulation trajectories into compressed `.tar.gz` bundles paired with an immutable `provenance.manifest.json` featuring SHA-256 digest validation.
 

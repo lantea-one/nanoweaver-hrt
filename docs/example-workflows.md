@@ -9,7 +9,7 @@ This guide provides concrete, end-to-end walkthroughs for common workflows in **
 ## Workflow 1: Designing an MtF Feminizing DNA Nanotube
 
 ### Objective
-Design and simulate an autonomous DNA origami cylindrical nanotube targeted to anterior pituitary gonadotrope cells for permanent, closed-loop $17\beta$-estradiol ($E_2$) titration and natural luteinizing hormone (LH) suppression.
+Design and simulate an autonomous DNA origami cylindrical nanotube targeted to anterior pituitary gonadotrope cells for permanent, closed-loop 17β-estradiol (E2) titration and natural luteinizing hormone (LH) suppression.
 
 ```
   [Viral M13mp18 ssDNA] + [180 Synthetic Staples]
@@ -31,45 +31,45 @@ Design and simulate an autonomous DNA origami cylindrical nanotube targeted to a
 1. Open the web dashboard at `http://localhost:5000` and click **Guided DNA Wizard** in the navigation bar.
 2. Select **M13mp18 Bacteriophage** (7,249 nt) as the base scaffold.
 3. Observe the calculated metrics:
-   * **Total Bases**: $7,249\text{ nt}$
-   * **GC-Content**: $\approx 42.8\%$
-   * **Molecular Mass**: $\approx 2,392,170\text{ Da}$
+   * **Total Bases**: 7,249 nt
+   * **GC-Content**: ~42.8%
+   * **Molecular Mass**: ~2,392,170 Da
 4. Click **Proceed to Geometry Selection**.
 
 ### Step 2: Configure Nanotube Conformation
 1. Choose **Cylindrical Nanotube** (6-helix bundle).
 2. Set dimensions:
-   * **Length**: $60\text{ nm}$ (approximately 176 base pairs).
-   * **Inner Cavity Diameter**: $4.5\text{ nm}$.
-   * **Lattice Arrangement**: Honeycomb lattice ($120^\circ$ angles).
-3. Confirm that the calculated inner cavity volume ($V \approx 954\text{ nm}^3$) is sufficient to encapsulate $\approx 150$ molecules of hydrophobic $17\beta$-estradiol.
+   * **Length**: 60 nm (approximately 176 base pairs).
+   * **Inner Cavity Diameter**: 4.5 nm.
+   * **Lattice Arrangement**: Honeycomb lattice (120° angles).
+3. Confirm that the calculated inner cavity volume (V ≈ 954 nm³) is sufficient to encapsulate ~150 molecules of hydrophobic 17β-estradiol.
 4. Click **Generate Staple Crossovers**.
 
 ### Step 3: Configure Tissue-Targeting & Staple Routing
 1. The routing engine generates 178 staple strands with an average length of 42 nucleotides.
-2. Under **Functional Overhangs**, enable **Pituitary Gonadotrope Targeting Peptide Adapter** ($T_{15}$ poly-T anchor on the distal end staples).
+2. Under **Functional Overhangs**, enable **Pituitary Gonadotrope Targeting Peptide Adapter** (T₁₅ poly-T anchor on the distal end staples).
 3. Enable **LH-Responsive Aptamer Latches** on the entry caps.
 4. Click **Review Thermal Annealing Protocol**.
 
 ### Step 4: Verify Stoichiometric Annealing Schedule
 1. Review the 6-stage temperature ramp:
-   * $90^\circ\text{C}$ for 10 min (Denaturation).
-   * $90^\circ\text{C} \to 65^\circ\text{C}$ @ $1.0^\circ\text{C}/\text{min}$.
-   * $65^\circ\text{C} \to 55^\circ\text{C}$ @ $0.1^\circ\text{C}/\text{min}$ (Core crossover nucleation).
-   * $55^\circ\text{C} \to 45^\circ\text{C}$ @ $0.05^\circ\text{C}/\text{min}$ (Aptamer loop assembly).
-   * $45^\circ\text{C} \to 20^\circ\text{C}$ @ $0.5^\circ\text{C}/\text{min}$.
-   * Hold at $4^\circ\text{C}$.
-2. Confirm buffer stoichiometry: $1\times\text{ TAE}$ with $12.5\text{ mM MgCl}_2$.
+   * 90°C for 10 min (Denaturation).
+   * 90°C → 65°C @ 1.0°C/min.
+   * 65°C → 55°C @ 0.1°C/min (Core crossover nucleation).
+   * 55°C → 45°C @ 0.05°C/min (Aptamer loop assembly).
+   * 45°C → 20°C @ 0.5°C/min.
+   * Hold at 4°C.
+2. Confirm buffer stoichiometry: 1x TAE with 12.5 mM MgCl2.
 
 ### Step 5: Simulate In-Vivo Setpoints in Endocrine Hub
 1. Navigate to **Endocrine Hub** in the sidebar.
 2. Select **Feminizing Protocol (MtF)**.
 3. Observe the setpoint targets:
-   * Target $E_2$: $550\text{ pmol/L}$.
-   * Target $T$: $< 1.8\text{ nmol/L}$.
+   * Target E2: 550 pmol/L.
+   * Target T: < 1.8 nmol/L.
 4. Run the **72-Hour Kinetics Simulation**:
-   * Observe the initial surge of $E_2$ reaching steady state by Hour 18.
-   * Verify that endogenous LH drops from basal $8.5\text{ IU/L}$ to $< 1.2\text{ IU/L}$, naturally shutting down gonadal androgenesis without exogenous anti-androgens.
+   * Observe the initial surge of E2 reaching steady state by Hour 18.
+   * Verify that endogenous LH drops from basal 8.5 IU/L to < 1.2 IU/L, naturally shutting down gonadal androgenesis without exogenous anti-androgens.
 5. Trigger an **Exogenous Bolus Perturbation** to confirm that the simulated nanocarrier closes its aptamer latches until equilibrium is re-established.
 
 ### Step 6: Export Benchtop Synthesis Package
@@ -108,7 +108,7 @@ curl -X POST http://localhost:5000/api/trajectories/stream \
 ### Step 3: Monitor Zero-Allocation Telemetry in Real Time
 1. Open **Stack Services & Telemetry** in the dashboard.
 2. Observe the **Memory & GC Telemetry** panel:
-   * **Throughput**: Sustained $> 400\text{ MB/sec}$.
+   * **Throughput**: Sustained > 400 MB/sec.
    * **ThreadPool**: Active worker threads processing SIMD slices.
    * **Garbage Collection**:
      * `Gen 0`: Occasional minor sweeps.
@@ -117,7 +117,7 @@ curl -X POST http://localhost:5000/api/trajectories/stream \
 3. Verify that CPU SIMD vectorization displays `Active (AVX-512)` or `Active (AVX2)`.
 
 ### Step 4: Spatial Analytics with DuckDB
-Once streaming completes, the compressed archive is saved as `nanocage_100k.parquet` ($\approx 920\text{ MB}$).
+Once streaming completes, the compressed archive is saved as `nanocage_100k.parquet` (~920 MB).
 You can now run analytical queries via the REST API:
 ```bash
 curl -X POST http://localhost:5000/api/analytics/query \
