@@ -16,9 +16,9 @@ The microservice automatically serves live, interactive OpenAPI 3.0 documentatio
 
 | Interface | URL Path | Description |
 | :--- | :--- | :--- |
-| **Swagger UI** | [`/swagger`](/swagger) | Interactive, browser-based API explorer allowing live execution of requests, header configuration, and multi-format example preview. Redirects to `/swagger/index.html`. |
-| **ReDoc** | [`/documentation`](/documentation) | Responsive, three-column API reference rendering full OpenAPI schemas, status codes, and multi-format payload tabs. Redirects to `/documentation/index.html`. |
-| **OpenAPI Specification** | [`/swagger/v1/swagger.json`](/swagger/v1/swagger.json) | Raw OpenAPI 3.0 JSON specification document containing schemas and multi-format example ASTs. |
+| **Swagger UI** | `/swagger` | Interactive, browser-based API explorer allowing live execution of requests, header configuration, and multi-format example preview. Redirects to `/swagger/index.html`. |
+| **ReDoc** | `/documentation` | Responsive, three-column API reference rendering full OpenAPI schemas, status codes, and multi-format payload tabs. Redirects to `/documentation/index.html`. |
+| **OpenAPI Specification** | `/swagger/v1/swagger.json` | Raw OpenAPI 3.0 JSON specification document containing schemas and multi-format example ASTs. |
 
 ### Content Negotiation Mechanics
 
