@@ -165,12 +165,24 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and Push Parser Container Image
+      - name: Build and Push Web Container Image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: docker/parser/Dockerfile.parser
           push: ${{ github.event_name != 'pull_request' }}
-          tags: '${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ github.event.repository.name }}:latest'
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/nanoweaver-hrt-web:latest
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/nanoweaver-hrt:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and Push Simulation Container Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/simulation/Dockerfile.simulation
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/nanoweaver-hrt-simulation:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max

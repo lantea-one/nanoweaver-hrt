@@ -53,7 +53,7 @@ services:
     build:
       context: .
       dockerfile: docker/parser/Dockerfile.parser
-    image: git.lantea.one/lantea-one/nanoweaver-hrt:latest
+    image: git.lantea.one/lantea-one/nanoweaver-hrt-web:latest
     container_name: weaver-parser
     hostname: parser-node
     ports:

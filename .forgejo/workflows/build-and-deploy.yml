@@ -156,21 +156,43 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.PACKAGE_TOKEN || secrets.GITHUB_TOKEN }}
 
-      - name: Extract Docker Image Metadata
-        id: meta
+      - name: Extract Web Docker Image Metadata
+        id: meta-web
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: |
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/nanoweaver-hrt-web
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/nanoweaver-hrt
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,format=short,prefix=sha-
             type=semver,pattern={{version}}
 
-      - name: Build and Push Parser Container Image
+      - name: Build and Push Web & Parser Container Image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: docker/parser/Dockerfile.parser
           push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.meta-web.outputs.tags }}
+          labels: ${{ steps.meta-web.outputs.labels }}
+
+      - name: Extract Simulation Docker Image Metadata
+        id: meta-simulation
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/nanoweaver-hrt-simulation
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short,prefix=sha-
+            type=semver,pattern={{version}}
+
+      - name: Build and Push Simulation Container Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/simulation/Dockerfile.simulation
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-simulation.outputs.tags }}
+          labels: ${{ steps.meta-simulation.outputs.labels }}

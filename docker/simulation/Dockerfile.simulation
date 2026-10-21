@@ -33,8 +33,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get update && apt-get install -y --no-install-recommends \
     intel-opencl-icd \
     intel-level-zero-gpu \
-    level-zero \
-    level-zero-dev \
+    libze1 \
+    libze-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Build oxDNA with OpenCL acceleration enabled
@@ -55,19 +55,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gnupg \
     clinfo \
     ocl-icd-libopencl1 \
-    libfftw3-3 \
+    libfftw3-double3 \
+    libfftw3-single3 \
+    lammps \
     python3 \
     && curl -fsSL https://repositories.intel.com/gpu/intel-graphics.key | gpg --dearmor -o /usr/share/keyrings/intel-gpu-keyring.gpg \
     && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/intel-gpu-keyring.gpg] https://repositories.intel.com/gpu/ubuntu noble client" > /etc/apt/sources.list.d/intel-gpu.list \
     && apt-get update && apt-get install -y --no-install-recommends \
     intel-opencl-icd \
     intel-level-zero-gpu \
-    level-zero \
+    libze1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy oxDNA build output
 COPY --from=sim-builder /opt/oxdna/build/bin/oxDNA /usr/local/bin/oxDNA
-COPY --from=sim-builder /opt/oxdna/build/bin/oxtemp /usr/local/bin/oxtemp
+COPY --from=sim-builder /opt/oxdna/build/bin/DNAnalysis /usr/local/bin/DNAnalysis
+COPY --from=sim-builder /opt/oxdna/build/bin/confGenerator /usr/local/bin/confGenerator
 
 # Set up environment variables
 ENV PATH="/usr/local/bin:${PATH}" \

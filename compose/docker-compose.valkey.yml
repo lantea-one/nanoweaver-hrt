@@ -42,7 +42,7 @@ services:
       - "127.0.0.1:6379:6379"
 
   trajectory-parser:
-    image: git.lantea.one/lantea-one/nanoweaver-hrt:latest
+    image: git.lantea.one/lantea-one/nanoweaver-hrt-web:latest
     environment:
       - VALKEY_CONNECTION_STRING=valkey:6379,password=${VALKEY_PASSWORD:-weaver_valkey_secret_change_me},abortConnect=false,connectTimeout=3000
     depends_on:
