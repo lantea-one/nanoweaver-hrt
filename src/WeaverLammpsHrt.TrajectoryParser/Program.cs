@@ -25,6 +25,8 @@ using WeaverLammpsHrt.TrajectoryParser.Services.Stack;
 using WeaverLammpsHrt.TrajectoryParser.Storage;
 using WeaverLammpsHrt.TrajectoryParser.Swagger;
 using WeaverLammpsHrt.TrajectoryParser.Formatting;
+using WeaverLammpsHrt.TrajectoryParser.Simulations;
+using WeaverLammpsHrt.TrajectoryParser.Simulations.Models;
 
 namespace WeaverLammpsHrt.TrajectoryParser;
 
@@ -80,6 +82,7 @@ public class Program
         builder.Services.AddSingleton<IKeyManagementService, KeyManagementService>();
         builder.Services.AddSingleton<IComplianceAuditService, ComplianceAuditService>();
         builder.Services.AddSingleton<IEncryptedStorageService, EncryptedStorageService>();
+        builder.Services.AddSingleton<ISimulationCampaignService, SimulationCampaignService>();
 
         // WHAT: Configures Swagger & OpenAPI generation with XML comments and Swashbuckle annotations.
         // WHY:  Provides interactive API exploration (/swagger) and ReDoc documentation (/documentation).
@@ -750,6 +753,80 @@ public class Program
         .WithTags("Pharmacogenomics")
         .WithSummary("Applies patient pharmacogenomic adjustments to the active endocrine target profile.")
         .WithDescription("Updates the active endocrine setpoints with patient-specific clearance and safety caps.")
+        .Produces(StatusCodes.Status200OK);
+
+        // ---------------------------------------------------------------------
+        // REST API: In-Silico Nanomedicine Simulation Campaigns
+        // ---------------------------------------------------------------------
+        app.MapGet("/api/simulations/campaigns", (ISimulationCampaignService simService) =>
+        {
+            return Results.Ok(simService.GetCampaignCatalog());
+        })
+        .WithName("GetSimulationCampaigns")
+        .WithTags("In-Silico Simulation Campaigns")
+        .WithSummary("Lists all available in-silico simulation campaigns across oxDNA, LAMMPS, and QSP/PBPK.")
+        .WithDescription("Returns simulation campaign catalogs, biophysical goals, and hardware accelerator specifications.")
+        .Produces<IReadOnlyList<SimulationCampaignInfo>>(StatusCodes.Status200OK);
+
+        app.MapPost("/api/simulations/run/serum-stability", (SerumStabilityRequest req, ISimulationCampaignService simService) =>
+        {
+            SerumStabilityAnalysisResult result = simService.SimulateSerumStability(req);
+            return Results.Ok(result);
+        })
+        .WithName("RunSerumStabilitySimulation")
+        .WithTags("In-Silico Simulation Campaigns")
+        .WithSummary("Executes Campaign 1: oxDNA Physiological Serum & Low-Magnesium Stability Simulation.")
+        .WithDescription("Calculates Root Mean Square Fluctuation (RMSF), Debye screening length, and crossover fraying under human blood serum conditions.")
+        .Produces<SerumStabilityAnalysisResult>(StatusCodes.Status200OK);
+
+        app.MapPost("/api/simulations/run/aptamer-gating", (AptamerGatingRequest req, ISimulationCampaignService simService) =>
+        {
+            AptamerGatingAnalysisResult result = simService.SimulateAptamerGating(req);
+            return Results.Ok(result);
+        })
+        .WithName("RunAptamerGatingSimulation")
+        .WithTags("In-Silico Simulation Campaigns")
+        .WithSummary("Executes Campaign 2: LAMMPS Aptamer Gating Free-Energy & Pituitary Tropism Simulation.")
+        .WithDescription("Computes Potential of Mean Force (PMF) unbinding free-energy barriers and GnRH-R receptor binding affinity.")
+        .Produces<AptamerGatingAnalysisResult>(StatusCodes.Status200OK);
+
+        app.MapPost("/api/simulations/run/payload-leakage", (PayloadLeakageRequest req, ISimulationCampaignService simService) =>
+        {
+            PayloadLeakageAnalysisResult result = simService.SimulatePayloadLeakage(req);
+            return Results.Ok(result);
+        })
+        .WithName("RunPayloadLeakageSimulation")
+        .WithTags("In-Silico Simulation Campaigns")
+        .WithSummary("Executes Campaign 3: Steroid Payload Encapsulation & Micro-Leakage Dynamics.")
+        .WithDescription("Models hydrophobic steroid cavity confinement, passive leakage percentage, and gate-triggered release rates.")
+        .Produces<PayloadLeakageAnalysisResult>(StatusCodes.Status200OK);
+
+        app.MapPost("/api/simulations/run/pbpk-endocrine", (PbpkSimulationRequest req, ISimulationCampaignService simService) =>
+        {
+            PbpkEndocrineSimulationResult result = simService.SimulatePbpkEndocrine(req);
+            return Results.Ok(result);
+        })
+        .WithName("RunPbpkEndocrineSimulation")
+        .WithTags("In-Silico Simulation Campaigns")
+        .WithSummary("Executes Campaign 4: Quantitative Systems Pharmacology (QSP) / Whole-Body PBPK Simulation.")
+        .WithDescription("Simulates multi-compartment whole-body pharmacokinetics over 30/60/90 days with genomic multipliers and HPG feedback.")
+        .Produces<PbpkEndocrineSimulationResult>(StatusCodes.Status200OK);
+
+        app.MapGet("/api/simulations/configs/{campaignId}", (string campaignId, ISimulationCampaignService simService) =>
+        {
+            string config = campaignId.ToUpperInvariant() switch
+            {
+                "CAMPAIGN_SERUM_STABILITY" => simService.GenerateOxDnaInputDeck(new SerumStabilityRequest()),
+                "CAMPAIGN_APTAMER_GATING" => simService.GenerateLammpsAptamerInputDeck(new AptamerGatingRequest()),
+                "CAMPAIGN_PAYLOAD_LEAKAGE" => simService.GenerateLammpsPayloadInputDeck(new PayloadLeakageRequest()),
+                _ => simService.GenerateOxDnaInputDeck(new SerumStabilityRequest())
+            };
+            return Results.Ok(new { campaign_id = campaignId, input_deck = config });
+        })
+        .WithName("GetSimulationConfigDeck")
+        .WithTags("In-Silico Simulation Campaigns")
+        .WithSummary("Generates baseline simulation input deck script for the specified campaign ID.")
+        .WithDescription("Outputs oxDNA or LAMMPS input decks configured for GPU/SYCL execution.")
         .Produces(StatusCodes.Status200OK);
 
         // ---------------------------------------------------------------------

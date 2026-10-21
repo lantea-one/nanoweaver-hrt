@@ -1,0 +1,510 @@
+@page "/simulations"
+@using WeaverLammpsHrt.TrajectoryParser.Endocrine
+@using WeaverLammpsHrt.TrajectoryParser.Genomics
+@using WeaverLammpsHrt.TrajectoryParser.Simulations
+@using WeaverLammpsHrt.TrajectoryParser.Simulations.Models
+@inject ISimulationCampaignService SimService
+@inject IPharmacogenomicsService GenomicsService
+
+<section class="card">
+    <div class="card-header">
+        <div>
+            <h2>In-Silico Simulation Studio &amp; Translational Validation</h2>
+            <p class="subtitle">Multi-Scale Predictive Modeling &bull; oxDNA Mechanical Stability &bull; LAMMPS Allosteric Gating &bull; QSP/PBPK Whole-Body Dynamics</p>
+        </div>
+        <div class="status-indicator">
+            <span class="status-dot status-healthy"></span>
+            <span class="font-mono text-success">GPU CLUSTER ACCELERATED</span>
+        </div>
+    </div>
+
+    <!-- Simulation Campaigns Navigation Tabs -->
+    <div class="d-flex flex-wrap gap-2 mt-3">
+        @foreach (var campaign in _campaigns)
+        {
+            <button class="btn btn-sm @(_activeCampaignId == campaign.CampaignId ? "btn-primary" : "btn-outline")"
+                    @onclick="() => SelectCampaign(campaign.CampaignId)">
+                @campaign.Name
+            </button>
+        }
+    </div>
+</section>
+
+<!-- Active Campaign Workstation -->
+@if (_activeCampaignId == "CAMPAIGN_SERUM_STABILITY")
+{
+    <!-- Campaign 1: oxDNA Serum Stability -->
+    <section class="card" style="margin-top: 1.5rem;">
+        <div class="card-header">
+            <div>
+                <h3>Campaign 1: oxDNA Physiological Serum &amp; Low-Magnesium Stress</h3>
+                <p class="subtitle">Simulates 37°C body temperature, 150 mM NaCl, and 0.8 mM Mg2+ blood serum to detect crossover fraying before oligo ordering.</p>
+            </div>
+            <button class="btn btn-primary btn-sm" @onclick="RunSerumStability">
+                <span>⚡</span> Execute oxDNA Simulation
+            </button>
+        </div>
+
+        <div class="telemetry-grid mt-3">
+            <div class="card stat-card">
+                <div class="stat-label">TEMPERATURE</div>
+                <div class="stat-value font-mono">@_serumReq.TemperatureCelsius.ToString("F1") °C</div>
+                <div class="stat-sub">310.15 K Core Body Temp</div>
+            </div>
+            <div class="card stat-card">
+                <div class="stat-label">DIVALENT MAGNESIUM</div>
+                <div class="stat-value font-mono text-accent">@_serumReq.DivalentMagnesiumMilliMolar.ToString("F1") mM</div>
+                <div class="stat-sub">@(_serumReq.DivalentMagnesiumMilliMolar < 2.0 ? "Human Serum Level" : "In-Vitro Folding Buffer")</div>
+            </div>
+            <div class="card stat-card">
+                <div class="stat-label">PLL-PEG COATING</div>
+                <div class="stat-value font-mono @(_serumReq.PllPegCoatingApplied ? "text-success" : "text-warning")">
+                    @(_serumReq.PllPegCoatingApplied ? "ACTIVE" : "UNSHIELDED")
+                </div>
+                <div class="stat-sub">@(_serumReq.PllPegCoatingApplied ? "Steric Brush Passivated" : "High Nuclease Risk")</div>
+            </div>
+            <div class="card stat-card">
+                <div class="stat-label">CPG METHYLATION</div>
+                <div class="stat-value font-mono @(_serumReq.CpGMethylationApplied ? "text-success" : "text-muted")">
+                    @(_serumReq.CpGMethylationApplied ? "METHYLATED" : "UNMETHYLATED")
+                </div>
+                <div class="stat-sub">M.SssI TLR9 Protection</div>
+            </div>
+        </div>
+
+        <!-- Controls Form -->
+        <div class="mt-3 p-3" style="background: rgba(0, 0, 0, 0.2); border-radius: 6px; border: 1px solid var(--border-color);">
+            <div class="d-flex flex-wrap gap-4 align-items-center">
+                <label class="d-flex align-items-center gap-2 font-mono" style="font-size: 0.9rem;">
+                    <span>[Mg2+] (mM):</span>
+                    <input type="number" step="0.1" min="0.1" max="20.0" class="input input-sm" style="width: 80px;"
+                           @bind="_serumReq.DivalentMagnesiumMilliMolar" />
+                </label>
+                <label class="d-flex align-items-center gap-2 font-mono" style="cursor: pointer;">
+                    <input type="checkbox" @bind="_serumReq.PllPegCoatingApplied" />
+                    <span>Apply PLL-PEG Passivation Coating</span>
+                </label>
+                <label class="d-flex align-items-center gap-2 font-mono" style="cursor: pointer;">
+                    <input type="checkbox" @bind="_serumReq.CpGMethylationApplied" />
+                    <span>Apply M.SssI CpG Methylation</span>
+                </label>
+            </div>
+        </div>
+
+        <!-- Simulation Results Panel -->
+        @if (_serumResult != null)
+        {
+            <div class="mt-4 p-3" style="background: rgba(10, 20, 30, 0.4); border-radius: 8px; border: 1px solid var(--border-color);">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h4 style="margin: 0; color: #fff;">oxDNA Simulation Outcome &bull; Verdict: <span class="@(_serumResult.CompromisedCrossoverCount == 0 ? "text-success" : "text-warning")">@_serumResult.Verdict</span></h4>
+                    <span class="badge @(_serumResult.CompromisedCrossoverCount == 0 ? "badge-accent" : "badge-outline")">
+                        Integrity: @((_serumResult.StructuralIntegrityScore * 100.0).ToString("F0"))%
+                    </span>
+                </div>
+
+                <div class="telemetry-grid">
+                    <div class="card stat-card">
+                        <div class="stat-label">AVERAGE RMSF</div>
+                        <div class="stat-value font-mono">@_serumResult.AverageRmsfNm.ToString("F3") nm</div>
+                        <div class="stat-sub">Target &lt; 1.200 nm</div>
+                    </div>
+                    <div class="card stat-card">
+                        <div class="stat-label">MAX CROSSOVER RMSF</div>
+                        <div class="stat-value font-mono">@_serumResult.MaxCrossoverRmsfNm.ToString("F3") nm</div>
+                        <div class="stat-sub">Peak Junction Strain</div>
+                    </div>
+                    <div class="card stat-card">
+                        <div class="stat-label">DEBYE SCREENING LENGTH</div>
+                        <div class="stat-value font-mono">@_serumResult.DebyeScreeningLengthNm.ToString("F3") nm</div>
+                        <div class="stat-sub">Ionic Shielding Radius</div>
+                    </div>
+                    <div class="card stat-card">
+                        <div class="stat-label">FRAYED CROSSOVERS</div>
+                        <div class="stat-value font-mono @(_serumResult.CompromisedCrossoverCount > 0 ? "text-danger" : "text-success")">
+                            @_serumResult.CompromisedCrossoverCount / @_serumResult.TotalCrossoverCount
+                        </div>
+                        <div class="stat-sub">Target: 0 Frayed</div>
+                    </div>
+                </div>
+
+                <div class="mt-3 p-2 font-mono" style="font-size: 0.85rem; background: rgba(0,0,0,0.3); border-radius: 4px;">
+                    <strong>Actionable Recommendation:</strong> @_serumResult.RecommendedStabilization
+                </div>
+            </div>
+        }
+    </section>
+}
+else if (_activeCampaignId == "CAMPAIGN_APTAMER_GATING")
+{
+    <!-- Campaign 2: LAMMPS Aptamer Gating -->
+    <section class="card" style="margin-top: 1.5rem;">
+        <div class="card-header">
+            <div>
+                <h3>Campaign 2: LAMMPS Aptamer Gating Free-Energy &amp; GnRH-R Tropism</h3>
+                <p class="subtitle">Steered Molecular Dynamics (SMD) and umbrella sampling computing unbinding free energy and pituitary receptor affinity.</p>
+            </div>
+            <button class="btn btn-primary btn-sm" @onclick="RunAptamerGating">
+                <span>⚡</span> Execute LAMMPS SMD Simulation
+            </button>
+        </div>
+
+        @if (_gatingResult != null)
+        {
+            <div class="mt-3 p-3" style="background: rgba(10, 20, 30, 0.4); border-radius: 8px; border: 1px solid var(--border-color);">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h4 style="margin: 0; color: #fff;">Allosteric Gating Energy Profile</h4>
+                    <span class="badge badge-accent">@_gatingResult.GatingVerdict</span>
+                </div>
+
+                <div class="telemetry-grid">
+                    <div class="card stat-card">
+                        <div class="stat-label">UNBOUND BARRIER (ΔG)</div>
+                        <div class="stat-value font-mono text-accent">+@_gatingResult.UnboundOpeningFreeEnergyKcalMol.ToString("F1") kcal/mol</div>
+                        <div class="stat-sub">Target &ge; +8.5 kcal/mol (Locked)</div>
+                    </div>
+                    <div class="card stat-card">
+                        <div class="stat-label">BOUND BARRIER (ΔG)</div>
+                        <div class="stat-value font-mono text-success">@_gatingResult.BoundOpeningFreeEnergyKcalMol.ToString("F1") kcal/mol</div>
+                        <div class="stat-sub">Target &le; 0.0 kcal/mol (Open)</div>
+                    </div>
+                    <div class="card stat-card">
+                        <div class="stat-label">ALLOSTERIC SWITCH ΔΔG</div>
+                        <div class="stat-value font-mono">@_gatingResult.AllostericSwitchDeltaKcalMol.ToString("F1") kcal/mol</div>
+                        <div class="stat-sub">Driving Free Energy</div>
+                    </div>
+                    <div class="card stat-card">
+                        <div class="stat-label">GNRH-R DISSOCIATION (Kd)</div>
+                        <div class="stat-value font-mono text-success">@_gatingResult.EstimatedKdNanoMolar.ToString("F1") nM</div>
+                        <div class="stat-sub">Contact Ratio: @((_gatingResult.GnRhReceptorContactRatio * 100).ToString("F0"))%</div>
+                    </div>
+                </div>
+
+                <!-- PMF Profile Table -->
+                <div class="mt-3">
+                    <span class="subtext font-mono" style="font-size: 0.8rem; text-transform: uppercase;">Potential of Mean Force (PMF) Reaction Coordinate:</span>
+                    <div style="overflow-x: auto; margin-top: 0.5rem;">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Reaction Coordinate (ξ nm)</th>
+                                    <th>Unbound Latch (kcal/mol)</th>
+                                    <th>LH-Bound Latch (kcal/mol)</th>
+                                    <th>Allosteric State</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var pt in _gatingResult.PmfCurve.Take(6))
+                                {
+                                    <tr>
+                                        <td class="font-mono">@pt.ReactionCoordinateNm.ToString("F2") nm</td>
+                                        <td class="font-mono text-warning">+@pt.UnboundPmfKcalMol.ToString("F2")</td>
+                                        <td class="font-mono text-success">@pt.BoundPmfKcalMol.ToString("F2")</td>
+                                        <td>@(pt.BoundPmfKcalMol < pt.UnboundPmfKcalMol ? "Favorable Opening" : "Equilibrium")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        }
+    </section>
+}
+else if (_activeCampaignId == "CAMPAIGN_PAYLOAD_LEAKAGE")
+{
+    <!-- Campaign 3: Steroid Payload Leakage -->
+    <section class="card" style="margin-top: 1.5rem;">
+        <div class="card-header">
+            <div>
+                <h3>Campaign 3: Steroid Payload Encapsulation &amp; Micro-Leakage Dynamics</h3>
+                <p class="subtitle">Atomistic MD measuring steroid cargo confinement in closed vs trigger-opened nanocavity.</p>
+            </div>
+            <button class="btn btn-primary btn-sm" @onclick="RunPayloadLeakage">
+                <span>⚡</span> Execute Confinement Simulation
+            </button>
+        </div>
+
+        <div class="mt-3 p-3" style="background: rgba(0, 0, 0, 0.2); border-radius: 6px; border: 1px solid var(--border-color);">
+            <div class="d-flex flex-wrap gap-4 align-items-center">
+                <label class="d-flex align-items-center gap-2 font-mono" style="font-size: 0.9rem;">
+                    <span>Cavity Passivation:</span>
+                    <select class="input input-sm" @bind="_payloadReq.CavityFunctionalization">
+                        <option value="Cyclodextrin Anchored">Cyclodextrin Anchored (Recommended)</option>
+                        <option value="Cholesterol Tethered">Cholesterol Tethered</option>
+                        <option value="Bare DNA">Bare DNA (Unprotected)</option>
+                    </select>
+                </label>
+                <label class="d-flex align-items-center gap-2 font-mono" style="font-size: 0.9rem;">
+                    <span>Cargo:</span>
+                    <select class="input input-sm" @bind="_payloadReq.HormoneMolecule">
+                        <option value="17β-Estradiol">17β-Estradiol</option>
+                        <option value="Testosterone Enanthate">Testosterone Enanthate</option>
+                    </select>
+                </label>
+            </div>
+        </div>
+
+        @if (_payloadResult != null)
+        {
+            <div class="mt-4 p-3" style="background: rgba(10, 20, 30, 0.4); border-radius: 8px; border: 1px solid var(--border-color);">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h4 style="margin: 0; color: #fff;">Confinement Verdict: <span class="@(_payloadResult.PassiveLeakagePercentage <= 2.0 ? "text-success" : "text-danger")">@_payloadResult.LeakageVerdict</span></h4>
+                    <span class="badge badge-accent">Capacity: @_payloadResult.EncapsulationCapacityMolecules Molecules</span>
+                </div>
+
+                <div class="telemetry-grid">
+                    <div class="card stat-card">
+                        <div class="stat-label">RETENTION (CLOSED)</div>
+                        <div class="stat-value font-mono @(_payloadResult.RetentionPercentageClosed >= 98.0 ? "text-success" : "text-danger")">
+                            @_payloadResult.RetentionPercentageClosed.ToString("F1")%
+                        </div>
+                        <div class="stat-sub">Target &gt; 98.0% over 100 ns</div>
+                    </div>
+                    <div class="card stat-card">
+                        <div class="stat-label">PASSIVE LEAKAGE</div>
+                        <div class="stat-value font-mono @(_payloadResult.PassiveLeakagePercentage <= 2.0 ? "text-success" : "text-danger")">
+                            @_payloadResult.PassiveLeakagePercentage.ToString("F1")%
+                        </div>
+                        <div class="stat-sub">Unintended Loss Rate</div>
+                    </div>
+                    <div class="card stat-card">
+                        <div class="stat-label">TRIGGERED RELEASE RATE</div>
+                        <div class="stat-value font-mono text-accent">@_payloadResult.ReleaseRatePerMinuteOpen.ToString("F1") %/min</div>
+                        <div class="stat-sub">Upon Aptamer Unlocking</div>
+                    </div>
+                    <div class="card stat-card">
+                        <div class="stat-label">MAX DAILY TURNOVER</div>
+                        <div class="stat-value font-mono">@_payloadResult.MaxDailyDeliveryNanomoles.ToString("F3") nmol</div>
+                        <div class="stat-sub">Physiological Dosing Window</div>
+                    </div>
+                </div>
+            </div>
+        }
+    </section>
+}
+else
+{
+    <!-- Campaign 4: Quantitative Systems Pharmacology (PBPK) -->
+    <section class="card" style="margin-top: 1.5rem;">
+        <div class="card-header">
+            <div>
+                <h3>Campaign 4: Quantitative Systems Pharmacology (QSP) / Whole-Body PBPK</h3>
+                <p class="subtitle">Multi-compartment whole-body endocrine simulation coupling subcutaneous depot kinetics with patient genetics.</p>
+            </div>
+            <button class="btn btn-primary btn-sm" @onclick="RunPbpkSimulation">
+                <span>⚡</span> Execute 90-Day PBPK Model
+            </button>
+        </div>
+
+        <div class="mt-3 p-3" style="background: rgba(0, 0, 0, 0.2); border-radius: 6px; border: 1px solid var(--border-color);">
+            <div class="d-flex flex-wrap gap-4 align-items-center">
+                <label class="d-flex align-items-center gap-2 font-mono" style="font-size: 0.9rem;">
+                    <span>Regimen:</span>
+                    <select class="input input-sm" @bind="_pbpkReq.Regimen">
+                        <option value="@TherapeuticRegimen.MaleToFemale">Male-to-Female (MtF / E2 Dominant)</option>
+                        <option value="@TherapeuticRegimen.FemaleToMale">Female-to-Male (FtM / T Dominant)</option>
+                    </select>
+                </label>
+                <label class="d-flex align-items-center gap-2 font-mono" style="font-size: 0.9rem;">
+                    <span>Depot Dose (mg):</span>
+                    <input type="number" step="5" min="5" max="100" class="input input-sm" style="width: 80px;"
+                           @bind="_pbpkReq.DepotDoseMg" />
+                </label>
+                <label class="d-flex align-items-center gap-2 font-mono" style="font-size: 0.9rem;">
+                    <span>Horizon (Days):</span>
+                    <select class="input input-sm" @bind="_pbpkReq.SimulationDurationDays">
+                        <option value="30">30 Days</option>
+                        <option value="60">60 Days</option>
+                        <option value="90">90 Days</option>
+                    </select>
+                </label>
+            </div>
+        </div>
+
+        @if (_pbpkResult != null)
+        {
+            <div class="mt-4 p-3" style="background: rgba(10, 20, 30, 0.4); border-radius: 8px; border: 1px solid var(--border-color);">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h4 style="margin: 0; color: #fff;">PBPK Simulation Outcome &bull; Verdict: <span class="text-success">@_pbpkResult.ClinicalFeasibilityVerdict</span></h4>
+                    <span class="badge badge-accent">Target Stability: @_pbpkResult.TimeInTargetRangePercent.ToString("F1")%</span>
+                </div>
+
+                <div class="telemetry-grid">
+                    <div class="card stat-card">
+                        <div class="stat-label">AVERAGE STEADY-STATE E2</div>
+                        <div class="stat-value font-mono text-accent">@_pbpkResult.AverageSteadyStateEstradiolPmolL.ToString("F1") pmol/L</div>
+                        <div class="stat-sub">Target: 500 - 600 pmol/L (MtF)</div>
+                    </div>
+                    <div class="card stat-card">
+                        <div class="stat-label">AVERAGE STEADY-STATE T</div>
+                        <div class="stat-value font-mono text-accent">@_pbpkResult.AverageSteadyStateTestosteroneNmolL.ToString("F2") nmol/L</div>
+                        <div class="stat-sub">Target: &lt; 1.8 nmol/L (MtF)</div>
+                    </div>
+                    <div class="card stat-card">
+                        <div class="stat-label">GONADOTROPIN (LH)</div>
+                        <div class="stat-value font-mono">@_pbpkResult.AverageLhIuL.ToString("F1") IU/L</div>
+                        <div class="stat-sub">Pituitary Feedback Suppressed</div>
+                    </div>
+                    <div class="card stat-card">
+                        <div class="stat-label">DOSING INTERVAL</div>
+                        <div class="stat-value font-mono text-success">@_pbpkResult.RecommendedDosingIntervalDays Days</div>
+                        <div class="stat-sub">Semi-Annual Subcutaneous Depot</div>
+                    </div>
+                </div>
+
+                <div class="mt-3 p-2 font-mono" style="font-size: 0.85rem; background: rgba(0,0,0,0.3); border-radius: 4px;">
+                    <strong>Biodistribution:</strong> @_pbpkResult.OrganBiodistributionSummary
+                </div>
+
+                <!-- Daily Kinetics Trajectory Table -->
+                <div class="mt-3">
+                    <span class="subtext font-mono" style="font-size: 0.8rem; text-transform: uppercase;">Sampled Endocrine Trajectory Data:</span>
+                    <div style="overflow-x: auto; margin-top: 0.5rem;">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Day</th>
+                                    <th>17β-Estradiol (pmol/L)</th>
+                                    <th>Testosterone (nmol/L)</th>
+                                    <th>LH (IU/L)</th>
+                                    <th>Depot Remaining (%)</th>
+                                    <th>Plasma Nanocarrier (nM)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var row in _pbpkResult.DailyKinetics.Take(8))
+                                {
+                                    <tr>
+                                        <td class="font-mono">Day @row.Day</td>
+                                        <td class="font-mono text-accent">@row.EstradiolPmolL.ToString("F1")</td>
+                                        <td class="font-mono text-success">@row.TestosteroneNmolL.ToString("F2")</td>
+                                        <td class="font-mono">@row.GonadotropinLhIuL.ToString("F1")</td>
+                                        <td class="font-mono">@row.DepotRemainingPercent.ToString("F1")%</td>
+                                        <td class="font-mono">@row.CentralSerumConcentrationNm.ToString("F2")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        }
+    </section>
+}
+
+@code {
+    /// <summary>
+    /// Master list of pre-configured simulation campaigns.
+    /// </summary>
+    private IReadOnlyList<SimulationCampaignInfo> _campaigns = [];
+
+    /// <summary>
+    /// Active selected campaign ID.
+    /// </summary>
+    private string _activeCampaignId = "CAMPAIGN_SERUM_STABILITY";
+
+    /// <summary>
+    /// Request parameters for Campaign 1.
+    /// </summary>
+    private SerumStabilityRequest _serumReq = new()
+    {
+        TemperatureCelsius = 37.0,
+        DivalentMagnesiumMilliMolar = 0.8,
+        PllPegCoatingApplied = true,
+        CpGMethylationApplied = true
+    };
+
+    /// <summary>
+    /// Outcome result for Campaign 1.
+    /// </summary>
+    private SerumStabilityAnalysisResult? _serumResult;
+
+    /// <summary>
+    /// Request parameters for Campaign 2.
+    /// </summary>
+    private AptamerGatingRequest _gatingReq = new();
+
+    /// <summary>
+    /// Outcome result for Campaign 2.
+    /// </summary>
+    private AptamerGatingAnalysisResult? _gatingResult;
+
+    /// <summary>
+    /// Request parameters for Campaign 3.
+    /// </summary>
+    private PayloadLeakageRequest _payloadReq = new();
+
+    /// <summary>
+    /// Outcome result for Campaign 3.
+    /// </summary>
+    private PayloadLeakageAnalysisResult? _payloadResult;
+
+    /// <summary>
+    /// Request parameters for Campaign 4.
+    /// </summary>
+    private PbpkSimulationRequest _pbpkReq = new()
+    {
+        PatientId = "SUBJECT-001",
+        Regimen = TherapeuticRegimen.MaleToFemale,
+        DepotDoseMg = 25.0,
+        SimulationDurationDays = 90
+    };
+
+    /// <summary>
+    /// Outcome result for Campaign 4.
+    /// </summary>
+    private PbpkEndocrineSimulationResult? _pbpkResult;
+
+    /// <summary>
+    /// Initializes component state and executes default simulation runs.
+    /// </summary>
+    protected override void OnInitialized()
+    {
+        _campaigns = SimService.GetCampaignCatalog();
+        _serumResult = SimService.SimulateSerumStability(_serumReq);
+        _gatingResult = SimService.SimulateAptamerGating(_gatingReq);
+        _payloadResult = SimService.SimulatePayloadLeakage(_payloadReq);
+        _pbpkResult = SimService.SimulatePbpkEndocrine(_pbpkReq);
+    }
+
+    /// <summary>
+    /// Switches the active campaign tab.
+    /// </summary>
+    /// <param name="campaignId">Target campaign ID.</param>
+    private void SelectCampaign(string campaignId)
+    {
+        _activeCampaignId = campaignId;
+    }
+
+    /// <summary>
+    /// Executes Campaign 1.
+    /// </summary>
+    private void RunSerumStability()
+    {
+        _serumResult = SimService.SimulateSerumStability(_serumReq);
+    }
+
+    /// <summary>
+    /// Executes Campaign 2.
+    /// </summary>
+    private void RunAptamerGating()
+    {
+        _gatingResult = SimService.SimulateAptamerGating(_gatingReq);
+    }
+
+    /// <summary>
+    /// Executes Campaign 3.
+    /// </summary>
+    private void RunPayloadLeakage()
+    {
+        _payloadResult = SimService.SimulatePayloadLeakage(_payloadReq);
+    }
+
+    /// <summary>
+    /// Executes Campaign 4.
+    /// </summary>
+    private void RunPbpkSimulation()
+    {
+        _pbpkResult = SimService.SimulatePbpkEndocrine(_pbpkReq);
+    }
+}

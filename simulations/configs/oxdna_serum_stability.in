@@ -1,0 +1,33 @@
+# ==============================================================================
+# oxDNA Simulation Configuration: Physiological Serum & Low-Magnesium Stress
+# ------------------------------------------------------------------------------
+# WHAT: oxDNA input deck modeling DNA origami nanocarrier stability under human
+#       physiological serum conditions (37.0°C, 150 mM NaCl, 0.8 mM Mg2+).
+# WHY:  Verifies whether core staple crossovers fray or denature prior to ordering
+#       expensive physical oligonucleotides for benchtop synthesis.
+# HOW:  Configured for OpenCL/SYCL GPU acceleration with Debye-Hückel electrostatics.
+# ==============================================================================
+
+# Simulation steps & numerical integration
+steps = 10000000
+dt = 0.003
+T = 310.15K
+
+# Physiological ionic conditions (Human Blood Serum)
+salt_concentration = 0.15
+use_average_seq = 0
+
+# Input files (Bacteriophage M13mp18 scaffold & staple crossover topology)
+topology = /workspace/configs/nanotube_m13mp18.top
+conf_file = /workspace/configs/nanotube_m13mp18.conf
+
+# Output trajectories & energy telemetry
+trajectory_file = /workspace/data/serum_stability_trajectory.dat
+energy_file = /workspace/data/serum_stability_energy.dat
+print_conf_interval = 50000
+print_energy_every = 10000
+
+# Accelerator backend (OpenCL / Level Zero / SYCL)
+backend = OpenCL
+backend_precision = mixed
+device_id = 0

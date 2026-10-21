@@ -6,6 +6,7 @@
 * [**Secure Public Access & Reverse Proxies**](secure-public-access.md)
 * [**Guided DNA Workflow Wizard**](workflow-wizard.md)
 * [**Endocrine Hub & Pharmacodynamics**](endocrine-hub.md)
+* [**In-Silico Simulation Studio**](in-silico-simulations.md)
 * [**Configuration & Sovereign Peering**](configuration-peers.md)
 * [**Stack Topology & Hardware Telemetry**](stack-services.md)
 * [**Trajectory Streaming & Datasets**](trajectories-and-datasets.md)

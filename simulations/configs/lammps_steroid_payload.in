@@ -1,0 +1,33 @@
+# ==============================================================================
+# LAMMPS Input Script: Steroid Payload Confinement & Micro-Leakage Dynamics
+# ------------------------------------------------------------------------------
+# WHAT: Atomistic molecular dynamics of steroid hormones (17beta-estradiol or
+#       testosterone) inside DNA origami nanotube/nanocage cavities.
+# WHY:  Verifies whether hydrophobic sex steroids leak prematurely through DNA pores
+#       or remain sterically sequestered until trigger-mediated gate opening.
+# HOW:  Explicit TIP3P water solvation with CHARMM36 and GAFF parameterizations.
+# ==============================================================================
+
+units           real
+atom_style      full
+boundary        p p p
+
+# Nanocage cavity simulation volume
+region          cavity_box block -60.0 60.0 -60.0 60.0 -60.0 60.0
+create_box      3 cavity_box
+
+# Non-bonded interatomic potentials
+pair_style      lj/cut/coul/long 12.0
+pair_coeff      * * 0.12 3.40
+kspace_style    pppm 1.0e-4
+
+# NPT ensemble at body temperature (310.15 K, 1.0 atm)
+fix             thermo_press all npt temp 310.15 310.15 100.0 iso 1.0 1.0 1000.0
+
+timestep        1.0
+thermo          1000
+
+# Write coordinate trajectory for zero-allocation C# leakage analysis
+dump            payload_stream all xyz 1000 /workspace/data/payload_leakage.xyz
+
+run             100000

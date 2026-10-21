@@ -11,8 +11,13 @@
             <h2>Patient-Targeted Endocrine Regulatory Hub</h2>
             <p class="panel-desc">Bistable molecular toggle state management, pharmacogenomic predisposition screening, and precision kinetics.</p>
         </div>
-        <div class="badge @(_activeProfile.Regimen == TherapeuticRegimen.MaleToFemale ? "badge-accent" : "badge-outline")">
-            ACTIVE: @_activeProfile.Regimen.ToString().ToUpperInvariant()
+        <div class="d-flex align-items-center gap-2">
+            <a href="/simulations" class="btn btn-outline btn-sm" style="text-decoration: none;">
+                🧪 In-Silico Studio
+            </a>
+            <div class="badge @(_activeProfile.Regimen == TherapeuticRegimen.MaleToFemale ? "badge-accent" : "badge-outline")">
+                ACTIVE: @_activeProfile.Regimen.ToString().ToUpperInvariant()
+            </div>
         </div>
     </div>
 

@@ -122,6 +122,9 @@ Before ordering synthetic oligos for wet-lab synthesis, the wizard exports simul
   * **Root Mean Square Fluctuation (RMSF)**: Confirms structural rigidity (< 1.2 nm across the core chassis).
   * **Persistence Length**: Verifies the nanocarrier maintains structural integrity without collapsing in blood flow.
 
+> [!TIP]
+> **Deep In-Silico Validation**: Researchers can launch the dedicated [**In-Silico Simulation Studio**](in-silico-simulations.md) (or navigate to `/simulations` in the Web UI) to execute the 4 predictive validation campaigns: 0.8 mM Mg²⁺ serum stress, allosteric aptamer gating free-energy ($\Delta G$), cyclodextrin payload retention, and 90-day whole-body PBPK modeling.
+
 ---
 
 ### Stage 6: Benchtop Synthesis, DIY Instructions & Export Manifest

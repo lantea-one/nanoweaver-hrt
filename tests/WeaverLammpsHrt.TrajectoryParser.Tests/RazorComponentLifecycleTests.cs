@@ -21,6 +21,7 @@ using WeaverLammpsHrt.TrajectoryParser.Genomics;
 using WeaverLammpsHrt.TrajectoryParser.Pipelines;
 using WeaverLammpsHrt.TrajectoryParser.Services;
 using WeaverLammpsHrt.TrajectoryParser.Services.Stack;
+using WeaverLammpsHrt.TrajectoryParser.Simulations;
 using WeaverLammpsHrt.TrajectoryParser.Storage;
 using Xunit;
 
@@ -90,6 +91,7 @@ public sealed class RazorComponentLifecycleTests : IDisposable
         sc.AddSingleton<IParquetTrajectoryWriter, DuckDbParquetWriter>();
         sc.AddSingleton<EndocrineStateEngine>();
         sc.AddSingleton<IPharmacogenomicsService, PharmacogenomicsService>();
+        sc.AddSingleton<ISimulationCampaignService, SimulationCampaignService>();
         sc.AddSingleton<NavigationManager>(_navManager);
         sc.AddSingleton<IJSRuntime>(_jsRuntime);
         sc.AddHttpContextAccessor();
@@ -608,6 +610,41 @@ public sealed class RazorComponentLifecycleTests : IDisposable
         RenderComponent(layout);
         InvokeMethod(layout, "UpdateTelemetry");
         layout.Dispose();
+    }
+
+    /// <summary>
+    /// Verifies the <see cref="SimulationStudio"/> component initializes all campaigns, runs simulations, and switches tabs.
+    /// </summary>
+    [Fact]
+    public async Task SimulationStudio_FullLifecycle_ExercisesAllCampaignsAndRuns()
+    {
+        SimulationStudio studio = new();
+        await InitializeAndRenderAsync(studio);
+        RenderComponent(studio);
+
+        // Switch to Campaign 2
+        InvokeMethod(studio, "SelectCampaign", "CAMPAIGN_APTAMER_GATING");
+        RenderComponent(studio);
+        InvokeMethod(studio, "RunAptamerGating");
+        RenderComponent(studio);
+
+        // Switch to Campaign 3
+        InvokeMethod(studio, "SelectCampaign", "CAMPAIGN_PAYLOAD_LEAKAGE");
+        RenderComponent(studio);
+        InvokeMethod(studio, "RunPayloadLeakage");
+        RenderComponent(studio);
+
+        // Switch to Campaign 4
+        InvokeMethod(studio, "SelectCampaign", "CAMPAIGN_PBPK_ENDOCRINE");
+        RenderComponent(studio);
+        InvokeMethod(studio, "RunPbpkSimulation");
+        RenderComponent(studio);
+
+        // Switch back to Campaign 1
+        InvokeMethod(studio, "SelectCampaign", "CAMPAIGN_SERUM_STABILITY");
+        RenderComponent(studio);
+        InvokeMethod(studio, "RunSerumStability");
+        RenderComponent(studio);
     }
 
     /// <summary>

@@ -529,7 +529,123 @@ Evaluates markers and applies personalized setpoints and kinetic modifiers direc
 
 ---
 
-## 9. Post-Quantum Cryptography & Regulatory Compliance
+## 9. In-Silico Simulation Campaigns
+
+### `GET /api/simulations/campaigns`
+Retrieves metadata, biophysical goals, and hardware accelerator specifications for all four in-silico simulation campaigns.
+
+* **Method**: `GET`
+* **Response Status**: `200 OK`
+* **Response Payload (JSON)**:
+  ```json
+  [
+    {
+      "campaignId": "CAMPAIGN_SERUM_STABILITY",
+      "name": "Campaign 1: oxDNA Physiological Serum & Low-Magnesium Stress",
+      "simulationEngine": "oxDNA (OpenCL / SYCL)",
+      "description": "Models structural fluctuations (RMSF) of DNA origami nanostructures at 37°C in human serum salt conditions (150 mM NaCl, 0.8 mM Mg2+).",
+      "physicsGoal": "Verify that staple crossovers do not fray or melt under physiological ionic stress before ordering oligos.",
+      "keyParameters": ["RMSF (< 1.2 nm)", "Melting Point Shift", "Crossover Fraying Count", "0.8 mM Mg2+ Tolerance"],
+      "status": "Ready",
+      "configFileTemplate": "oxdna_serum_stability.in"
+    }
+  ]
+  ```
+
+### `POST /api/simulations/run/serum-stability`
+Executes Campaign 1: oxDNA physiological serum stability analysis calculating RMSF, Debye screening length, and crossover fraying.
+
+* **Method**: `POST`
+* **Request Headers**: `Content-Type: application/json`
+* **Request Payload**:
+  ```json
+  {
+    "scaffoldName": "Bacteriophage M13mp18 (7,249 nt)",
+    "temperatureCelsius": 37.0,
+    "monovalentSaltMolar": 0.15,
+    "divalentMagnesiumMilliMolar": 0.8,
+    "stapleCrossoverCount": 180,
+    "pllPegCoatingApplied": true,
+    "cpGMethylationApplied": true
+  }
+  ```
+* **Response Status**: `200 OK`
+* **Response Payload**:
+  ```json
+  {
+    "scaffoldName": "Bacteriophage M13mp18 (7,249 nt)",
+    "temperatureCelsius": 37.0,
+    "divalentMagnesiumMilliMolar": 0.8,
+    "averageRmsfNm": 0.82,
+    "maxCrossoverRmsfNm": 1.15,
+    "debyeScreeningLengthNm": 0.78,
+    "structuralIntegrityScore": 0.94,
+    "compromisedCrossoverCount": 0,
+    "totalCrossoverCount": 180,
+    "verdict": "Structurally Stable Under Physiological Ionic Stress",
+    "recommendedStabilization": "Lattice is fully passivated and rigid. Safe to proceed to Campaign 2 (Aptamer Gating)."
+  }
+  ```
+
+### `POST /api/simulations/run/aptamer-gating`
+Executes Campaign 2: LAMMPS Steered MD and umbrella sampling computing unbinding free energy and pituitary GnRH-R affinity.
+
+* **Method**: `POST`
+* **Request Headers**: `Content-Type: application/json`
+* **Request Payload**:
+  ```json
+  {
+    "targetReceptor": "Anterior Pituitary Gonadotrope (GnRH-R)",
+    "targetGonadotropin": "Luteinizing Hormone (LH)",
+    "umbrellaSamplingWindows": 24,
+    "reactionCoordinateMaxNm": 3.0
+  }
+  ```
+* **Response Status**: `200 OK`
+
+### `POST /api/simulations/run/payload-leakage`
+Executes Campaign 3: Steroid payload cavity confinement measuring passive leakage in closed state and active release when opened.
+
+* **Method**: `POST`
+* **Request Headers**: `Content-Type: application/json`
+* **Request Payload**:
+  ```json
+  {
+    "chassisGeometry": "Hexagonal Nanotube (6-HB)",
+    "hormoneMolecule": "17β-Estradiol",
+    "cavityFunctionalization": "Cyclodextrin Anchored",
+    "loadedMoleculeCount": 50
+  }
+  ```
+* **Response Status**: `200 OK`
+
+### `POST /api/simulations/run/pbpk-endocrine`
+Executes Campaign 4: Quantitative Systems Pharmacology (QSP) whole-body 5-compartment PBPK simulation over 30/60/90 days with patient genomic modifiers.
+
+* **Method**: `POST`
+* **Request Headers**: `Content-Type: application/json`
+* **Request Payload**:
+  ```json
+  {
+    "patientId": "SUBJECT-001",
+    "regimen": "MaleToFemale",
+    "depotDoseMg": 25.0,
+    "simulationDurationDays": 90,
+    "deliveryIntervalDays": 180,
+    "genomicMarkerIds": ["F5_LEIDEN", "COMT_VAL158MET"]
+  }
+  ```
+* **Response Status**: `200 OK`
+
+### `GET /api/simulations/configs/{campaignId}`
+Exports runnable oxDNA or LAMMPS input deck scripts formatted for GPU/SYCL hardware execution.
+
+* **Method**: `GET`
+* **Response Status**: `200 OK`
+
+---
+
+## 10. Post-Quantum Cryptography & Regulatory Compliance
 
 ### `GET /api/compliance/status`
 Returns active lattice cryptography ciphers (NIST FIPS 203 ML-KEM-768, FIPS 204 ML-DSA-65) and regulatory compliance posture.
@@ -694,7 +810,7 @@ Exports an authenticated `.enc.tar.gz` trajectory bundle encrypted with ML-KEM-7
 
 ---
 
-## 10. Automated Test Suite Execution & Coverage Gate
+## 11. Automated Test Suite Execution & Coverage Gate
 
 We mandate a 100% test pass rate and 100.00% line and branch code coverage across both .NET and JavaScript codebases.
 

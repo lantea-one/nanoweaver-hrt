@@ -81,22 +81,24 @@ Explore the comprehensive guides and references below:
    * Deep-dive walkthrough of all 6 stages from digitized sequence ingestion to physical bench synthesis.
 5. [**Endocrine Hub & Pharmacodynamics**](endocrine-hub.md)
    * Plain-English biomedical context of the HPG axis, bistable state transitions, and 72-hour kinetics.
-6. [**Configuration & Sovereign Peering**](configuration-peers.md)
+6. [**In-Silico Simulation Studio**](in-silico-simulations.md)
+   * Multi-scale molecular dynamics (oxDNA, LAMMPS) and whole-body PBPK modeling for in-silico translational de-risking.
+7. [**Configuration & Sovereign Peering**](configuration-peers.md)
    * Database-first precedence rules, single-use share key lifecycle, and federating remote UI instances.
-7. [**Stack Topology & Hardware Telemetry**](stack-services.md)
+8. [**Stack Topology & Hardware Telemetry**](stack-services.md)
    * Service health inspection, diagnostic connectivity pings, SIMD detection, and Server GC telemetry.
-8. [**Trajectory Streaming & Dataset Provenance**](trajectories-and-datasets.md)
+9. [**Trajectory Streaming & Dataset Provenance**](trajectories-and-datasets.md)
    * Zero-allocation streaming pipelines, columnar Parquet serialization, and SHA-256 signed tarballs.
-9. [**Example Biomedical Workflows**](example-workflows.md)
-   * Concrete step-by-step examples: MtF feminizing nanotube, FtM masculinizing nanocage, and collaborative compute peering.
-10. [**DIY & HomeLab Benchtop Fabrication Guide**](diy-fabrication-guide.md)
-   * Step-by-step physical instructions for community scientists: 50 µL pipetting recipe, reagents checklist, 7-step bench execution, agarose gel QC, and non-toxic safety protocols.
-11. [**Post-Quantum Cryptography & Regulatory Compliance**](compliance-and-security.md)
-   * NIST FIPS 203 (ML-KEM-768), FIPS 204 (ML-DSA-65), HIPAA Safe Harbor, GDPR Article 17 crypto-shredding, GINA non-discrimination, and FDA 21 CFR Part 11 audit trails.
-12. [**REST API Reference**](api-reference.md)
-   * Full endpoint catalog, request/response JSON schemas, and test suite execution.
-13. [**Scientific Research & Legal Disclaimer**](disclaimer.md)
-   * Formal scientific research scope, medical non-advice, and BSL-1 biosafety declarations.
+10. [**Example Biomedical Workflows**](example-workflows.md)
+    * Concrete step-by-step examples: MtF feminizing nanotube, FtM masculinizing nanocage, and collaborative compute peering.
+11. [**DIY & HomeLab Benchtop Fabrication Guide**](diy-fabrication-guide.md)
+    * Step-by-step physical instructions for community scientists: 50 µL pipetting recipe, reagents checklist, 7-step bench execution, agarose gel QC, and non-toxic safety protocols.
+12. [**Post-Quantum Cryptography & Regulatory Compliance**](compliance-and-security.md)
+    * NIST FIPS 203 (ML-KEM-768), FIPS 204 (ML-DSA-65), HIPAA Safe Harbor, GDPR Article 17 crypto-shredding, GINA non-discrimination, and FDA 21 CFR Part 11 audit trails.
+13. [**REST API Reference**](api-reference.md)
+    * Full endpoint catalog, request/response JSON schemas, and test suite execution.
+14. [**Scientific Research & Legal Disclaimer**](disclaimer.md)
+    * Formal scientific research scope, medical non-advice, and BSL-1 biosafety declarations.
 
 ---
 
