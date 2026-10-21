@@ -95,6 +95,51 @@ jobs:
           print('SUCCESS: Both line and branch coverage are at 100.00%.')
           "
 
+      - name: Verify Documentation Markdown Math Delimiters
+        # WHAT: Verifies zero broken LaTeX math interpolation in documentation markdown files.
+        # WHY:  Guarantees flawless rendering across Docsify, GitHub Pages, and GitHub.
+        # HOW:  Executes Python regex scanner checking for unescaped single-dollar and inline double-dollar delimiters.
+        run: |
+          python3 - << 'EOF'
+          import glob, re, sys
+
+          files = sorted(set(glob.glob('docs/**/*.md', recursive=True) + glob.glob('docs/*.md') + ['README.md']))
+          violations = []
+          inline_display_violations = []
+
+          for f in files:
+              content = open(f, encoding='utf-8').read()
+              code_stripped = re.sub(r'```.*?```', '', content, flags=re.DOTALL)
+              code_stripped = re.sub(r'`.*?`', '', code_stripped)
+              
+              matches = re.findall(r'(?<!\$)\$(?!\$)(.*?)(?<!\$)\$(?!\$)', code_stripped)
+              if matches:
+                  violations.append((f, len(matches), matches[:3]))
+                  
+              for line_idx, line in enumerate(code_stripped.split('\n'), 1):
+                  sline = line.strip()
+                  if '$$' in sline:
+                      if not (sline.startswith('$$') and sline.endswith('$$')) or sline.count('$$') > 2:
+                          inline_display_violations.append((f, line_idx, sline))
+
+          if violations:
+              print('ERROR: Found unescaped/broken single-dollar math delimiters in documentation:')
+              for f, count, samples in violations:
+                  print(f'  {f}: {count} violations (Samples: {samples})')
+              print('Use clean Unicode symbols (e.g. µL, °C, 17β-estradiol, Mg²⁺) instead of $...$')
+
+          if inline_display_violations:
+              print('ERROR: Found inline double-dollar ($$) math delimiters embedded in text/tables:')
+              for f, line_idx, line in inline_display_violations:
+                  print(f'  {f}:{line_idx}: {line}')
+              print('Standalone equations must be fenced on their own lines ($$...$$). Use clean Unicode for inline text.')
+
+          if violations or inline_display_violations:
+              sys.exit(1)
+
+          print(f'SUCCESS: Scanned {len(files)} markdown files: Zero broken LaTeX interpolation tokens found.')
+          EOF
+
       - name: Set Lowercase Image Name for Forgejo Container Registry
         # WHAT: Format the container repository destination in all-lowercase.
         # WHY:  The Open Container Initiative (OCI) and Forgejo Container Registry enforce

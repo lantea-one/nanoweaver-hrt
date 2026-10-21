@@ -1,0 +1,191 @@
+name: Build, Test & Publish Trajectory Parser to GHCR
+
+on:
+  push:
+    branches: [ "main" ]
+    tags: [ "v*" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build-test-and-publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Restore Dependencies
+        run: dotnet restore dotnet-weaver-lammps-hrt.sln
+
+      - name: Verify .NET Code Formatting
+        # WHAT: Enforces standard .NET formatting and style conventions.
+        # WHY:  Guarantees uniform code formatting across all contributor commits and fails the build if changes are needed.
+        # HOW:  Runs dotnet format --verify-no-changes with zero-tolerance for unformatted files.
+        run: dotnet format dotnet-weaver-lammps-hrt.sln --no-restore --verify-no-changes --verbosity normal
+
+      - name: Verify JavaScript Code & Coverage Gate
+        # WHAT: Executes client-side JavaScript visualization tests.
+        # WHY:  Enforces 100% line, branch, and function coverage across wwwroot/js/weaver-visualizer.js.
+        # HOW:  Runs node --test with native experimental coverage thresholds set to 100%.
+        run: npm test
+
+      - name: Build and Test Solution with Coverage
+        # WHAT: Runs the test suite in Release configuration with cross-platform code coverage collection.
+        # WHY:  Ensures that all unit and integration tests pass and emits Cobertura coverage data.
+        # HOW:  Uses dotnet test with coverlet.runsettings configuring 100% line and branch thresholds.
+        run: dotnet test dotnet-weaver-lammps-hrt.sln --no-restore --configuration Release --settings coverlet.runsettings --collect:"XPlat Code Coverage" --verbosity normal
+
+      - name: Enforce 100% Line and Branch Code Coverage Threshold
+        # WHAT: Parses the generated coverage report and validates that line-rate and branch-rate are both 100%.
+        # WHY:  Fails the build immediately if any line or branch is uncovered.
+        # HOW:  Inspects coverage.cobertura.xml line-rate and branch-rate attributes and exits 1 on any deficiency.
+        run: |
+          python3 -c "
+          import xml.etree.ElementTree as ET
+          import glob
+          import os
+          import sys
+
+          files = glob.glob('**/coverage.cobertura.xml', recursive=True)
+          if not files:
+              print('::error::No coverage.cobertura.xml report found!')
+              sys.exit(1)
+
+          latest_file = max(files, key=lambda f: os.path.getmtime(f))
+          print(f'Evaluating coverage report: {latest_file}')
+          tree = ET.parse(latest_file)
+          root = tree.getroot()
+
+          line_rate = float(root.attrib.get('line-rate', 0)) * 100
+          branch_rate = float(root.attrib.get('branch-rate', 0)) * 100
+
+          print(f'Line Coverage: {line_rate:.2f}%')
+          print(f'Branch Coverage: {branch_rate:.2f}%')
+
+          if line_rate < 100.0 or branch_rate < 100.0:
+              for pkg in root.findall('.//package'):
+                  for cls in pkg.findall('.//class'):
+                      c_line = float(cls.attrib.get('line-rate', 1)) * 100
+                      c_branch = float(cls.attrib.get('branch-rate', 1)) * 100
+                      if c_line < 100 or c_branch < 100:
+                          fname = cls.attrib.get('filename', '')
+                          cname = cls.attrib.get('name', '')
+                          print(f'::error file={fname}::{cname} uncovered (Line: {c_line:.2f}%, Branch: {c_branch:.2f}%)')
+                          for l in cls.findall('.//line'):
+                              if int(l.attrib.get('hits', 0)) == 0:
+                                  print(f'  Uncovered line: {l.attrib.get(\"number\")}')
+                              if 'condition-coverage' in l.attrib and '100%' not in l.attrib['condition-coverage']:
+                                  print(f'  Uncovered branch: {l.attrib.get(\"number\")} [{l.attrib.get(\"condition-coverage\")}]')
+
+          if line_rate < 100.0:
+              print(f'::error::Line coverage ({line_rate:.2f}%) is below required 100.0% threshold!')
+              sys.exit(1)
+
+          if branch_rate < 100.0:
+              print(f'::error::Branch coverage ({branch_rate:.2f}%) is below required 100.0% threshold!')
+              sys.exit(1)
+
+          print('SUCCESS: Both line and branch coverage are at 100.00%.')
+          "
+
+      - name: Verify Documentation Markdown Math Delimiters
+        # WHAT: Verifies zero broken LaTeX math interpolation in documentation markdown files.
+        # WHY:  Guarantees flawless rendering across Docsify, GitHub Pages, and GitHub.
+        # HOW:  Executes Python regex scanner checking for unescaped single-dollar and inline double-dollar delimiters.
+        run: |
+          python3 - << 'EOF'
+          import glob, re, sys
+
+          files = sorted(set(glob.glob('docs/**/*.md', recursive=True) + glob.glob('docs/*.md') + ['README.md']))
+          violations = []
+          inline_display_violations = []
+
+          for f in files:
+              content = open(f, encoding='utf-8').read()
+              code_stripped = re.sub(r'```.*?```', '', content, flags=re.DOTALL)
+              code_stripped = re.sub(r'`.*?`', '', code_stripped)
+              
+              matches = re.findall(r'(?<!\$)\$(?!\$)(.*?)(?<!\$)\$(?!\$)', code_stripped)
+              if matches:
+                  violations.append((f, len(matches), matches[:3]))
+                  
+              for line_idx, line in enumerate(code_stripped.split('\n'), 1):
+                  sline = line.strip()
+                  if '$$' in sline:
+                      if not (sline.startswith('$$') and sline.endswith('$$')) or sline.count('$$') > 2:
+                          inline_display_violations.append((f, line_idx, sline))
+
+          if violations:
+              print('ERROR: Found unescaped/broken single-dollar math delimiters in documentation:')
+              for f, count, samples in violations:
+                  print(f'  {f}: {count} violations (Samples: {samples})')
+              print('Use clean Unicode symbols (e.g. µL, °C, 17β-estradiol, Mg²⁺) instead of $...$')
+
+          if inline_display_violations:
+              print('ERROR: Found inline double-dollar ($$) math delimiters embedded in text/tables:')
+              for f, line_idx, line in inline_display_violations:
+                  print(f'  {f}:{line_idx}: {line}')
+              print('Standalone equations must be fenced on their own lines ($$...$$). Use clean Unicode for inline text.')
+
+          if violations or inline_display_violations:
+              sys.exit(1)
+
+          print(f'SUCCESS: Scanned {len(files)} markdown files: Zero broken LaTeX interpolation tokens found.')
+          EOF
+
+      - name: Set Lowercase Image Name for GHCR
+        # WHAT: Format the container repository destination in all-lowercase.
+        # WHY:  The Open Container Initiative (OCI) and GitHub Container Registry (GHCR) enforce
+        #       lowercase image tags; any capitalized repository names cause immediate 400 rejection.
+        # HOW:  Transform $GITHUB_REPOSITORY using bash parameter expansion (${VAR,,}).
+        run: |
+          echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}/trajectory-parser" >> $GITHUB_ENV
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry (GHCR)
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker Image Metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short,prefix=sha-
+            type=semver,pattern={{version}}
+
+      - name: Build and Push Parser Container Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/parser/Dockerfile.parser
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
