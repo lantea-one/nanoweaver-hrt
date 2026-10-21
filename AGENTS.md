@@ -59,6 +59,11 @@
       ```
     - Never push or finalize if any of the 5 verification steps fail.
 
+11. **Sovereign Forgejo Git Remote Enforcement**:
+    - Never commit, push, or mirror to GitHub.
+    - Only commit and push directly to the authoritative sovereign Forgejo remote (`origin` on `git.lantea.one`).
+    - Keep all changes strictly on the default tracking branch (`main`).
+
 ---
 
 ## 2. Architecture Overview
