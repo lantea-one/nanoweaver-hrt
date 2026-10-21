@@ -1,5 +1,6 @@
 **/.git
 **/.github
+**/.forgejo
 **/bin/
 **/obj/
 simulations/shared-data/

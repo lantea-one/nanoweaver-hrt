@@ -1,4 +1,4 @@
-name: Build & Publish Trajectory Parser to GHCR
+name: Build & Publish Trajectory Parser to Forgejo Package Registry
 
 on:
   push:
@@ -8,11 +8,11 @@ on:
     branches: [ "main" ]
 
 env:
-  REGISTRY: ghcr.io
+  REGISTRY: git.lantea.one
 
 jobs:
   build-test-and-publish:
-    runs-on: ubuntu-latest
+    runs-on: archlinux
     permissions:
       contents: read
       packages: write
@@ -90,9 +90,9 @@ jobs:
                           print(f'::error file={fname}::{cname} uncovered (Line: {c_line:.2f}%, Branch: {c_branch:.2f}%)')
                           for l in cls.findall('.//line'):
                               if int(l.attrib.get('hits', 0)) == 0:
-                                  print(f'  Uncovered line: {l.attrib.get("number")}')
+                                  print(f'  Uncovered line: {l.attrib.get(\"number\")}')
                               if 'condition-coverage' in l.attrib and '100%' not in l.attrib['condition-coverage']:
-                                  print(f'  Uncovered branch: {l.attrib.get("number")} [{l.attrib.get("condition-coverage")}]')
+                                  print(f'  Uncovered branch: {l.attrib.get(\"number\")} [{l.attrib.get(\"condition-coverage\")}]')
 
           if line_rate < 100.0:
               print(f'::error::Line coverage ({line_rate:.2f}%) is below required 100.0% threshold!')
@@ -105,9 +105,9 @@ jobs:
           print('SUCCESS: Both line and branch coverage are at 100.00%.')
           "
 
-      - name: Set Lowercase Image Name for GHCR
+      - name: Set Lowercase Image Name for Forgejo Container Registry
         # WHAT: Format the container repository destination in all-lowercase.
-        # WHY:  The Open Container Initiative (OCI) and GitHub Container Registry (GHCR) enforce
+        # WHY:  The Open Container Initiative (OCI) and Forgejo Container Registry enforce
         #       lowercase image tags; any capitalized repository names cause immediate 400 rejection.
         # HOW:  Transform $GITHUB_REPOSITORY using bash parameter expansion (${VAR,,}).
         run: |
@@ -116,7 +116,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GitHub Container Registry (GHCR)
+      - name: Log in to Forgejo Container Registry
         if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
