@@ -622,7 +622,57 @@ public sealed class RazorComponentLifecycleTests : IDisposable
         await InitializeAndRenderAsync(layout);
         RenderComponent(layout);
         InvokeMethod(layout, "UpdateTelemetry");
+
+        // Exercise idle callbacks when unauthenticated
+        layout.RecordActivity();
+        layout.OnUserIdleTimeout();
+
+        // Exercise with authenticated user
+        UserSessionState session = _services.GetRequiredService<UserSessionState>();
+        session.SetUser(new UserAccount
+        {
+            Username = "admin_layout_test",
+            Role = UserRole.Administrator,
+            AccessGate = AccessGate.Web,
+            Algorithm = KeyAlgorithm.Ed25519,
+            PublicKeyBase64 = "MC4CAQAwBQYDK2VwBCIEIA=="
+        });
+
+        // Trigger OnAfterRenderAsync with authenticated state
+        await InvokeAsyncMethod(layout, "OnAfterRenderAsync", false);
+
+        // Trigger OnUserIdleTimeout when authenticated -> signs out and navigates
+        layout.OnUserIdleTimeout();
+        Assert.False(session.IsAuthenticated);
+
+        // Trigger OnAfterRenderAsync when unauthenticated -> unregisters watcher
+        await InvokeAsyncMethod(layout, "OnAfterRenderAsync", false);
+
+        // Exercise HandleSignOut
+        InvokeMethod(layout, "HandleSignOut");
+
         layout.Dispose();
+    }
+
+    /// <summary>
+    /// Verifies the <see cref="Login"/> component handles idle timeout query notices, validation, and sign out.
+    /// </summary>
+    [Fact]
+    public async Task Login_FullLifecycle_ExercisesIdleTimeoutAndInteractions()
+    {
+        // 1. Render login page with reason=idle_timeout query parameter
+        _navManager.NavigateTo("http://localhost:5000/login?reason=idle_timeout");
+        Login login = new();
+        await InitializeAndRenderAsync(login);
+        RenderComponent(login);
+
+        // 2. Exercise Authenticate with empty fields (validation failure)
+        await InvokeAsyncMethod(login, "Authenticate");
+        RenderComponent(login);
+
+        // 3. Exercise SignOut method
+        InvokeMethod(login, "SignOut");
+        RenderComponent(login);
     }
 
     /// <summary>

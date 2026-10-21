@@ -2,6 +2,7 @@ using System.Data.Common;
 using System.Security.Cryptography;
 using Microsoft.Data.Sqlite;
 using Npgsql;
+using WeaverLammpsHrt.TrajectoryParser.Database.Migrations;
 
 namespace WeaverLammpsHrt.TrajectoryParser.Configuration;
 
@@ -61,9 +62,14 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
     private readonly string _postgresConnString;
 
     /// <summary>
-    /// Flag indicating if database tables have been initialized.
+    /// Migration runner used to execute versioned database schema migrations.
     /// </summary>
-    private bool _isInitialized;
+    private readonly DatabaseMigrationRunner _migrationRunner;
+
+    /// <summary>
+    /// Path of the currently initialized database file.
+    /// </summary>
+    private string? _initializedPath;
 
     /// <summary>
     /// Gets the human-readable name of the active database backend.
@@ -74,8 +80,10 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
     /// Initializes a new instance of the <see cref="SystemConfigurationStore"/> class.
     /// </summary>
     /// <param name="configuration">Host application configuration.</param>
-    public SystemConfigurationStore(IConfiguration configuration)
+    /// <param name="migrationRunner">Optional explicit database migration runner.</param>
+    public SystemConfigurationStore(IConfiguration configuration, DatabaseMigrationRunner? migrationRunner = null)
     {
+        _migrationRunner = migrationRunner ?? new DatabaseMigrationRunner();
         string? envPostgres = configuration["POSTGRES_CONNECTION_STRING"] ?? Environment.GetEnvironmentVariable("POSTGRES_CONNECTION_STRING");
         _postgresConnString = envPostgres ?? "Host=localhost;Port=5432;Database=weaver_hrt;Username=weaver;Password=weaver_secret_change_me;Timeout=3";
 
@@ -91,12 +99,12 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
     /// <returns>A task representing the initialization operation.</returns>
     public async Task InitializeAsync(CancellationToken ct = default)
     {
-        if (_isInitialized) return;
+        if (_initializedPath == _sqlitePath && File.Exists(_sqlitePath)) return;
 
         await _lock.WaitAsync(ct);
         try
         {
-            if (_isInitialized) return;
+            if (_initializedPath == _sqlitePath && File.Exists(_sqlitePath)) return;
 
             // WHAT: Attempts to connect to PostgreSQL (pg-duckdb); on failure, smoothly falls back to SQLite.
             // WHY:  Ensures that the microservice starts seamlessly in standalone mode or Docker Compose.
@@ -110,6 +118,7 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
                 _activeBackend = "PostgreSQL (pg-duckdb)";
 
                 await CreateTablesPostgresAsync(pgConn, ct);
+                _initializedPath = "postgres";
             }
             catch
             {
@@ -122,9 +131,8 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
                 using SqliteConnection sqliteConn = new($"Data Source={_sqlitePath}");
                 await sqliteConn.OpenAsync(ct);
                 await CreateTablesSqliteAsync(sqliteConn, ct);
+                _initializedPath = _sqlitePath;
             }
-
-            _isInitialized = true;
         }
         finally
         {
@@ -133,63 +141,19 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
     }
 
     /// <summary>
-    /// Creates schema tables in PostgreSQL.
+    /// Applies database migrations to PostgreSQL.
     /// </summary>
-    private static async Task CreateTablesPostgresAsync(NpgsqlConnection conn, CancellationToken ct)
+    private async Task CreateTablesPostgresAsync(NpgsqlConnection conn, CancellationToken ct)
     {
-        const string sql = @"
-            CREATE TABLE IF NOT EXISTS weaver_configuration (
-                key VARCHAR(128) PRIMARY KEY,
-                value TEXT NOT NULL,
-                description TEXT,
-                updated_at_utc TIMESTAMP NOT NULL DEFAULT (NOW() AT TIME ZONE 'UTC')
-            );
-
-            CREATE TABLE IF NOT EXISTS weaver_share_keys (
-                token_id VARCHAR(64) PRIMARY KEY,
-                key_token VARCHAR(128) NOT NULL UNIQUE,
-                label VARCHAR(256) NOT NULL,
-                created_at_utc TIMESTAMP NOT NULL DEFAULT (NOW() AT TIME ZONE 'UTC'),
-                expires_at_utc TIMESTAMP NOT NULL,
-                is_consumed BOOLEAN NOT NULL DEFAULT FALSE,
-                consumed_at_utc TIMESTAMP,
-                remote_peer_info TEXT,
-                permissions VARCHAR(64) NOT NULL
-            );
-        ";
-
-        using NpgsqlCommand cmd = new(sql, conn);
-        await cmd.ExecuteNonQueryAsync(ct);
+        await _migrationRunner.ApplyPendingMigrationsAsync(conn, "postgresql", ct);
     }
 
     /// <summary>
-    /// Creates schema tables in SQLite.
+    /// Applies database migrations to SQLite.
     /// </summary>
-    private static async Task CreateTablesSqliteAsync(SqliteConnection conn, CancellationToken ct)
+    private async Task CreateTablesSqliteAsync(SqliteConnection conn, CancellationToken ct)
     {
-        const string sql = @"
-            CREATE TABLE IF NOT EXISTS weaver_configuration (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL,
-                description TEXT,
-                updated_at_utc TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS weaver_share_keys (
-                token_id TEXT PRIMARY KEY,
-                key_token TEXT NOT NULL UNIQUE,
-                label TEXT NOT NULL,
-                created_at_utc TEXT NOT NULL,
-                expires_at_utc TEXT NOT NULL,
-                is_consumed INTEGER NOT NULL DEFAULT 0,
-                consumed_at_utc TEXT,
-                remote_peer_info TEXT,
-                permissions TEXT NOT NULL
-            );
-        ";
-
-        using SqliteCommand cmd = new(sql, conn);
-        await cmd.ExecuteNonQueryAsync(ct);
+        await _migrationRunner.ApplyPendingMigrationsAsync(conn, "sqlite", ct);
     }
 
     /// <summary>
@@ -801,5 +765,6 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
     public void Dispose()
     {
         _lock.Dispose();
+        _migrationRunner.Dispose();
     }
 }

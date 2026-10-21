@@ -26,6 +26,8 @@ using WeaverLammpsHrt.TrajectoryParser.Storage;
 using WeaverLammpsHrt.TrajectoryParser.Swagger;
 using WeaverLammpsHrt.TrajectoryParser.Formatting;
 using WeaverLammpsHrt.TrajectoryParser.Security.Authentication;
+using WeaverLammpsHrt.TrajectoryParser.Database.Migrations;
+using WeaverLammpsHrt.TrajectoryParser.Security.ExceptionHandling;
 using WeaverLammpsHrt.TrajectoryParser.Simulations;
 using WeaverLammpsHrt.TrajectoryParser.Simulations.Models;
 
@@ -84,6 +86,7 @@ public class Program
         builder.Services.AddSingleton<IComplianceAuditService, ComplianceAuditService>();
         builder.Services.AddSingleton<IEncryptedStorageService, EncryptedStorageService>();
         builder.Services.AddSingleton<ISimulationCampaignService, SimulationCampaignService>();
+        builder.Services.AddSingleton<DatabaseMigrationRunner>();
         builder.Services.AddSingleton<IUserRepository, UserRepository>();
         builder.Services.AddSingleton<IUserAuthenticationService, UserAuthenticationService>();
         builder.Services.AddScoped<UserSessionState>();
@@ -149,6 +152,11 @@ public class Program
         });
 
         WebApplication app = builder.Build();
+
+        // WHAT: Intercepts unhandled API exceptions and formats RFC 7807 problem details with zero sensitive data leakage.
+        // WHY:  Ensures that API exceptions are descriptive, relevant, and secure without exposing stack traces or server paths.
+        // HOW:  SecureExceptionHandlerMiddleware catches downstream exceptions for /api routes and produces SecureProblemDetails.
+        app.UseMiddleware<SecureExceptionHandlerMiddleware>();
 
         // WHAT: Initializes authoritative database tables for configuration and single-use share keys.
         // WHY:  Guarantees that database-first precedence is active before requests arrive.

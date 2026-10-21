@@ -361,3 +361,64 @@ window.weaverDownloadBlob = function(fileName, content, mimeType) {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 };
+
+/**
+ * Registers an idle activity monitor that tracks user interactions and triggers auto-signout upon inactivity.
+ * @param {object} dotNetHelper - DotNetObjectReference to MainLayout or SessionState.
+ * @param {number} timeoutSeconds - Inactivity threshold in seconds (default: 900s = 15 minutes).
+ */
+window.weaverRegisterIdleWatcher = function(dotNetHelper, timeoutSeconds) {
+    if (window._weaverIdleCleanup) {
+        window._weaverIdleCleanup();
+    }
+
+    const timeoutMs = (timeoutSeconds && timeoutSeconds > 0 ? timeoutSeconds : 900) * 1000;
+    let timerId = null;
+    let lastNotified = Date.now();
+
+    function onActivity() {
+        const now = Date.now();
+        // Throttle server notification to at most once every 30 seconds
+        if (now - lastNotified > 30000) {
+            lastNotified = now;
+            if (dotNetHelper && typeof dotNetHelper.invokeMethodAsync === 'function') {
+                dotNetHelper.invokeMethodAsync('RecordActivity').catch(() => {});
+            }
+        }
+
+        if (timerId) {
+            clearTimeout(timerId);
+        }
+
+        timerId = setTimeout(() => {
+            if (dotNetHelper && typeof dotNetHelper.invokeMethodAsync === 'function') {
+                dotNetHelper.invokeMethodAsync('OnUserIdleTimeout').catch(() => {
+                    window.location.href = '/login?reason=idle_timeout';
+                });
+            } else {
+                window.location.href = '/login?reason=idle_timeout';
+            }
+        }, timeoutMs);
+    }
+
+    const events = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
+    events.forEach(evt => window.addEventListener(evt, onActivity, { passive: true }));
+
+    // Start initial timer
+    onActivity();
+
+    window._weaverIdleCleanup = function() {
+        if (timerId) clearTimeout(timerId);
+        events.forEach(evt => window.removeEventListener(evt, onActivity));
+        window._weaverIdleCleanup = null;
+    };
+};
+
+/**
+ * Unregisters the idle activity monitor and clears any pending timeout timers.
+ */
+window.weaverUnregisterIdleWatcher = function() {
+    if (window._weaverIdleCleanup) {
+        window._weaverIdleCleanup();
+    }
+};

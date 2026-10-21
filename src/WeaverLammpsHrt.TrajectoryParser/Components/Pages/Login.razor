@@ -23,6 +23,11 @@
         }
         else
         {
+            @if (!string.IsNullOrEmpty(_infoMessage))
+            {
+                <div class="alert alert-warning mt-3">@_infoMessage</div>
+            }
+
             @if (!string.IsNullOrEmpty(_errorMessage))
             {
                 <div class="alert alert-danger mt-3">@_errorMessage</div>
@@ -55,11 +60,48 @@
 </div>
 
 @code {
+    /// <summary>
+    /// User input value for account username.
+    /// </summary>
     private string _username = string.Empty;
+
+    /// <summary>
+    /// User input text containing the PEM-encoded private key.
+    /// </summary>
     private string _privateKeyPem = string.Empty;
+
+    /// <summary>
+    /// Optional passphrase input for decrypting protected private keys.
+    /// </summary>
     private string _password = string.Empty;
+
+    /// <summary>
+    /// Informational message banner (e.g., session idle timeout notification).
+    /// </summary>
+    private string? _infoMessage;
+
+    /// <summary>
+    /// Error message string displayed on failed authentication attempts.
+    /// </summary>
     private string? _errorMessage;
 
+    /// <summary>
+    /// Initializes login component and checks for idle timeout query parameters.
+    /// </summary>
+    protected override void OnInitialized()
+    {
+        // WHAT: Detects query string indicating an automated idle session termination.
+        // WHY:  Informs the user clearly why their previous session ended.
+        // HOW:  Inspects NavigationManager URI for reason=idle_timeout.
+        if (Navigation.Uri.Contains("reason=idle_timeout", StringComparison.OrdinalIgnoreCase))
+        {
+            _infoMessage = "Your session has expired due to inactivity. Please sign in again to access the platform.";
+        }
+    }
+
+    /// <summary>
+    /// Submits user credentials and verifies private key signatures against stored public keys.
+    /// </summary>
     private async Task Authenticate()
     {
         _errorMessage = null;
@@ -85,6 +127,9 @@
         Navigation.NavigateTo("/");
     }
 
+    /// <summary>
+    /// Signs out the currently authenticated user and resets page state.
+    /// </summary>
     private void SignOut()
     {
         SessionState.SignOut();

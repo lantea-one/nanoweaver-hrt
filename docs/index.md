@@ -84,6 +84,13 @@ flowchart TD
   - `1h`, `4h`, `24h`, `7d`, `1m` (30 days), `1y` (365 days), and `Never` (permanent peering).
 - Atomic redemption semantics preventing replay attacks or concurrent session takeover.
 
+### 5. Sovereign Cryptographic PKI Identity, RBAC & Hardening
+- **Zero Default Passwords & Mandatory Setup**: Initial launch enforces `/setup` wizard before platform unlocks; master Administrator account bound to cryptographic keypair (Ed25519, ECDSA P-256, RSA-4096).
+- **Role-Based Authorization & Access Gating**: Strict enforcement across `Administrator`, `Researcher`, and `Patient` roles and transport boundaries (`Api`, `Web`, `ApiWeb`).
+- **Automated Browser Idle Expiration**: Inactivity watchdog tracks client interactions and terminates abandoned sessions after 15 minutes.
+- **Deterministic SQL Schema Migrations**: Versioned, dialect-aware DDL pipeline (`DatabaseMigrationRunner`) tracking applied revisions in `weaver_schema_migrations`.
+- **Zero-Information-Disclosure RFC 7807 Error Responses**: Masking internal errors behind opaque trace IDs and redacting paths, connection strings, and private keys.
+
 ---
 
 ## Documentation Index
@@ -113,7 +120,7 @@ Explore the comprehensive guides and references below:
 11. [**DIY & HomeLab Benchtop Fabrication Guide**](diy-fabrication-guide.md)
     * Step-by-step physical instructions for community scientists: 50 µL pipetting recipe, reagents checklist, 7-step bench execution, agarose gel QC, and non-toxic safety protocols.
 12. [**Post-Quantum Cryptography & Regulatory Compliance**](compliance-and-security.md)
-    * NIST FIPS 203 (ML-KEM-768), FIPS 204 (ML-DSA-65), HIPAA Safe Harbor, GDPR Article 17 crypto-shredding, GINA non-discrimination, and FDA 21 CFR Part 11 audit trails.
+    * NIST FIPS 203 (ML-KEM-768), FIPS 204 (ML-DSA-65), HIPAA Safe Harbor, GDPR Article 17 crypto-shredding, GINA non-discrimination, FDA 21 CFR Part 11 audit trails, asymmetric PKI identities, SQL migrations, and idle session guards.
 13. [**REST API Reference**](api-reference.md)
     * Full endpoint catalog, request/response JSON schemas, and test suite execution.
 14. [**Scientific Research & Legal Disclaimer**](disclaimer.md)

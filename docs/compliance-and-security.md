@@ -190,3 +190,104 @@ The interactive Blazor dashboard provides continuous compliance monitoring:
 | `/api/compliance/encrypt-record` | `POST` | Encrypts arbitrary health records under a subject's post-quantum ML-KEM key. |
 | `/api/compliance/decrypt-record` | `POST` | Decrypts an authenticated envelope using the subject's private ML-KEM key. |
 | `/api/datasets/export-encrypted` | `POST` | Exports an encrypted, ML-DSA-65-signed trajectory bundle (`.enc.tar.gz`). |
+
+---
+
+## 9. Asymmetric PKI Identity, Role Gating & Browser Idle Expiration
+
+To prevent credential leakage, eliminate brute-force password attacks, and protect against administrative hijacking, Weaver-LAMMPS-HRT implements a **zero-password cryptographic public-key infrastructure (PKI)** for all user accounts and API clients.
+
+### Cryptographic Identity & Challenge-Response Authentication
+User identities are anchored to asymmetric cryptographic keypairs:
+* **Supported Algorithms**: Ed25519 (Edwards-curve Digital Signature Algorithm), ECDSA P-256 (NIST P-256), and RSA-4096.
+* **Challenge-Response Handshake**: The client submits their username to receive a cryptographically random 256-bit challenge. The client signs the challenge with their local private key (optionally unlocked with a passphrase) and submits the signature. Upon verification, a cryptographically signed session token is issued.
+* **Zero Passwords Stored**: Passwords and private keys are never stored on the server. If a passphrase is used, it only encrypts the private key locally on the user's workstation.
+
+### Role-Based Access Control (RBAC) & Transport Boundaries
+
+| Role | Cluster Privileges | Data Visibility | Operational Actions |
+| :--- | :--- | :--- | :--- |
+| **Administrator** | Full read/write system control | All cluster, simulation, telemetry, and patient records | User registration/revocation, configuration overrides, database migrations |
+| **Researcher** | Execution and observation | All simulations, trajectories, and endocrine models | Launch simulations, stream trajectories, run pharmacodynamics, export datasets |
+| **Patient** | Restricted observation | Own individualized simulation and endocrine profile only | Monitor personal therapy setpoints, download encrypted digital DNA payloads |
+
+Users are further restricted by **Access Gating Boundaries**:
+* `Api`: REST API access only (service accounts, automated ingestion bots, automated laboratory pipetting robots).
+* `Web`: Interactive web dashboard access only (clinicians, researchers, patients via web browsers).
+* `ApiWeb`: Dual interactive UI and REST API capabilities (system administrators, principal investigators).
+
+### Sovereign User Management UI (`/users`)
+
+Authenticated administrators manage cryptographic identities directly via the User Management interface:
+
+![Sovereign User Management](images/09_user_management.png)
+
+Features include:
+* Real-time user catalog displaying usernames, assigned roles, transport access gates, algorithm types, and truncated public key fingerprints.
+* In-browser keypair generation generating high-entropy Ed25519 or NIST P-256 keys with immediate `.pem` download.
+* Immediate cryptographic identity revocation with audit ledger event logging.
+
+### Automatic Browser Idle Session Expiration
+
+Unattended workstations in clinical and wet-lab environments represent a critical security vulnerability. Weaver-LAMMPS-HRT implements an automated **Browser Idle Timeout Guard**:
+
+![Session Expiration and Login](images/10_login_and_idle_timeout.png)
+
+1. **Multi-Event Client Activity Watchdog**: Client-side JavaScript registers passive DOM listeners across all user interactions (`mousemove`, `mousedown`, `keydown`, `scroll`, `touchstart`, `click`).
+2. **Throttled Activity Heartbeats**: Active browser sessions transmit periodic heartbeats every 30 seconds to refresh `LastActivityUtc` on the server session state.
+3. **Inactivity Expiration**: If no user activity is detected for **15 minutes** (default configurable timeout):
+   - Client-side timer triggers an immediate redirect to `/login?reason=idle_timeout`.
+   - The server session state invokes `SignOut()`, clearing all cached identity tokens and credentials from memory.
+   - The user is greeted with a clear visual notice: *"Your session has expired due to 15 minutes of inactivity. For sovereign security and patient confidentiality, you have been automatically signed out. Please authenticate with your private key to continue."*
+
+---
+
+## 10. Deterministic Multi-Dialect SQL Schema Migrations
+
+Weaver-LAMMPS-HRT guarantees reliable database evolution without relying on fragile ad-hoc DDL scripts or manual SQL interventions.
+
+### Architecture of `DatabaseMigrationRunner`
+The migration subsystem coordinates versioned, idempotent schema updates across both **SQLite** (local embedded node) and **PostgreSQL** (`pg_duckdb` cluster backend):
+
+```mermaid
+flowchart TD
+    Boot["Service Startup / Connection Pool Init"] --> Runner["DatabaseMigrationRunner.MigrateAsync(conn, dialect)"]
+    Runner --> CheckTable["Ensure 'weaver_schema_migrations' Exists"]
+    CheckTable --> FetchApplied["Fetch Applied Migration Versions"]
+    FetchApplied --> FilterPending["Filter Registered Migrations (Version > Applied)"]
+    FilterPending --> HasPending{"Pending Migrations?"}
+    HasPending -- No --> UpToDate["Schema Up-to-Date (Proceed to App Boot)"]
+    HasPending -- Yes --> Loop["Iterate Migrations Ordered by Version"]
+    Loop --> Tx["Begin Database Transaction"]
+    Tx --> ExecDDL["Execute Dialect DDL (SQLite / PostgreSQL)"]
+    ExecDDL --> Record["Record Version in 'weaver_schema_migrations'"]
+    Record --> Commit["Commit Transaction"]
+    Commit --> HasMore{"More Migrations?"}
+    HasMore -- Yes --> Loop
+    HasMore -- No --> Finished["All Migrations Applied Cleanly"]
+```
+
+### Registered Migration Manifest
+
+| Version | Migration Name | Dialect Highlights | Purpose |
+| :--- | :--- | :--- | :--- |
+| **001** | `001_InitialSchema` | SQLite & PostgreSQL | Creates `weaver_configuration`, `weaver_share_keys`, and `weaver_users` tables. |
+| **002** | `002_UserAuditAndIndexes` | `CREATE INDEX IF NOT EXISTS` | Adds secondary indexes on `role`, `access_gate`, and `is_active` for high-throughput auth. |
+
+---
+
+## 11. Zero-Information-Disclosure RFC 7807 ProblemDetails
+
+In accordance with strict security hardening guidelines, Weaver-LAMMPS-HRT eliminates sensitive data leakage across all REST API endpoints.
+
+### RFC 7807 Specification & Content Negotiation
+All unhandled exceptions, validation failures, and authorization denials return structured Problem Details compliant with **RFC 7807**, formatted according to the client's `Accept` header:
+* `application/problem+json` (default)
+* `application/problem+xml`
+
+### Sanitization & Redaction Guarantees
+The `SecureExceptionSanitizer` enforces four zero-disclosure rules:
+1. **Filesystem Path Redaction**: All Windows (`C:\...`) and Unix (`/home/...`, `/etc/...`) paths in error messages are replaced with `[REDACTED_PATH]`.
+2. **Credential Redaction**: Connection string passwords, user passwords, and authorization tokens (`password=...;`, `pwd=...;`) are stripped and replaced with `[REDACTED]`.
+3. **Cryptographic Key Redaction**: Any PEM headers or base64 key blocks (`BEGIN PRIVATE KEY`, `BEGIN EC PRIVATE KEY`) are sanitized to `[REDACTED_KEY]`.
+4. **Internal Server Error Masking (HTTP 500)**: Raw stack traces, database schema details, and unhandled exception internals are never exposed to API consumers. The client receives an opaque correlation trace ID (`traceId`) to provide to system administrators for internal log correlation.

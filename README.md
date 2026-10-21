@@ -86,6 +86,17 @@ flowchart TD
 - **FDA 21 CFR Part 11 Audit Trail**: Immutable, append-only SHA-384 hash-chained audit ledger with automated monotonic sequence and signature verification.
 - **HIPAA Safe Harbor & GDPR Article 17**: Deterministic SHA-256 HMAC pseudonymization of patient identifiers and instant cryptographic shredding / key zeroization for right-to-be-forgotten compliance.
 
+### 7. Cryptographic PKI Identity, Role Gating, Idle Expiration & Hardening
+- **Zero Default Passwords & Mandatory Setup Wizard**: No default passwords or backdoors. First-launch setup (`/setup`) locks all cluster operations until the master Administrator account is created and bound to an asymmetric cryptographic keypair (Ed25519, ECDSA P-256, RSA-4096).
+- **Role-Based Access Control**:
+  - `Administrator`: Full system management, user issuance/revocation, configuration overrides, database operations.
+  - `Researcher`: In-silico simulation runs, trajectory streaming, endocrine models, dataset imports/exports.
+  - `Patient`: View simulation results, monitor personalized endocrine setpoints, and download encrypted digital DNA payloads.
+- **Access Boundary Gating**: Gated by transport: `Api`, `Web`, or `ApiWeb`.
+- **Browser Idle Session Expiration**: 15-minute inactivity watchdog tracks DOM interactions and automatically terminates sessions to protect unattended terminals.
+- **Deterministic SQL Schema Migrations**: Automated SQLite & PostgreSQL DDL migration runner (`DatabaseMigrationRunner`) tracking applied revisions in `weaver_schema_migrations`.
+- **Zero-Information-Disclosure RFC 7807 Exception Model**: Sanitizes all error responses (`application/problem+json` / `problem+xml`), redacting filesystem paths, connection strings, and private keys while hiding 500 internals behind correlation trace IDs.
+
 ---
 
 ## 🚀 Quickstart

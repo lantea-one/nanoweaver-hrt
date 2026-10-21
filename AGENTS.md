@@ -64,6 +64,26 @@
     - Only commit and push directly to the authoritative sovereign Forgejo remote (`origin` on `git.lantea.one`).
     - Keep all changes strictly on the default tracking branch (`main`).
 
+12. **Asymmetric PKI Identity, Role Gating, and Idle Session Expiration**:
+    - Passwords are never stored in the database. Authentication is strictly public-key challenge-response PKI (Ed25519, ECDSA P-256, RSA-4096).
+    - Strict role gating must be enforced:
+      - `Administrator`: Full cluster oversight, user creation/revocation, database overrides, and configuration management.
+      - `Researcher`: Simulation execution, trajectory streaming, endocrine hub access, and dataset export/import.
+      - `Patient`: View personalized simulation results and download encrypted digital DNA payloads.
+    - Access gating must enforce transport boundaries: `Api`, `Web`, or `ApiWeb`.
+    - Mandatory First-Launch Setup Wizard (`/setup`) locks out all platform operations until the master Administrator is cryptographically initialized.
+    - Browser sessions MUST automatically sign out after idle inactivity (default 15 minutes), monitored via DOM event heartbeats and validated server-side.
+
+13. **Deterministic SQL Schema Migrations**:
+    - Never execute ad-hoc DDL in service constructors or repositories.
+    - All schema evolution must be modeled as an `IDatabaseMigration` executed by `DatabaseMigrationRunner` with transaction safety and version recording in `weaver_schema_migrations`.
+    - Migrations must support both SQLite (`INSERT OR REPLACE`, standard SQLite DDL) and PostgreSQL (`ON CONFLICT DO NOTHING`, PostgreSQL DDL).
+
+14. **Zero-Information-Disclosure RFC 7807 Exception Model**:
+    - All API exceptions must return RFC 7807 `SecureProblemDetails` via `SecureExceptionHandlerMiddleware`.
+    - Never expose raw stack traces, local filesystem paths (`/home/...`, `C:\...`), database connection strings or credentials, private key PEM material, or internal SQL fragments to API clients.
+    - Redact sensitive tokens and map internal server errors to opaque correlation trace IDs.
+
 ---
 
 ## 2. Architecture Overview

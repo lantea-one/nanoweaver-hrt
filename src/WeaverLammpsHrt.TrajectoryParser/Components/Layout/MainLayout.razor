@@ -4,6 +4,7 @@
 @inject IUserAuthenticationService AuthService
 @inject UserSessionState SessionState
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 
 <header class="navbar">
     <div class="brand">
@@ -151,22 +152,25 @@
         {
             InvokeAsync(() =>
             {
+                if (SessionState.CheckIdleTimeout())
+                {
+                    Navigation.NavigateTo("/login?reason=idle_timeout");
+                }
                 UpdateTelemetry();
                 StateHasChanged();
             });
         }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
     }
 
-    private void OnSessionChanged()
-    {
-        InvokeAsync(StateHasChanged);
-    }
+    /// <summary>
+    /// DotNet reference passed to client-side JavaScript for idle watcher event callbacks.
+    /// </summary>
+    private DotNetObjectReference<MainLayout>? _dotNetRef;
 
-    private void HandleSignOut()
-    {
-        SessionState.SignOut();
-        Navigation.NavigateTo("/login");
-    }
+    /// <summary>
+    /// Tracks whether the client-side idle watcher has been registered in the browser DOM.
+    /// </summary>
+    private bool _idleWatcherRegistered;
 
     /// <summary>
     /// Samples memory, garbage collection, and process statistics.
@@ -186,6 +190,89 @@
     }
 
     /// <summary>
+    /// Configures client-side idle watcher after rendering when authenticated.
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // WHAT: Binds client-side DOM activity listeners when an authenticated session exists.
+        // WHY:  Ensures that if the user sits idle in their browser, they are automatically logged out.
+        // HOW:  Invokes window.weaverRegisterIdleWatcher via IJSRuntime.
+        if (SessionState.IsAuthenticated && !_idleWatcherRegistered)
+        {
+            _dotNetRef = DotNetObjectReference.Create(this);
+            try
+            {
+                await JS.InvokeVoidAsync("weaverRegisterIdleWatcher", _dotNetRef, (int)SessionState.IdleTimeout.TotalSeconds);
+                _idleWatcherRegistered = true;
+            }
+            catch (InvalidOperationException)
+            {
+                // Prerendering or test harness without active JS circuit
+            }
+        }
+        else if (!SessionState.IsAuthenticated && _idleWatcherRegistered)
+        {
+            _idleWatcherRegistered = false;
+            try
+            {
+                await JS.InvokeVoidAsync("weaverUnregisterIdleWatcher");
+            }
+            catch (InvalidOperationException)
+            {
+                // Circuit disconnected or test harness
+            }
+
+            _dotNetRef?.Dispose();
+            _dotNetRef = null;
+        }
+    }
+
+    /// <summary>
+    /// Invoked when authentication state changes.
+    /// </summary>
+    private void OnSessionChanged()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// Handles user sign-out and navigates to the login page.
+    /// </summary>
+    private void HandleSignOut()
+    {
+        SessionState.SignOut();
+        Navigation.NavigateTo("/login");
+    }
+
+    /// <summary>
+    /// Callback invoked from JavaScript when the user sits idle beyond the expiration duration.
+    /// </summary>
+    [JSInvokable]
+    public void OnUserIdleTimeout()
+    {
+        // WHAT: Signs out the user and redirects to login with an idle_timeout reason.
+        // WHY:  Protects sensitive biomedical, trajectory, and patient data on idle terminals.
+        // HOW:  Invokes SessionState.SignOut() and navigates to /login?reason=idle_timeout.
+        if (SessionState.IsAuthenticated)
+        {
+            SessionState.SignOut();
+            Navigation.NavigateTo("/login?reason=idle_timeout");
+        }
+    }
+
+    /// <summary>
+    /// Callback invoked from JavaScript when user interaction is detected in the browser.
+    /// </summary>
+    [JSInvokable]
+    public void RecordActivity()
+    {
+        // WHAT: Refreshes last activity timestamp in UserSessionState.
+        // WHY:  Keeps server-side session tracking synchronized with browser interactions.
+        // HOW:  Calls SessionState.RecordActivity().
+        SessionState.RecordActivity();
+    }
+
+    /// <summary>
     /// Disposes timer resources.
     /// </summary>
     public void Dispose()
@@ -195,5 +282,6 @@
             SessionState.OnChange -= OnSessionChanged;
         }
         _telemetryTimer?.Dispose();
+        _dotNetRef?.Dispose();
     }
 }

@@ -61,7 +61,24 @@ Once running, navigate your web browser to:
 http://localhost:5000
 ```
 
-The web dashboard initializes automatically with embedded SQLite storage and connects to local file streams.
+The web dashboard initializes automatically with embedded SQLite storage (or PostgreSQL if configured) and connects to local file streams.
+
+### Step 4: First-Launch Master Administrator Setup Wizard
+
+On initial boot, the sovereign node enforces a strict zero-backdoor policy: **no default passwords or insecure credentials exist**. All core platform operations and API endpoints are locked until the authoritative **Master Administrator** is initialized.
+
+![First-Launch Administrator Setup Wizard](images/08_setup_wizard.png)
+
+1. **Automatic Redirection**: Navigating to any page on a fresh node automatically redirects to `/setup`.
+2. **Master Identity**: Choose your Administrator username and configure the access gate boundary (`ApiWeb` or `Web`).
+3. **Cryptographic Keypair Generation**:
+   - Generate a high-security keypair directly in the browser (Ed25519 recommended, ECDSA P-256, or RSA-4096).
+   - Optionally encrypt the private key with a passphrase (AES-256-CBC with PBKDF2 HMAC-SHA256).
+   - Alternatively, supply an existing public key in PEM or Base64 format.
+4. **Mandatory Backup & Lock-In**:
+   - Download the generated private key (`.pem`) file.
+   - Confirm secure offline storage.
+   - Once completed, the setup wizard is permanently locked to prevent administrative hijacking.
 
 ---
 

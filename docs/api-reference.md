@@ -810,7 +810,179 @@ Exports an authenticated `.enc.tar.gz` trajectory bundle encrypted with ML-KEM-7
 
 ---
 
-## 11. Automated Test Suite Execution & Coverage Gate
+## 11. Authentication & Sovereign User Management Endpoints
+
+The authentication subsystem provides public-key challenge-response authentication, role authorization (`Administrator`, `Researcher`, `Patient`), transport access boundaries (`Api`, `Web`, `ApiWeb`), and master setup locking.
+
+### `GET /api/auth/setup-status`
+Checks whether initial master Administrator setup is required on this node.
+
+* **Method**: `GET`
+* **Response Status**: `200 OK`
+* **Response Payload (JSON)**:
+  ```json
+  {
+    "isSetupRequired": false,
+    "hasAnyUsers": true,
+    "hasAdministrator": true
+  }
+  ```
+
+---
+
+### `POST /api/auth/setup`
+Initializes the master Administrator identity. Permanently locked once an Administrator account exists.
+
+* **Method**: `POST`
+* **Request Payload (JSON)**:
+  ```json
+  {
+    "username": "admin_primary",
+    "publicKeyPemOrBase64": "-----BEGIN PUBLIC KEY-----\nMC4CAQAwBQYDK2VwBCIEIA...\n-----END PUBLIC KEY-----",
+    "algorithm": "Ed25519",
+    "accessGate": "ApiWeb"
+  }
+  ```
+* **Response Status**: `200 OK`
+
+---
+
+### `POST /api/auth/challenge`
+Generates a cryptographically random, ephemeral 256-bit challenge for public key authentication.
+
+* **Method**: `POST`
+* **Request Payload (JSON)**:
+  ```json
+  {
+    "username": "lead_researcher"
+  }
+  ```
+* **Response Status**: `200 OK`
+* **Response Payload (JSON)**:
+  ```json
+  {
+    "challengeId": "ch_7a8b9c0d1e2f3456",
+    "challengeBase64": "vj08kQW9fE+3K...==",
+    "algorithm": "Ed25519",
+    "expiresAtUtc": "2026-10-21T13:35:00.000Z"
+  }
+  ```
+
+---
+
+### `POST /api/auth/verify`
+Verifies the cryptographic signature over the challenge and issues an authenticated session token.
+
+* **Method**: `POST`
+* **Request Payload (JSON)**:
+  ```json
+  {
+    "challengeId": "ch_7a8b9c0d1e2f3456",
+    "signatureBase64": "MEQCID...=="
+  }
+  ```
+* **Response Status**: `200 OK`
+
+---
+
+### `GET /api/users`
+Retrieves all registered user accounts. Requires Administrator role.
+
+* **Method**: `GET`
+* **Response Status**: `200 OK`
+* **Response Payload (JSON)**:
+  ```json
+  [
+    {
+      "username": "admin_primary",
+      "role": "Administrator",
+      "accessGate": "ApiWeb",
+      "algorithm": "Ed25519",
+      "publicKeyBase64": "MC4CAQAwBQYDK2VwBCIEIA==",
+      "isActive": true,
+      "createdAtUtc": "2026-10-21T08:30:00.000Z",
+      "lastLoginUtc": "2026-10-21T13:05:00.000Z"
+    }
+  ]
+  ```
+
+---
+
+### `POST /api/users`
+Creates a new user account with specified role and access gate. Requires Administrator role.
+
+* **Method**: `POST`
+* **Request Payload (JSON)**:
+  ```json
+  {
+    "username": "patient_0042",
+    "role": "Patient",
+    "accessGate": "Web",
+    "algorithm": "ECDSA_P256",
+    "publicKeyPemOrBase64": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...\n-----END PUBLIC KEY-----"
+  }
+  ```
+* **Response Status**: `201 Created`
+
+---
+
+### `DELETE /api/users/{username}`
+Revokes and deactivates a user account. Master Administrator cannot be deleted.
+
+* **Method**: `DELETE`
+* **Response Status**: `200 OK`
+
+---
+
+## 12. Secure Exception Handling & RFC 7807 ProblemDetails
+
+All API error responses conform to **RFC 7807** Problem Details specifications with guaranteed zero-sensitive-data disclosure.
+
+### Content Negotiation
+Clients receive errors in either JSON or XML:
+* `Accept: application/problem+json` (or `application/json`)
+* `Accept: application/problem+xml` (or `application/xml`)
+
+### Example RFC 7807 Error Payloads
+
+<!-- tabs:start -->
+#### **JSON (`application/problem+json`)**
+```json
+{
+  "type": "https://tools.ietf.org/html/rfc9110#section-15.5.5",
+  "title": "Not Found",
+  "status": 404,
+  "detail": "Trajectory dataset 'missing_file.xyz' not found in incoming queue.",
+  "instance": "/api/trajectories/missing_file.xyz",
+  "traceId": "00-a1b2c3d4e5f67890-123456789abcdef0-00",
+  "timestamp": "2026-10-21T13:30:00.000Z"
+}
+```
+
+#### **XML (`application/problem+xml`)**
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<ProblemDetails>
+  <Type>https://tools.ietf.org/html/rfc9110#section-15.5.5</Type>
+  <Title>Not Found</Title>
+  <Status>404</Status>
+  <Detail>Trajectory dataset 'missing_file.xyz' not found in incoming queue.</Detail>
+  <Instance>/api/trajectories/missing_file.xyz</Instance>
+  <TraceId>00-a1b2c3d4e5f67890-123456789abcdef0-00</TraceId>
+  <Timestamp>2026-10-21T13:30:00.000Z</Timestamp>
+</ProblemDetails>
+```
+<!-- tabs:end -->
+
+### Security Sanitization Guarantees
+* **Path Masking**: System paths are replaced with `[REDACTED_PATH]`.
+* **Password Stripping**: Connection string passwords and sensitive query parameters are masked as `[REDACTED]`.
+* **Private Key Redaction**: PEM private keys are converted to `[REDACTED_KEY]`.
+* **Internal Server Errors (500)**: Masked behind generic descriptions and correlation trace IDs, preventing database stack traces or SQL fragments from leaking.
+
+---
+
+## 13. Automated Test Suite Execution & Coverage Gate
 
 We mandate a 100% test pass rate and 100.00% line and branch code coverage across both .NET and JavaScript codebases.
 
