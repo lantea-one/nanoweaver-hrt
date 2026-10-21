@@ -97,6 +97,12 @@ flowchart TD
 - **Deterministic SQL Schema Migrations**: Automated SQLite & PostgreSQL DDL migration runner (`DatabaseMigrationRunner`) tracking applied revisions in `weaver_schema_migrations`.
 - **Zero-Information-Disclosure RFC 7807 Exception Model**: Sanitizes all error responses (`application/problem+json` / `problem+xml`), redacting filesystem paths, connection strings, and private keys while hiding 500 internals behind correlation trace IDs.
 
+### 8. Internal Zero-Allocation Event Bus & Hardened Valkey Overlay
+- **Zero-Allocation Internal Event Bus**: High-throughput in-memory pub/sub engine powered by `System.Threading.Channels` with bounded queues, `ValueTask` hot paths, and subscriber fault isolation, decoupling coordinate streaming from downstream UI, audit, and storage sinks.
+- **Hardened Valkey 8 Cluster Datastore**: Docker Compose overlay (`compose/docker-compose.valkey.yml`) running Valkey 8 (Linux Foundation open-source Redis fork) with password authentication, 512MB RAM cap (`allkeys-lru`), and disabled administrative commands (`FLUSHALL`, `CONFIG`, `DEBUG`, etc.).
+- **Hybrid Caching & Distributed Locking**: Multi-node coordination with `ValkeyCacheService` (with in-memory fallback) and `ValkeyLockService` (atomic `SET NX PX` and Lua release script with `SemaphoreSlim` fallback).
+- **Cluster Event Bridge**: Bi-directional event synchronization across nodes with circular echo prevention and password redaction in all telemetry endpoints (`GET /api/system/event-bus`).
+
 ---
 
 ## 🚀 Quickstart
@@ -128,7 +134,13 @@ Utilizes the Kernel Fusion Driver (`/dev/kfd`):
 docker compose -f docker-compose.yml -f compose/docker-compose.radeon.yml up -d
 ```
 
-### 3. Run with Secure Public Access & Automated SSL Overlays
+### 4. Run with High-Performance Valkey Datastore Overlay
+Enables multi-node cluster caching, distributed locking, and event bridging via Valkey 8:
+```bash
+docker compose -f docker-compose.yml -f compose/docker-compose.valkey.yml up -d
+```
+
+### 5. Run with Secure Public Access & Automated SSL Overlays
 Deploy to a public VPS, research lab server, or homelab with production TLS 1.3 encryption, automatic Let's Encrypt SSL certificates, and zero direct exposure of port 5000:
 - **Caddy (Automatic Let's Encrypt SSL - Recommended):**
   ```bash

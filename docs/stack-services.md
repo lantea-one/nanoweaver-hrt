@@ -93,6 +93,53 @@ The sovereign dashboard incorporates a real-time event log powered by an in-memo
 
 ---
 
+## 5. High-Throughput Internal Event Bus & Hardened Valkey Overlay
+
+To achieve maximum concurrency and decoupling without heap allocations, the platform implements a dual-layer event-driven architecture:
+
+```mermaid
+flowchart LR
+    subgraph CoreNode["Weaver .NET 10 Microservice"]
+        Producer["Hot Path Producers<br>- Trajectory Parser<br>- oxDNA / LAMMPS<br>- Auth Heartbeats<br>- Audit Ledger"]
+        Bus["Internal Event Bus<br>(System.Threading.Channels)<br>- Zero-Alloc ValueTask<br>- Subscriber Isolation<br>- Bounded Backpressure"]
+        Consumer["Local Consumers<br>- Blazor UI Streaming<br>- Parquet Columnar Sink<br>- Compliance Ledger"]
+        Bridge["Valkey Event Bridge<br>- Multi-Node Pub/Sub<br>- Echo Loop Prevention<br>- Outbound / Inbound Sync"]
+
+        Producer -->|PublishAsync| Bus
+        Bus -->|Bounded Streams| Consumer
+        Bus <-->|Bidirectional| Bridge
+    end
+
+    subgraph ClusterData["Valkey 8 Datastore (Linux Foundation)"]
+        Valkey[("Hardened Valkey 8<br>- 512MB RAM Cap (LRU)<br>- Disabled Admin DDL<br>- Distributed Atomic Locks<br>- Hybrid Cache Layer")]
+        Bridge <-->|Pub/Sub Channels| Valkey
+    end
+```
+
+### Zero-Allocation In-Memory Event Bus (`System.Threading.Channels`)
+* **Bounded Channel Buffering**: Protects producers against slow consumers using configurable backpressure (`BoundedChannelFullMode.DropOldest` or `Wait`).
+* **Fault Isolation**: Handlers execute with exception containment so that a slow or failing consumer can never stall the hot parsing loop.
+* **Typing & Serialization**: Uses strongly-typed records (`TrajectoryFrameBatchEvent`, `SimulationProgressEvent`, `UserSessionActivityEvent`, `AuditLogDispatchedEvent`, `SystemTelemetryUpdatedEvent`) satisfying `IWeaverEvent`.
+
+### Hardened Valkey 8 Cluster Overlay (`compose/docker-compose.valkey.yml`)
+* **Open Source Datastore**: Leverages Valkey 8 (`valkey/valkey:8-alpine`), the open-source Linux Foundation fork of Redis.
+* **Security Hardening**:
+  - Requires strong password authentication (`--requirepass`).
+  - Caps memory footprint (`maxmemory 512mb`, `maxmemory-policy allkeys-lru`).
+  - Disables dangerous administrative commands (`FLUSHALL`, `FLUSHDB`, `CONFIG`, `DEBUG`, `SHUTDOWN`, `KEYS`, `EVALSHA`, `SLAVEOF`, `REPLICAOF`).
+  - Strict non-root execution (`USER 1000:1000`), read-only root filesystem, dropped Linux capabilities, and `no-new-privileges:true`.
+* **Hybrid Caching & Distributed Locking**:
+  - `ValkeyCacheService`: High-speed key-value caching with transparent fallback to in-memory concurrent storage when unconfigured or offline.
+  - `ValkeyLockService`: Mutual exclusion locking utilizing atomic `SET NX PX` and Lua verification scripts with `SemaphoreSlim` fallback.
+* **Zero Credential Disclosure**: Connection multiplexers redact passwords in all logging and telemetry endpoints (`password=[REDACTED]`).
+
+```bash
+# Launch stack with Valkey cluster overlay:
+docker compose -f docker-compose.yml -f compose/docker-compose.valkey.yml up -d
+```
+
+---
+
 ## Next Steps
 * Learn how trajectory coordinates are parsed in [**Trajectory Streaming & Dataset Provenance**](trajectories-and-datasets.md).
 * Review concrete use-cases in [**Example Biomedical Workflows**](example-workflows.md).

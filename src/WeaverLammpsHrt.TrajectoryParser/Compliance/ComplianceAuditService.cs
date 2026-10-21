@@ -1,6 +1,8 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using WeaverLammpsHrt.TrajectoryParser.Events;
+using WeaverLammpsHrt.TrajectoryParser.Events.Models;
 using WeaverLammpsHrt.TrajectoryParser.Security.Cryptography;
 using WeaverLammpsHrt.TrajectoryParser.Security.KeyManagement;
 using WeaverLammpsHrt.TrajectoryParser.Security.Models;
@@ -37,6 +39,11 @@ public sealed class ComplianceAuditService : IComplianceAuditService
     private readonly IPostQuantumCryptoProvider _cryptoProvider;
 
     /// <summary>
+    /// Optional internal event bus for publishing regulatory compliance events across the node and cluster.
+    /// </summary>
+    private readonly IInternalEventBus? _eventBus;
+
+    /// <summary>
     /// Thread synchronization lock ensuring atomic ledger append operations.
     /// </summary>
     private readonly object _ledgerLock = new();
@@ -58,13 +65,18 @@ public sealed class ComplianceAuditService : IComplianceAuditService
     /// </summary>
     /// <param name="keyManagement">The key management service.</param>
     /// <param name="cryptoProvider">The post-quantum cryptographic algorithm provider.</param>
-    public ComplianceAuditService(IKeyManagementService keyManagement, IPostQuantumCryptoProvider cryptoProvider)
+    /// <param name="eventBus">Optional event bus instance for real-time compliance broadcasting.</param>
+    public ComplianceAuditService(
+        IKeyManagementService keyManagement,
+        IPostQuantumCryptoProvider cryptoProvider,
+        IInternalEventBus? eventBus = null)
     {
         ArgumentNullException.ThrowIfNull(keyManagement);
         ArgumentNullException.ThrowIfNull(cryptoProvider);
 
         _keyManagement = keyManagement;
         _cryptoProvider = cryptoProvider;
+        _eventBus = eventBus;
 
         // WHAT: Initialize the Genesis record (Sequence 0) of the FDA 21 CFR Part 11 audit ledger.
         // WHY:  Provides a deterministic, cryptographic origin for the unbroken hash chain.
@@ -144,6 +156,20 @@ public sealed class ComplianceAuditService : IComplianceAuditService
             };
 
             _records.Add(record);
+
+            if (_eventBus != null)
+            {
+                // WHAT: Publishes the audit log event asynchronously across the internal event bus.
+                // WHY:  Notifies security monitors and Valkey cluster subscribers of regulatory log commits.
+                // HOW:  Invokes PublishAsync with an AuditLogDispatchedEvent.
+                _ = _eventBus.PublishAsync(new AuditLogDispatchedEvent(
+                    record.SequenceNumber,
+                    record.OperatorId,
+                    record.Action,
+                    record.Resource,
+                    record.CurrentHash));
+            }
+
             return record;
         }
     }

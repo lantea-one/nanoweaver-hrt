@@ -94,6 +94,69 @@ uptime: 05:08:12.450
 ```
 <!-- tabs:end -->
 
+### `GET /api/system/event-bus`
+Retrieves live operational metrics for the internal zero-allocation event bus and external Valkey cluster pub/sub bridge. Requires `Administrator` or `Researcher` role.
+
+* **Method**: `GET`
+* **Response Status**: `200 OK`
+* **Response Payloads**:
+
+<!-- tabs:start -->
+#### **JSON (lower camelCase)**
+```json
+{
+  "isInternalBusActive": true,
+  "isValkeyConnected": true,
+  "isDistributedCache": true,
+  "valkeyEndpoint": "valkey-cluster:6379,password=[REDACTED]",
+  "outboundEventsCount": 1420,
+  "inboundEventsCount": 890,
+  "activeSubscribers": {
+    "TrajectoryFrameBatch": 2,
+    "SimulationProgress": 4,
+    "UserSessionActivity": 1,
+    "AuditLogDispatched": 3,
+    "SystemTelemetryUpdated": 2
+  }
+}
+```
+
+#### **XML**
+```xml
+<EventBusTelemetry>
+  <isInternalBusActive>true</isInternalBusActive>
+  <isValkeyConnected>true</isValkeyConnected>
+  <isDistributedCache>true</isDistributedCache>
+  <valkeyEndpoint>valkey-cluster:6379,password=[REDACTED]</valkeyEndpoint>
+  <outboundEventsCount>1420</outboundEventsCount>
+  <inboundEventsCount>890</inboundEventsCount>
+  <activeSubscribers>
+    <TrajectoryFrameBatch>2</TrajectoryFrameBatch>
+    <SimulationProgress>4</SimulationProgress>
+    <UserSessionActivity>1</UserSessionActivity>
+    <AuditLogDispatched>3</AuditLogDispatched>
+    <SystemTelemetryUpdated>2</SystemTelemetryUpdated>
+  </activeSubscribers>
+</EventBusTelemetry>
+```
+
+#### **YAML (lower snake-case with hyphens)**
+```yaml
+is-internal-bus-active: true
+is-valkey-connected: true
+is-distributed-cache: true
+valkey-endpoint: valkey-cluster:6379,password=[REDACTED]
+outbound-events-count: 1420
+inbound-events-count: 890
+active-subscribers:
+  TrajectoryFrameBatch: 2
+  SimulationProgress: 4
+  UserSessionActivity: 1
+  AuditLogDispatched: 3
+  SystemTelemetryUpdated: 2
+```
+<!-- tabs:end -->
+
 ---
 
 ## 3. Configuration & Sovereign Peering Endpoints

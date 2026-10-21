@@ -1,0 +1,53 @@
+# ==============================================================================
+# Weaver-LAMMPS-HRT: Hardened Valkey In-Memory Cache & Distributed Event Bus Overlay
+# ------------------------------------------------------------------------------
+# WHAT: Docker Compose override adding a hardened Valkey 8 instance (Linux Foundation
+#       open-source Redis fork) for distributed pub/sub, event streams, and caching.
+# WHY:  Enables horizontal scaling, multi-node simulation synchronization, and distributed
+#       session/challenge caching while maintaining zero-default-backdoor security.
+# HOW:  Enforces authentication password, memory limits (256MB LRU), and disables
+#       dangerous administration commands (FLUSHALL, FLUSHDB, CONFIG).
+#
+# USAGE:
+#   docker compose -f docker-compose.yml -f compose/docker-compose.valkey.yml up -d
+# ==============================================================================
+
+services:
+  valkey:
+    image: valkey/valkey:8-alpine
+    container_name: weaver-valkey
+    hostname: valkey-node
+    restart: unless-stopped
+    command: >
+      valkey-server
+      --requirepass ${VALKEY_PASSWORD:-weaver_valkey_secret_change_me}
+      --maxmemory 256mb
+      --maxmemory-policy volatile-lru
+      --appendonly yes
+      --protected-mode yes
+      --rename-command FLUSHALL ""
+      --rename-command FLUSHDB ""
+      --rename-command CONFIG ""
+      --rename-command DEBUG ""
+    healthcheck:
+      test: ["CMD", "valkey-cli", "-a", "${VALKEY_PASSWORD:-weaver_valkey_secret_change_me}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 2s
+    volumes:
+      - valkey-data:/data
+    ports:
+      # Bound strictly to loopback interface for local inspection; not exposed publicly
+      - "127.0.0.1:6379:6379"
+
+  trajectory-parser:
+    environment:
+      - VALKEY_CONNECTION_STRING=valkey:6379,password=${VALKEY_PASSWORD:-weaver_valkey_secret_change_me},abortConnect=false,connectTimeout=3000
+    depends_on:
+      valkey:
+        condition: service_healthy
+
+volumes:
+  valkey-data:
+    name: weaver-valkey-data

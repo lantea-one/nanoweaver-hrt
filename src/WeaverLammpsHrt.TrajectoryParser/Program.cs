@@ -30,6 +30,10 @@ using WeaverLammpsHrt.TrajectoryParser.Database.Migrations;
 using WeaverLammpsHrt.TrajectoryParser.Security.ExceptionHandling;
 using WeaverLammpsHrt.TrajectoryParser.Simulations;
 using WeaverLammpsHrt.TrajectoryParser.Simulations.Models;
+using WeaverLammpsHrt.TrajectoryParser.Events;
+using WeaverLammpsHrt.TrajectoryParser.Events.Models;
+using WeaverLammpsHrt.TrajectoryParser.Caching;
+using WeaverLammpsHrt.TrajectoryParser.Bridges;
 
 namespace WeaverLammpsHrt.TrajectoryParser;
 
@@ -90,6 +94,17 @@ public class Program
         builder.Services.AddSingleton<IUserRepository, UserRepository>();
         builder.Services.AddSingleton<IUserAuthenticationService, UserAuthenticationService>();
         builder.Services.AddScoped<UserSessionState>();
+
+        // WHAT: Registers the internal in-memory channel event bus and Valkey distributed cluster bridge.
+        // WHY:  Decouples parsing loops from downstream I/O and enables horizontal multi-node synchronization.
+        // HOW:  Registers ChannelEventBus, ValkeyConnectionFactory, CacheService, LockService, and Hosted EventBridge.
+        builder.Services.AddSingleton<EventBusOptions>();
+        builder.Services.AddSingleton<IInternalEventBus, ChannelEventBus>();
+        builder.Services.AddSingleton<IValkeyConnectionFactory, ValkeyConnectionFactory>();
+        builder.Services.AddSingleton<IValkeyCacheService, ValkeyCacheService>();
+        builder.Services.AddSingleton<IValkeyLockService, ValkeyLockService>();
+        builder.Services.AddSingleton<IValkeyEventBridge, ValkeyEventBridge>();
+        builder.Services.AddHostedService(sp => (ValkeyEventBridge)sp.GetRequiredService<IValkeyEventBridge>());
 
         // WHAT: Configures Swagger & OpenAPI generation with XML comments and Swashbuckle annotations.
         // WHY:  Provides interactive API exploration (/swagger) and ReDoc documentation (/documentation).
@@ -491,6 +506,7 @@ public class Program
             XyzPipeReader xyzParser,
             DcdPipeReader dcdParser,
             LammpsCustomPipeReader lammpsParser,
+            IInternalEventBus eventBus,
             CancellationToken ct) =>
         {
             string dataDir = config["TRAJECTORY_INCOMING_DIR"] ?? Path.Combine(Directory.GetCurrentDirectory(), "simulations", "shared-data");
@@ -525,6 +541,7 @@ public class Program
                 framesProcessed++;
                 totalAtomsEncountered += coordinates.Length;
                 Interlocked.Increment(ref _totalFramesParsed);
+                _ = eventBus.PublishAsync(new TrajectoryFrameBatchEvent(fileName, frameIndex, coordinates.Length, sw.Elapsed.TotalMilliseconds), ct);
                 return ValueTask.CompletedTask;
             }, ct);
 
@@ -640,6 +657,40 @@ public class Program
         .WithSummary("Provides real-time telemetry on GC allocations, memory consumption, and GPU status.")
         .WithDescription("Reports active accelerator backends, cumulative frames parsed, heap memory, and GC Gen 0/1/2 collection counts.")
         .Produces<SystemTelemetry>(StatusCodes.Status200OK);
+
+        app.MapGet("/api/system/event-bus", (
+            IInternalEventBus eventBus,
+            IValkeyConnectionFactory valkeyConn,
+            IValkeyCacheService cacheService,
+            IValkeyEventBridge bridge) =>
+        {
+            Dictionary<string, int> subscribers = new()
+            {
+                [nameof(TrajectoryFrameBatchEvent)] = eventBus.GetSubscriberCount<TrajectoryFrameBatchEvent>(),
+                [nameof(SimulationProgressEvent)] = eventBus.GetSubscriberCount<SimulationProgressEvent>(),
+                [nameof(UserSessionActivityEvent)] = eventBus.GetSubscriberCount<UserSessionActivityEvent>(),
+                [nameof(AuditLogDispatchedEvent)] = eventBus.GetSubscriberCount<AuditLogDispatchedEvent>(),
+                [nameof(SystemTelemetryUpdatedEvent)] = eventBus.GetSubscriberCount<SystemTelemetryUpdatedEvent>()
+            };
+
+            EventBusTelemetry telemetry = new()
+            {
+                IsInternalBusActive = true,
+                IsValkeyConnected = valkeyConn.IsConnected,
+                IsDistributedCache = cacheService.IsDistributed,
+                ValkeyEndpoint = valkeyConn.SanitizedEndpoint,
+                OutboundEventsCount = bridge.OutboundEventsCount,
+                InboundEventsCount = bridge.InboundEventsCount,
+                ActiveSubscribers = subscribers
+            };
+
+            return Results.Ok(telemetry);
+        })
+        .WithName("GetEventBusTelemetry")
+        .WithTags("System Telemetry")
+        .WithSummary("Provides real-time telemetry on the in-memory event bus and distributed Valkey bridge.")
+        .WithDescription("Reports active channel subscribers, Valkey connection state, endpoint descriptor, and bi-directional event counts.")
+        .Produces<EventBusTelemetry>(StatusCodes.Status200OK);
 
         // ---------------------------------------------------------------------
         // REST API: Endocrine Target Profile & Toggle Switch

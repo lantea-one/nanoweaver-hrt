@@ -1,3 +1,7 @@
+using WeaverLammpsHrt.TrajectoryParser.Caching;
+using WeaverLammpsHrt.TrajectoryParser.Events;
+using WeaverLammpsHrt.TrajectoryParser.Events.Models;
+
 namespace WeaverLammpsHrt.TrajectoryParser.Security.Authentication;
 
 /// <summary>
@@ -9,6 +13,27 @@ public sealed class UserSessionState
     /// Event triggered when authentication state changes.
     /// </summary>
     public event Action? OnChange;
+
+    /// <summary>
+    /// Optional event bus for publishing session lifecycle events.
+    /// </summary>
+    private readonly IInternalEventBus? _eventBus;
+
+    /// <summary>
+    /// Optional cache service for recording session heartbeats and active tokens.
+    /// </summary>
+    private readonly IValkeyCacheService? _cacheService;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="UserSessionState"/> class.
+    /// </summary>
+    /// <param name="eventBus">Optional internal event bus.</param>
+    /// <param name="cacheService">Optional distributed or in-memory cache service.</param>
+    public UserSessionState(IInternalEventBus? eventBus = null, IValkeyCacheService? cacheService = null)
+    {
+        _eventBus = eventBus;
+        _cacheService = cacheService;
+    }
 
     /// <summary>
     /// Gets the currently authenticated user account, or null if unauthenticated.
@@ -52,8 +77,13 @@ public sealed class UserSessionState
     {
         // WHAT: Refreshes the last active timestamp to current UTC time.
         // WHY:  Resets idle tracking so active users remain signed in during research workflows.
-        // HOW:  Assigns DateTimeOffset.UtcNow to the tracked property.
+        // HOW:  Assigns DateTimeOffset.UtcNow to the tracked property and records in cache.
         LastActivityUtc = DateTimeOffset.UtcNow;
+
+        if (CurrentUser != null && _cacheService != null)
+        {
+            _ = _cacheService.SetAsync($"heartbeat:{CurrentUser.Username}", LastActivityUtc.ToString("O"), IdleTimeout);
+        }
     }
 
     /// <summary>
@@ -89,9 +119,18 @@ public sealed class UserSessionState
     {
         // WHAT: Enforces automatic sign-out when idle duration exceeds the configured threshold.
         // WHY:  Protects sensitive research, patient genomic payloads, and admin privileges on abandoned terminals.
-        // HOW:  Checks IsExpired; if true, signs out the user and returns true.
+        // HOW:  Checks IsExpired; if true, emits IdleTimeout event, signs out the user, and returns true.
         if (IsExpired(customTimeout))
         {
+            if (CurrentUser != null && _eventBus != null)
+            {
+                _ = _eventBus.PublishAsync(new UserSessionActivityEvent(
+                    CurrentUser.Username,
+                    CurrentUser.Role.ToString(),
+                    "IdleTimeout",
+                    CurrentUser.AccessGate.ToString()));
+            }
+
             SignOut();
             return true;
         }
@@ -107,6 +146,24 @@ public sealed class UserSessionState
     {
         CurrentUser = user;
         LastActivityUtc = DateTimeOffset.UtcNow;
+
+        if (user != null)
+        {
+            if (_eventBus != null)
+            {
+                _ = _eventBus.PublishAsync(new UserSessionActivityEvent(
+                    user.Username,
+                    user.Role.ToString(),
+                    "SignIn",
+                    user.AccessGate.ToString()));
+            }
+
+            if (_cacheService != null)
+            {
+                _ = _cacheService.SetAsync($"session:{user.Username}", user.Role.ToString(), IdleTimeout);
+            }
+        }
+
         NotifyStateChanged();
     }
 
@@ -115,7 +172,26 @@ public sealed class UserSessionState
     /// </summary>
     public void SignOut()
     {
+        UserAccount? prevUser = CurrentUser;
         CurrentUser = null;
+
+        if (prevUser != null)
+        {
+            if (_eventBus != null)
+            {
+                _ = _eventBus.PublishAsync(new UserSessionActivityEvent(
+                    prevUser.Username,
+                    prevUser.Role.ToString(),
+                    "SignOut",
+                    prevUser.AccessGate.ToString()));
+            }
+
+            if (_cacheService != null)
+            {
+                _ = _cacheService.RemoveAsync($"session:{prevUser.Username}");
+            }
+        }
+
         NotifyStateChanged();
     }
 
