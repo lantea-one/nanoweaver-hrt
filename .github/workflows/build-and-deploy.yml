@@ -10,6 +10,10 @@ on:
 env:
   REGISTRY: ghcr.io
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   build-test-and-publish:
     runs-on: ubuntu-latest
@@ -167,7 +171,7 @@ jobs:
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.PACKAGE_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Extract Docker Image Metadata
         id: meta
