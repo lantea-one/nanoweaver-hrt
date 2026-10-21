@@ -19,13 +19,13 @@ WORKDIR /src
 COPY Directory.Build.props ./
 
 # Copy project manifest and restore dependencies
-COPY ["src/WeaverLammpsHrt.TrajectoryParser/WeaverLammpsHrt.TrajectoryParser.csproj", "WeaverLammpsHrt.TrajectoryParser/"]
-RUN dotnet restore "WeaverLammpsHrt.TrajectoryParser/WeaverLammpsHrt.TrajectoryParser.csproj"
+COPY ["src/NanoWeaverHrt/NanoWeaverHrt.csproj", "NanoWeaverHrt/"]
+RUN dotnet restore "NanoWeaverHrt/NanoWeaverHrt.csproj"
 
 # Copy source code and publish with ReadyToRun optimizations
-COPY src/WeaverLammpsHrt.TrajectoryParser/ WeaverLammpsHrt.TrajectoryParser/
-WORKDIR "/src/WeaverLammpsHrt.TrajectoryParser"
-RUN dotnet publish "WeaverLammpsHrt.TrajectoryParser.csproj" \
+COPY src/NanoWeaverHrt/ NanoWeaverHrt/
+WORKDIR "/src/NanoWeaverHrt"
+RUN dotnet publish "NanoWeaverHrt.csproj" \
     -c Release \
     -o /app/publish \
     /p:PublishReadyToRun=true
@@ -58,4 +58,4 @@ EXPOSE 5000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:5000/healthz || exit 1
 
-ENTRYPOINT ["dotnet", "WeaverLammpsHrt.TrajectoryParser.dll"]
+ENTRYPOINT ["dotnet", "NanoWeaverHrt.dll"]

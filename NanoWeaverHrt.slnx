@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="src/NanoWeaverHrt/NanoWeaverHrt.csproj" />
+  <Folder Name="/Tests/">
+    <Project Path="tests/NanoWeaverHrt.Tests/NanoWeaverHrt.Tests.csproj" />
+  </Folder>
+</Solution>

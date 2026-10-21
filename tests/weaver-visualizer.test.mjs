@@ -71,7 +71,7 @@ globalThis.window = {
 };
 
 // Import WeaverVisualizer
-import WeaverVisualizer from '../src/WeaverLammpsHrt.TrajectoryParser/wwwroot/js/weaver-visualizer.js';
+import WeaverVisualizer from '../src/NanoWeaverHrt/wwwroot/js/weaver-visualizer.js';
 
 test('renderKineticsChart: handles missing canvas or empty points gracefully', () => {
     // Missing canvas branch

@@ -1,0 +1,424 @@
+@page "/endocrine"
+@using NanoWeaverHrt.Genomics
+@inject EndocrineStateEngine Engine
+@inject IPharmacogenomicsService GenomicsService
+@inject IConfigurationRepository ConfigRepo
+@inject IJSRuntime JS
+
+<div class="endocrine-container">
+    <div class="panel-header">
+        <div>
+            <h2>Patient-Targeted Endocrine Regulatory Hub</h2>
+            <p class="panel-desc">Bistable molecular toggle state management, pharmacogenomic predisposition screening, and precision kinetics.</p>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <a href="/simulations" class="btn btn-outline btn-sm" style="text-decoration: none;">
+                🧪 In-Silico Studio
+            </a>
+            <div class="badge @(_activeProfile.Regimen == TherapeuticRegimen.MaleToFemale ? "badge-accent" : "badge-outline")">
+                ACTIVE: @_activeProfile.Regimen.ToString().ToUpperInvariant()
+            </div>
+        </div>
+    </div>
+
+    <!-- Bistable Toggle Switch Panel -->
+    <div class="card panel mt-3">
+        <div class="panel-header">
+            <h3>Bistable Synthetic Hormone Toggle Controller</h3>
+            <span class="subtext">Autonomous feedback regulation</span>
+        </div>
+
+        <div class="endocrine-controls mt-2">
+            <div class="toggle-switch-group">
+                <button class="toggle-btn @(_activeProfile.TargetState == ToggleState.EstrogenicDominant ? "active-estrogen" : "")"
+                        @onclick="() => SetToggleState(ToggleState.EstrogenicDominant)">
+                    <span class="symbol">♀</span> Male-to-Female (MtF / E2 Dominant)
+                </button>
+                <button class="toggle-btn @(_activeProfile.TargetState == ToggleState.AndrogenicDominant ? "active-testosterone" : "")"
+                        @onclick="() => SetToggleState(ToggleState.AndrogenicDominant)">
+                    <span class="symbol">♂</span> Female-to-Male (FtM / T Dominant)
+                </button>
+            </div>
+
+            <!-- Setpoint Metrics Display -->
+            <div class="setpoints-display mt-3">
+                <div class="setpoint-item">
+                    <span class="setpoint-label">TARGET 17β-ESTRADIOL</span>
+                    <span class="setpoint-val font-mono">@_activeProfile.TargetEstradiolPmolL.ToString("F1") <small>pmol/L</small></span>
+                </div>
+                <div class="setpoint-item">
+                    <span class="setpoint-label">TARGET TESTOSTERONE</span>
+                    <span class="setpoint-val font-mono">@_activeProfile.TargetTestosteroneNmolL.ToString("F2") <small>nmol/L</small></span>
+                </div>
+                <div class="setpoint-item">
+                    <span class="setpoint-label">APTAMER TARGET Kd</span>
+                    <span class="setpoint-val font-mono">@_activeProfile.BindingAffinityKdTargetNanoMolar.ToString("F1") <small>nM</small></span>
+                </div>
+                <div class="setpoint-item">
+                    <span class="setpoint-label">TARGET TISSUE</span>
+                    <span class="setpoint-val font-mono">@_activeProfile.TargetTissue</span>
+                </div>
+                <div class="setpoint-item">
+                    <span class="setpoint-label">DELIVERY CHASSIS</span>
+                    <span class="setpoint-val font-mono">@_activeProfile.DeliveryVehicle.Geometry</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pharmacogenomics & Genetic Predisposition Screening Panel -->
+    <div class="card panel mt-4">
+        <div class="panel-header">
+            <div>
+                <h3>Pharmacogenomic Risk &amp; Genetic Predisposition Screening</h3>
+                <span class="subtext">Identifies patient-specific mutations affecting thrombosis risk, clearance rate, and DNA origami tolerance.</span>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                @if (_genomicProfile.HasCriticalAlerts)
+                {
+                    <span class="genomic-badge-critical animate-pulse">CRITICAL RISKS ACTIVE</span>
+                }
+                else
+                {
+                    <span class="genomic-badge-optimal">GENOME STABLE</span>
+                }
+            </div>
+        </div>
+
+        <!-- Presets Selection & Profile Metrics -->
+        <div class="mt-3">
+            <span class="subtext font-mono" style="font-size: 0.8rem; text-transform: uppercase;">Load Patient Genomic Preset:</span>
+            <div class="d-flex flex-wrap gap-2 mt-2">
+                @foreach (var preset in _availablePresets)
+                {
+                    <button class="btn btn-sm @(_activePresetId == preset.PresetId ? "btn-primary" : "btn-outline")"
+                            @onclick="() => SelectPreset(preset.PresetId)">
+                        @preset.Title
+                    </button>
+                }
+            </div>
+
+            <!-- Genomic Risk Index Summary Bar -->
+            <div class="setpoints-display mt-3" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+                <div class="setpoint-item">
+                    <span class="setpoint-label">THROMBOSIS RISK INDEX</span>
+                    <span class="setpoint-val font-mono @(_genomicProfile.ThrombosisRiskIndex > 1.5 ? "text-danger" : "text-success")">
+                        @_genomicProfile.ThrombosisRiskIndex.ToString("F1")x
+                        <small>@(_genomicProfile.ThrombosisRiskIndex > 1.5 ? "ELEVATED" : "BASELINE")</small>
+                    </span>
+                </div>
+                <div class="setpoint-item">
+                    <span class="setpoint-label">CLEARANCE MULTIPLIER</span>
+                    <span class="setpoint-val font-mono">
+                        @_genomicProfile.OverallClearanceMultiplier.ToString("F2")x
+                        <small>@(_genomicProfile.OverallClearanceMultiplier < 1.0 ? "SLOWER" : _genomicProfile.OverallClearanceMultiplier > 1.0 ? "RAPID" : "NORMAL")</small>
+                    </span>
+                </div>
+                <div class="setpoint-item">
+                    <span class="setpoint-label">CPG METHYLATION</span>
+                    <span class="setpoint-val font-mono @(_genomicProfile.CpGMethylationMandatory ? "text-warning" : "text-muted")">
+                        @(_genomicProfile.CpGMethylationMandatory ? "MANDATORY" : "STANDARD")
+                    </span>
+                </div>
+                <div class="setpoint-item">
+                    <span class="setpoint-label">RECOMMENDED MAX E2</span>
+                    <span class="setpoint-val font-mono">
+                        @(_genomicProfile.RecommendedMaxEstradiolPmolL.HasValue ? $"{_genomicProfile.RecommendedMaxEstradiolPmolL.Value:F1} pmol/L" : "UNRESTRICTED")
+                    </span>
+                </div>
+            </div>
+
+            <!-- Individual Marker Toggles -->
+            <div class="mt-3 p-3" style="background: rgba(0, 0, 0, 0.2); border-radius: 6px; border: 1px solid var(--border-color);">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="subtext font-mono" style="font-size: 0.8rem; text-transform: uppercase;">Individual Genetic Marker Selectors:</span>
+                    <button class="btn btn-sm btn-outline" @onclick="ClearAllMarkers">Clear All</button>
+                </div>
+                <div class="d-flex flex-wrap gap-3">
+                    @foreach (var marker in _availableMarkers)
+                    {
+                        <label class="d-flex align-items-center gap-1 font-mono" style="font-size: 0.85rem; cursor: pointer;">
+                            <input type="checkbox"
+                                   checked="@_selectedMarkerIds.Contains(marker.MarkerId)"
+                                   @onchange="() => ToggleMarker(marker.MarkerId)" />
+                            <span class="@(marker.Severity == ClinicalSeverity.Critical ? "text-danger" : marker.Severity == ClinicalSeverity.Warning ? "text-warning" : "text-muted")">
+                                @marker.GeneSymbol (@marker.VariantName.Split('(')[0].Trim())
+                            </span>
+                        </label>
+                    }
+                </div>
+            </div>
+
+            <!-- Prominent Severity Call-Out Alert Banners -->
+            <div class="mt-4">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h4 style="margin: 0; color: #fff;">Active Clinical Call-Out Alerts (@_genomicProfile.Alerts.Count)</h4>
+                    <button class="btn btn-sm btn-primary" @onclick="ApplyGenomicAdjustments">
+                        ⚡ Apply Genetic Kinetic Adjustments
+                    </button>
+                </div>
+
+                @foreach (var alert in _genomicProfile.Alerts)
+                {
+                    <div class="genomic-alert-box @GetAlertBoxClass(alert.Severity)">
+                        <div class="genomic-alert-header">
+                            <div>
+                                <strong style="color: #ffffff; font-size: 1rem;">@alert.Title</strong>
+                                <span class="subtext d-block" style="font-size: 0.8rem;">@alert.Category</span>
+                            </div>
+                            <span class="@GetBadgeClass(alert.Severity)">@alert.Severity.ToString().ToUpperInvariant() CALL-OUT</span>
+                        </div>
+                        <p style="margin: 6px 0 10px 0; color: #f1f5f9; font-size: 0.92rem; line-height: 1.5;">@alert.CallOutMessage</p>
+                        <div class="genomic-guidance-pill">
+                            <div><strong style="color: #38bdf8;">Clinical Directive:</strong> @alert.ClinicalGuidance</div>
+                            @if (!string.IsNullOrEmpty(alert.KineticGuidance))
+                            {
+                                <div><strong style="color: #f59e0b;">Kinetics Calibration:</strong> @alert.KineticGuidance</div>
+                            }
+                            @if (!string.IsNullOrEmpty(alert.ScaffoldGuidance))
+                            {
+                                <div><strong style="color: #e040fb;">DNA Origami Modification:</strong> @alert.ScaffoldGuidance</div>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- Pharmacodynamic Stabilization Simulation -->
+    <div class="card panel mt-4">
+        <div class="panel-header">
+            <h3>72-Hour Hormone Pharmacodynamic Stabilization Curves</h3>
+            <span class="badge badge-outline">Continuous Target Plateau</span>
+        </div>
+        <p class="subtext">Kinetics curve calculated over a 72-hour horizon as aptamer-mediated release reaches homeostatic equilibrium, factoring in patient-specific genetic clearance.</p>
+
+        <!-- Dynamic Dual-Axis HTML5 Canvas Kinetics Visualization -->
+        <div class="canvas-box mt-3 mb-4" style="background: rgba(0,0,0,0.3); border-radius: 8px; padding: 1rem; border: 1px solid var(--border-color);">
+            <canvas id="canvas-endocrine-kinetics" style="width: 100%; height: 320px;"></canvas>
+        </div>
+
+        <div class="table-container mt-3">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Time (Hours)</th>
+                        <th>Circulating 17β-Estradiol (pmol/L)</th>
+                        <th>Circulating Testosterone (nmol/L)</th>
+                        <th>Regulatory State</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (HormoneCurvePoint pt in _kineticsPoints)
+                    {
+                        <tr>
+                            <td class="font-mono text-accent">@pt.Hour h</td>
+                            <td class="font-mono">@pt.EstradiolPmolL.ToString("F1") pmol/L</td>
+                            <td class="font-mono">@pt.TestosteroneNmolL.ToString("F2") nmol/L</td>
+                            <td><span class="badge badge-accent">@(_activeProfile.TargetState)</span></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Hypothalamic-Pituitary-Gonadal (HPG) Axis & Tissue Tropism -->
+    <div class="card panel mt-4">
+        <div class="panel-header">
+            <h3>Hypothalamic-Pituitary-Gonadal (HPG) Axis &amp; Nanocarrier Biodistribution</h3>
+            <span class="badge badge-accent">@(_activeProfile.TargetTissue)</span>
+        </div>
+        <p class="subtext">
+            Biomedical anatomical feedback circuit demonstrating localized anterior pituitary gonadotrope delivery, negative feedback loop suppression, and systemic receptor distribution.
+        </p>
+
+        <div class="canvas-box mt-3 mb-2" style="background: rgba(0,0,0,0.3); border-radius: 8px; padding: 1rem; border: 1px solid var(--border-color);">
+            <canvas id="canvas-anatomical-target" style="width: 100%; height: 340px;"></canvas>
+        </div>
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// Active endocrine target profile.
+    /// </summary>
+    private EndocrineTargetProfile _activeProfile = null!;
+
+    /// <summary>
+    /// Evaluated pharmacogenomic profile for the patient.
+    /// </summary>
+    private PatientGenomicProfile _genomicProfile = null!;
+
+    /// <summary>
+    /// Simulated kinetics curve data points over 72 hours.
+    /// </summary>
+    private IReadOnlyList<HormoneCurvePoint> _kineticsPoints = [];
+
+    /// <summary>
+    /// List of all available catalog genetic markers.
+    /// </summary>
+    private IReadOnlyList<GeneticMarker> _availableMarkers = [];
+
+    /// <summary>
+    /// List of standard clinical demonstration presets.
+    /// </summary>
+    private IReadOnlyList<GeneticMarkerPreset> _availablePresets = [];
+
+    /// <summary>
+    /// Currently selected preset identifier.
+    /// </summary>
+    private string _activePresetId = "PRESET_BASELINE";
+
+    /// <summary>
+    /// Set of actively selected genetic marker IDs.
+    /// </summary>
+    private readonly HashSet<string> _selectedMarkerIds = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Loads active endocrine profile, catalog markers, and initial genomic evaluation.
+    /// </summary>
+    protected override void OnInitialized()
+    {
+        _activeProfile = Engine.GetActiveProfile();
+        _availableMarkers = GenomicsService.GetCatalog();
+        _availablePresets = GenomicsService.GetPresetProfiles();
+
+        // Default to Baseline preset
+        SelectPreset("PRESET_BASELINE");
+    }
+
+    /// <summary>
+    /// Selects a predefined genetic preset and recalibrates the profile.
+    /// </summary>
+    /// <param name="presetId">The preset identifier to activate.</param>
+    private void SelectPreset(string presetId)
+    {
+        _activePresetId = presetId;
+        _selectedMarkerIds.Clear();
+
+        GeneticMarkerPreset? preset = _availablePresets.FirstOrDefault(p => p.PresetId == presetId);
+        if (preset != null)
+        {
+            foreach (string mid in preset.MarkerIds)
+            {
+                _selectedMarkerIds.Add(mid);
+            }
+        }
+
+        ReevaluateGenomics();
+    }
+
+    /// <summary>
+    /// Toggles a specific genetic marker on or off in the active selection.
+    /// </summary>
+    /// <param name="markerId">The marker identifier to toggle.</param>
+    private void ToggleMarker(string markerId)
+    {
+        _activePresetId = string.Empty; // Clear preset since user is customizing
+        if (!_selectedMarkerIds.Add(markerId))
+        {
+            _selectedMarkerIds.Remove(markerId);
+        }
+
+        ReevaluateGenomics();
+    }
+
+    /// <summary>
+    /// Clears all selected markers, restoring wild-type baseline.
+    /// </summary>
+    private void ClearAllMarkers()
+    {
+        _activePresetId = "PRESET_BASELINE";
+        _selectedMarkerIds.Clear();
+        ReevaluateGenomics();
+    }
+
+    /// <summary>
+    /// Reevaluates pharmacogenomics and recalibrates simulated kinetics.
+    /// </summary>
+    private void ReevaluateGenomics()
+    {
+        _genomicProfile = GenomicsService.AnalyzeProfile(
+            _activeProfile.PatientId,
+            _selectedMarkerIds,
+            _activeProfile.Regimen);
+
+        _kineticsPoints = Engine.SimulateKinetics(72, 4, _genomicProfile);
+    }
+
+    /// <summary>
+    /// Applies genetically customized setpoints to the active endocrine engine and updates the visualization.
+    /// </summary>
+    private async Task ApplyGenomicAdjustments()
+    {
+        _activeProfile = GenomicsService.ApplyGeneticAdjustments(_activeProfile, _genomicProfile);
+        Engine.SetActiveProfile(_activeProfile);
+        _kineticsPoints = Engine.SimulateKinetics(72, 4, _genomicProfile);
+        await RenderChartAsync();
+    }
+
+    /// <summary>
+    /// Returns the CSS box class for a given severity level.
+    /// </summary>
+    private static string GetAlertBoxClass(ClinicalSeverity severity) => severity switch
+    {
+        ClinicalSeverity.Critical => "genomic-alert-critical",
+        ClinicalSeverity.Warning => "genomic-alert-warning",
+        ClinicalSeverity.Advisory => "genomic-alert-advisory",
+        _ => "genomic-alert-optimal"
+    };
+
+    /// <summary>
+    /// Returns the CSS badge class for a given severity level.
+    /// </summary>
+    private static string GetBadgeClass(ClinicalSeverity severity) => severity switch
+    {
+        ClinicalSeverity.Critical => "genomic-badge-critical",
+        ClinicalSeverity.Warning => "genomic-badge-warning",
+        ClinicalSeverity.Advisory => "genomic-badge-advisory",
+        _ => "genomic-badge-optimal"
+    };
+
+    /// <summary>
+    /// Renders the HTML5 canvas kinetics curve after DOM is updated.
+    /// </summary>
+    /// <param name="firstRender">True on initial render.</param>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await RenderChartAsync();
+    }
+
+    /// <summary>
+    /// Invokes the native JavaScript chart renderer with current kinetics points and setpoints.
+    /// </summary>
+    private async Task RenderChartAsync()
+    {
+        try
+        {
+            var pts = _kineticsPoints.Select(p => new { hour = p.Hour, estradiolPmolL = p.EstradiolPmolL, testosteroneNmolL = p.TestosteroneNmolL }).ToArray();
+            await JS.InvokeVoidAsync("WeaverVisualizer.renderKineticsChart", "canvas-endocrine-kinetics", pts, _activeProfile.TargetEstradiolPmolL, _activeProfile.TargetTestosteroneNmolL);
+            await JS.InvokeVoidAsync("WeaverVisualizer.renderAnatomicalTargeting", "canvas-anatomical-target", new { regimen = _activeProfile.Regimen.ToString(), targetTissue = _activeProfile.TargetTissue.ToString(), kdNanoMolar = _activeProfile.BindingAffinityKdTargetNanoMolar, targetE2 = _activeProfile.TargetEstradiolPmolL, targetT = _activeProfile.TargetTestosteroneNmolL });
+        }
+        catch (JSDisconnectedException)
+        {
+            // Circuit disconnected gracefully during navigation
+        }
+    }
+
+    /// <summary>
+    /// Updates the bistable toggle state and refreshes kinetics.
+    /// </summary>
+    /// <param name="targetState">The target toggle state (Estrogenic vs Androgenic).</param>
+    private async Task SetToggleState(ToggleState targetState)
+    {
+        ToggleSwitchRequest req = new()
+        {
+            TargetState = targetState
+        };
+        _activeProfile = Engine.UpdateToggleState(req);
+        ReevaluateGenomics();
+        await RenderChartAsync();
+    }
+}

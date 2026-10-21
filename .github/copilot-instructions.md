@@ -20,7 +20,7 @@ The primary codebase includes a .NET 10 zero-allocation trajectory parsing micro
 4. **Plain English Explanations**:
    - Demystify scientific concepts (DNA origami, coarse-graining, nucleotides, Angstroms, periodic boundary conditions) so anyone can read and modify the code.
 5. **100.00% Line and Branch Code Coverage**:
-   - Every new method, conditional branch, or exception block must be tested with 100% line and branch coverage in `tests/WeaverLammpsHrt.TrajectoryParser.Tests`.
+   - Every new method, conditional branch, or exception block must be tested with 100% line and branch coverage in `tests/NanoWeaverHrt.Tests`.
    - Never suggest `[ExcludeFromCodeCoverage]`.
    - Client JavaScript (`weaver-visualizer.js`) must maintain 100% lines, branches, and functions coverage via `npm test`.
 6. **100% Deterministic Accuracy**:

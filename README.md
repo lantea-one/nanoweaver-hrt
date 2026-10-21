@@ -207,13 +207,13 @@ Comprehensive documentation, biomedical engineering primers, architectural diagr
 
 ### Run the Parser & Web Dashboard Locally
 ```bash
-dotnet run --project src/WeaverLammpsHrt.TrajectoryParser/WeaverLammpsHrt.TrajectoryParser.csproj
+dotnet run --project src/NanoWeaverHrt/NanoWeaverHrt.csproj
 ```
 
 ### Run Test Suite & Quality Verification Gate
 ```bash
 # Run all unit tests across parsers, cryptographic dataset services, and endocrine engines
-dotnet test NanoWeaverHrt.sln
+dotnet test NanoWeaverHrt.slnx
 
 # Run JavaScript visualizer test suite (100% line, branch, function coverage)
 npm test

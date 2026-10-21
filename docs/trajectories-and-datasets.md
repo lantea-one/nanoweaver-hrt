@@ -124,7 +124,7 @@ The platform packages trajectories into self-contained `.tar.gz` export bundles 
 {
   "dataset_id": "ds_oxdna_origami_v2",
   "created_at": "2026-10-20T16:00:00Z",
-  "generator": "WeaverLammpsHrt.TrajectoryParser v1.0.0",
+  "generator": "NanoWeaverHrt v1.0.0",
   "files": [
     {
       "path": "trajectories/nanotube_folding.parquet",

@@ -16,7 +16,7 @@ set -euo pipefail
 echo "=============================================================================="
 echo ">> Step 1/5: Verifying .NET Code Formatting..."
 echo "=============================================================================="
-XDG_RUNTIME_DIR=/tmp dotnet format NanoWeaverHrt.sln --no-restore --verify-no-changes --verbosity normal
+XDG_RUNTIME_DIR=/tmp dotnet format NanoWeaverHrt.slnx --no-restore --verify-no-changes --verbosity normal
 echo "✓ .NET code formatting verified cleanly."
 
 echo ""
@@ -30,7 +30,7 @@ echo ""
 echo "=============================================================================="
 echo ">> Step 3/5: Running .NET Test Suite with Coverage Collection..."
 echo "=============================================================================="
-XDG_RUNTIME_DIR=/tmp dotnet test NanoWeaverHrt.sln \
+XDG_RUNTIME_DIR=/tmp dotnet test NanoWeaverHrt.slnx \
     --configuration Release \
     --settings coverlet.runsettings \
     --collect:"XPlat Code Coverage" \

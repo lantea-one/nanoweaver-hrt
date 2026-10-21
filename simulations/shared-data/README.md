@@ -2,7 +2,7 @@
 
 This directory serves as the high-throughput shared volume mounted between:
 1. Molecular dynamics simulation engines (LAMMPS and oxDNA in container runtime)
-2. The .NET 10 trajectory pipeline service (`WeaverLammpsHrt.TrajectoryParser`)
+2. The .NET 10 trajectory pipeline service (`NanoWeaverHrt`)
 
 ## Data Ingestion
 - Simulation outputs (`.xyz`, `.dcd`, `.lammpstrj`, `.dump`, `.custom`) are placed in this directory during execution.

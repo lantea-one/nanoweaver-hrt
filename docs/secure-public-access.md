@@ -345,7 +345,7 @@ After=network.target
 Type=simple
 User=weaver
 WorkingDirectory=/opt/nanoweaver-hrt
-ExecStart=/usr/bin/dotnet run --project /opt/nanoweaver-hrt/src/WeaverLammpsHrt.TrajectoryParser/WeaverLammpsHrt.TrajectoryParser.csproj --configuration Release --no-restore
+ExecStart=/usr/bin/dotnet run --project /opt/nanoweaver-hrt/src/NanoWeaverHrt/NanoWeaverHrt.csproj --configuration Release --no-restore
 Restart=always
 RestartSec=5
 Environment=ASPNETCORE_ENVIRONMENT=Production

@@ -29,7 +29,7 @@
 
 5. **Mandatory 100.00% Line & Branch Code Coverage Threshold**:
    - Zero uncovered lines and zero uncovered branches are allowed across the entire solution.
-   - Any new method, logic branch (`if`, `switch`, `catch`, ternary operators), or boundary condition MUST have comprehensive unit tests in `tests/WeaverLammpsHrt.TrajectoryParser.Tests`.
+   - Any new method, logic branch (`if`, `switch`, `catch`, ternary operators), or boundary condition MUST have comprehensive unit tests in `tests/NanoWeaverHrt.Tests`.
    - Never use `[ExcludeFromCodeCoverage]` as a shortcut to avoid writing tests.
    - Client-side JavaScript (`weaver-visualizer.js`) MUST maintain 100% line, branch, and function coverage via `npm test`.
 
@@ -40,7 +40,7 @@
 
 7. **Zero-Tolerance Code Formatting**:
    - All C# code must conform strictly to `.editorconfig` rules.
-   - `dotnet format NanoWeaverHrt.sln --verify-no-changes` must exit with 0 changes.
+   - `dotnet format NanoWeaverHrt.slnx --verify-no-changes` must exit with 0 changes.
 
 8. **Documentation & Markdown Rendering Invariants**:
    - Never wrap physical units (`50 µL`, `100 µM`), chemical formulas (`17β-estradiol`, `Mg²⁺`), or temperatures (`37°C`, `90°C → 4°C`) in single-dollar LaTeX delimiters (`$ ... $`).
@@ -108,7 +108,7 @@
 ```
 
 ### Components
-1. **`src/WeaverLammpsHrt.TrajectoryParser`**:
+1. **`src/NanoWeaverHrt`**:
    - High-throughput ASP.NET Core minimal service and background trajectory parser.
    - Hosts the sovereign Web UI on port 5000 (`/`) with endpoints for zero-dependency dataset export/import (`/api/datasets/export`, `/api/datasets/import`) and live GPU telemetry (`/api/system/telemetry`).
 2. **`compose/` & `docker-compose.yml`**:
@@ -139,10 +139,10 @@ This runs:
 ### How to Build & Run Locally
 ```bash
 # Build the .NET 10 microservice
-dotnet build src/WeaverLammpsHrt.TrajectoryParser/WeaverLammpsHrt.TrajectoryParser.csproj
+dotnet build src/NanoWeaverHrt/NanoWeaverHrt.csproj
 
 # Run the web dashboard & parser service locally
-dotnet run --project src/WeaverLammpsHrt.TrajectoryParser/WeaverLammpsHrt.TrajectoryParser.csproj
+dotnet run --project src/NanoWeaverHrt/NanoWeaverHrt.csproj
 ```
 
 ### How to Run Simulation Stack (Docker Compose)

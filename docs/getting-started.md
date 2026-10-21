@@ -47,13 +47,13 @@ cd nanoweaver-hrt
 Compile the .NET 10 microservice and test projects:
 ```bash
 # Set XDG_RUNTIME_DIR if running in sandboxed or headless Linux environments
-XDG_RUNTIME_DIR=/tmp dotnet build NanoWeaverHrt.sln
+XDG_RUNTIME_DIR=/tmp dotnet build NanoWeaverHrt.slnx
 ```
 
 ### Step 3: Run the Service
 Launch the microservice and embedded web server:
 ```bash
-XDG_RUNTIME_DIR=/tmp dotnet run --project src/WeaverLammpsHrt.TrajectoryParser/WeaverLammpsHrt.TrajectoryParser.csproj
+XDG_RUNTIME_DIR=/tmp dotnet run --project src/NanoWeaverHrt/NanoWeaverHrt.csproj
 ```
 
 Once running, navigate your web browser to:
@@ -145,7 +145,7 @@ We maintain strict test-driven engineering standards. All pull requests must pas
 
 ### Running .NET Unit & Integration Tests
 ```bash
-XDG_RUNTIME_DIR=/tmp dotnet test NanoWeaverHrt.sln \
+XDG_RUNTIME_DIR=/tmp dotnet test NanoWeaverHrt.slnx \
   --collect:"XPlat Code Coverage" \
   --settings coverlet.runsettings
 ```
@@ -153,7 +153,7 @@ XDG_RUNTIME_DIR=/tmp dotnet test NanoWeaverHrt.sln \
 ### Running Frontend JavaScript Visualization Tests
 The custom sovereign HTML5 Canvas charting and 3D double helix visualization modules are thoroughly verified using Node's native test runner with zero external mock libraries:
 ```bash
-cd src/WeaverLammpsHrt.TrajectoryParser/wwwroot
+cd src/NanoWeaverHrt/wwwroot
 npm test
 cd ../../..
 ```
@@ -183,12 +183,12 @@ nanoweaver-hrt/
 │   ├── exports/                          # SHA-256 signed dataset export bundles
 │   └── shared-data/                      # Shared mount volume for trajectory streams
 ├── src/
-│   └── WeaverLammpsHrt.TrajectoryParser/ # ASP.NET Core & Blazor trajectory service
+│   └── NanoWeaverHrt/ # ASP.NET Core & Blazor trajectory service
 │       ├── Services/                     # Pipeline parsing, SIMD, config, and endocrine math
 │       ├── Components/Pages/             # Blazor Interactive Server UI pages
 │       └── wwwroot/                      # Sovereign CSS, charting JS, and double helix 3D
 └── tests/
-    └── WeaverLammpsHrt.TrajectoryParser.Tests/ # Unit, integration, and coverage test suite
+    └── NanoWeaverHrt.Tests/ # Unit, integration, and coverage test suite
 ```
 
 ---

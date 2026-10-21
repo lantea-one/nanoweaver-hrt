@@ -122,7 +122,7 @@ Whenever writing code or comments involving domain concepts, use these analogies
 ## 5. Quality, Coverage & Accuracy Invariants
 
 1. **100.00% Line & Branch Coverage Threshold**:
-   - Zero untested code. Every class, method, branch (`if`/`else`, `switch`, ternary), and exception handler must have tests in `tests/WeaverLammpsHrt.TrajectoryParser.Tests`.
+   - Zero untested code. Every class, method, branch (`if`/`else`, `switch`, ternary), and exception handler must have tests in `tests/NanoWeaverHrt.Tests`.
    - Never use `[ExcludeFromCodeCoverage]` to bypass writing tests.
    - Client-side JavaScript (`weaver-visualizer.js`) must achieve 100% line, branch, and function coverage via `npm test`.
 
