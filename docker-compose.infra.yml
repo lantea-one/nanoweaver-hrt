@@ -41,6 +41,7 @@ services:
       retries: 5
 
   trajectory-parser:
+    image: git.lantea.one/lantea-one/nanoweaver-hrt:latest
     environment:
       - TRAJECTORY_PARQUET_DIR=/workspace/parquet
     volumes:

@@ -13,6 +13,7 @@
 
 services:
   simulation:
+    image: git.lantea.one/lantea-one/nanoweaver-hrt-simulation:latest
     container_name: weaver-simulation-nvidia
     environment:
       - ACCELERATOR_BACKEND=nvidia-cuda

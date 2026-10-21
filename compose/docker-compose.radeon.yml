@@ -14,6 +14,7 @@
 
 services:
   simulation:
+    image: git.lantea.one/lantea-one/nanoweaver-hrt-simulation:latest
     container_name: weaver-simulation-radeon
     devices:
       - "/dev/kfd:/dev/kfd"

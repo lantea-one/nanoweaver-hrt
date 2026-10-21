@@ -25,6 +25,7 @@ services:
   # Rebinds port 5000 strictly to localhost (127.0.0.1) to block direct public access.
   # ----------------------------------------------------------------------------
   trajectory-parser:
+    image: git.lantea.one/lantea-one/nanoweaver-hrt:latest
     ports: !override
       - "127.0.0.1:5000:5000"
 
