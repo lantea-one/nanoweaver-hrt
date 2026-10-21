@@ -46,7 +46,7 @@ flowchart TD
 The dashboard executes automated, non-blocking health checks against all local and remote microservices every 5 seconds.
 
 ### Probe Types
-* **HTTP `/healthz` Probe**: Verifies that the Kestrel web server and pipeline workers are responsive.
+* **Multi-Purpose `/healthz` & `/api/system/health` Probes**: Unauthenticated callers and Docker receive a lightweight operational status (`SystemHealthOverview`), while authenticated sessions receive comprehensive granular subsystem metrics (`GranularSystemHealth`).
 * **Storage Mount Probe**: Verifies read/write access to `/simulations/shared-data/`.
 * **Database Ping**: Measures round-trip SQL query latency (`SELECT 1;`) to detect database connection pool exhaustion.
 * **Simulation Engine Heartbeat**: Inspects container process state via Docker socket or shared lockfiles.

@@ -69,6 +69,12 @@ services:
       - ./simulations/shared-data:/workspace/data:rw
       - ./simulations/exports:/workspace/exports:rw
       - ./simulations/parquet:/workspace/parquet:rw
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5000/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     depends_on:
       - simulation
     restart: unless-stopped

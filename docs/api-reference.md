@@ -157,6 +157,133 @@ active-subscribers:
 ```
 <!-- tabs:end -->
 
+### `GET /api/system/health` (Aliases: `/healthz`, `/health`)
+Multi-purpose operational and diagnostic health check endpoint.
+* **Public & Unauthenticated (Container Healthchecks):** When no user session is present, returns a lightweight high-level overview (`SystemHealthOverview`) of node responsiveness, uptime, version, and first-launch setup status. Used by Docker and container orchestrators (`curl -f http://localhost:5000/healthz`).
+* **Authenticated Sessions (Granular Subsystems):** When an authenticated session is present (via `Authorization: Bearer <token>` or `weaver_session` cookie), returns an in-depth diagnostic report (`GranularSystemHealth`) across database connectivity, applied migrations, event bus channels, Valkey pub/sub, distributed caching, memory allocations, storage mount accessibility, simulation campaign backends, and FDA/PQC audit compliance.
+
+* **Method**: `GET`
+* **Authentication**: None required (public). Optional Bearer token or `weaver_session` cookie activates granular telemetry.
+* **Response Status**: `200 OK`
+* **Response Payloads**:
+
+<!-- tabs:start -->
+#### **Unauthenticated JSON (SystemHealthOverview)**
+```json
+{
+  "status": "Healthy",
+  "timestampUtc": "2026-10-21T18:00:00.000Z",
+  "version": "1.0.0",
+  "uptime": "0d 4h 12m 30s",
+  "uptimeSeconds": 15150.0,
+  "setupRequired": false,
+  "authenticatedSession": false,
+  "description": "System operational. High-level health check. Authenticate with a valid session token for granular subsystem diagnostics."
+}
+```
+
+#### **Authenticated JSON (GranularSystemHealth)**
+```json
+{
+  "status": "Healthy",
+  "timestampUtc": "2026-10-21T18:00:00.000Z",
+  "version": "1.0.0",
+  "uptime": "0d 4h 12m 30s",
+  "uptimeSeconds": 15150.0,
+  "setupRequired": false,
+  "authenticatedSession": true,
+  "description": "Authenticated session detected. Granular subsystem diagnostics active.",
+  "user": {
+    "username": "admin",
+    "role": "Administrator",
+    "accessGate": "ApiWeb"
+  },
+  "subsystems": {
+    "database": {
+      "status": "Healthy",
+      "provider": "PostgreSQL",
+      "canConnect": true,
+      "appliedMigrationsCount": 2
+    },
+    "eventBus": {
+      "status": "Healthy",
+      "isInternalBusActive": true,
+      "totalSubscribers": 6,
+      "activeSubscribers": {
+        "TrajectoryFrameBatchEvent": 2,
+        "SimulationProgressEvent": 1,
+        "UserSessionActivityEvent": 1,
+        "AuditLogDispatchedEvent": 1,
+        "SystemTelemetryUpdatedEvent": 1
+      },
+      "isValkeyBridgeConnected": true,
+      "valkeyEndpoint": "valkey:6379,password=[REDACTED]"
+    },
+    "caching": {
+      "status": "Healthy",
+      "isDistributed": true,
+      "mode": "Distributed (Valkey)"
+    },
+    "memory": {
+      "status": "Healthy",
+      "heapMemoryMb": 48.5,
+      "workingSetMb": 120.0,
+      "serverGc": true,
+      "gen0Collections": 24,
+      "gen1Collections": 2,
+      "gen2Collections": 0
+    },
+    "storage": {
+      "status": "Healthy",
+      "incomingDirectory": "/workspace/data",
+      "incomingWritable": true,
+      "exportDirectory": "/workspace/exports",
+      "exportWritable": true,
+      "parquetDirectory": "/workspace/parquet",
+      "parquetWritable": true
+    },
+    "simulations": {
+      "status": "Healthy",
+      "acceleratorBackend": "Intel Arc A770 (Level Zero / SYCL)",
+      "totalFramesParsed": 450000,
+      "availableCampaignsCount": 4
+    },
+    "compliance": {
+      "status": "Healthy",
+      "auditLedgerHealthy": true,
+      "pqcProvider": "ML-KEM-768 + ML-DSA-65 (NIST FIPS 203/204)"
+    }
+  }
+}
+```
+
+#### **Unauthenticated XML**
+```xml
+<Response>
+  <status>Healthy</status>
+  <timestampUtc>2026-10-21T18:00:00.000Z</timestampUtc>
+  <version>1.0.0</version>
+  <uptime>0d 4h 12m 30s</uptime>
+  <uptimeSeconds>15150.0</uptimeSeconds>
+  <setupRequired>false</setupRequired>
+  <authenticatedSession>false</authenticatedSession>
+  <description>System operational. High-level health check. Authenticate with a valid session token for granular subsystem diagnostics.</description>
+</Response>
+```
+
+#### **Unauthenticated YAML**
+```yaml
+status: Healthy
+timestamp-utc: '2026-10-21T18:00:00.000Z'
+version: 1.0.0
+uptime: 0d 4h 12m 30s
+uptime-seconds: 15150.0
+setup-required: false
+authenticated-session: false
+description: System operational. High-level health check. Authenticate with a valid session token for granular subsystem diagnostics.
+```
+<!-- tabs:end -->
+
 ---
 
 ## 3. Configuration & Sovereign Peering Endpoints

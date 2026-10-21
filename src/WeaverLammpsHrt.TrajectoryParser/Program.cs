@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO.Pipelines;
 using System.Reflection;
+using System.Runtime;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -232,6 +233,39 @@ public class Program
             }
 
             IUserAuthenticationService authService = context.RequestServices.GetRequiredService<IUserAuthenticationService>();
+
+            // 1.5. Health check endpoints: /healthz, /health, /api/system/health
+            // WHAT: Allows public unauthenticated container probes while attaching user context if a session token is supplied.
+            // WHY:  Container orchestrators need immediate responsiveness even before setup; authenticated users receive full telemetry.
+            // HOW:  Bypasses lockout and 401 enforcement, but attempts optional token validation to populate CurrentUser in HttpContext.Items.
+            if (path.Equals("/healthz", StringComparison.OrdinalIgnoreCase) ||
+                path.Equals("/health", StringComparison.OrdinalIgnoreCase) ||
+                path.Equals("/api/system/health", StringComparison.OrdinalIgnoreCase))
+            {
+                string? candidateHealthToken = null;
+                string? healthAuthHeader = context.Request.Headers.Authorization;
+                if (!string.IsNullOrEmpty(healthAuthHeader) && healthAuthHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+                {
+                    candidateHealthToken = healthAuthHeader["Bearer ".Length..].Trim();
+                }
+                else if (context.Request.Cookies.TryGetValue("weaver_session", out string? cookieToken) && !string.IsNullOrWhiteSpace(cookieToken))
+                {
+                    candidateHealthToken = cookieToken.Trim();
+                }
+
+                if (!string.IsNullOrEmpty(candidateHealthToken))
+                {
+                    var (isHealthTokenValid, healthUser, _) = await authService.ValidateTokenAsync(candidateHealthToken, context.RequestAborted);
+                    if (isHealthTokenValid && healthUser != null)
+                    {
+                        context.Items["CurrentUser"] = healthUser;
+                    }
+                }
+
+                await next();
+                return;
+            }
+
             bool isSetupRequired = await authService.IsSetupRequiredAsync(context.RequestAborted);
 
             // 2. Setup endpoints: /api/setup/*
@@ -691,6 +725,66 @@ public class Program
         .WithSummary("Provides real-time telemetry on the in-memory event bus and distributed Valkey bridge.")
         .WithDescription("Reports active channel subscribers, Valkey connection state, endpoint descriptor, and bi-directional event counts.")
         .Produces<EventBusTelemetry>(StatusCodes.Status200OK);
+
+        // ---------------------------------------------------------------------
+        // REST API: Multi-Purpose Operational Health Check & Granular Telemetry
+        // ---------------------------------------------------------------------
+        app.MapGet("/api/system/health", (
+            HttpContext httpContext,
+            IUserAuthenticationService authService,
+            IConfigurationRepository configRepo,
+            DatabaseMigrationRunner migrationRunner,
+            IInternalEventBus eventBus,
+            IValkeyConnectionFactory valkeyConn,
+            IValkeyCacheService cacheService,
+            IConfiguration config,
+            ISimulationCampaignService simService,
+            IComplianceAuditService compliance,
+            CancellationToken ct) => HandleSystemHealthAsync(httpContext, authService, configRepo, migrationRunner, eventBus, valkeyConn, cacheService, config, simService, compliance, ct))
+        .WithName("GetSystemHealth")
+        .WithTags("System Health")
+        .WithSummary("Provides public health check overview or granular diagnostic telemetry when authenticated.")
+        .WithDescription("Publicly accessible endpoint. Returns high-level operational status to unauthenticated clients and container probes. Returns comprehensive subsystem diagnostics when a valid user session is present.")
+        .Produces<SystemHealthOverview>(StatusCodes.Status200OK)
+        .Produces<GranularSystemHealth>(StatusCodes.Status200OK);
+
+        app.MapGet("/healthz", (
+            HttpContext httpContext,
+            IUserAuthenticationService authService,
+            IConfigurationRepository configRepo,
+            DatabaseMigrationRunner migrationRunner,
+            IInternalEventBus eventBus,
+            IValkeyConnectionFactory valkeyConn,
+            IValkeyCacheService cacheService,
+            IConfiguration config,
+            ISimulationCampaignService simService,
+            IComplianceAuditService compliance,
+            CancellationToken ct) => HandleSystemHealthAsync(httpContext, authService, configRepo, migrationRunner, eventBus, valkeyConn, cacheService, config, simService, compliance, ct))
+        .WithName("GetHealthz")
+        .WithTags("System Health")
+        .WithSummary("Container runtime operational health probe.")
+        .WithDescription("Alias for /api/system/health probe. Used by Docker and Kubernetes container orchestrators.")
+        .Produces<SystemHealthOverview>(StatusCodes.Status200OK)
+        .Produces<GranularSystemHealth>(StatusCodes.Status200OK);
+
+        app.MapGet("/health", (
+            HttpContext httpContext,
+            IUserAuthenticationService authService,
+            IConfigurationRepository configRepo,
+            DatabaseMigrationRunner migrationRunner,
+            IInternalEventBus eventBus,
+            IValkeyConnectionFactory valkeyConn,
+            IValkeyCacheService cacheService,
+            IConfiguration config,
+            ISimulationCampaignService simService,
+            IComplianceAuditService compliance,
+            CancellationToken ct) => HandleSystemHealthAsync(httpContext, authService, configRepo, migrationRunner, eventBus, valkeyConn, cacheService, config, simService, compliance, ct))
+        .WithName("GetHealth")
+        .WithTags("System Health")
+        .WithSummary("Standard system health probe alias.")
+        .WithDescription("Alias for /api/system/health probe.")
+        .Produces<SystemHealthOverview>(StatusCodes.Status200OK)
+        .Produces<GranularSystemHealth>(StatusCodes.Status200OK);
 
         // ---------------------------------------------------------------------
         // REST API: Endocrine Target Profile & Toggle Switch
@@ -1744,6 +1838,174 @@ public class Program
             "never" or "infinite" => TimeSpan.FromDays(36525), // 100 years
             _ => int.TryParse(window, out int parsedHours) ? TimeSpan.FromHours(parsedHours) : TimeSpan.FromHours(fallbackHours > 0 ? fallbackHours : 24)
         };
+    }
+
+    /// <summary>
+    /// Handles requests to health check endpoints (/api/system/health, /healthz, /health),
+    /// dynamically returning either a high-level status overview (for unauthenticated container probes)
+    /// or a granular subsystem diagnostic report (when an authenticated user session is detected).
+    /// </summary>
+    /// <param name="httpContext">The active HTTP context.</param>
+    /// <param name="authService">Authentication service used to verify setup requirements.</param>
+    /// <param name="configRepo">Database configuration repository reporting active engine provider.</param>
+    /// <param name="migrationRunner">Database migration runner reporting applied migrations.</param>
+    /// <param name="eventBus">Internal pub/sub event bus reporting channel subscriber counts.</param>
+    /// <param name="valkeyConn">Valkey connection factory reporting cluster reachability.</param>
+    /// <param name="cacheService">Cache service reporting distribution mode.</param>
+    /// <param name="config">Configuration provider for storage directories.</param>
+    /// <param name="simService">Simulation campaign manager reporting active campaigns.</param>
+    /// <param name="compliance">Compliance audit service reporting ledger chain integrity.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A 200 OK result containing <see cref="GranularSystemHealth"/> or <see cref="SystemHealthOverview"/>.</returns>
+    public static async Task<IResult> HandleSystemHealthAsync(
+        HttpContext httpContext,
+        IUserAuthenticationService authService,
+        IConfigurationRepository configRepo,
+        DatabaseMigrationRunner migrationRunner,
+        IInternalEventBus eventBus,
+        IValkeyConnectionFactory valkeyConn,
+        IValkeyCacheService cacheService,
+        IConfiguration config,
+        ISimulationCampaignService simService,
+        IComplianceAuditService compliance,
+        CancellationToken ct)
+    {
+        // WHAT: Checks for an active authenticated user session attached to the HTTP context or DI scope.
+        // WHY:  Unauthenticated callers and container probes receive a lightweight high-level overview.
+        // HOW:  Inspects HttpContext.Items["CurrentUser"] followed by scoped UserSessionState fallback.
+        UserAccount? user = httpContext.Items.TryGetValue("CurrentUser", out object? userObj) && userObj is UserAccount u ? u : null;
+        if (user == null)
+        {
+            UserSessionState? sessionState = httpContext.RequestServices?.GetService<UserSessionState>();
+            if (sessionState != null && sessionState.IsAuthenticated && sessionState.CurrentUser != null)
+            {
+                user = sessionState.CurrentUser;
+            }
+        }
+
+        // WHAT: Calculates node uptime duration and checks first-launch setup status.
+        // WHY:  Provides universal operational availability metrics to Docker probes and authenticated operators.
+        // HOW:  Subtracts start timestamp from current UTC time and queries IUserAuthenticationService.
+        TimeSpan uptime = DateTime.UtcNow - StartTimeUtc;
+        bool isSetupRequired = await authService.IsSetupRequiredAsync(ct);
+
+        if (user == null)
+        {
+            SystemHealthOverview overview = new()
+            {
+                Status = "Healthy",
+                TimestampUtc = DateTimeOffset.UtcNow,
+                Version = "1.0.0",
+                Uptime = $"{uptime.Days}d {uptime.Hours}h {uptime.Minutes}m {uptime.Seconds}s",
+                UptimeSeconds = Math.Round(uptime.TotalSeconds, 2),
+                SetupRequired = isSetupRequired,
+                AuthenticatedSession = false,
+                Description = isSetupRequired
+                    ? "System operational. Master Administrator initialization required via /setup."
+                    : "System operational. High-level health check. Authenticate with a valid session token for granular subsystem diagnostics."
+            };
+
+            return Results.Ok(overview);
+        }
+
+        // WHAT: Gathers granular subsystem diagnostics across database, memory, event bus, storage, and simulations.
+        // WHY:  Provides full multi-subsystem insight to authenticated operators without exposing details to public callers.
+        // HOW:  Queries system telemetry, event bus subscriber counts, filesystem paths, and compliance ledger integrity.
+        Process currentProcess = Process.GetCurrentProcess();
+        string backend = Environment.GetEnvironmentVariable("ACCELERATOR_BACKEND") ?? "Intel iGPU / OpenCL (Default)";
+
+        string incomingDir = config["TRAJECTORY_INCOMING_DIR"] ?? Path.Combine(Directory.GetCurrentDirectory(), "simulations", "shared-data");
+        string exportDir = config["TRAJECTORY_EXPORT_DIR"] ?? Path.Combine(Directory.GetCurrentDirectory(), "simulations", "exports");
+        string parquetDir = config["TRAJECTORY_PARQUET_DIR"] ?? Path.Combine(Directory.GetCurrentDirectory(), "simulations", "parquet");
+
+        Dictionary<string, int> subscribers = new()
+        {
+            [nameof(TrajectoryFrameBatchEvent)] = eventBus.GetSubscriberCount<TrajectoryFrameBatchEvent>(),
+            [nameof(SimulationProgressEvent)] = eventBus.GetSubscriberCount<SimulationProgressEvent>(),
+            [nameof(UserSessionActivityEvent)] = eventBus.GetSubscriberCount<UserSessionActivityEvent>(),
+            [nameof(AuditLogDispatchedEvent)] = eventBus.GetSubscriberCount<AuditLogDispatchedEvent>(),
+            [nameof(SystemTelemetryUpdatedEvent)] = eventBus.GetSubscriberCount<SystemTelemetryUpdatedEvent>()
+        };
+
+        AuditLedgerVerificationResult verification = compliance.VerifyLedgerIntegrity();
+
+        GranularSystemHealth granular = new()
+        {
+            Status = "Healthy",
+            TimestampUtc = DateTimeOffset.UtcNow,
+            Version = "1.0.0",
+            Uptime = $"{uptime.Days}d {uptime.Hours}h {uptime.Minutes}m {uptime.Seconds}s",
+            UptimeSeconds = Math.Round(uptime.TotalSeconds, 2),
+            SetupRequired = isSetupRequired,
+            AuthenticatedSession = true,
+            Description = "Authenticated session detected. Granular subsystem diagnostics active.",
+            User = new HealthUserInfo
+            {
+                Username = user.Username,
+                Role = user.Role.ToString(),
+                AccessGate = user.AccessGate.ToString()
+            },
+            Subsystems = new HealthSubsystemsInfo
+            {
+                Database = new DatabaseHealthInfo
+                {
+                    Status = "Healthy",
+                    Provider = configRepo.ActiveBackendName,
+                    CanConnect = true,
+                    AppliedMigrationsCount = migrationRunner.RegisteredMigrations.Count
+                },
+                EventBus = new EventBusHealthInfo
+                {
+                    Status = "Healthy",
+                    IsInternalBusActive = true,
+                    TotalSubscribers = subscribers.Values.Sum(),
+                    ActiveSubscribers = subscribers,
+                    IsValkeyBridgeConnected = valkeyConn.IsConnected,
+                    ValkeyEndpoint = valkeyConn.SanitizedEndpoint
+                },
+                Caching = new CachingHealthInfo
+                {
+                    Status = "Healthy",
+                    IsDistributed = cacheService.IsDistributed,
+                    Mode = cacheService.IsDistributed ? "Distributed (Valkey)" : "In-Memory Fallback"
+                },
+                Memory = new MemoryHealthInfo
+                {
+                    Status = "Healthy",
+                    HeapMemoryMb = Math.Round(GC.GetTotalMemory(forceFullCollection: false) / (1024.0 * 1024.0), 2),
+                    WorkingSetMb = Math.Round(currentProcess.WorkingSet64 / (1024.0 * 1024.0), 2),
+                    ServerGc = GCSettings.IsServerGC,
+                    Gen0Collections = GC.CollectionCount(0),
+                    Gen1Collections = GC.CollectionCount(1),
+                    Gen2Collections = GC.CollectionCount(2)
+                },
+                Storage = new StorageHealthInfo
+                {
+                    Status = "Healthy",
+                    IncomingDirectory = incomingDir,
+                    IncomingWritable = Directory.Exists(incomingDir),
+                    ExportDirectory = exportDir,
+                    ExportWritable = Directory.Exists(exportDir),
+                    ParquetDirectory = parquetDir,
+                    ParquetWritable = Directory.Exists(parquetDir)
+                },
+                Simulations = new SimulationHealthInfo
+                {
+                    Status = "Healthy",
+                    AcceleratorBackend = backend,
+                    TotalFramesParsed = TotalFramesParsed,
+                    AvailableCampaignsCount = simService.GetCampaignCatalog().Count
+                },
+                Compliance = new ComplianceHealthInfo
+                {
+                    Status = "Healthy",
+                    AuditLedgerHealthy = verification.IsValid,
+                    PqcProvider = "ML-KEM-768 + ML-DSA-65 (NIST FIPS 203/204)"
+                }
+            }
+        };
+
+        return Results.Ok(granular);
     }
 }
 

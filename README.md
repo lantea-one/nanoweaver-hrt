@@ -74,6 +74,7 @@ flowchart TD
 - **Zero-Allocation Parsing:** Ingests massive multi-gigabyte trajectory streams (`.xyz`, `.dcd`, oxDNA) using `System.IO.Pipelines`, `ReadOnlySpan<byte>`, and `Utf8Parser` with zero GC allocations in steady state.
 - **In-Silico Docking Analysis:** Live computation of ligand-pocket binding contact ratios and thermodynamic stability verdicts.
 - **Sovereign Web Dashboard:** Visual bistable toggle controls, patient profile setpoint management, and cryptographically verified dataset export/import with SHA-256 provenance manifests.
+- **Multi-Purpose Operational Health Check (`/healthz`, `/health`, `/api/system/health`):** Container runtime probes receive lightweight operational status (`SystemHealthOverview`), while authenticated sessions receive comprehensive multi-subsystem diagnostics (`GranularSystemHealth`).
 
 ### 5. In-Silico Simulation Studio (oxDNA, LAMMPS, PBPK)
 - **Campaign 1 (oxDNA Serum Stability)**: Simulates coarse-grained mechanical rigidity under physiological conditions (37.0°C, 150 mM NaCl, 0.8 mM Mg²⁺) and calculates Debye-Hückel electrostatic screening lengths.
