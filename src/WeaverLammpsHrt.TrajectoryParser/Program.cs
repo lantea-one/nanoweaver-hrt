@@ -25,6 +25,7 @@ using WeaverLammpsHrt.TrajectoryParser.Services.Stack;
 using WeaverLammpsHrt.TrajectoryParser.Storage;
 using WeaverLammpsHrt.TrajectoryParser.Swagger;
 using WeaverLammpsHrt.TrajectoryParser.Formatting;
+using WeaverLammpsHrt.TrajectoryParser.Security.Authentication;
 using WeaverLammpsHrt.TrajectoryParser.Simulations;
 using WeaverLammpsHrt.TrajectoryParser.Simulations.Models;
 
@@ -83,6 +84,9 @@ public class Program
         builder.Services.AddSingleton<IComplianceAuditService, ComplianceAuditService>();
         builder.Services.AddSingleton<IEncryptedStorageService, EncryptedStorageService>();
         builder.Services.AddSingleton<ISimulationCampaignService, SimulationCampaignService>();
+        builder.Services.AddSingleton<IUserRepository, UserRepository>();
+        builder.Services.AddSingleton<IUserAuthenticationService, UserAuthenticationService>();
+        builder.Services.AddScoped<UserSessionState>();
 
         // WHAT: Configures Swagger & OpenAPI generation with XML comments and Swashbuckle annotations.
         // WHY:  Provides interactive API exploration (/swagger) and ReDoc documentation (/documentation).
@@ -111,6 +115,29 @@ public class Program
             c.IncludeXmlComments(Assembly.GetExecutingAssembly(), includeControllerXmlComments: true);
             c.SchemaFilter<OpenApiMultiFormatExampleFilter>();
             c.OperationFilter<OpenApiMultiFormatExampleFilter>();
+
+            c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+            {
+                Description = "Asymmetric Private-Key Authenticated Bearer Token (issued by /api/auth/token or /api/auth/login-key). Example: 'Bearer {token}'",
+                Name = "Authorization",
+                In = ParameterLocation.Header,
+                Type = SecuritySchemeType.ApiKey,
+                Scheme = "Bearer"
+            });
+            c.AddSecurityRequirement(new OpenApiSecurityRequirement
+            {
+                {
+                    new OpenApiSecurityScheme
+                    {
+                        Reference = new OpenApiReference
+                        {
+                            Type = ReferenceType.SecurityScheme,
+                            Id = "Bearer"
+                        }
+                    },
+                    Array.Empty<string>()
+                }
+            });
         });
 
         // Configure JSON serialization options: lower camelCase strictly enforced
@@ -128,6 +155,12 @@ public class Program
         // HOW:  Executes table verification via IConfigurationRepository.
         IConfigurationRepository configRepo = app.Services.GetRequiredService<IConfigurationRepository>();
         await configRepo.InitializeAsync();
+
+        // WHAT: Initializes authoritative database tables for user identities, asymmetric keys, and role access.
+        // WHY:  Guarantees that user tables and first-launch administrative states are ready before incoming requests.
+        // HOW:  Executes schema verification and index creation via IUserRepository.
+        IUserRepository userRepo = app.Services.GetRequiredService<IUserRepository>();
+        await userRepo.InitializeAsync();
 
         // WHAT: Enables content negotiation and multi-format transcoding (JSON, XML, YAML).
         // WHY:  Allows callers to request or submit XML or YAML payloads transparently.
@@ -153,6 +186,166 @@ public class Program
         app.UseStaticFiles();
         app.UseRouting();
         app.UseAntiforgery();
+
+        // WHAT: Enforces sovereign private-key authentication, access gating, role permissions, and first-launch setup lockout.
+        // WHY:  Protects sensitive biomedical API endpoints, validates cryptographic tokens, and strictly locks out uninitialized nodes.
+        // HOW:  Inspects request paths, checks setup status via IUserAuthenticationService, verifies Bearer tokens, and validates roles.
+        app.Use(async (context, next) =>
+        {
+            PathString path = context.Request.Path;
+
+            // 1. Static assets, Blazor WebSocket framework, Swagger UI, and documentation bypass authentication
+            if (path.StartsWithSegments("/css") ||
+                path.StartsWithSegments("/js") ||
+                path.StartsWithSegments("/lib") ||
+                path.StartsWithSegments("/_framework") ||
+                path.StartsWithSegments("/_blazor") ||
+                path.StartsWithSegments("/swagger") ||
+                path.StartsWithSegments("/documentation") ||
+                path.Equals("/favicon.ico", StringComparison.OrdinalIgnoreCase))
+            {
+                await next();
+                return;
+            }
+
+            IUserAuthenticationService authService = context.RequestServices.GetRequiredService<IUserAuthenticationService>();
+            bool isSetupRequired = await authService.IsSetupRequiredAsync(context.RequestAborted);
+
+            // 2. Setup endpoints: /api/setup/*
+            if (path.StartsWithSegments("/api/setup"))
+            {
+                if (path.Equals("/api/setup/status", StringComparison.OrdinalIgnoreCase))
+                {
+                    await next();
+                    return;
+                }
+
+                if (!isSetupRequired && (path.Equals("/api/setup/initialize", StringComparison.OrdinalIgnoreCase) || path.Equals("/api/setup/generate-keypair", StringComparison.OrdinalIgnoreCase)))
+                {
+                    context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                    context.Response.ContentType = "application/json";
+                    await context.Response.WriteAsJsonAsync(new { error = "System has already completed initial Administrator setup." });
+                    return;
+                }
+
+                await next();
+                return;
+            }
+
+            // 3. If first-launch setup is required, strictly lock out all other API endpoints and redirect web pages to /setup
+            if (isSetupRequired)
+            {
+                if (path.StartsWithSegments("/api"))
+                {
+                    context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+                    context.Response.ContentType = "application/json";
+                    await context.Response.WriteAsJsonAsync(new
+                    {
+                        error = "First-launch system setup is required. Please initialize the master Administrator via /api/setup/initialize or navigate to /setup.",
+                        setupRequired = true
+                    });
+                    return;
+                }
+
+                if (!path.Equals("/setup", StringComparison.OrdinalIgnoreCase))
+                {
+                    context.Response.Redirect("/setup");
+                    return;
+                }
+
+                await next();
+                return;
+            }
+
+            // 4. Public authentication endpoints (do not require an existing token)
+            if (path.Equals("/api/auth/challenge", StringComparison.OrdinalIgnoreCase) ||
+                path.Equals("/api/auth/token", StringComparison.OrdinalIgnoreCase) ||
+                path.Equals("/api/auth/login-key", StringComparison.OrdinalIgnoreCase))
+            {
+                await next();
+                return;
+            }
+
+            // 5. Interactive Web UI pages (non-/api endpoints)
+            if (!path.StartsWithSegments("/api"))
+            {
+                await next();
+                return;
+            }
+
+            // 6. Extract Bearer token from Authorization header or weaver_session cookie
+            string? token = null;
+            string? authHeader = context.Request.Headers.Authorization;
+            if (!string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            {
+                token = authHeader["Bearer ".Length..].Trim();
+            }
+            else if (context.Request.Cookies.TryGetValue("weaver_session", out string? cookieToken) && !string.IsNullOrWhiteSpace(cookieToken))
+            {
+                token = cookieToken.Trim();
+            }
+
+            if (string.IsNullOrEmpty(token))
+            {
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                context.Response.ContentType = "application/json";
+                await context.Response.WriteAsJsonAsync(new { error = "Authentication required. Provide a valid Bearer token in Authorization header." });
+                return;
+            }
+
+            var (valid, user, errorReason) = await authService.ValidateTokenAsync(token, context.RequestAborted);
+            if (!valid || user == null)
+            {
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                context.Response.ContentType = "application/json";
+                await context.Response.WriteAsJsonAsync(new { error = errorReason ?? "Invalid or expired authentication token." });
+                return;
+            }
+
+            // 7. Access Gating: Web-only users cannot access REST API endpoints
+            if (user.AccessGate == AccessGate.Web)
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                context.Response.ContentType = "application/json";
+                await context.Response.WriteAsJsonAsync(new { error = "Access Denied: This user account is gated to Web interface access only." });
+                return;
+            }
+
+            // 8. Role Gating: Administrator-only endpoints
+            if (path.StartsWithSegments("/api/users") ||
+                (path.StartsWithSegments("/api/config") && context.Request.Method != "GET") ||
+                (path.StartsWithSegments("/api/stack") && context.Request.Method != "GET"))
+            {
+                if (user.Role != UserRole.Administrator)
+                {
+                    context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                    context.Response.ContentType = "application/json";
+                    await context.Response.WriteAsJsonAsync(new { error = "Forbidden: Administrator role required for this administrative resource." });
+                    return;
+                }
+            }
+
+            // 9. Role Gating: Administrator or Researcher endpoints (computational execution and modifications)
+            if (path.StartsWithSegments("/api/parser/process") ||
+                path.StartsWithSegments("/api/simulations/run") ||
+                (path.StartsWithSegments("/api/simulations/campaigns") && context.Request.Method == "POST") ||
+                path.Equals("/api/datasets/export", StringComparison.OrdinalIgnoreCase) ||
+                path.Equals("/api/datasets/import", StringComparison.OrdinalIgnoreCase) ||
+                path.StartsWithSegments("/api/fabrication/generate"))
+            {
+                if (user.Role != UserRole.Administrator && user.Role != UserRole.Researcher)
+                {
+                    context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                    context.Response.ContentType = "application/json";
+                    await context.Response.WriteAsJsonAsync(new { error = "Forbidden: Administrator or Researcher role required to execute simulations and modifications." });
+                    return;
+                }
+            }
+
+            // 10. Bind authenticated user to HttpContext.Items for downstream route handlers
+            context.Items["CurrentUser"] = user;
+            await next();
+        });
 
         // WHAT: Enables Swagger JSON, Swagger UI (/swagger), and ReDoc (/documentation).
         // WHY:  Exposes interactive OpenAPI 3.0 interfaces and comprehensive 3-column reference.
@@ -1025,6 +1218,444 @@ public class Program
         .Produces(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status400BadRequest)
         .Produces(StatusCodes.Status404NotFound);
+
+        // ---------------------------------------------------------------------
+        // REST API: First-Launch Setup Status
+        // ---------------------------------------------------------------------
+        app.MapGet("/api/setup/status", async (IUserAuthenticationService auth, CancellationToken ct) =>
+        {
+            // WHAT: Queries the initialization state of the sovereign node.
+            // WHY:  Allows client applications and web UIs to know whether to display the setup wizard.
+            // HOW:  Delegates to IUserAuthenticationService.IsSetupRequiredAsync.
+            bool required = await auth.IsSetupRequiredAsync(ct);
+            return Results.Ok(new SetupStatusResponse { SetupRequired = required });
+        })
+        .WithName("GetSetupStatus")
+        .WithTags("Authentication & Setup")
+        .WithSummary("Evaluates whether the first-launch setup wizard is required.")
+        .WithDescription("Returns true if no Administrator account has been provisioned yet, locking operational API endpoints.")
+        .Produces<SetupStatusResponse>(StatusCodes.Status200OK);
+
+        // ---------------------------------------------------------------------
+        // REST API: First-Launch Administrator Initialization
+        // ---------------------------------------------------------------------
+        app.MapPost("/api/setup/initialize", async (InitialSetupRequest request, IUserAuthenticationService auth, CancellationToken ct) =>
+        {
+            // WHAT: Provisions the master initial Administrator and locks the first-launch wizard.
+            // WHY:  Bootstraps the node's authoritative cryptographic identity and unblocks operational API endpoints.
+            // HOW:  Validates inputs, registers administrator account, and issues initial Bearer token.
+            if (string.IsNullOrWhiteSpace(request.AdminUsername) || string.IsNullOrWhiteSpace(request.PublicKeyBase64))
+            {
+                return Results.BadRequest(new { error = "Administrator username and public key are required." });
+            }
+
+            try
+            {
+                UserAccount admin = await auth.CompleteInitialSetupAsync(
+                    request.AdminUsername,
+                    request.PublicKeyBase64,
+                    request.Algorithm,
+                    request.AccessGate,
+                    ct);
+
+                string token = auth.GenerateBearerToken(admin);
+                return Results.Ok(new AuthTokenResponse
+                {
+                    Token = token,
+                    TokenType = "Bearer",
+                    ExpiresInSeconds = 28800,
+                    User = admin
+                });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        })
+        .WithName("InitializeSetup")
+        .WithTags("Authentication & Setup")
+        .WithSummary("Initializes the sovereign node with the master Administrator account.")
+        .WithDescription("Creates the authoritative initial Administrator account, unlocks all operational endpoints, and permanently locks setup.")
+        .Accepts<InitialSetupRequest>("application/json", "application/xml", "application/x-yaml")
+        .Produces<AuthTokenResponse>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status400BadRequest);
+
+        // ---------------------------------------------------------------------
+        // REST API: First-Launch Keypair Generation
+        // ---------------------------------------------------------------------
+        app.MapPost("/api/setup/generate-keypair", (GenerateKeyRequest request, IUserAuthenticationService auth) =>
+        {
+            // WHAT: Generates a high-security asymmetric keypair (Ed25519 or ML-DSA-65) for the initial administrator.
+            // WHY:  Allows administrators to generate secure cryptographic credentials directly without external CLI tools.
+            // HOW:  Invokes IUserAuthenticationService.GenerateSecureKeyBundle with optional passphrase encryption.
+            if (string.IsNullOrWhiteSpace(request.Username))
+            {
+                return Results.BadRequest(new { error = "Username is required." });
+            }
+
+            GeneratedKeyBundle bundle = auth.GenerateSecureKeyBundle(
+                request.Username,
+                UserRole.Administrator,
+                request.AccessGate,
+                request.Algorithm,
+                request.Password);
+
+            return Results.Ok(bundle);
+        })
+        .WithName("GenerateSetupKeypair")
+        .WithTags("Authentication & Setup")
+        .WithSummary("Generates a high-security asymmetric keypair for the initial Administrator.")
+        .WithDescription("Generates Ed25519 or ML-DSA-65 keypair with optional passphrase encryption.")
+        .Accepts<GenerateKeyRequest>("application/json", "application/xml", "application/x-yaml")
+        .Produces<GeneratedKeyBundle>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status400BadRequest);
+
+        // ---------------------------------------------------------------------
+        // REST API: Authentication Challenge Issuance
+        // ---------------------------------------------------------------------
+        app.MapPost("/api/auth/challenge", (ChallengeRequest request, IUserAuthenticationService auth) =>
+        {
+            // WHAT: Mints a time-bounded cryptographic challenge nonce.
+            // WHY:  Initiates zero-knowledge asymmetric challenge-response authentication.
+            // HOW:  Generates 32 random bytes and stores in active challenges with a 60-second TTL.
+            if (string.IsNullOrWhiteSpace(request.Username))
+            {
+                return Results.BadRequest(new { error = "Username is required." });
+            }
+
+            AuthChallenge challenge = auth.CreateChallenge(request.Username);
+            return Results.Ok(challenge);
+        })
+        .WithName("CreateAuthChallenge")
+        .WithTags("Authentication & Setup")
+        .WithSummary("Issues a cryptographic challenge nonce for private-key authentication.")
+        .WithDescription("Mints a time-bounded (60s) 256-bit challenge nonce that must be signed by the user's private key.")
+        .Accepts<ChallengeRequest>("application/json", "application/xml", "application/x-yaml")
+        .Produces<AuthChallenge>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status400BadRequest);
+
+        // ---------------------------------------------------------------------
+        // REST API: Challenge-Response Token Exchange
+        // ---------------------------------------------------------------------
+        app.MapPost("/api/auth/token", async (TokenExchangeRequest request, IUserAuthenticationService auth, CancellationToken ct) =>
+        {
+            // WHAT: Verifies a digitally signed challenge nonce and mints a Bearer token.
+            // WHY:  Completes private-key proof of possession without transmitting private key bytes over the wire.
+            // HOW:  Validates signature against user's registered public key and derives HMAC-signed token.
+            if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.ChallengeId) || string.IsNullOrWhiteSpace(request.SignatureBase64))
+            {
+                return Results.BadRequest(new { error = "Username, challengeId, and signatureBase64 are all required." });
+            }
+
+            var (success, errorMessage, token, user) = await auth.VerifyChallengeAndIssueTokenAsync(
+                request.Username,
+                request.ChallengeId,
+                request.SignatureBase64,
+                isWebRequest: false,
+                ct);
+
+            if (!success || token == null || user == null)
+            {
+                return Results.Json(new { error = errorMessage ?? "Authentication failed." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
+
+            return Results.Ok(new AuthTokenResponse
+            {
+                Token = token,
+                TokenType = "Bearer",
+                ExpiresInSeconds = 28800,
+                User = user
+            });
+        })
+        .WithName("ExchangeAuthToken")
+        .WithTags("Authentication & Setup")
+        .WithSummary("Exchanges a digitally signed challenge nonce for an authenticated Bearer token.")
+        .WithDescription("Verifies the signature against the registered public key and returns a scoped Bearer token.")
+        .Accepts<TokenExchangeRequest>("application/json", "application/xml", "application/x-yaml")
+        .Produces<AuthTokenResponse>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status401Unauthorized);
+
+        // ---------------------------------------------------------------------
+        // REST API: Direct Private Key Login (Web & API)
+        // ---------------------------------------------------------------------
+        app.MapPost("/api/auth/login-key", async (KeyLoginRequest request, IUserAuthenticationService auth, HttpContext context, CancellationToken ct) =>
+        {
+            // WHAT: Authenticates user directly using their private key PEM and optional password.
+            // WHY:  Provides streamlined sign-in for Web UI and REST API scripts holding private key files.
+            // HOW:  Decrypts private key in-memory, signs an ephemeral nonce, validates against public key, and sets session cookie.
+            if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.PrivateKeyPem))
+            {
+                return Results.BadRequest(new { error = "Username and privateKeyPem are required." });
+            }
+
+            var (success, errorMessage, token, user) = await auth.AuthenticateWithPrivateKeyAsync(
+                request.Username,
+                request.PrivateKeyPem,
+                request.Password,
+                isWebRequest: false,
+                ct);
+
+            if (!success || token == null || user == null)
+            {
+                return Results.Json(new { error = errorMessage ?? "Authentication failed." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
+
+            context.Response.Cookies.Append("weaver_session", token, new CookieOptions
+            {
+                HttpOnly = true,
+                SameSite = SameSiteMode.Strict,
+                Secure = context.Request.IsHttps,
+                Expires = DateTimeOffset.UtcNow.AddHours(8)
+            });
+
+            return Results.Ok(new AuthTokenResponse
+            {
+                Token = token,
+                TokenType = "Bearer",
+                ExpiresInSeconds = 28800,
+                User = user
+            });
+        })
+        .WithName("LoginWithPrivateKey")
+        .WithTags("Authentication & Setup")
+        .WithSummary("Authenticates directly using private key PEM and optional password.")
+        .WithDescription("Directly verifies private key ownership, signs an ephemeral nonce, and returns a Bearer token.")
+        .Accepts<KeyLoginRequest>("application/json", "application/xml", "application/x-yaml")
+        .Produces<AuthTokenResponse>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status401Unauthorized);
+
+        // ---------------------------------------------------------------------
+        // REST API: Current Authenticated User Identity
+        // ---------------------------------------------------------------------
+        app.MapGet("/api/auth/me", (HttpContext context) =>
+        {
+            // WHAT: Returns identity metadata and claims for the authenticated user.
+            // WHY:  Allows clients to inspect current role, access gating, and username.
+            // HOW:  Retrieves UserAccount attached to HttpContext.Items by the authentication middleware.
+            if (context.Items.TryGetValue("CurrentUser", out object? userObj) && userObj is UserAccount user)
+            {
+                return Results.Ok(user);
+            }
+            return Results.Unauthorized();
+        })
+        .WithName("GetCurrentUser")
+        .WithTags("Authentication & Setup")
+        .WithSummary("Retrieves the identity and claims of the authenticated user.")
+        .WithDescription("Returns the username, role, access gate, and public key metadata of the current Bearer token holder.")
+        .Produces<UserAccount>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized);
+
+        // ---------------------------------------------------------------------
+        // REST API: Sign Out / Session Clear
+        // ---------------------------------------------------------------------
+        app.MapPost("/api/auth/logout", (HttpContext context) =>
+        {
+            // WHAT: Terminates the interactive session.
+            // WHY:  Ensures session cookies are cleared upon user request.
+            // HOW:  Deletes the weaver_session cookie.
+            context.Response.Cookies.Delete("weaver_session");
+            return Results.Ok(new { message = "Successfully signed out." });
+        })
+        .WithName("Logout")
+        .WithTags("Authentication & Setup")
+        .WithSummary("Signs out the active user session and clears authentication cookies.")
+        .WithDescription("Clears the weaver_session cookie and terminates the interactive session.")
+        .Produces(StatusCodes.Status200OK);
+
+        // ---------------------------------------------------------------------
+        // REST API: User Management - List Users
+        // ---------------------------------------------------------------------
+        app.MapGet("/api/users", async (IUserAuthenticationService auth, CancellationToken ct) =>
+        {
+            // WHAT: Enumerates all registered sovereign user accounts.
+            // WHY:  Empowers Administrators to manage accounts, roles, and access boundaries.
+            // HOW:  Queries user repository via IUserAuthenticationService.
+            IReadOnlyList<UserAccount> users = await auth.ListUsersAsync(ct);
+            return Results.Ok(users);
+        })
+        .WithName("ListUsers")
+        .WithTags("User Management")
+        .WithSummary("Lists all registered sovereign user accounts.")
+        .WithDescription("Returns user accounts with their roles, access gates, and public key fingerprints (Administrator role required).")
+        .Produces<IReadOnlyList<UserAccount>>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden);
+
+        // ---------------------------------------------------------------------
+        // REST API: User Management - Create User
+        // ---------------------------------------------------------------------
+        app.MapPost("/api/users", async (CreateUserRequest request, IUserAuthenticationService auth, CancellationToken ct) =>
+        {
+            // WHAT: Provisions a new sovereign user account with a pre-existing public key.
+            // WHY:  Allows Administrator to add users who bring their own key material.
+            // HOW:  Validates input, stores user record in database, and logs compliance audit event.
+            if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.PublicKeyBase64))
+            {
+                return Results.BadRequest(new { error = "Username and publicKeyBase64 are required." });
+            }
+
+            try
+            {
+                UserAccount user = await auth.CreateUserAsync(
+                    request.Username,
+                    request.Role,
+                    request.AccessGate,
+                    request.PublicKeyBase64,
+                    request.Algorithm,
+                    ct);
+
+                return Results.Created($"/api/users/{user.Username}", user);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        })
+        .WithName("CreateUser")
+        .WithTags("User Management")
+        .WithSummary("Registers a new sovereign user with an existing public key.")
+        .WithDescription("Creates a new account bound to the provided public key (Administrator role required).")
+        .Accepts<CreateUserRequest>("application/json", "application/xml", "application/x-yaml")
+        .Produces<UserAccount>(StatusCodes.Status201Created)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden);
+
+        // ---------------------------------------------------------------------
+        // REST API: User Management - Generate Keypair and Create User
+        // ---------------------------------------------------------------------
+        app.MapPost("/api/users/generate-keypair", async (GenerateKeyRequest request, IUserAuthenticationService auth, CancellationToken ct) =>
+        {
+            // WHAT: Generates an asymmetric keypair and immediately registers the new user account.
+            // WHY:  Enables Administrators to onboard new team members in a single step with secure credentials.
+            // HOW:  Derives keypair, writes public key to user store, and returns the private key bundle.
+            if (string.IsNullOrWhiteSpace(request.Username))
+            {
+                return Results.BadRequest(new { error = "Username is required." });
+            }
+
+            try
+            {
+                GeneratedKeyBundle bundle = auth.GenerateSecureKeyBundle(
+                    request.Username,
+                    request.Role,
+                    request.AccessGate,
+                    request.Algorithm,
+                    request.Password);
+
+                await auth.CreateUserAsync(
+                    request.Username,
+                    request.Role,
+                    request.AccessGate,
+                    bundle.PublicKeyBase64,
+                    request.Algorithm,
+                    ct);
+
+                return Results.Ok(bundle);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        })
+        .WithName("GenerateUserKeypair")
+        .WithTags("User Management")
+        .WithSummary("Generates an asymmetric keypair and provisions a new user account.")
+        .WithDescription("Generates Ed25519 or ML-DSA-65 keys, registers the public key, and returns the private key bundle (Administrator role required).")
+        .Accepts<GenerateKeyRequest>("application/json", "application/xml", "application/x-yaml")
+        .Produces<GeneratedKeyBundle>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden);
+
+        // ---------------------------------------------------------------------
+        // REST API: User Management - Delete User
+        // ---------------------------------------------------------------------
+        app.MapDelete("/api/users/{username}", async (string username, IUserAuthenticationService auth, CancellationToken ct) =>
+        {
+            // WHAT: Deletes a user account.
+            // WHY:  Enforces security hygiene and user de-provisioning, protecting against deletion of the last admin.
+            // HOW:  Invokes IUserAuthenticationService.DeleteUserAsync.
+            try
+            {
+                bool deleted = await auth.DeleteUserAsync(username, ct);
+                if (!deleted)
+                {
+                    return Results.BadRequest(new { error = "Cannot delete user. User not found." });
+                }
+
+                return Results.Ok(new { message = $"User '{username}' successfully deleted." });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        })
+        .WithName("DeleteUser")
+        .WithTags("User Management")
+        .WithSummary("Revokes and deletes a user account.")
+        .WithDescription("Permanently removes the user account from the authoritative repository (Administrator role required).")
+        .Produces(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden);
+
+        // ---------------------------------------------------------------------
+        // REST API: Patient Digital DNA Package Generation & Download
+        // ---------------------------------------------------------------------
+        app.MapGet("/api/patient/dna", (
+            HttpContext context,
+            IFabricationService fab,
+            string? patientId,
+            TherapeuticRegimen? regimen,
+            string? geometry,
+            double? targetKd) =>
+        {
+            // WHAT: Synthesizes a patient-targeted Digital DNA package.
+            // WHY:  Allows Patients, Researchers, and Administrators to download digital DNA blueprints.
+            // HOW:  Generates nanocarrier sequences, staple routing tables, annealing schedule, and SHA-256 provenance.
+            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
+            string effectivePatientId = !string.IsNullOrWhiteSpace(patientId)
+                ? patientId
+                : (currentUser?.Username ?? "PATIENT-SOVEREIGN-01");
+
+            TherapeuticRegimen effectiveRegimen = regimen ?? TherapeuticRegimen.MaleToFemale;
+            string effectiveGeometry = !string.IsNullOrWhiteSpace(geometry) ? geometry : "Hexagonal Nanotube (6HB)";
+            double effectiveKd = targetKd ?? 3.5;
+
+            DnaOrigamiSample sample = fab.GetPresetSamples().FirstOrDefault(s => s.Regimen == effectiveRegimen)
+                ?? fab.GetPresetSamples()[0];
+            var (_, _, _, _, gcPercent, mwKDa) = fab.AnalyzeSequenceComposition(sample.AptamerSequence);
+
+            FabricationPackage pkg = fab.GenerateFabricationPackage(sample.Id, effectiveRegimen, effectiveGeometry, effectiveKd);
+
+            PatientDigitalDnaPackage package = new()
+            {
+                PatientId = effectivePatientId,
+                Regimen = effectiveRegimen,
+                TargetTissue = sample.TargetTissue,
+                ActiveLigand = sample.ActiveLigand,
+                NanocarrierGeometry = effectiveGeometry,
+                TargetAptamerKdNm = effectiveKd,
+                ScaffoldFasta = sample.AptamerSequence,
+                GcPercentage = gcPercent,
+                EstimatedMwKDa = mwKDa,
+                Staples = pkg.StapleOligos,
+                AnnealingProtocol = pkg.AnnealingSchedule,
+                ProvenanceSha256 = pkg.Sha256Manifest,
+                GeneratedAtUtc = DateTime.UtcNow
+            };
+
+            return Results.Ok(package);
+        })
+        .WithName("GetPatientDigitalDna")
+        .WithTags("Patient & Synthesis")
+        .WithSummary("Generates and downloads a complete patient-specific Digital DNA package.")
+        .WithDescription("Synthesizes staple oligos, annealing ramps, and cryptographic provenance for patient hormone delivery (Accessible by Patient, Researcher, and Administrator).")
+        .Produces<PatientDigitalDnaPackage>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized);
 
         app.Run();
     }

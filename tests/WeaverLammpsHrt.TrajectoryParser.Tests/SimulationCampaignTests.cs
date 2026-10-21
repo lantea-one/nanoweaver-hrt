@@ -61,6 +61,7 @@ public sealed class SimulationCampaignTests : IClassFixture<WebApplicationFactor
         });
 
         _client = _factory.CreateClient();
+        TestFixturesHelper.ConfigureAuthenticatedClient(_client, _factory);
     }
 
     /// <summary>

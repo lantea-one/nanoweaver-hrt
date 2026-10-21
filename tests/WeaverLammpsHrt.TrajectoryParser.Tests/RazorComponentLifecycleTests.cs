@@ -12,6 +12,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.JSInterop;
 using WeaverLammpsHrt.TrajectoryParser.Abstractions;
+using WeaverLammpsHrt.TrajectoryParser.Compliance;
 using WeaverLammpsHrt.TrajectoryParser.Components.Layout;
 using WeaverLammpsHrt.TrajectoryParser.Components.Pages;
 using WeaverLammpsHrt.TrajectoryParser.Configuration;
@@ -19,6 +20,9 @@ using WeaverLammpsHrt.TrajectoryParser.Endocrine;
 using WeaverLammpsHrt.TrajectoryParser.Fabrication;
 using WeaverLammpsHrt.TrajectoryParser.Genomics;
 using WeaverLammpsHrt.TrajectoryParser.Pipelines;
+using WeaverLammpsHrt.TrajectoryParser.Security.Authentication;
+using WeaverLammpsHrt.TrajectoryParser.Security.Cryptography;
+using WeaverLammpsHrt.TrajectoryParser.Security.KeyManagement;
 using WeaverLammpsHrt.TrajectoryParser.Services;
 using WeaverLammpsHrt.TrajectoryParser.Services.Stack;
 using WeaverLammpsHrt.TrajectoryParser.Simulations;
@@ -92,6 +96,12 @@ public sealed class RazorComponentLifecycleTests : IDisposable
         sc.AddSingleton<EndocrineStateEngine>();
         sc.AddSingleton<IPharmacogenomicsService, PharmacogenomicsService>();
         sc.AddSingleton<ISimulationCampaignService, SimulationCampaignService>();
+        sc.AddSingleton<IPostQuantumCryptoProvider, PostQuantumCryptoProvider>();
+        sc.AddSingleton<IKeyManagementService, KeyManagementService>();
+        sc.AddSingleton<IComplianceAuditService, ComplianceAuditService>();
+        sc.AddSingleton<IUserRepository, UserRepository>();
+        sc.AddSingleton<IUserAuthenticationService, UserAuthenticationService>();
+        sc.AddScoped<UserSessionState>();
         sc.AddSingleton<NavigationManager>(_navManager);
         sc.AddSingleton<IJSRuntime>(_jsRuntime);
         sc.AddHttpContextAccessor();
@@ -100,9 +110,12 @@ public sealed class RazorComponentLifecycleTests : IDisposable
         _services = sc.BuildServiceProvider();
         _renderer = new TestRenderer(_services, NullLoggerFactory.Instance);
 
-        // Initialize store
+        // Initialize store and user repository
         IConfigurationRepository repo = _services.GetRequiredService<IConfigurationRepository>();
         repo.InitializeAsync().GetAwaiter().GetResult();
+
+        IUserRepository userRepo = _services.GetRequiredService<IUserRepository>();
+        userRepo.InitializeAsync().GetAwaiter().GetResult();
     }
 
     /// <inheritdoc/>
@@ -702,14 +715,14 @@ public sealed class RazorComponentLifecycleTests : IDisposable
         /// </summary>
         public void SetUri(string uri)
         {
-            Uri = uri;
+            Uri = ToAbsoluteUri(uri).ToString();
             NotifyLocationChanged(false);
         }
 
         /// <inheritdoc/>
         protected override void NavigateToCore(string uri, bool forceLoad)
         {
-            Uri = uri;
+            Uri = ToAbsoluteUri(uri).ToString();
             NotifyLocationChanged(false);
         }
     }

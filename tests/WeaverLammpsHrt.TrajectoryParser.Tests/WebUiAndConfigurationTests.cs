@@ -63,6 +63,7 @@ public sealed class WebUiAndConfigurationTests : IClassFixture<WebApplicationFac
         });
 
         _client = _factory.CreateClient();
+        TestFixturesHelper.ConfigureAuthenticatedClient(_client, _factory);
     }
 
     /// <summary>

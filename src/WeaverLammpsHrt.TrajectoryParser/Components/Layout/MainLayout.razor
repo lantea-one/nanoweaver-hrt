@@ -1,6 +1,9 @@
 @inherits LayoutComponentBase
 @implements IDisposable
 @inject IConfigurationRepository ConfigRepo
+@inject IUserAuthenticationService AuthService
+@inject UserSessionState SessionState
+@inject NavigationManager Navigation
 
 <header class="navbar">
     <div class="brand">
@@ -17,6 +20,15 @@
         </div>
         <div class="badge badge-accent">@_acceleratorBackend.ToUpperInvariant()</div>
         <div class="badge badge-outline">DB: @ConfigRepo.ActiveBackendName</div>
+        @if (SessionState.IsAuthenticated)
+        {
+            <div class="badge badge-primary">@SessionState.CurrentUser?.Username (@SessionState.CurrentUser?.Role)</div>
+            <button class="btn btn-sm btn-outline text-muted" @onclick="HandleSignOut">Sign Out</button>
+        }
+        else
+        {
+            <a href="/login" class="btn btn-sm btn-outline">Sign In</a>
+        }
     </div>
 </header>
 
@@ -43,6 +55,12 @@
         <NavLink href="/compliance" class="nav-link">
             <span class="nav-icon">🔒</span> Compliance &amp; PQC
         </NavLink>
+        @if (SessionState.IsAdmin)
+        {
+            <NavLink href="/users" class="nav-link">
+                <span class="nav-icon">👥</span> User Management
+            </NavLink>
+        }
     </div>
 </nav>
 
@@ -119,6 +137,14 @@
     /// </summary>
     protected override async Task OnInitializedAsync()
     {
+        SessionState.OnChange += OnSessionChanged;
+
+        if (await AuthService.IsSetupRequiredAsync() && !Navigation.Uri.Contains("/setup"))
+        {
+            Navigation.NavigateTo("/setup");
+            return;
+        }
+
         _acceleratorBackend = await ConfigRepo.GetValueAsync("Simulation:AcceleratorBackend", "Intel iGPU / OpenCL");
         UpdateTelemetry();
         _telemetryTimer = new System.Threading.Timer(_ =>
@@ -129,6 +155,17 @@
                 StateHasChanged();
             });
         }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
+    }
+
+    private void OnSessionChanged()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void HandleSignOut()
+    {
+        SessionState.SignOut();
+        Navigation.NavigateTo("/login");
     }
 
     /// <summary>
@@ -153,6 +190,10 @@
     /// </summary>
     public void Dispose()
     {
+        if (SessionState != null)
+        {
+            SessionState.OnChange -= OnSessionChanged;
+        }
         _telemetryTimer?.Dispose();
     }
 }

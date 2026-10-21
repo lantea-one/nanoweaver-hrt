@@ -367,6 +367,18 @@ public sealed class ContentFormatAndSwaggerTests
             StatusCode = 200,
             Type = typeof(SystemTelemetry)
         });
+        apiDesc.SupportedResponseTypes.Add(new ApiResponseType
+        {
+            StatusCode = 204,
+            Type = null
+        });
+        operation.Responses["204"] = new OpenApiResponse
+        {
+            Content = new Dictionary<string, OpenApiMediaType>
+            {
+                ["application/json"] = new OpenApiMediaType { Schema = new OpenApiSchema() }
+            }
+        };
         apiDesc.ParameterDescriptions.Add(new ApiParameterDescription
         {
             Source = BindingSource.Body,

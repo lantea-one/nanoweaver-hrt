@@ -343,3 +343,21 @@ document.addEventListener('DOMContentLoaded', () => {
     loadEndocrineProfile();
     setInterval(updateTelemetry, 2000);
 });
+
+/**
+ * Downloads a string or binary payload as a file blob in the browser.
+ * @param {string} fileName - Target file name.
+ * @param {string} content - Text content.
+ * @param {string} mimeType - MIME type.
+ */
+window.weaverDownloadBlob = function(fileName, content, mimeType) {
+    const blob = new Blob([content], { type: mimeType || 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+};

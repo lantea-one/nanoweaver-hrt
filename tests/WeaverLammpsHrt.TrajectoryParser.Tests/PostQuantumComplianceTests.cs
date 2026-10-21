@@ -52,6 +52,7 @@ public sealed class PostQuantumComplianceTests : IClassFixture<WebApplicationFac
         });
 
         _client = _factory.CreateClient();
+        TestFixturesHelper.ConfigureAuthenticatedClient(_client, _factory);
     }
 
     /// <summary>

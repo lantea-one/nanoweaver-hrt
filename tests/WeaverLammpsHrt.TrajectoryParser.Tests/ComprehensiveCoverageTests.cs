@@ -68,6 +68,7 @@ public sealed class ComprehensiveCoverageTests : IClassFixture<WebApplicationFac
         });
 
         _client = customFactory.CreateClient();
+        TestFixturesHelper.ConfigureAuthenticatedClient(_client, customFactory);
     }
 
     /// <summary>

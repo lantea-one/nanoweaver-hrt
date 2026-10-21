@@ -1,6 +1,9 @@
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Text;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
+using WeaverLammpsHrt.TrajectoryParser.Security.Authentication;
 
 namespace WeaverLammpsHrt.TrajectoryParser.Tests;
 
@@ -194,5 +197,71 @@ ITEM: ATOMS id type x y z
         }
 
         return ms.ToArray();
+    }
+
+    /// <summary>
+    /// Thread synchronization lock for initial test administrator provisioning.
+    /// </summary>
+    private static readonly SemaphoreSlim AdminProvisionLock = new(1, 1);
+
+    /// <summary>
+    /// Ensures that an initial test Administrator account is provisioned in the test server and returns an authenticated Bearer token.
+    /// </summary>
+    /// <param name="factory">The test web application factory fixture.</param>
+    /// <returns>A signed Bearer token granting Administrator permissions.</returns>
+    public static async Task<string> EnsureTestAdminAndGetTokenAsync(WebApplicationFactory<Program> factory)
+    {
+        // WHAT: Bootstraps an authoritative Administrator user in the test database if not already provisioned.
+        // WHY:  Unlocks all API endpoints guarded by first-launch lockout and role-based access control.
+        // HOW:  Locks asynchronously, checks IsSetupRequiredAsync, creates the administrator if needed, and mints a Bearer token.
+        await AdminProvisionLock.WaitAsync();
+        try
+        {
+            using IServiceScope scope = factory.Services.CreateScope();
+            IUserAuthenticationService authService = scope.ServiceProvider.GetRequiredService<IUserAuthenticationService>();
+
+            if (await authService.IsSetupRequiredAsync())
+            {
+                GeneratedKeyBundle bundle = authService.GenerateSecureKeyBundle(
+                    "testadmin",
+                    UserRole.Administrator,
+                    AccessGate.ApiWeb,
+                    KeyAlgorithm.Ed25519);
+
+                UserAccount admin = await authService.CompleteInitialSetupAsync(
+                    "testadmin",
+                    bundle.PublicKeyBase64,
+                    KeyAlgorithm.Ed25519,
+                    AccessGate.ApiWeb);
+
+                return authService.GenerateBearerToken(admin);
+            }
+            else
+            {
+                IReadOnlyList<UserAccount> users = await authService.ListUsersAsync();
+                UserAccount admin = users.FirstOrDefault(u => u.Role == UserRole.Administrator)
+                    ?? throw new InvalidOperationException("No Administrator account found in initialized test database.");
+
+                return authService.GenerateBearerToken(admin);
+            }
+        }
+        finally
+        {
+            AdminProvisionLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Configures an HttpClient with an authenticated Administrator Bearer token.
+    /// </summary>
+    /// <param name="client">The target HTTP client to configure.</param>
+    /// <param name="factory">The web application factory.</param>
+    public static void ConfigureAuthenticatedClient(HttpClient client, WebApplicationFactory<Program> factory)
+    {
+        // WHAT: Configures default Authorization header with test admin token.
+        // WHY:  Enables integration test HTTP calls to execute with Administrator claims.
+        // HOW:  Awaits token generation synchronously and sets AuthenticationHeaderValue.
+        string token = EnsureTestAdminAndGetTokenAsync(factory).GetAwaiter().GetResult();
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
     }
 }

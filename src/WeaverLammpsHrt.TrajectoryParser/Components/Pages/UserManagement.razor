@@ -1,0 +1,374 @@
+@page "/users"
+@inject IUserAuthenticationService AuthService
+@inject UserSessionState SessionState
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+
+<div class="user-management-container">
+    <div class="d-flex justify-between align-center mb-3">
+        <div>
+            <h2>SOVEREIGN USER MANAGEMENT</h2>
+            <p class="subtext">Manage asymmetric cryptographic identities, authorization roles, and access gating boundaries.</p>
+        </div>
+        <div>
+            @if (SessionState.IsAdmin)
+            {
+                <button class="btn btn-primary" @onclick="OpenCreateModal">+ Register New User</button>
+            }
+        </div>
+    </div>
+
+    @if (!SessionState.IsAuthenticated)
+    {
+        <div class="alert alert-warning">
+            <strong>Authentication Required:</strong> Please <a href="/login">sign in</a> with your private key to view and manage user accounts.
+        </div>
+    }
+    else if (!SessionState.IsAdmin)
+    {
+        <div class="alert alert-danger">
+            <strong>Access Denied:</strong> Only accounts with the <span class="badge badge-accent">Administrator</span> role can access user management.
+        </div>
+    }
+    else
+    {
+        @if (!string.IsNullOrEmpty(_statusMessage))
+        {
+            <div class="alert @(_isStatusError ? "alert-danger" : "alert-success") mb-3">
+                @_statusMessage
+            </div>
+        }
+
+        <div class="card p-0 overflow-hidden">
+            <table class="table w-100">
+                <thead>
+                    <tr>
+                        <th>Username</th>
+                        <th>Role</th>
+                        <th>Access Gate</th>
+                        <th>Algorithm</th>
+                        <th>Public Key Fingerprint</th>
+                        <th>Created</th>
+                        <th>Last Login</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_users.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="9" class="text-center p-3 text-muted">No users found.</td>
+                        </tr>
+                    }
+                    @foreach (var user in _users)
+                    {
+                        <tr>
+                            <td class="font-mono font-bold">@user.Username</td>
+                            <td>
+                                @if (user.Role == UserRole.Administrator)
+                                {
+                                    <span class="badge badge-accent">Administrator</span>
+                                }
+                                else if (user.Role == UserRole.Researcher)
+                                {
+                                    <span class="badge badge-primary">Researcher</span>
+                                }
+                                else
+                                {
+                                    <span class="badge badge-outline">Patient</span>
+                                }
+                            </td>
+                            <td>
+                                <span class="badge badge-outline">@user.AccessGate</span>
+                            </td>
+                            <td class="font-mono">@user.Algorithm</td>
+                            <td class="font-mono text-muted">@FormatFingerprint(user.PublicKeyBase64)</td>
+                            <td>@user.CreatedAtUtc.ToString("yyyy-MM-dd HH:mm")</td>
+                            <td>@(user.LastLoginUtc?.ToString("yyyy-MM-dd HH:mm") ?? "Never")</td>
+                            <td>
+                                @if (user.IsActive)
+                                {
+                                    <span class="text-success">Active</span>
+                                }
+                                else
+                                {
+                                    <span class="text-danger">Inactive</span>
+                                }
+                            </td>
+                            <td>
+                                <button class="btn btn-sm btn-outline text-danger" @onclick="() => ConfirmDelete(user)">Revoke</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@if (_showCreateModal)
+{
+    <div class="modal-overlay">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3>Register Sovereign User</h3>
+                <button class="btn-close" @onclick="CloseCreateModal">&times;</button>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_modalError))
+            {
+                <div class="alert alert-danger mt-2">@_modalError</div>
+            }
+
+            @if (_newGeneratedBundle != null)
+            {
+                <div class="modal-body mt-3">
+                    <div class="alert alert-success">
+                        <strong>User Created Successfully!</strong> Save the generated private key below immediately.
+                    </div>
+
+                    <div class="form-group">
+                        <label>Generated Private Key PEM (@_newGeneratedBundle.Algorithm)</label>
+                        <textarea class="form-control font-mono code-box" rows="7" readonly>@_newGeneratedBundle.PrivateKeyPem</textarea>
+                    </div>
+
+                    <div class="mt-2 text-right">
+                        <button class="btn btn-primary" @onclick="DownloadNewPrivateKey">💾 Download Private Key (.pem)</button>
+                    </div>
+
+                    <div class="mt-4 text-center">
+                        <button class="btn btn-outline" @onclick="CloseCreateModal">Done</button>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="modal-body mt-2">
+                    <div class="form-group">
+                        <label for="newUsername">Username</label>
+                        <input id="newUsername" class="form-control font-mono" placeholder="e.g. researcher-01 or patient-402" @bind="_newUsername" />
+                    </div>
+
+                    <div class="grid grid-2 mt-2">
+                        <div class="form-group">
+                            <label for="newRole">Authorization Role</label>
+                            <select id="newRole" class="form-control" @bind="_newRole">
+                                <option value="@UserRole.Researcher">Researcher (Execute Simulations &amp; View Data)</option>
+                                <option value="@UserRole.Patient">Patient (View Results &amp; Download Digital DNA)</option>
+                                <option value="@UserRole.Administrator">Administrator (Full Control)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="newGate">Access Gate</label>
+                            <select id="newGate" class="form-control" @bind="_newGate">
+                                <option value="@AccessGate.ApiWeb">ApiWeb (Interactive Web &amp; REST API)</option>
+                                <option value="@AccessGate.Web">Web (Interactive Web UI Only)</option>
+                                <option value="@AccessGate.Api">Api (Headless REST API Only)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group mt-2">
+                        <label for="newAlgo">Cryptographic Algorithm</label>
+                        <select id="newAlgo" class="form-control" @bind="_newAlgo">
+                            <option value="@KeyAlgorithm.Ed25519">Ed25519 (Fast, Compact, Universal Standard)</option>
+                            <option value="@KeyAlgorithm.MlDsa65">ML-DSA-65 (NIST FIPS 204 Post-Quantum Module-Lattice)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group mt-2">
+                        <label>Key Provisioning Mode</label>
+                        <div class="d-flex gap-3">
+                            <label><input type="radio" name="keyMode" checked="@(_generateKeyMode)" @onchange="() => _generateKeyMode = true" /> Generate Keypair</label>
+                            <label><input type="radio" name="keyMode" checked="@(!_generateKeyMode)" @onchange="() => _generateKeyMode = false" /> Provide Public Key</label>
+                        </div>
+                    </div>
+
+                    @if (_generateKeyMode)
+                    {
+                        <div class="form-group mt-2">
+                            <label for="newKeyPassword">Optional Private Key Password</label>
+                            <input id="newKeyPassword" type="password" class="form-control" placeholder="Leave empty for plain PEM" @bind="_newKeyPassword" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="form-group mt-2">
+                            <label for="newCustomPubKey">Public Key (Base64 DER or PEM)</label>
+                            <textarea id="newCustomPubKey" class="form-control font-mono" rows="4" placeholder="-----BEGIN PUBLIC KEY-----..." @bind="_newCustomPubKey"></textarea>
+                        </div>
+                    }
+
+                    <div class="modal-footer mt-4 text-right">
+                        <button class="btn btn-outline" @onclick="CloseCreateModal">Cancel</button>
+                        <button class="btn btn-primary ml-2" @onclick="CreateUser">Create User Account</button>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private IReadOnlyList<UserAccount> _users = [];
+    private string? _statusMessage;
+    private bool _isStatusError;
+
+    private bool _showCreateModal;
+    private string _newUsername = string.Empty;
+    private UserRole _newRole = UserRole.Researcher;
+    private AccessGate _newGate = AccessGate.ApiWeb;
+    private KeyAlgorithm _newAlgo = KeyAlgorithm.Ed25519;
+    private bool _generateKeyMode = true;
+    private string _newKeyPassword = string.Empty;
+    private string _newCustomPubKey = string.Empty;
+    private string? _modalError;
+    private GeneratedKeyBundle? _newGeneratedBundle;
+
+    /// <inheritdoc/>
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUsersAsync();
+    }
+
+    private async Task LoadUsersAsync()
+    {
+        try
+        {
+            _users = await AuthService.ListUsersAsync();
+        }
+        catch (Exception ex)
+        {
+            _statusMessage = $"Failed to load users: {ex.Message}";
+            _isStatusError = true;
+        }
+    }
+
+    private void OpenCreateModal()
+    {
+        _newUsername = string.Empty;
+        _newRole = UserRole.Researcher;
+        _newGate = AccessGate.ApiWeb;
+        _newAlgo = KeyAlgorithm.Ed25519;
+        _generateKeyMode = true;
+        _newKeyPassword = string.Empty;
+        _newCustomPubKey = string.Empty;
+        _modalError = null;
+        _newGeneratedBundle = null;
+        _showCreateModal = true;
+    }
+
+    private void CloseCreateModal()
+    {
+        _showCreateModal = false;
+        _newGeneratedBundle = null;
+    }
+
+    private async Task CreateUser()
+    {
+        _modalError = null;
+        if (string.IsNullOrWhiteSpace(_newUsername))
+        {
+            _modalError = "Username is required.";
+            return;
+        }
+
+        try
+        {
+            if (_generateKeyMode)
+            {
+                _newGeneratedBundle = AuthService.GenerateSecureKeyBundle(
+                    _newUsername,
+                    _newRole,
+                    _newGate,
+                    _newAlgo,
+                    string.IsNullOrWhiteSpace(_newKeyPassword) ? null : _newKeyPassword);
+
+                await AuthService.CreateUserAsync(
+                    _newUsername,
+                    _newRole,
+                    _newGate,
+                    _newGeneratedBundle.PublicKeyBase64,
+                    _newAlgo);
+            }
+            else
+            {
+                if (string.IsNullOrWhiteSpace(_newCustomPubKey))
+                {
+                    _modalError = "Public key text is required.";
+                    return;
+                }
+
+                string pubKeyClean = ExtractCleanPublicKeyBase64(_newCustomPubKey);
+                await AuthService.CreateUserAsync(
+                    _newUsername,
+                    _newRole,
+                    _newGate,
+                    pubKeyClean,
+                    _newAlgo);
+
+                _showCreateModal = false;
+                _statusMessage = $"User '{_newUsername}' registered successfully.";
+                _isStatusError = false;
+            }
+
+            await LoadUsersAsync();
+        }
+        catch (Exception ex)
+        {
+            _modalError = ex.Message;
+        }
+    }
+
+    private async Task DownloadNewPrivateKey()
+    {
+        if (_newGeneratedBundle == null) return;
+        string fileName = $"{_newGeneratedBundle.Username}_private_key.pem";
+        await JSRuntime.InvokeVoidAsync("weaverDownloadBlob", fileName, _newGeneratedBundle.PrivateKeyPem, "application/x-pem-file");
+    }
+
+    private async Task ConfirmDelete(UserAccount user)
+    {
+        try
+        {
+            bool ok = await AuthService.DeleteUserAsync(user.Username);
+            if (ok)
+            {
+                _statusMessage = $"User '{user.Username}' revoked.";
+                _isStatusError = false;
+                await LoadUsersAsync();
+            }
+            else
+            {
+                _statusMessage = $"User '{user.Username}' not found.";
+                _isStatusError = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            _statusMessage = ex.Message;
+            _isStatusError = true;
+        }
+    }
+
+    private static string FormatFingerprint(string pubKeyBase64)
+    {
+        if (string.IsNullOrEmpty(pubKeyBase64)) return "N/A";
+        return pubKeyBase64.Length > 20 ? pubKeyBase64[..8] + "..." + pubKeyBase64[^8..] : pubKeyBase64;
+    }
+
+    private static string ExtractCleanPublicKeyBase64(string pemOrBase64)
+    {
+        string clean = pemOrBase64.Trim();
+        string[] lines = clean.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        System.Text.StringBuilder sb = new();
+        foreach (string line in lines)
+        {
+            string t = line.Trim();
+            if (t.StartsWith("-----") && t.EndsWith("-----")) continue;
+            sb.Append(t);
+        }
+        return sb.ToString();
+    }
+}

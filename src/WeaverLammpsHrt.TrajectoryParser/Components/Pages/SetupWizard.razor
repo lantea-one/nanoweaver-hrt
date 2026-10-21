@@ -1,0 +1,306 @@
+@page "/setup"
+@inject IUserAuthenticationService AuthService
+@inject UserSessionState SessionState
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+
+<div class="setup-container">
+    <div class="card setup-card">
+        <div class="setup-header">
+            <span class="logo-dot"></span>
+            <h2>SOVEREIGN FIRST-LAUNCH WIZARD</h2>
+            <p class="subtext">Initial Administrator Account &amp; Asymmetric Key Identity Provisioning</p>
+        </div>
+
+        @if (_isAlreadySetup)
+        {
+            <div class="alert alert-info mt-3">
+                <strong>System Initialized:</strong> The sovereign platform has already been initialized with an authoritative Administrator.
+                First-launch setup is permanently locked to prevent administrative hijacking.
+            </div>
+            <div class="text-center mt-3">
+                <a href="/" class="btn btn-primary">Return to Sovereign Dashboard</a>
+            </div>
+        }
+        else
+        {
+            <div class="setup-stepper">
+                <div class="step-indicator @(_step == 1 ? "active" : "completed")">1. Administrator Username</div>
+                <div class="step-indicator @(_step == 2 ? "active" : "")">2. Cryptographic Keypair</div>
+                <div class="step-indicator @(_step == 3 ? "active" : "")">3. Confirmation &amp; Lock-In</div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <div class="alert alert-danger mt-2">
+                    @_errorMessage
+                </div>
+            }
+
+            @if (_step == 1)
+            {
+                <div class="step-content mt-3">
+                    <h3>Step 1: Choose Master Administrator Identity</h3>
+                    <p class="subtext">
+                        The sovereign platform requires an authoritative Administrator holding full read/write privileges over
+                        molecular dynamic simulations, database overrides, and user accounts.
+                    </p>
+
+                    <div class="form-group mt-3">
+                        <label for="adminUsername">Administrator Username</label>
+                        <input id="adminUsername" class="form-control font-mono" placeholder="e.g. sysadmin or sovereign-lead" @bind="_adminUsername" />
+                    </div>
+
+                    <div class="form-group mt-2">
+                        <label for="accessGate">Access Gating Boundary</label>
+                        <select id="accessGate" class="form-control" @bind="_accessGate">
+                            <option value="@AccessGate.ApiWeb">ApiWeb (Interactive Dashboard &amp; REST API Access)</option>
+                            <option value="@AccessGate.Web">Web (Interactive Web Dashboard Only)</option>
+                        </select>
+                    </div>
+
+                    <div class="actions mt-4 text-right">
+                        <button class="btn btn-primary" @onclick="ProceedToStep2">Next: Cryptographic Keys &rarr;</button>
+                    </div>
+                </div>
+            }
+            else if (_step == 2)
+            {
+                <div class="step-content mt-3">
+                    <h3>Step 2: Provision Asymmetric Keypair</h3>
+                    <p class="subtext">
+                        Authentication is strictly based on asymmetric private/public key cryptography. Choose whether to generate
+                        a fresh high-security keypair or import an existing public key.
+                    </p>
+
+                    <div class="tab-group mt-2">
+                        <button class="tab-btn @(_keyOption == 0 ? "active" : "")" @onclick="() => _keyOption = 0">Generate Secure Keypair</button>
+                        <button class="tab-btn @(_keyOption == 1 ? "active" : "")" @onclick="() => _keyOption = 1">Upload Custom Public Key</button>
+                    </div>
+
+                    <div class="form-group mt-3">
+                        <label for="keyAlgo">Signature Algorithm</label>
+                        <select id="keyAlgo" class="form-control" @bind="_selectedAlgorithm">
+                            <option value="@KeyAlgorithm.Ed25519">Ed25519 (Fast, Compact, Universal SSH/API Standard)</option>
+                            <option value="@KeyAlgorithm.MlDsa65">ML-DSA-65 (NIST FIPS 204 Post-Quantum Module-Lattice)</option>
+                        </select>
+                    </div>
+
+                    @if (_keyOption == 0)
+                    {
+                        <div class="form-group mt-2">
+                            <label for="keyPassword">Optional Passphrase Encryption (Private Key Password)</label>
+                            <input id="keyPassword" type="password" class="form-control" placeholder="Leave empty for unencrypted key, or enter passphrase" @bind="_keyPassword" />
+                        </div>
+
+                        @if (_generatedBundle == null)
+                        {
+                            <button class="btn btn-secondary mt-3" @onclick="GenerateKeys">Generate High-Security Keypair</button>
+                        }
+                        else
+                        {
+                            <div class="generated-box mt-3 p-3 card">
+                                <h4 class="text-success">✓ Cryptographic Keypair Generated</h4>
+                                <p class="subtext">Save this private key securely. It will <strong>never</strong> be stored on the server.</p>
+
+                                <div class="form-group">
+                                    <label>Generated Private Key PEM</label>
+                                    <textarea class="form-control font-mono code-box" rows="6" readonly>@_generatedBundle.PrivateKeyPem</textarea>
+                                </div>
+
+                                <div class="btn-group mt-2">
+                                    <button class="btn btn-outline" @onclick="DownloadPrivateKey">💾 Download Private Key (.pem)</button>
+                                </div>
+
+                                <div class="checkbox-row mt-3">
+                                    <input type="checkbox" id="backupConfirm" @bind="_backedUpConfirmed" />
+                                    <label for="backupConfirm">I have downloaded and backed up my private key. I understand that access cannot be recovered without it.</label>
+                                </div>
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="form-group mt-2">
+                            <label for="customPubKey">Public Key (Base64 DER or PEM string)</label>
+                            <textarea id="customPubKey" class="form-control font-mono code-box" rows="5" placeholder="-----BEGIN PUBLIC KEY----- ... or raw Base64" @bind="_customPublicKeyText"></textarea>
+                        </div>
+                    }
+
+                    <div class="actions mt-4 d-flex justify-between">
+                        <button class="btn btn-outline" @onclick="() => _step = 1">&larr; Back</button>
+                        <button class="btn btn-primary" @onclick="ProceedToStep3">Next: Review &amp; Lock-In &rarr;</button>
+                    </div>
+                </div>
+            }
+            else if (_step == 3)
+            {
+                <div class="step-content mt-3">
+                    <h3>Step 3: Confirm &amp; Initialize Sovereign System</h3>
+                    <p class="subtext">Review the master Administrator configuration before committing. Once initialized, first-launch setup will be permanently locked.</p>
+
+                    <div class="summary-table mt-3">
+                        <div class="summary-row">
+                            <span class="label">Administrator Username:</span>
+                            <span class="value font-mono">@_adminUsername</span>
+                        </div>
+                        <div class="summary-row">
+                            <span class="label">Assigned Role:</span>
+                            <span class="value badge badge-accent">Administrator (Full Control)</span>
+                        </div>
+                        <div class="summary-row">
+                            <span class="label">Access Gate:</span>
+                            <span class="value badge badge-outline">@_accessGate</span>
+                        </div>
+                        <div class="summary-row">
+                            <span class="label">Algorithm:</span>
+                            <span class="value font-mono">@_selectedAlgorithm</span>
+                        </div>
+                        <div class="summary-row">
+                            <span class="label">Public Key Fingerprint:</span>
+                            <span class="value font-mono text-muted">@GetFingerprint()</span>
+                        </div>
+                    </div>
+
+                    <div class="actions mt-4 d-flex justify-between">
+                        <button class="btn btn-outline" @onclick="() => _step = 2">&larr; Back</button>
+                        <button class="btn btn-success" @onclick="FinalizeSetup">🚀 Initialize Sovereign Platform</button>
+                    </div>
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    private bool _isAlreadySetup;
+    private int _step = 1;
+    private string _adminUsername = "administrator";
+    private AccessGate _accessGate = AccessGate.ApiWeb;
+    private KeyAlgorithm _selectedAlgorithm = KeyAlgorithm.Ed25519;
+    private int _keyOption = 0; // 0: Generate, 1: Custom
+    private string _keyPassword = string.Empty;
+    private string _customPublicKeyText = string.Empty;
+    private GeneratedKeyBundle? _generatedBundle;
+    private bool _backedUpConfirmed;
+    private string? _errorMessage;
+
+    /// <inheritdoc/>
+    protected override async Task OnInitializedAsync()
+    {
+        _isAlreadySetup = !await AuthService.IsSetupRequiredAsync();
+    }
+
+    private void ProceedToStep2()
+    {
+        _errorMessage = null;
+        if (string.IsNullOrWhiteSpace(_adminUsername))
+        {
+            _errorMessage = "Administrator username must not be empty.";
+            return;
+        }
+        _step = 2;
+    }
+
+    private void GenerateKeys()
+    {
+        _errorMessage = null;
+        try
+        {
+            _generatedBundle = AuthService.GenerateSecureKeyBundle(
+                _adminUsername,
+                UserRole.Administrator,
+                _accessGate,
+                _selectedAlgorithm,
+                string.IsNullOrWhiteSpace(_keyPassword) ? null : _keyPassword);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Key generation error: {ex.Message}";
+        }
+    }
+
+    private async Task DownloadPrivateKey()
+    {
+        if (_generatedBundle == null) return;
+        string fileName = $"{_adminUsername}_private_key.pem";
+        string content = _generatedBundle.PrivateKeyPem;
+        await JSRuntime.InvokeVoidAsync("weaverDownloadBlob", fileName, content, "application/x-pem-file");
+    }
+
+    private void ProceedToStep3()
+    {
+        _errorMessage = null;
+        if (_keyOption == 0)
+        {
+            if (_generatedBundle == null)
+            {
+                _errorMessage = "Please click 'Generate High-Security Keypair' first.";
+                return;
+            }
+            if (!_backedUpConfirmed)
+            {
+                _errorMessage = "You must confirm that you have downloaded and backed up your private key.";
+                return;
+            }
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(_customPublicKeyText))
+            {
+                _errorMessage = "Please provide your public key text.";
+                return;
+            }
+        }
+
+        _step = 3;
+    }
+
+    private string GetFingerprint()
+    {
+        string raw = _keyOption == 0
+            ? _generatedBundle?.PublicKeyBase64 ?? string.Empty
+            : ExtractCleanPublicKeyBase64(_customPublicKeyText);
+
+        if (string.IsNullOrEmpty(raw)) return "N/A";
+        return raw.Length > 24 ? raw[..12] + "..." + raw[^12..] : raw;
+    }
+
+    private async Task FinalizeSetup()
+    {
+        _errorMessage = null;
+        try
+        {
+            string pubKey = _keyOption == 0
+                ? _generatedBundle!.PublicKeyBase64
+                : ExtractCleanPublicKeyBase64(_customPublicKeyText);
+
+            UserAccount admin = await AuthService.CompleteInitialSetupAsync(
+                _adminUsername,
+                pubKey,
+                _selectedAlgorithm,
+                _accessGate);
+
+            SessionState.SetUser(admin);
+            Navigation.NavigateTo("/", forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Initialization failed: {ex.Message}";
+        }
+    }
+
+    private static string ExtractCleanPublicKeyBase64(string pemOrBase64)
+    {
+        string clean = pemOrBase64.Trim();
+        string[] lines = clean.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        System.Text.StringBuilder sb = new();
+        foreach (string line in lines)
+        {
+            string t = line.Trim();
+            if (t.StartsWith("-----") && t.EndsWith("-----")) continue;
+            sb.Append(t);
+        }
+        return sb.ToString();
+    }
+}

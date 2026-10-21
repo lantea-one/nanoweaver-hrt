@@ -51,6 +51,7 @@ public sealed class EndpointIntegrationTests : IClassFixture<WebApplicationFacto
         });
 
         _client = _factory.CreateClient();
+        TestFixturesHelper.ConfigureAuthenticatedClient(_client, _factory);
     }
 
     /// <summary>
