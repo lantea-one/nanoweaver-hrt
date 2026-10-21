@@ -2,7 +2,7 @@
 
 > **NIST FIPS 203 (ML-KEM-768), FIPS 204 (ML-DSA-65), HIPAA Safe Harbor, GDPR Article 17 Crypto-Shredding, GINA, and FDA 21 CFR Part 11 Audit Trails**
 
-Weaver-LAMMPS-HRT processes deeply sensitive biomedical payloads: individualized endocrine kinetics profiles, targeted DNA origami nanocarrier sequences, patient pharmacogenomic variants (e.g., Factor V Leiden, AR CAG repeats), and multi-gigabyte molecular dynamics trajectory files.
+NanoWeaverHrt processes deeply sensitive biomedical payloads: individualized endocrine kinetics profiles, targeted DNA origami nanocarrier sequences, patient pharmacogenomic variants (e.g., Factor V Leiden, AR CAG repeats), and multi-gigabyte molecular dynamics trajectory files.
 
 To safeguard patient sovereignty against future quantum computing threats ("Harvest Now, Decrypt Later") and fulfill international regulatory standards, the platform integrates an enterprise-grade **Post-Quantum Cryptography (PQC)** engine and a **Unified Regulatory Compliance Suite**.
 
@@ -22,7 +22,7 @@ flowchart LR
     CRQC -.->|Blocked by Lattice Math| PQC["ML-KEM-768 + AES-256-GCM<br>Remains Quantum Secure"]
 ```
 
-Weaver-LAMMPS-HRT protects patient data **today** using post-quantum lattice-based mathematical structures that remain provably intractable for both classical supercomputers and quantum architectures.
+NanoWeaverHrt protects patient data **today** using post-quantum lattice-based mathematical structures that remain provably intractable for both classical supercomputers and quantum architectures.
 
 ---
 
@@ -82,7 +82,7 @@ The platform implements per-subject key derivation and multi-tier cryptographic 
 ### GDPR Article 17: Right to Erasure via Crypto-Shredding
 In distributed computing and peer-to-peer synthetic biology environments, physically deleting raw trajectory coordinates or multi-gigabyte logs across immutable backups or peer nodes is often practically impossible.
 
-Under **GDPR Article 17**, Weaver-LAMMPS-HRT achieves irreversible cryptographic erasure through **Crypto-Shredding**:
+Under **GDPR Article 17**, NanoWeaverHrt achieves irreversible cryptographic erasure through **Crypto-Shredding**:
 
 ```mermaid
 flowchart TD
@@ -195,7 +195,7 @@ The interactive Blazor dashboard provides continuous compliance monitoring:
 
 ## 9. Asymmetric PKI Identity, Role Gating & Browser Idle Expiration
 
-To prevent credential leakage, eliminate brute-force password attacks, and protect against administrative hijacking, Weaver-LAMMPS-HRT implements a **zero-password cryptographic public-key infrastructure (PKI)** for all user accounts and API clients.
+To prevent credential leakage, eliminate brute-force password attacks, and protect against administrative hijacking, NanoWeaverHrt implements a **zero-password cryptographic public-key infrastructure (PKI)** for all user accounts and API clients.
 
 ### Cryptographic Identity & Challenge-Response Authentication
 User identities are anchored to asymmetric cryptographic keypairs:
@@ -229,7 +229,7 @@ Features include:
 
 ### Automatic Browser Idle Session Expiration
 
-Unattended workstations in clinical and wet-lab environments represent a critical security vulnerability. Weaver-LAMMPS-HRT implements an automated **Browser Idle Timeout Guard**:
+Unattended workstations in clinical and wet-lab environments represent a critical security vulnerability. NanoWeaverHrt implements an automated **Browser Idle Timeout Guard**:
 
 ![Session Expiration and Login](images/10_login_and_idle_timeout.png)
 
@@ -244,7 +244,7 @@ Unattended workstations in clinical and wet-lab environments represent a critica
 
 ## 10. Deterministic Multi-Dialect SQL Schema Migrations
 
-Weaver-LAMMPS-HRT guarantees reliable database evolution without relying on fragile ad-hoc DDL scripts or manual SQL interventions.
+NanoWeaverHrt guarantees reliable database evolution without relying on fragile ad-hoc DDL scripts or manual SQL interventions.
 
 ### Architecture of `DatabaseMigrationRunner`
 The migration subsystem coordinates versioned, idempotent schema updates across both **SQLite** (local embedded node) and **PostgreSQL** (`pg_duckdb` cluster backend):
@@ -278,7 +278,7 @@ flowchart TD
 
 ## 11. Zero-Information-Disclosure RFC 7807 ProblemDetails
 
-In accordance with strict security hardening guidelines, Weaver-LAMMPS-HRT eliminates sensitive data leakage across all REST API endpoints.
+In accordance with strict security hardening guidelines, NanoWeaverHrt eliminates sensitive data leakage across all REST API endpoints.
 
 ### RFC 7807 Specification & Content Negotiation
 All unhandled exceptions, validation failures, and authorization denials return structured Problem Details compliant with **RFC 7807**, formatted according to the client's `Accept` header:

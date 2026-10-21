@@ -2,7 +2,7 @@
 
 > **Step-by-Step Practical Guides for Wet-Lab Nanotechnologists and Computational Researchers**
 
-This guide provides concrete, end-to-end walkthroughs for common workflows in **Weaver-LAMMPS-HRT**. Each workflow details the scientific objectives, parameter settings, expected inputs and outputs, and system interactions.
+This guide provides concrete, end-to-end walkthroughs for common workflows in **NanoWeaverHrt** (`nanoweaver-hrt`). Each workflow details the scientific objectives, parameter settings, expected inputs and outputs, and system interactions.
 
 ---
 

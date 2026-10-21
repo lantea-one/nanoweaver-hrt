@@ -2,7 +2,7 @@
 
 > **Minimal API Catalog, Multi-Format Serialization (JSON, XML & YAML), OpenAPI / Swagger / ReDoc Specifications, and Automated Test Harness**
 
-The **Weaver-LAMMPS-HRT** platform exposes a high-throughput, low-overhead REST API built on ASP.NET Core Minimal APIs. The API supports content negotiation across three representations:
+The **NanoWeaverHrt** (`nanoweaver-hrt`) platform exposes a high-throughput, low-overhead REST API built on ASP.NET Core Minimal APIs. The API supports content negotiation across three representations:
 
 * **JSON**: Strictly formatted in **lower camelCase** (e.g., `nodeName`, `framesParsed`, `targetKd`).
 * **XML**: Clean, strongly-typed XML documents with explicit root naming.

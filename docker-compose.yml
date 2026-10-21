@@ -1,5 +1,5 @@
 # ==============================================================================
-# Weaver-LAMMPS-HRT: Sovereign Simulation & Zero-Allocation Parser Stack
+# NanoWeaverHrt (nanoweaver-hrt): Sovereign Simulation & Zero-Allocation Parser Stack
 # ------------------------------------------------------------------------------
 # WHAT: Default Docker Compose stack running the hardware-accelerated simulation 
 #       engine and .NET 10 trajectory streaming parser.
@@ -14,7 +14,7 @@
 #   - AMD Radeon:      docker compose -f docker-compose.yml -f compose/docker-compose.radeon.yml up -d
 # ==============================================================================
 
-name: weaver-lammps-hrt
+name: nanoweaver-hrt
 
 services:
   # ----------------------------------------------------------------------------
@@ -25,7 +25,7 @@ services:
     build:
       context: .
       dockerfile: docker/simulation/Dockerfile.simulation
-    image: git.lantea.one/${FORGEJO_REPOSITORY:-lantea.one/dotnet-weaver-lammps-hrt}/simulation-engine:${TAG:-latest}
+    image: git.lantea.one/${FORGEJO_REPOSITORY:-lantea.one/nanoweaver-hrt}/simulation-engine:${TAG:-latest}
     container_name: weaver-simulation
     hostname: simulation-node
     devices:
@@ -53,7 +53,7 @@ services:
     build:
       context: .
       dockerfile: docker/parser/Dockerfile.parser
-    image: git.lantea.one/${FORGEJO_REPOSITORY:-lantea.one/dotnet-weaver-lammps-hrt}/trajectory-parser:${TAG:-latest}
+    image: git.lantea.one/${FORGEJO_REPOSITORY:-lantea.one/nanoweaver-hrt}/trajectory-parser:${TAG:-latest}
     container_name: weaver-parser
     hostname: parser-node
     ports:

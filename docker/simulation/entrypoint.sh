@@ -11,7 +11,7 @@
 set -euo pipefail
 
 echo "=========================================================="
-echo "  Weaver-LAMMPS-HRT: Simulation Node Initialization"
+echo "  NanoWeaverHrt (nanoweaver-hrt): Simulation Node Initialization"
 echo "  Node Identity: ${HOSTNAME:-simulation-node}"
 echo "  Target Backend: ${ACCELERATOR_BACKEND:-auto}"
 echo "=========================================================="

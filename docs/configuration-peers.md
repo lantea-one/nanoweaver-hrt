@@ -2,7 +2,7 @@
 
 > **Authoritative Database Precedence, Single-Use Share Keys, and Research Node Federation**
 
-The **Configuration & Peering** module manages the persistence layer of the Weaver-LAMMPS-HRT platform. It guarantees that configuration changes made by authorized researchers remain strictly authoritative across container restarts, while providing a zero-trust, cryptographically verified mechanism for federating research nodes.
+The **Configuration & Peering** module manages the persistence layer of the NanoWeaverHrt (`nanoweaver-hrt`) platform. It guarantees that configuration changes made by authorized researchers remain strictly authoritative across container restarts, while providing a zero-trust, cryptographically verified mechanism for federating research nodes.
 
 ![Authoritative Database Configuration & Sovereign Peering](images/03_configuration_peers.png)
 
@@ -10,7 +10,7 @@ The **Configuration & Peering** module manages the persistence layer of the Weav
 
 ## 1. The Database Precedence Law
 
-A foundational architectural principle of the Weaver-LAMMPS-HRT platform is the **Database Precedence Law**:
+A foundational architectural principle of the NanoWeaverHrt platform is the **Database Precedence Law**:
 
 > **"Whatever is in the database wins. Stack environment variables do nothing if configuration exists in the database."**
 

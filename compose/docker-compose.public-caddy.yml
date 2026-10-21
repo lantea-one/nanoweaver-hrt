@@ -19,7 +19,7 @@
 #   docker compose -f docker-compose.yml -f compose/docker-compose.public-caddy.yml up -d
 # ==============================================================================
 
-name: weaver-lammps-hrt
+name: nanoweaver-hrt
 
 services:
   # ----------------------------------------------------------------------------

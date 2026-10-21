@@ -1,5 +1,5 @@
 # ==============================================================================
-# Weaver-LAMMPS-HRT: Hardened Valkey In-Memory Cache & Distributed Event Bus Overlay
+# NanoWeaverHrt (nanoweaver-hrt): Hardened Valkey In-Memory Cache & Distributed Event Bus Overlay
 # ------------------------------------------------------------------------------
 # WHAT: Docker Compose override adding a hardened Valkey 8 instance (Linux Foundation
 #       open-source Redis fork) for distributed pub/sub, event streams, and caching.

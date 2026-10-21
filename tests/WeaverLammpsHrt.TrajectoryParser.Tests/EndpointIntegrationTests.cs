@@ -32,7 +32,7 @@ public sealed class EndpointIntegrationTests : IClassFixture<WebApplicationFacto
     public EndpointIntegrationTests(WebApplicationFactory<Program> factory)
     {
         string? current = AppContext.BaseDirectory;
-        while (!string.IsNullOrEmpty(current) && !File.Exists(Path.Combine(current, "dotnet-weaver-lammps-hrt.sln")))
+        while (!string.IsNullOrEmpty(current) && !File.Exists(Path.Combine(current, "NanoWeaverHrt.sln")))
         {
             current = Directory.GetParent(current)?.FullName;
         }
@@ -243,7 +243,7 @@ public sealed class EndpointIntegrationTests : IClassFixture<WebApplicationFacto
         // WHY:  Ensures researchers can download cryptographically signed bundles over HTTP.
         // HOW:  Writes a temporary export file and requests it via the download endpoint.
         string? current = AppContext.BaseDirectory;
-        while (!string.IsNullOrEmpty(current) && !File.Exists(Path.Combine(current, "dotnet-weaver-lammps-hrt.sln")))
+        while (!string.IsNullOrEmpty(current) && !File.Exists(Path.Combine(current, "NanoWeaverHrt.sln")))
         {
             current = Directory.GetParent(current)?.FullName;
         }

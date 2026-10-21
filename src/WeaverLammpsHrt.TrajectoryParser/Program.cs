@@ -115,18 +115,18 @@ public class Program
         {
             c.SwaggerDoc("v1", new OpenApiInfo
             {
-                Title = "Weaver-LAMMPS-HRT Sovereign API",
+                Title = "NanoWeaverHrt (nanoweaver-hrt) Sovereign API",
                 Version = "v1",
                 Description = "Sovereign Hormone Replacement Therapy (HRT) DNA Origami, Endocrine Simulation, and Trajectory Analytics API.",
                 Contact = new OpenApiContact
                 {
-                    Name = "Weaver-LAMMPS-HRT Research Initiative",
-                    Url = new Uri("https://github.com/lantea-one/dotnet-weaver-lammps-hrt")
+                    Name = "NanoWeaverHrt Research Initiative",
+                    Url = new Uri("https://github.com/lantea-one/nanoweaver-hrt")
                 },
                 License = new OpenApiLicense
                 {
                     Name = "MIT License",
-                    Url = new Uri("https://github.com/lantea-one/dotnet-weaver-lammps-hrt/blob/main/LICENSE")
+                    Url = new Uri("https://github.com/lantea-one/nanoweaver-hrt/blob/main/LICENSE")
                 }
             });
 
@@ -413,15 +413,15 @@ public class Program
         });
         app.UseSwaggerUI(c =>
         {
-            c.SwaggerEndpoint("/swagger/v1/swagger.json", "Weaver-LAMMPS-HRT API v1");
+            c.SwaggerEndpoint("/swagger/v1/swagger.json", "NanoWeaverHrt API v1");
             c.RoutePrefix = "swagger";
-            c.DocumentTitle = "Weaver-LAMMPS-HRT Swagger UI";
+            c.DocumentTitle = "NanoWeaverHrt Swagger UI";
         });
         app.UseReDoc(c =>
         {
             c.SpecUrl = "/swagger/v1/swagger.json";
             c.RoutePrefix = "documentation";
-            c.DocumentTitle = "Weaver-LAMMPS-HRT API Documentation";
+            c.DocumentTitle = "NanoWeaverHrt API Documentation";
         });
 
         app.MapGet("/swagger", () => Results.Redirect("/swagger/index.html")).ExcludeFromDescription();

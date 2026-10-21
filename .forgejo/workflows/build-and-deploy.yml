@@ -22,13 +22,13 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Restore Dependencies
-        run: dotnet restore dotnet-weaver-lammps-hrt.sln
+        run: dotnet restore NanoWeaverHrt.sln
 
       - name: Verify .NET Code Formatting
         # WHAT: Enforces standard .NET formatting and style conventions.
         # WHY:  Guarantees uniform code formatting across all contributor commits and fails the build if changes are needed.
         # HOW:  Runs dotnet format --verify-no-changes with zero-tolerance for unformatted files.
-        run: dotnet format dotnet-weaver-lammps-hrt.sln --no-restore --verify-no-changes --verbosity normal
+        run: dotnet format NanoWeaverHrt.sln --no-restore --verify-no-changes --verbosity normal
 
       - name: Verify JavaScript Code & Coverage Gate
         # WHAT: Executes client-side JavaScript visualization tests.
@@ -40,7 +40,7 @@ jobs:
         # WHAT: Runs the test suite in Release configuration with cross-platform code coverage collection.
         # WHY:  Ensures that all unit and integration tests pass and emits Cobertura coverage data.
         # HOW:  Uses dotnet test with coverlet.runsettings configuring 100% line and branch thresholds.
-        run: dotnet test dotnet-weaver-lammps-hrt.sln --no-restore --configuration Release --settings coverlet.runsettings --collect:"XPlat Code Coverage" --verbosity normal
+        run: dotnet test NanoWeaverHrt.sln --no-restore --configuration Release --settings coverlet.runsettings --collect:"XPlat Code Coverage" --verbosity normal
 
       - name: Enforce 100% Line and Branch Code Coverage Threshold
         # WHAT: Parses the generated coverage report and validates that line-rate and branch-rate are both 100%.

@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * Weaver-LAMMPS-HRT: Sovereign Nanotechnology Web UI Frontend
+ * NanoWeaverHrt (nanoweaver-hrt): Sovereign Nanotechnology Web UI Frontend
  * ----------------------------------------------------------------------------
  * WHAT: Client-side logic for real-time telemetry updates, zero-allocation 
  *       parser triggers, and cryptographic dataset import/export.

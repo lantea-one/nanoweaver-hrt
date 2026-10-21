@@ -23,7 +23,7 @@ public static class TestFixturesHelper
         // WHY:  Prevents race conditions in parallel xUnit test execution on fresh Git checkouts.
         // HOW:  Resolves solution directory and invokes EnsureTestFixtures during module initialization.
         string? current = AppContext.BaseDirectory;
-        while (!string.IsNullOrEmpty(current) && !File.Exists(Path.Combine(current, "dotnet-weaver-lammps-hrt.sln")))
+        while (!string.IsNullOrEmpty(current) && !File.Exists(Path.Combine(current, "NanoWeaverHrt.sln")))
         {
             string? parent = Directory.GetParent(current)?.FullName;
             if (parent == current)
@@ -33,7 +33,7 @@ public static class TestFixturesHelper
             current = parent;
         }
 
-        if (!string.IsNullOrEmpty(current) && File.Exists(Path.Combine(current, "dotnet-weaver-lammps-hrt.sln")))
+        if (!string.IsNullOrEmpty(current) && File.Exists(Path.Combine(current, "NanoWeaverHrt.sln")))
         {
             EnsureTestFixtures(Path.Combine(current, "simulations", "shared-data"));
         }

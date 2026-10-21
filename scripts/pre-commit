@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Weaver-LAMMPS-HRT: Git Pre-Commit Hook
+# NanoWeaverHrt (nanoweaver-hrt): Git Pre-Commit Hook
 # ------------------------------------------------------------------------------
 # WHAT: Pre-commit hook executing the universal verification gate.
 # WHY:  Prevents committing code with formatting errors, coverage drops, or broken math.

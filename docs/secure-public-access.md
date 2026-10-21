@@ -1,6 +1,6 @@
 # Secure Public Access & Reverse Proxies
 
-> **Summary:** A comprehensive, beginner-friendly guide to publishing your sovereign **weaver-lammps-hrt** instance to the public internet securely. Learn how to configure automated, free **Let's Encrypt SSL/TLS certificates**, eliminate plaintext HTTP, enable high-performance **WebSockets**, and harden your deployment using production-ready Docker Compose overlays and reverse proxy architectures.
+> **Summary:** A comprehensive, beginner-friendly guide to publishing your sovereign **nanoweaver-hrt** instance to the public internet securely. Learn how to configure automated, free **Let's Encrypt SSL/TLS certificates**, eliminate plaintext HTTP, enable high-performance **WebSockets**, and harden your deployment using production-ready Docker Compose overlays and reverse proxy architectures.
 
 ---
 
@@ -27,7 +27,7 @@ flowchart TD
         Proxy["Reverse Proxy (Caddy / Nginx / Traefik)<br>- Free Let's Encrypt SSL<br>- Auto TLS 1.3 Termination<br>- HTTP to HTTPS Redirect<br>- Hardened Headers & Rate Limiting"]
     end
 
-    subgraph DockerInternal["Internal Docker Network (weaver-lammps-hrt)"]
+    subgraph DockerInternal["Internal Docker Network (nanoweaver-hrt)"]
         Parser["weaver-parser (Kestrel :5000)<br>- Loopback Only (127.0.0.1)<br>- Blazor SignalR Streaming<br>- Zero-Allocation Frame Engine"]
         Sim["weaver-simulation<br>(oxDNA & LAMMPS Engines)"]
     end
@@ -91,12 +91,12 @@ sudo ufw reload
 **Caddy** is the recommended reverse proxy for both beginners and seasoned researchers. It automatically obtains, renews, and manages free Let's Encrypt certificates without any external certbot cron jobs or renewal scripts.
 
 ### 4.1. Architecture
-- Uses the included [`compose/docker-compose.public-caddy.yml`](https://git.lantea.one/Lantea.One/dotnet-weaver-lammps-hrt/src/branch/main/compose/docker-compose.public-caddy.yml) overlay.
+- Uses the included [`compose/docker-compose.public-caddy.yml`](https://git.lantea.one/Lantea.One/nanoweaver-hrt/src/branch/main/compose/docker-compose.public-caddy.yml) overlay.
 - Rebinds the Trajectory Parser from `0.0.0.0:5000` to `127.0.0.1:5000` (loopback only), completely shielding it from direct external connections.
 - Exposes ports `80` and `443` on Caddy with non-root security boundaries and dropped Linux capabilities.
 
 ### 4.2. Hardened Caddy Configuration
-The configuration is stored in [`compose/caddy/Caddyfile`](https://git.lantea.one/Lantea.One/dotnet-weaver-lammps-hrt/src/branch/main/compose/caddy/Caddyfile):
+The configuration is stored in [`compose/caddy/Caddyfile`](https://git.lantea.one/Lantea.One/nanoweaver-hrt/src/branch/main/compose/caddy/Caddyfile):
 
 ```caddy
 {
@@ -157,7 +157,7 @@ Caddy will automatically contact Let's Encrypt, solve the HTTP-01 challenge on p
 For enterprise environments or researchers with existing Nginx workflows, the repository provides an automated Nginx + Certbot setup.
 
 ### 5.1. Architecture
-- Uses [`compose/docker-compose.public-nginx.yml`](https://git.lantea.one/Lantea.One/dotnet-weaver-lammps-hrt/src/branch/main/compose/docker-compose.public-nginx.yml).
+- Uses [`compose/docker-compose.public-nginx.yml`](https://git.lantea.one/Lantea.One/nanoweaver-hrt/src/branch/main/compose/docker-compose.public-nginx.yml).
 - Pairs a hardened Alpine Nginx container with the official `certbot/certbot` image.
 - Shares an ACME challenge webroot volume (`certbot_www`) and SSL certificate storage volume (`certbot_conf`).
 - The Certbot companion runs an automated 12-hour renewal check in the background.
@@ -173,7 +173,7 @@ export ACME_EMAIL="admin@yourdomain.org"
 # 2. Temporarily request the initial certificate using Certbot standalone mode
 docker run -it --rm --name certbot-bootstrap \
     -p 80:80 \
-    -v "weaver-lammps-hrt_certbot_conf:/etc/letsencrypt" \
+    -v "nanoweaver-hrt_certbot_conf:/etc/letsencrypt" \
     certbot/certbot certonly \
     --standalone \
     -d "$DOMAIN" \
@@ -186,7 +186,7 @@ docker compose -f docker-compose.yml -f compose/docker-compose.public-nginx.yml 
 ```
 
 ### 5.3. Nginx Virtual Host Highlights
-The configuration template in [`compose/nginx/nginx.conf`](https://git.lantea.one/Lantea.One/dotnet-weaver-lammps-hrt/src/branch/main/compose/nginx/nginx.conf) includes:
+The configuration template in [`compose/nginx/nginx.conf`](https://git.lantea.one/Lantea.One/nanoweaver-hrt/src/branch/main/compose/nginx/nginx.conf) includes:
 - **WebSocket Upgrade Mapping:** Correctly upgrades HTTP/1.1 connections to WebSockets for Blazor Server and SignalR hubs.
 - **Zero Buffering (`proxy_buffering off;`):** Ensures real-time 60 FPS trajectory coordinate streaming reaches the client browser without intermediate chunking delays.
 - **Extended Timeouts (`proxy_read_timeout 86400s;`):** Prevents long-running simulation monitoring sessions from timing out.
@@ -338,14 +338,14 @@ Create `/etc/systemd/system/weaver-hrt.service` to manage the .NET 10 microservi
 
 ```ini
 [Unit]
-Description=Weaver-LAMMPS-HRT Trajectory Parser & Sovereign Web UI
+Description=NanoWeaverHrt (nanoweaver-hrt) Trajectory Parser & Sovereign Web UI
 After=network.target
 
 [Service]
 Type=simple
 User=weaver
-WorkingDirectory=/opt/weaver-lammps-hrt
-ExecStart=/usr/bin/dotnet run --project /opt/weaver-lammps-hrt/src/WeaverLammpsHrt.TrajectoryParser/WeaverLammpsHrt.TrajectoryParser.csproj --configuration Release --no-restore
+WorkingDirectory=/opt/nanoweaver-hrt
+ExecStart=/usr/bin/dotnet run --project /opt/nanoweaver-hrt/src/WeaverLammpsHrt.TrajectoryParser/WeaverLammpsHrt.TrajectoryParser.csproj --configuration Release --no-restore
 Restart=always
 RestartSec=5
 Environment=ASPNETCORE_ENVIRONMENT=Production
@@ -364,7 +364,7 @@ sudo systemctl status weaver-hrt
 ```
 
 ### 9.2. Standalone Nginx Configuration
-Create `/etc/nginx/sites-available/weaver-lammps-hrt`:
+Create `/etc/nginx/sites-available/nanoweaver-hrt`:
 
 ```nginx
 upstream weaver_backend {
@@ -436,7 +436,7 @@ Install Certbot, link the site configuration, and request the certificate:
 sudo apt update && sudo apt install -y nginx certbot python3-certbot-nginx
 
 # 2. Enable site configuration
-sudo ln -s /etc/nginx/sites-available/weaver-lammps-hrt /etc/nginx/sites-enabled/
+sudo ln -s /etc/nginx/sites-available/nanoweaver-hrt /etc/nginx/sites-enabled/
 sudo nginx -t
 
 # 3. Obtain certificate via Certbot Nginx plugin
@@ -535,7 +535,7 @@ sudo systemctl restart apache2
 ```
 
 ### 11.2. Apache VirtualHost Configuration
-Create `/etc/apache2/sites-available/weaver-lammps-hrt.conf`:
+Create `/etc/apache2/sites-available/nanoweaver-hrt.conf`:
 
 ```apache
 # HTTP VirtualHost - Port 80 Redirect
@@ -599,7 +599,7 @@ Obtain a free Let's Encrypt SSL/TLS certificate using Certbot:
 
 ```bash
 # Enable the Apache site configuration
-sudo a2ensite weaver-lammps-hrt.conf
+sudo a2ensite nanoweaver-hrt.conf
 
 # Obtain and install the Let's Encrypt certificate
 sudo certbot --apache -d hrt.yourdomain.org
@@ -787,7 +787,7 @@ Test your domain using the free [Qualys SSL Labs SSL Server Test](https://www.ss
   ```bash
   # For Docker Compose:
   docker compose ps
-  docker network inspect weaver-lammps-hrt_default
+  docker network inspect nanoweaver-hrt_default
 
   # For Native Host systemd:
   sudo systemctl status weaver-hrt

@@ -1,7 +1,7 @@
 # AGENTS.md: Universal AI Assistant & Contributor Guide
 
 > **Note for AI Coding Assistants (Claude, Cursor, Copilot, Gemini, ChatGPT, Antigravity):**
-> You are acting as a Principal Systems Architect and Computational Nanotechnologist working on **weaver-lammps-hrt** (`dotnet-weaver-lammps-hrt`), an open-source decentralized synthetic biology and DNA origami research platform.
+> You are acting as a Principal Systems Architect and Computational Nanotechnologist working on **nanoweaver-hrt** (`NanoWeaverHrt` / `nanoweaver-hrt`), an open-source decentralized synthetic biology and DNA origami research platform.
 > **Project Goal:** To develop and fabricate a permanent Female to Male (FtM) and Male to Female (MtF) Hormone Replacement Therapy (HRT) using patient-targeted delivery.
 > Read this document completely before generating or editing code in this repository.
 
@@ -40,7 +40,7 @@
 
 7. **Zero-Tolerance Code Formatting**:
    - All C# code must conform strictly to `.editorconfig` rules.
-   - `dotnet format dotnet-weaver-lammps-hrt.sln --verify-no-changes` must exit with 0 changes.
+   - `dotnet format NanoWeaverHrt.sln --verify-no-changes` must exit with 0 changes.
 
 8. **Documentation & Markdown Rendering Invariants**:
    - Never wrap physical units (`50 µL`, `100 µM`), chemical formulas (`17β-estradiol`, `Mg²⁺`), or temperatures (`37°C`, `90°C → 4°C`) in single-dollar LaTeX delimiters (`$ ... $`).

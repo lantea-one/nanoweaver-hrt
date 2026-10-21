@@ -1,17 +1,17 @@
-# Scientific Abstract: `weaver-lammps-hrt`
+# Scientific Abstract: `nanoweaver-hrt`
 
 > **Title:**  
 > **Autonomous Closed-Loop DNA Origami Nanocarriers for Permanent, Patient-Targeted Endocrine Regulation: An Open-Source In-Silico Modeling, Pharmacogenomics, Post-Quantum Cryptography, and Benchtop Fabrication Framework**
 >
 > **Authors / Consortium:**  
-> Weaver-LAMMPS-HRT Computational Nanotechnology & Systems Pharmacology Working Group  
+> NanoWeaverHrt Computational Nanotechnology & Systems Pharmacology Working Group  
 > *Sovereign Open-Source Biotechnology Initiative*
 
 ---
 
 ### Executive Abstract
 
-Conventional Hormone Replacement Therapy (HRT) for gender-affirming care relies on lifelong, episodic exogenous administration of sex steroids via intramuscular depot injections, transdermal matrices, or oral formulations. This therapeutic paradigm induces chronic peak-to-trough pharmacokinetic volatility, elevated thromboembolic and hepatic risks, systemic dysphoric fluctuations, and absolute dependency on vulnerable centralized pharmaceutical supply chains. Here, we present **`weaver-lammps-hrt`** (`dotnet-weaver-lammps-hrt`), an open-source computational nanotechnology, biomedical simulation, and synthetic biology platform engineering autonomous, patient-targeted DNA origami nanocarriers for closed-loop Female-to-Male (FtM) and Male-to-Female (MtF) endocrine regulation.
+Conventional Hormone Replacement Therapy (HRT) for gender-affirming care relies on lifelong, episodic exogenous administration of sex steroids via intramuscular depot injections, transdermal matrices, or oral formulations. This therapeutic paradigm induces chronic peak-to-trough pharmacokinetic volatility, elevated thromboembolic and hepatic risks, systemic dysphoric fluctuations, and absolute dependency on vulnerable centralized pharmaceutical supply chains. Here, we present **`nanoweaver-hrt`** (`NanoWeaverHrt`), an open-source computational nanotechnology, biomedical simulation, and synthetic biology platform engineering autonomous, patient-targeted DNA origami nanocarriers for closed-loop Female-to-Male (FtM) and Male-to-Female (MtF) endocrine regulation.
 
 The platform unites multi-scale molecular dynamics, high-throughput zero-allocation stream ingestion, individualized pharmacogenomic recalibration, post-quantum cryptography, and decentralized benchtop fabrication protocols into a sovereign, auditable architecture:
 

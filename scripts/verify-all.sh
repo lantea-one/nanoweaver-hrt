@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Weaver-LAMMPS-HRT: Universal Verification & Quality Gate
+# NanoWeaverHrt (nanoweaver-hrt): Universal Verification & Quality Gate
 # ------------------------------------------------------------------------------
 # WHAT: Comprehensive pre-flight verification script enforcing all project
 #       standards: .NET code formatting, 100% C# code coverage (line + branch),
@@ -16,7 +16,7 @@ set -euo pipefail
 echo "=============================================================================="
 echo ">> Step 1/5: Verifying .NET Code Formatting..."
 echo "=============================================================================="
-XDG_RUNTIME_DIR=/tmp dotnet format dotnet-weaver-lammps-hrt.sln --no-restore --verify-no-changes --verbosity normal
+XDG_RUNTIME_DIR=/tmp dotnet format NanoWeaverHrt.sln --no-restore --verify-no-changes --verbosity normal
 echo "✓ .NET code formatting verified cleanly."
 
 echo ""
@@ -30,7 +30,7 @@ echo ""
 echo "=============================================================================="
 echo ">> Step 3/5: Running .NET Test Suite with Coverage Collection..."
 echo "=============================================================================="
-XDG_RUNTIME_DIR=/tmp dotnet test dotnet-weaver-lammps-hrt.sln \
+XDG_RUNTIME_DIR=/tmp dotnet test NanoWeaverHrt.sln \
     --configuration Release \
     --settings coverlet.runsettings \
     --collect:"XPlat Code Coverage" \

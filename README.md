@@ -1,4 +1,4 @@
-# dotnet-weaver-lammps-hrt (weaver-lammps-hrt)
+# nanoweaver-hrt (NanoWeaverHrt)
 
 > **Core Project Goal:**  
 > **To develop and fabricate a permanent Female-to-Male (FtM) and Male-to-Female (MtF) Hormone Replacement Therapy (HRT) using patient-targeted delivery.**
@@ -9,17 +9,17 @@
 
 > [!IMPORTANT]
 > **Authoritative Upstream Source:** This project is developed and maintained on a sovereign, decentralized Git forge powered by **Forgejo**:  
-> 🔗 **[https://git.lantea.one/Lantea.One/dotnet-weaver-lammps-hrt](https://git.lantea.one/Lantea.One/dotnet-weaver-lammps-hrt)**
+> 🔗 **[https://git.lantea.one/Lantea.One/nanoweaver-hrt](https://git.lantea.one/Lantea.One/nanoweaver-hrt)**
 >
 > **GitHub is a Read-Only Downstream Mirror:** Due to the real threat of administrative censorship, account suspension, and arbitrary deplatforming of open-source synthetic biology and gender-affirming healthcare research by centralized corporate platforms, GitHub is maintained strictly as an automated read-only distribution mirror.
 >
 > **Contributing, Forking, and Issue Tracking:**  
-> - **All forks, pull requests, issues, and active development MUST be conducted directly on the sovereign [Forgejo repository](https://git.lantea.one/Lantea.One/dotnet-weaver-lammps-hrt).**
+> - **All forks, pull requests, issues, and active development MUST be conducted directly on the sovereign [Forgejo repository](https://git.lantea.one/Lantea.One/nanoweaver-hrt).**
 > - Do **not** fork or submit pull requests on GitHub; downstream mirrors are not the authoritative source of truth and are subject to third-party administrative disruption.
 >
 > ```bash
 > # Clone directly from the authoritative sovereign Forgejo remote:
-> git clone https://git.lantea.one/Lantea.One/dotnet-weaver-lammps-hrt.git
+> git clone https://git.lantea.one/Lantea.One/nanoweaver-hrt.git
 > ```
 
 ---
@@ -27,9 +27,9 @@
 ## 📄 Scientific Abstract
 
 > **Title:** **Autonomous Closed-Loop DNA Origami Nanocarriers for Permanent, Patient-Targeted Endocrine Regulation: An Open-Source In-Silico Modeling, Pharmacogenomics, Post-Quantum Cryptography, and Benchtop Fabrication Framework**  
-> **Authors / Consortium:** Weaver-LAMMPS-HRT Computational Nanotechnology & Systems Pharmacology Working Group | *Sovereign Open-Source Biotechnology Initiative*
+> **Authors / Consortium:** NanoWeaverHrt Computational Nanotechnology & Systems Pharmacology Working Group | *Sovereign Open-Source Biotechnology Initiative*
 
-Conventional Hormone Replacement Therapy (HRT) for gender-affirming care relies on lifelong, episodic exogenous administration of sex steroids via intramuscular depot injections, transdermal matrices, or oral formulations. This paradigm induces chronic peak-to-trough pharmacokinetic volatility, elevated thromboembolic and hepatic risks, systemic dysphoric fluctuations, and absolute dependency on vulnerable centralized pharmaceutical supply chains. Here, we present **`weaver-lammps-hrt`**, an open-source computational nanotechnology, biomedical simulation, and synthetic biology platform engineering autonomous, patient-targeted DNA origami nanocarriers for permanent, closed-loop Female-to-Male (FtM) and Male-to-Female (MtF) endocrine regulation.
+Conventional Hormone Replacement Therapy (HRT) for gender-affirming care relies on lifelong, episodic exogenous administration of sex steroids via intramuscular depot injections, transdermal matrices, or oral formulations. This paradigm induces chronic peak-to-trough pharmacokinetic volatility, elevated thromboembolic and hepatic risks, systemic dysphoric fluctuations, and absolute dependency on vulnerable centralized pharmaceutical supply chains. Here, we present **`nanoweaver-hrt`**, an open-source computational nanotechnology, biomedical simulation, and synthetic biology platform engineering autonomous, patient-targeted DNA origami nanocarriers for permanent, closed-loop Female-to-Male (FtM) and Male-to-Female (MtF) endocrine regulation.
 
 The platform couples multi-scale molecular dynamics with real-time bioinformatic streaming, post-quantum cryptography, and decentralized fabrication protocols:
 1. **Structural Nanotechnology & Biomolecular Gating:** Engineered nanocarriers (hexagonal six-helix bundle nanotubes, hollow 3D cuboids, and tetrahedral cages folded from bacteriophage M13mp18 ssDNA scaffolds) feature surface-conjugated peptide and nucleic acid aptamer ligands displaying high-affinity tropism for anterior pituitary gonadotropes along the Hypothalamic-Pituitary-Gonadal (HPG) axis. Autonomous allosteric aptamer gates modulate steroid hormone micro-release in direct response to endogenous gonadotropin (LH/FSH) feedback signals, achieving self-regulating physiological homeostasis.
@@ -38,7 +38,7 @@ The platform couples multi-scale molecular dynamics with real-time bioinformatic
 4. **Post-Quantum Cryptography & Regulatory Audit Trail:** Conforms to NIST FIPS 203 (ML-KEM-768) and FIPS 204 (ML-DSA-65) for quantum-resistant envelope encryption and digital signatures. Enforces FDA 21 CFR Part 11 compliant immutable hash-chained audit trails, HIPAA Safe Harbor cryptographic pseudonymization, and GDPR Article 17 "Right to be Forgotten" via authenticated crypto-shredding.
 5. **Decentralized Translation & Community Science ("How-To"):** Complete oligo routing tables, cryptographic SHA-256 and ML-DSA-65 provenance manifests, and an exhaustive benchtop fabrication protocol (50 µL stoichiometric pipetting schedules, non-toxic reagent substitutions, 90°C → 4°C thermal annealing ramps, and agarose gel electrophoresis QC guidelines).
 
-For the interactive documentation, architectural guides, and visual workflows, visit the [**Weaver-LAMMPS-HRT Documentation Wiki**](docs/index.md).
+For the interactive documentation, architectural guides, and visual workflows, visit the [**NanoWeaverHrt Documentation Wiki**](docs/index.md).
 
 ---
 
@@ -46,7 +46,7 @@ For the interactive documentation, architectural guides, and visual workflows, v
 
 Current clinical Hormone Replacement Therapy (HRT) requires lifelong exogenous administration of steroid hormones (estradiol or testosterone injections, patches, or gels), creating systemic troughs, dependency on fragile pharmaceutical supply chains, and fluctuating endocrine levels. 
 
-**`weaver-lammps-hrt`** is an open-source, sovereign computational platform designed to model, simulate, and fabricate permanent, patient-targeted endocrine delivery and feedback systems. By coupling **DNA nanotechnology (DNA origami)** with **bistable synthetic biology toggle circuits**, the system achieves targeted in-vivo hormonal regulation.
+**`nanoweaver-hrt`** is an open-source, sovereign computational platform designed to model, simulate, and fabricate permanent, patient-targeted endocrine delivery and feedback systems. By coupling **DNA nanotechnology (DNA origami)** with **bistable synthetic biology toggle circuits**, the system achieves targeted in-vivo hormonal regulation.
 
 ```mermaid
 flowchart TD
@@ -180,7 +180,7 @@ The embedded dashboard provides:
 
 Comprehensive documentation, biomedical engineering primers, architectural diagrams, screenshots, and step-by-step example workflows are available in the repository's [**`docs/`**](docs/) directory and automatically deployed as an interactive wiki via GitHub Pages:
 
-* **[Live Documentation Portal](https://lantea-one.github.io/dotnet-weaver-lammps-hrt/)** (GitHub Pages)
+* **[Live Documentation Portal](https://lantea-one.github.io/nanoweaver-hrt/)** (GitHub Pages)
 * **[Scientific Abstract](docs/abstract.md)**: Formal peer-reviewed abstract, biophysical gating mechanisms, zero-allocation pipeline specifications, and stage-gate verification matrix.
 * **[Getting Started & Deployment Guide](docs/getting-started.md)**: Local .NET 10 setup and Docker GPU overrides (Intel Arc, NVIDIA, AMD).
 * **[Secure Public Access & Reverse Proxies](docs/secure-public-access.md)**: Production deployment architectures, free Let's Encrypt SSL/TLS, Caddy, Nginx, Traefik, and Cloudflare Tunnels.
@@ -213,7 +213,7 @@ dotnet run --project src/WeaverLammpsHrt.TrajectoryParser/WeaverLammpsHrt.Trajec
 ### Run Test Suite & Quality Verification Gate
 ```bash
 # Run all unit tests across parsers, cryptographic dataset services, and endocrine engines
-dotnet test dotnet-weaver-lammps-hrt.sln
+dotnet test NanoWeaverHrt.sln
 
 # Run JavaScript visualizer test suite (100% line, branch, function coverage)
 npm test

@@ -41,7 +41,7 @@ public sealed class WebUiAndConfigurationTests : IClassFixture<WebApplicationFac
     public WebUiAndConfigurationTests(WebApplicationFactory<Program> factory)
     {
         string? current = AppContext.BaseDirectory;
-        while (!string.IsNullOrEmpty(current) && !File.Exists(Path.Combine(current, "dotnet-weaver-lammps-hrt.sln")))
+        while (!string.IsNullOrEmpty(current) && !File.Exists(Path.Combine(current, "NanoWeaverHrt.sln")))
         {
             current = Directory.GetParent(current)?.FullName;
         }
@@ -440,7 +440,7 @@ public sealed class WebUiAndConfigurationTests : IClassFixture<WebApplicationFac
         // WHY:  Enforces identical build and coverage constraints (100% line and branch coverage) across JS and .NET code.
         // HOW:  Runs 'node --test --experimental-test-coverage' with coverage checks on weaver-visualizer.test.mjs.
         string? current = AppContext.BaseDirectory;
-        while (!string.IsNullOrEmpty(current) && !File.Exists(Path.Combine(current, "dotnet-weaver-lammps-hrt.sln")))
+        while (!string.IsNullOrEmpty(current) && !File.Exists(Path.Combine(current, "NanoWeaverHrt.sln")))
         {
             current = Directory.GetParent(current)?.FullName;
         }

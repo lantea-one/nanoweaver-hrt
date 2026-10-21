@@ -11,7 +11,7 @@
  *       and hardware-accelerated 2D canvas primitives.
  * ----------------------------------------------------------------------------
  * LICENSE: MIT License
- * Copyright (c) 2026 lantea-one / Weaver-LAMMPS-HRT Contributors
+ * Copyright (c) 2026 lantea-one / NanoWeaverHrt (nanoweaver-hrt) Contributors
  * ============================================================================
  */
 

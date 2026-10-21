@@ -2,7 +2,7 @@
 
 > **Quickstart, Local Setup, and Hardware-Accelerated Container Deployment**
 
-This guide walks you through setting up and running **Weaver-LAMMPS-HRT** on your local workstation or high-performance compute node. The system is designed to run self-contained with zero external cloud dependencies.
+This guide walks you through setting up and running **NanoWeaverHrt** (`nanoweaver-hrt`) on your local workstation or high-performance compute node. The system is designed to run self-contained with zero external cloud dependencies.
 
 ---
 
@@ -39,15 +39,15 @@ For development, testing, and UI exploration, you can run the trajectory parser 
 
 ### Step 1: Clone the Repository
 ```bash
-git clone https://git.lantea.one/Lantea.One/dotnet-weaver-lammps-hrt.git
-cd dotnet-weaver-lammps-hrt
+git clone https://git.lantea.one/Lantea.One/nanoweaver-hrt.git
+cd nanoweaver-hrt
 ```
 
 ### Step 2: Build the Solution
 Compile the .NET 10 microservice and test projects:
 ```bash
 # Set XDG_RUNTIME_DIR if running in sandboxed or headless Linux environments
-XDG_RUNTIME_DIR=/tmp dotnet build dotnet-weaver-lammps-hrt.sln
+XDG_RUNTIME_DIR=/tmp dotnet build NanoWeaverHrt.sln
 ```
 
 ### Step 3: Run the Service
@@ -145,7 +145,7 @@ We maintain strict test-driven engineering standards. All pull requests must pas
 
 ### Running .NET Unit & Integration Tests
 ```bash
-XDG_RUNTIME_DIR=/tmp dotnet test dotnet-weaver-lammps-hrt.sln \
+XDG_RUNTIME_DIR=/tmp dotnet test NanoWeaverHrt.sln \
   --collect:"XPlat Code Coverage" \
   --settings coverlet.runsettings
 ```
@@ -163,7 +163,7 @@ cd ../../..
 ## 5. Directory Structure Overview
 
 ```
-dotnet-weaver-lammps-hrt/
+nanoweaver-hrt/
 ├── compose/                              # Docker Compose overrides (Hardware & Public Access)
 │   ├── caddy/                            # Hardened Caddy reverse proxy configuration
 │   │   └── Caddyfile                     # Automatic Let's Encrypt TLS & WebSocket proxy

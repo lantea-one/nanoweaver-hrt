@@ -2,7 +2,7 @@
 
 > **IMPORTANT: READ BEFORE USING, EXECUTING, OR DISTRIBUTING THIS REPOSITORY**
 
-The **`weaver-lammps-hrt`** (`dotnet-weaver-lammps-hrt`) project is an open-source, non-commercial computational nanotechnology and bioinformatics research initiative. It is developed and published strictly for **scientific, academic, educational, and computational modeling purposes** in the fields of structural DNA nanotechnology, molecular dynamics simulation, and pharmacogenomics.
+The **`nanoweaver-hrt`** (`NanoWeaverHrt` / `nanoweaver-hrt`) project is an open-source, non-commercial computational nanotechnology and bioinformatics research initiative. It is developed and published strictly for **scientific, academic, educational, and computational modeling purposes** in the fields of structural DNA nanotechnology, molecular dynamics simulation, and pharmacogenomics.
 
 ---
 

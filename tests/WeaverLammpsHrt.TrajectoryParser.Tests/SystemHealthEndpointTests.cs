@@ -55,7 +55,7 @@ public sealed class SystemHealthEndpointTests : IClassFixture<WebApplicationFact
     public SystemHealthEndpointTests(WebApplicationFactory<Program> factory)
     {
         string? current = AppContext.BaseDirectory;
-        while (!string.IsNullOrEmpty(current) && !File.Exists(Path.Combine(current, "dotnet-weaver-lammps-hrt.sln")))
+        while (!string.IsNullOrEmpty(current) && !File.Exists(Path.Combine(current, "NanoWeaverHrt.sln")))
         {
             current = Directory.GetParent(current)?.FullName;
         }

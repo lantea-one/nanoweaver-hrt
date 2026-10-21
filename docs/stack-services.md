@@ -10,7 +10,7 @@ The **Stack Services & Telemetry** module provides continuous, real-time observa
 
 ## 1. Distributed Stack Architecture
 
-The Weaver-LAMMPS-HRT system is engineered as a decoupled, multi-container microservice stack:
+The NanoWeaverHrt (`nanoweaver-hrt`) system is engineered as a decoupled, multi-container microservice stack:
 
 ```mermaid
 flowchart TD
