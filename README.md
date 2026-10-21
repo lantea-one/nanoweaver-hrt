@@ -5,6 +5,25 @@
 
 ---
 
+## 🏛️ Sovereign Repository Notice: Authoritative Forgejo Source
+
+> [!IMPORTANT]
+> **Authoritative Upstream Source:** This project is developed and maintained on a sovereign, decentralized Git forge powered by **Forgejo**:  
+> 🔗 **[https://git.lantea.one/Lantea.One/dotnet-weaver-lammps-hrt](https://git.lantea.one/Lantea.One/dotnet-weaver-lammps-hrt)**
+>
+> **GitHub is a Read-Only Downstream Mirror:** Due to the real threat of administrative censorship, account suspension, and arbitrary deplatforming of open-source synthetic biology and gender-affirming healthcare research by centralized corporate platforms, GitHub is maintained strictly as an automated read-only distribution mirror.
+>
+> **Contributing, Forking, and Issue Tracking:**  
+> - **All forks, pull requests, issues, and active development MUST be conducted directly on the sovereign [Forgejo repository](https://git.lantea.one/Lantea.One/dotnet-weaver-lammps-hrt).**
+> - Do **not** fork or submit pull requests on GitHub; downstream mirrors are not the authoritative source of truth and are subject to third-party administrative disruption.
+>
+> ```bash
+> # Clone directly from the authoritative sovereign Forgejo remote:
+> git clone https://git.lantea.one/Lantea.One/dotnet-weaver-lammps-hrt.git
+> ```
+
+---
+
 ## 📄 Scientific Abstract
 
 > **Title:** **Autonomous Closed-Loop DNA Origami Nanocarriers for Permanent, Patient-Targeted Endocrine Regulation: An Open-Source In-Silico Modeling, Pharmacogenomics, Post-Quantum Cryptography, and Benchtop Fabrication Framework**  
