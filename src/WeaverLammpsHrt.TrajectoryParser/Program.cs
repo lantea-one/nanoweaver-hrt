@@ -134,6 +134,19 @@ public class Program
         // HOW:  FormatNegotiationMiddleware inspects Accept and Content-Type headers before routing.
         app.UseFormatNegotiation();
 
+        // WHAT: Injects defense-in-depth security headers directly at the ASP.NET Core application level.
+        // WHY:  Hardens responses against MIME sniffing, clickjacking, and XSS across all environments.
+        // HOW:  Sets standard OWASP security response headers on every HTTP response context.
+        app.Use(async (context, next) =>
+        {
+            context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+            context.Response.Headers["X-Frame-Options"] = "SAMEORIGIN";
+            context.Response.Headers["X-XSS-Protection"] = "0";
+            context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+            context.Response.Headers["Permissions-Policy"] = "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()";
+            await next();
+        });
+
         // WHAT: Serves static assets (CSS, JS) and Blazor Interactive Server WebSockets.
         // WHY:  Enables sovereign Web UI navigation without requiring external NPM/Node toolchains.
         // HOW:  Standard ASP.NET Core static files and Blazor endpoint mapping.

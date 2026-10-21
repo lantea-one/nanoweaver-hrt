@@ -183,7 +183,11 @@ public sealed class EncryptedStorageService : IEncryptedStorageService
             throw new CryptographicException($"Cannot export bundle for subject '{subjectId}': Subject has been crypto-shredded.");
         }
 
-        string sourcePath = Path.Combine(_sharedDataPath, trajectoryFileName);
+        // WHAT: Sanitize trajectory file name to prevent directory traversal.
+        // WHY:  Ensures that callers cannot reference arbitrary files outside the shared data volume.
+        // HOW:  Uses Path.GetFileName to extract only the safe file name.
+        string safeFileName = Path.GetFileName(trajectoryFileName);
+        string sourcePath = Path.Combine(_sharedDataPath, safeFileName);
         if (!File.Exists(sourcePath))
         {
             throw new FileNotFoundException($"Source trajectory file not found: {sourcePath}");

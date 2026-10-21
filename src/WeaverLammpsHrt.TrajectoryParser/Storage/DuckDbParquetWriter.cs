@@ -159,8 +159,8 @@ public sealed class DuckDbParquetWriter : IParquetTrajectoryWriter
         // HOW:  Executes DuckDB COPY command.
         using (DuckDBCommand copyCommand = connection.CreateCommand())
         {
-            // Normalize path separators to forward slashes for DuckDB SQL syntax compatibility
-            string normalizedPath = destinationParquetPath.Replace('\\', '/');
+            // Normalize path separators to forward slashes and escape single quotes for DuckDB SQL syntax compatibility
+            string normalizedPath = destinationParquetPath.Replace('\\', '/').Replace("'", "''");
             copyCommand.CommandText = $"COPY staging_trajectory TO '{normalizedPath}' (FORMAT PARQUET, COMPRESSION ZSTD);";
             await copyCommand.ExecuteNonQueryAsync(cancellationToken);
         }
@@ -184,7 +184,7 @@ public sealed class DuckDbParquetWriter : IParquetTrajectoryWriter
         await connection.OpenAsync(cancellationToken);
 
         using DuckDBCommand queryCmd = connection.CreateCommand();
-        string normalizedPath = parquetFilePath.Replace('\\', '/');
+        string normalizedPath = parquetFilePath.Replace('\\', '/').Replace("'", "''");
         queryCmd.CommandText = $"SELECT COUNT(*) FROM read_parquet('{normalizedPath}');";
 
         object? result = await queryCmd.ExecuteScalarAsync(cancellationToken);

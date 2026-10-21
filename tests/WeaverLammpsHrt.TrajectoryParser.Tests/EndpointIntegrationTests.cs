@@ -127,6 +127,31 @@ public sealed class EndpointIntegrationTests : IClassFixture<WebApplicationFacto
     }
 
     /// <summary>
+    /// Verifies that standard OWASP security headers (X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy)
+    /// are attached to HTTP responses for defense-in-depth hardening.
+    /// </summary>
+    [Fact]
+    public async Task ResponseHeaders_ShouldContainSecurityHardeningHeaders()
+    {
+        // WHAT: Dispatches a request to an API endpoint and inspects HTTP response headers.
+        // WHY:  Ensures that application-level defense-in-depth security headers are injected on all responses.
+        // HOW:  Asserts presence of X-Content-Type-Options, X-Frame-Options, Referrer-Policy, and Permissions-Policy.
+        HttpResponseMessage response = await _client.GetAsync("/api/system/telemetry");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        Assert.True(response.Headers.Contains("X-Content-Type-Options"));
+        Assert.Equal("nosniff", response.Headers.GetValues("X-Content-Type-Options").FirstOrDefault());
+
+        Assert.True(response.Headers.Contains("X-Frame-Options"));
+        Assert.Equal("SAMEORIGIN", response.Headers.GetValues("X-Frame-Options").FirstOrDefault());
+
+        Assert.True(response.Headers.Contains("Referrer-Policy"));
+        Assert.Equal("strict-origin-when-cross-origin", response.Headers.GetValues("Referrer-Policy").FirstOrDefault());
+
+        Assert.True(response.Headers.Contains("Permissions-Policy"));
+    }
+
+    /// <summary>
     /// Verifies GET /api/endocrine/profile, POST /api/endocrine/toggle, and GET /api/endocrine/kinetics.
     /// </summary>
     [Fact]
