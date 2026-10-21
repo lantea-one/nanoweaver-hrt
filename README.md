@@ -154,8 +154,9 @@ dotnet test dotnet-weaver-lammps-hrt.sln
 
 ---
 
-## 📖 Standards & AI Contributor Instructions
+## 📖 Standards & Legal Disclaimers
 
+- **[DISCLAIMER.md](DISCLAIMER.md)**: Formal scientific research, medical non-advice, and BSL-1 biosafety declarations.
 - **[CODING_STANDARDS.md](CODING_STANDARDS.md)**: The "Zero-Ignorance" Open-Bio documentation protocol, requiring 100% docblocks on all members (including private) and the "What / Why / How" commenting triad.
 - **[AGENTS.md](AGENTS.md)**: Universal instructions for AI coding assistants (Claude, Cursor, Copilot, Gemini, ChatGPT).
 - **[.cursorrules](.cursorrules)**: IDE rules for Cursor users.

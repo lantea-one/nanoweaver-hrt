@@ -95,6 +95,8 @@ Explore the comprehensive guides and references below:
    * NIST FIPS 203 (ML-KEM-768), FIPS 204 (ML-DSA-65), HIPAA Safe Harbor, GDPR Article 17 crypto-shredding, GINA non-discrimination, and FDA 21 CFR Part 11 audit trails.
 12. [**REST API Reference**](api-reference.md)
    * Full endpoint catalog, request/response JSON schemas, and test suite execution.
+13. [**Scientific Research & Legal Disclaimer**](disclaimer.md)
+   * Formal scientific research scope, medical non-advice, and BSL-1 biosafety declarations.
 
 ---
 

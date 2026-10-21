@@ -13,6 +13,7 @@
 * [**DIY & HomeLab Fabrication (How-To)**](diy-fabrication-guide.md)
 * [**PQC & Regulatory Compliance**](compliance-and-security.md)
 * [**REST API Reference & Tests**](api-reference.md)
+* [**Scientific & Legal Disclaimer**](disclaimer.md)
 
 ---
 
