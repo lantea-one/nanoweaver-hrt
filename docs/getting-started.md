@@ -39,7 +39,7 @@ For development, testing, and UI exploration, you can run the trajectory parser 
 
 ### Step 1: Clone the Repository
 ```bash
-git clone https://github.com/lantea-one/dotnet-weaver-lammps-hrt.git
+git clone https://git.lantea.one/Lantea.One/dotnet-weaver-lammps-hrt.git
 cd dotnet-weaver-lammps-hrt
 ```
 

@@ -18,5 +18,6 @@
 
 ---
 
-* [GitHub Repository](https://github.com/lantea-one/dotnet-weaver-lammps-hrt)
-* [MIT License](https://github.com/lantea-one/dotnet-weaver-lammps-hrt/blob/main/LICENSE)
+* [Forgejo Repository (Authoritative)](https://git.lantea.one/Lantea.One/dotnet-weaver-lammps-hrt)
+* [GitHub Mirror](https://github.com/lantea-one/dotnet-weaver-lammps-hrt)
+* [MIT License](https://git.lantea.one/Lantea.One/dotnet-weaver-lammps-hrt/src/branch/main/LICENSE)
