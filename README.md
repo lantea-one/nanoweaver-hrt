@@ -108,6 +108,23 @@ flowchart TD
 
 ## 🚀 Quickstart
 
+### Container Images & Registries
+
+All custom platform containers can be pulled directly from the authoritative sovereign Forgejo registry (or its automated read-only GitHub mirror), or built locally on demand from source:
+
+| Component | Forgejo Image (`git.lantea.one`) | GitHub Mirror (`ghcr.io`) | Local Context |
+| :--- | :--- | :--- | :--- |
+| **Sovereign Web UI & Parser** | `git.lantea.one/lantea-one/nanoweaver-hrt-web:latest` | `ghcr.io/lantea-one/nanoweaver-hrt-web:latest` | `docker/web/Dockerfile.web` |
+| **Simulation Node (oxDNA & LAMMPS)** | `git.lantea.one/lantea-one/nanoweaver-hrt-simulation:latest` | `ghcr.io/lantea-one/nanoweaver-hrt-simulation:latest` | `docker/simulation/Dockerfile.simulation` |
+
+```bash
+# Build custom container images locally from source:
+docker compose build
+
+# Or launch immediately with automated image pull:
+docker compose up -d
+```
+
 ### 1. Run the Default Stack (Intel iGPU & CPU)
 By default, the platform boots with support for Intel integrated graphics (Iris Xe / UHD via `/dev/dri`) and standard CPUs:
 ```bash

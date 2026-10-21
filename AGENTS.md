@@ -108,16 +108,19 @@
 ```
 
 ### Components
-1. **`src/NanoWeaverHrt`**:
+1. **`src/NanoWeaverHrt` (`nanoweaver-hrt-web:latest`)**:
    - High-throughput ASP.NET Core minimal service and background trajectory parser.
+   - Built from `docker/web/Dockerfile.web`.
    - Hosts the sovereign Web UI on port 5000 (`/`) with endpoints for zero-dependency dataset export/import (`/api/datasets/export`, `/api/datasets/import`) and live GPU telemetry (`/api/system/telemetry`).
-2. **`compose/` & `docker-compose.yml`**:
-   - Self-contained container stack. Default is CPU/Intel iGPU via `/dev/dri`.
-   - Overrides provided for Arc A770 (`docker-compose.arc.yml`), NVIDIA (`docker-compose.nvidia.yml`), AMD Radeon (`docker-compose.radeon.yml`), and public reverse proxies (Caddy, Nginx, Cloudflare).
-3. **`simulations/`**:
+2. **`simulations/` (`nanoweaver-hrt-simulation:latest`)**:
+   - Scientific molecular dynamics simulation environment (oxDNA 2.4 & LAMMPS).
+   - Built from `docker/simulation/Dockerfile.simulation`.
    - `configs/`: Simulation parameters for oxDNA and LAMMPS.
    - `shared-data/`: Shared volume where simulation engines output coordinates and the .NET parser reads them.
    - `exports/`: Cryptographically signed `.tar.gz` dataset bundles with SHA-256 manifests.
+3. **`compose/` & `docker-compose.yml`**:
+   - Self-contained container stack. Default is CPU/Intel iGPU via `/dev/dri`.
+   - Overrides provided for Arc A770 (`docker-compose.arc.yml`), NVIDIA (`docker-compose.nvidia.yml`), AMD Radeon (`docker-compose.radeon.yml`), and public reverse proxies (Caddy, Nginx, Cloudflare).
 4. **`docs/`**:
    - GitHub Pages interactive documentation wiki powered by Docsify, custom sovereign dark theme, and high-contrast accessibility.
 

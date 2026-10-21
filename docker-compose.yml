@@ -52,7 +52,7 @@ services:
   trajectory-parser:
     build:
       context: .
-      dockerfile: docker/parser/Dockerfile.parser
+      dockerfile: docker/web/Dockerfile.web
     image: git.lantea.one/lantea-one/nanoweaver-hrt-web:latest
     container_name: weaver-parser
     hostname: parser-node

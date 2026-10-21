@@ -1,10 +1,10 @@
 # ==============================================================================
-# .NET 10 Zero-Allocation Parser & Sovereign Web Dashboard Container
+# Sovereign Web UI & High-Throughput .NET 10 Service Container
 # ------------------------------------------------------------------------------
 # WHAT: High-performance microservice container running the ASP.NET Core 10 
-#       runtime, zero-allocation trajectory parser, and embedded Web UI.
-# WHY:  Enables sovereign lab nodes to stream, slice, and export massive molecular 
-#       simulations without GC overhead or host runtime dependencies.
+#       runtime, zero-allocation trajectory parser, and sovereign Web UI.
+# WHY:  Enables sovereign lab nodes to stream, slice, analyze, and export massive 
+#       molecular simulations without GC overhead or host runtime dependencies.
 # HOW:  Multi-stage Dockerfile compiling with ReadyToRun optimizations and running 
 #       under server GC mode in a lightweight Linux container.
 # ==============================================================================

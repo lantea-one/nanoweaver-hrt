@@ -84,7 +84,22 @@ On initial boot, the sovereign node enforces a strict zero-backdoor policy: **no
 
 ## 3. Running with Docker Compose
 
-For production deployment and automated integration with oxDNA and LAMMPS simulation containers, use the provided Docker Compose profiles.
+For production deployment and automated integration with oxDNA and LAMMPS simulation containers, use the provided Docker Compose profiles. All custom images are published directly to the authoritative Forgejo container registry (and mirrored to GitHub Container Registry), or can be built locally on demand from source.
+
+### Container Image Registry Reference
+
+| Service | Container Image Tag (Forgejo) | Mirrored Tag (GitHub) | Local Build Context |
+| :--- | :--- | :--- | :--- |
+| **Sovereign Web UI & Parser** | `git.lantea.one/lantea-one/nanoweaver-hrt-web:latest` | `ghcr.io/lantea-one/nanoweaver-hrt-web:latest` | `docker/web/Dockerfile.web` |
+| **Molecular Simulation Node** | `git.lantea.one/lantea-one/nanoweaver-hrt-simulation:latest` | `ghcr.io/lantea-one/nanoweaver-hrt-simulation:latest` | `docker/simulation/Dockerfile.simulation` |
+
+```bash
+# To build both custom container images locally from source:
+docker compose build
+
+# Or pull pre-built images directly from Forgejo:
+docker compose pull
+```
 
 ### Scenario A: Default Deployment (Intel iGPU or CPU Fallback)
 This configuration passes through `/dev/dri` for Intel integrated graphics or falls back cleanly to multi-threaded CPU execution:

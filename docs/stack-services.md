@@ -27,15 +27,20 @@ flowchart TD
     end
 ```
 
-### Components
-1. **`trajectory-parser` (ASP.NET Core / .NET 10)**:
+### Components & Container Images
+1. **`trajectory-parser` / Web Node (`nanoweaver-hrt-web:latest`)**:
+   - **Image:** `git.lantea.one/lantea-one/nanoweaver-hrt-web:latest` (mirrored to `ghcr.io/lantea-one/nanoweaver-hrt-web:latest`)
+   - **Local Build Context:** `docker/web/Dockerfile.web` (.NET 10 ASP.NET Core)
    - Hosts the sovereign Blazor Web UI and REST API on port `5000`.
    - Ingests streaming trajectory coordinates from the shared volume with zero heap allocations.
    - Manages state persistence, single-use share keys, and dataset export manifests.
-2. **`simulation-engine` (oxDNA / LAMMPS)**:
+2. **`simulation-engine` / Simulation Node (`nanoweaver-hrt-simulation:latest`)**:
+   - **Image:** `git.lantea.one/lantea-one/nanoweaver-hrt-simulation:latest` (mirrored to `ghcr.io/lantea-one/nanoweaver-hrt-simulation:latest`)
+   - **Local Build Context:** `docker/simulation/Dockerfile.simulation` (Ubuntu 24.04 noble with oxDNA 2.4 and LAMMPS)
    - Executes coarse-grained and all-atom molecular dynamics trajectories.
    - Utilizes containerized GPU compute drivers (Intel Level Zero, NVIDIA CUDA, or AMD ROCm).
 3. **`database-engine` (PostgreSQL / SQLite)**:
+   - **Image:** `pgduckdb/pgduckdb:18-v1.1.1` (PostgreSQL 18 with pg_duckdb extension)
    - Stores authoritative system configuration, user audit logs, and federated peer tokens.
    - Leverages DuckDB SIMD vectorization for ultra-fast spatial querying of Parquet files.
 

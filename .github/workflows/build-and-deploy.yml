@@ -169,7 +169,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: docker/parser/Dockerfile.parser
+          file: docker/web/Dockerfile.web
           push: ${{ github.event_name != 'pull_request' }}
           tags: |
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/nanoweaver-hrt-web:latest
