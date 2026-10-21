@@ -55,9 +55,9 @@ sequenceDiagram
     autonumber
     actor NodeA as Node A (Sender)
     actor NodeB as Node B (Receiver)
-    NodeA->>NodeB: 1. Generates Key (nanoweaver_hrt_...) with Expiration Window
-    NodeB->>NodeA: 2. Connects via Key (POST /api/peers/connect)
-    Note over NodeA: 3. Atomic Redemption Request<br>Validates key & marks is_consumed = true
+    NodeA->>NodeB: 1. Generates Key (nanoweaver_hrt_...) with Expiration Window (POST /api/share-keys/create)
+    NodeB->>NodeA: 2. Redeems Key & Connects (POST /api/share-keys/redeem)
+    Note over NodeA: 3. Atomic Redemption Request<br>Validates key & marks isConsumed = true
     NodeA-->>NodeB: 4. Peer Link Established & Encrypted Federation Authorized
 ```
 

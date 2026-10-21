@@ -1,292 +1,448 @@
-# REST API Reference & Test Harness
+# REST API Reference & Interactive Documentation
 
-> **Programmatic Minimal API Catalog, JSON Payloads, and Automated Test Execution**
+> **Minimal API Catalog, Multi-Format Serialization (JSON, XML & YAML), OpenAPI / Swagger / ReDoc Specifications, and Automated Test Harness**
 
-The **Weaver-LAMMPS-HRT** platform exposes a high-throughput, low-overhead REST API built on ASP.NET Core Minimal APIs. All endpoints return standard JSON payloads and support zero-allocation streaming where applicable.
+The **Weaver-LAMMPS-HRT** platform exposes a high-throughput, low-overhead REST API built on ASP.NET Core Minimal APIs. The API supports content negotiation across three representations:
 
----
-
-## 1. System Health & Telemetry Endpoints
-
-### `GET /healthz`
-Lightweight health probe for container orchestrators (Kubernetes, Docker Compose).
-
-* **Method**: `GET`
-* **Response Status**: `200 OK`
-* **Response Payload**:
-  ```json
-  {
-    "status": "Healthy",
-    "timestamp": "2026-10-20T16:15:00.123Z",
-    "version": "1.0.0"
-  }
-  ```
+* **JSON**: Strictly formatted in **lower camelCase** (e.g., `nodeName`, `framesParsed`, `targetKd`).
+* **XML**: Clean, strongly-typed XML documents with explicit root naming.
+* **YAML**: Serialized in **lower snake-case with hyphens** (kebab-case, e.g., `node-name`, `frames-parsed`, `target-kd`).
 
 ---
 
-### `GET /api/system/status`
-Comprehensive microservice dependency status and connectivity pings.
+## 1. Interactive API Explorers & Schemas
 
-* **Method**: `GET`
-* **Response Status**: `200 OK`
-* **Response Payload**:
-  ```json
-  {
-    "service": "WeaverLammpsHrt.TrajectoryParser",
-    "uptime_seconds": 18450.4,
-    "database": {
-      "provider": "PostgreSQL",
-      "connected": true,
-      "latency_ms": 1.2
-    },
-    "simulation_engine": {
-      "oxdna_present": true,
-      "lammps_present": true,
-      "shared_volume_writable": true
-    },
-    "simd_acceleration": {
-      "detected": "AVX-512",
-      "vector_width_bits": 512,
-      "hardware_supported": true
-    }
-  }
-  ```
+The microservice automatically serves live, interactive OpenAPI 3.0 documentation with multi-format examples for all request and response contracts:
+
+| Interface | URL Path | Description |
+| :--- | :--- | :--- |
+| **Swagger UI** | [`/swagger`](file:///swagger) | Interactive, browser-based API explorer allowing live execution of requests, header configuration, and multi-format example preview. Redirects to `/swagger/index.html`. |
+| **ReDoc** | [`/documentation`](file:///documentation) | Responsive, three-column API reference rendering full OpenAPI schemas, status codes, and multi-format payload tabs. Redirects to `/documentation/index.html`. |
+| **OpenAPI Specification** | [`/swagger/v1/swagger.json`](file:///swagger/v1/swagger.json) | Raw OpenAPI 3.0 JSON specification document containing schemas and multi-format example ASTs. |
+
+### Content Negotiation Mechanics
+
+Clients can request their desired representation using either standard HTTP `Accept` headers or the `?format=` query parameter:
+
+```bash
+# 1. Request lower camelCase JSON (Default)
+curl -H "Accept: application/json" http://localhost:5000/api/system/telemetry
+
+# 2. Request XML
+curl -H "Accept: application/xml" http://localhost:5000/api/system/telemetry
+# Or via query parameter:
+curl "http://localhost:5000/api/system/telemetry?format=xml"
+
+# 3. Request Hyphenated YAML
+curl -H "Accept: application/x-yaml" http://localhost:5000/api/system/telemetry
+# Or via query parameter:
+curl "http://localhost:5000/api/system/telemetry?format=yaml"
+```
+
+Inbound request bodies (`POST`, `PUT`) can similarly be submitted in `application/json`, `application/xml`, or `application/x-yaml` via the `Content-Type` header.
 
 ---
+
+## 2. System Hardware & Telemetry Endpoints
 
 ### `GET /api/system/telemetry`
-Real-time memory, CPU, and Garbage Collector telemetry.
+Retrieves real-time CPU utilization, process memory, thread pool allocation, and Server GC generation metrics.
 
 * **Method**: `GET`
 * **Response Status**: `200 OK`
-* **Response Payload**:
-  ```json
-  {
-    "timestamp": "2026-10-20T16:15:30.000Z",
-    "cpu_usage_percent": 14.8,
-    "memory_allocated_bytes": 48234496,
-    "gc_gen0_collections": 42,
-    "gc_gen1_collections": 3,
-    "gc_gen2_collections": 0,
-    "thread_pool_worker_threads_active": 4,
-    "thread_pool_worker_threads_available": 32763
-  }
-  ```
+* **Response Payloads**:
+
+<!-- tabs:start -->
+#### **JSON (lower camelCase)**
+```json
+{
+  "nodeName": "sovereign-node-01",
+  "framesParsed": 128450,
+  "allocatedMemoryMb": 48.25,
+  "activeThreadPoolThreads": 4,
+  "gen0Collections": 42,
+  "gen1Collections": 3,
+  "gen2Collections": 0,
+  "uptime": "05:08:12.450"
+}
+```
+
+#### **XML**
+```xml
+<SystemTelemetry>
+  <nodeName>sovereign-node-01</nodeName>
+  <framesParsed>128450</framesParsed>
+  <allocatedMemoryMb>48.25</allocatedMemoryMb>
+  <activeThreadPoolThreads>4</activeThreadPoolThreads>
+  <gen0Collections>42</gen0Collections>
+  <gen1Collections>3</gen1Collections>
+  <gen2Collections>0</gen2Collections>
+  <uptime>05:08:12.450</uptime>
+</SystemTelemetry>
+```
+
+#### **YAML (lower snake-case with hyphens)**
+```yaml
+node-name: sovereign-node-01
+frames-parsed: 128450
+allocated-memory-mb: 48.25
+active-thread-pool-threads: 4
+gen0-collections: 42
+gen1-collections: 3
+gen2-collections: 0
+uptime: 05:08:12.450
+```
+<!-- tabs:end -->
 
 ---
 
-## 2. Configuration & Peering Endpoints
+## 3. Configuration & Sovereign Peering Endpoints
 
-### `GET /api/config`
-Retrieves authoritative system configuration from the database (or bootstrap defaults).
+### `GET /api/configuration`
+Enumerates all active system configuration items stored in the authoritative database.
 
 * **Method**: `GET`
 * **Response Status**: `200 OK`
-* **Response Payload**:
-  ```json
-  {
-    "pipeReaderHighWatermark": 4194304,
-    "pipeReaderLowWatermark": 1048576,
-    "simdVectorizationMode": "Auto",
-    "sharedDataPath": "/simulations/shared-data",
-    "parquetCompressionCodec": "Zstandard",
-    "maxConcurrentStreamCount": 8,
-    "peerFederationEnabled": true
-  }
-  ```
-
----
-
-### `PUT /api/config`
-Updates system configuration in the database. Adheres to the **Database Precedence Law** (overwrites environment variable defaults permanently).
-
-* **Method**: `PUT`
-* **Request Headers**: `Content-Type: application/json`
-* **Request Payload**:
-  ```json
-  {
-    "pipeReaderHighWatermark": 8388608,
-    "simdVectorizationMode": "AVX512",
-    "parquetCompressionCodec": "Zstandard"
-  }
-  ```
-* **Response Status**: `200 OK`
-
----
-
-### `POST /api/peers/generate-key`
-Issues a new single-use cryptographic share key.
-
-* **Method**: `POST`
-* **Request Headers**: `Content-Type: application/json`
-* **Request Payload**:
-  ```json
-  {
-    "expirationWindow": "24h",
-    "label": "Lab B Collaboration Key"
-  }
-  ```
-  *Allowed `expirationWindow` values*: `"1h"`, `"4h"`, `"24h"`, `"7d"`, `"1m"`, `"1y"`, `"Never"`.
-* **Response Status**: `201 Created`
-* **Response Payload**:
-  ```json
-  {
-    "key": "nanoweaver_hrt_9e8b7c6d5e4f3a2b1c0d9e8b7c6d5e4f3a2b1c0d9e8b7c6d5e4f3a2b1c0d9e8b",
-    "label": "Lab B Collaboration Key",
-    "created_at": "2026-10-20T16:20:00Z",
-    "expires_at": "2026-10-21T16:20:00Z",
-    "is_consumed": false
-  }
-  ```
-
----
-
-### `POST /api/peers/connect`
-Redeems a single-use share key to establish an authenticated federated link with a remote node.
-
-* **Method**: `POST`
-* **Request Headers**: `Content-Type: application/json`
-* **Request Payload**:
-  ```json
-  {
-    "remoteUrl": "https://lab-a.hrt-lab.local:5000",
-    "shareKey": "nanoweaver_hrt_9e8b7c6d5e4f3a2b1c0d9e8b7c6d5e4f3a2b1c0d9e8b7c6d5e4f3a2b1c0d9e8b"
-  }
-  ```
-* **Response Status**:
-  * `200 OK`: Key redeemed atomically; peer link active.
-  * `409 Conflict`: Key already consumed or expired.
-  * `401 Unauthorized`: Invalid key token.
-
----
-
-## 3. Trajectory & Dataset Endpoints
-
-### `GET /api/trajectories`
-Enumerates available trajectory files in the shared storage mount.
-
-* **Method**: `GET`
-* **Response Status**: `200 OK`
-* **Response Payload**:
+* **Response Payload (JSON)**:
   ```json
   [
     {
-      "fileName": "nanotube_folding.xyz",
-      "format": "ExtendedXYZ",
-      "sizeBytes": 104857600,
-      "lastModified": "2026-10-20T15:00:00Z",
-      "isParquetConverted": true
+      "key": "PipeReaderHighWatermark",
+      "value": "4194304",
+      "description": "Maximum unconsumed byte buffer size before PipeReader pauses upstream disk I/O.",
+      "updatedAtUtc": "2026-10-20T16:00:00Z"
+    },
+    {
+      "key": "SimdVectorizationMode",
+      "value": "Auto",
+      "description": "Runtime vector engine: Auto, AVX512, AVX2, SSE42, or ScalarFallback.",
+      "updatedAtUtc": "2026-10-20T16:00:00Z"
     }
   ]
   ```
 
 ---
 
-### `POST /api/trajectories/stream`
-Triggers high-throughput zero-allocation pipeline streaming of a trajectory file.
+### `POST /api/configuration/override`
+Applies an authoritative configuration override in the database, superseding stack environment variables permanently pursuant to the **Database Precedence Law**.
 
 * **Method**: `POST`
 * **Request Headers**: `Content-Type: application/json`
 * **Request Payload**:
   ```json
   {
-    "fileName": "nanotube_folding.xyz",
-    "format": "XYZ",
-    "convertToParquet": true,
-    "compression": "Zstandard"
+    "key": "PipeReaderHighWatermark",
+    "value": "8388608"
   }
   ```
-* **Response Status**: `202 Accepted`
+* **Response Status**: `200 OK`
 
 ---
 
-### `GET /api/datasets/export`
-Packages trajectories, configs, and signed manifests into a deterministic `.tar.gz` bundle.
+### `DELETE /api/configuration/override/{key}`
+Removes a configuration override, reverting the parameter to default runtime configuration.
+
+* **Method**: `DELETE`
+* **Response Status**: `200 OK`
+
+---
+
+### `GET /api/share-keys`
+Lists all active and consumed single-use cryptographic share keys.
 
 * **Method**: `GET`
-* **Query Parameters**:
-  * `datasetId`: Unique dataset identifier.
-* **Response Headers**:
-  * `Content-Type: application/gzip`
-  * `Content-Disposition: attachment; filename="dataset_export.tar.gz"`
+* **Response Status**: `200 OK`
 
 ---
 
-### `POST /api/datasets/import`
-Streams an uploaded dataset bundle, unpacks files in memory, and verifies all constituent files against the SHA-256 cryptographic manifest.
-
-* **Method**: `POST`
-* **Request Headers**: `Content-Type: multipart/form-data`
-* **Form Field**: `file` (the `.tar.gz` bundle).
-* **Response Status**:
-  * `200 OK`: Manifest verified; dataset staged.
-  * `422 Unprocessable Entity`: SHA-256 checksum mismatch or corrupted archive.
-
----
-
-## 4. Endocrine Simulation Endpoints
-
-### `POST /api/endocrine/simulate`
-Executes closed-loop pharmacodynamics simulation across a 72-hour timeline.
+### `POST /api/share-keys/create`
+Issues a new single-use cryptographic share key with a configurable expiration window.
 
 * **Method**: `POST`
 * **Request Headers**: `Content-Type: application/json`
 * **Request Payload**:
   ```json
   {
-    "targetProtocol": "FeminizingMtF",
-    "durationHours": 72,
-    "estradiolTargetPmolL": 550.0,
-    "testosteroneTargetNmolL": 1.5,
-    "perturbations": [
-      {
-        "hour": 24,
-        "type": "ExogenousBolus",
-        "magnitude": 250.0
-      }
-    ]
+    "label": "Lab Beta Collab Key",
+    "lifetime": "24:00:00"
   }
   ```
 * **Response Status**: `200 OK`
 * **Response Payload**:
   ```json
   {
-    "protocol": "FeminizingMtF",
-    "timePointsHours": [0, 1, 2, "...", 72],
-    "estradiolCurve": [120.0, 180.5, "...", 548.9],
-    "testosteroneCurve": [18.2, 14.1, "...", 1.4],
-    "lhCurve": [8.4, 6.2, "...", 0.9],
-    "steadyStateAchieved": true,
-    "equilibriumHour": 18.5
+    "token": "nanoweaver_hrt_a7f92b41d08e5c1234b6e7890abcdef1234567890abcdef1234567890abcdef1",
+    "label": "Lab Beta Collab Key",
+    "createdAtUtc": "2026-10-20T20:00:00Z",
+    "expiresAtUtc": "2026-10-21T20:00:00Z",
+    "isConsumed": false
   }
   ```
 
 ---
 
-## 5. Pharmacogenomics & Genetic Screening Endpoints
+### `POST /api/share-keys/redeem`
+Atomically consumes a single-use share key to authenticate a remote research node.
+
+* **Method**: `POST`
+* **Request Headers**: `Content-Type: application/json`
+* **Request Payload**:
+  ```json
+  {
+    "token": "nanoweaver_hrt_a7f92b41d08e5c1234b6e7890abcdef1234567890abcdef1234567890abcdef1"
+  }
+  ```
+* **Response Status**:
+  * `200 OK`: Key redeemed successfully; federation established.
+  * `409 Conflict`: Key already consumed or expired.
+  * `401 Unauthorized`: Invalid key token.
+
+---
+
+## 4. Trajectory Streaming, Parquet & Datasets
+
+### `GET /api/datasets`
+Lists all available trajectory and simulation files staged in the shared storage mount.
+
+* **Method**: `GET`
+* **Response Status**: `200 OK`
+
+---
+
+### `POST /api/datasets/export`
+Packages trajectories and signed provenance manifests into a cryptographically verified `.tar.gz` archive.
+
+* **Method**: `POST`
+* **Request Headers**: `Content-Type: application/json` (also accepts `application/xml`, `application/x-yaml`)
+* **Request Payload**:
+  ```json
+  {
+    "datasetName": "nanotube-folding-run",
+    "outputDirectory": "simulations/exports"
+  }
+  ```
+* **Response Status**: `200 OK`
+* **Response Payload**:
+  ```json
+  {
+    "dataset": "nanotube-folding-run",
+    "timestamp": "2026-10-20T20:00:00Z",
+    "archive": "nanotube-folding-run.tar.gz",
+    "sha256": "4b9e28f7...a812",
+    "sizeBytes": 14205849
+  }
+  ```
+
+---
+
+### `GET /api/datasets/download/{fileName}`
+Directly downloads a signed dataset archive from the exports directory.
+
+* **Method**: `GET`
+* **Response Headers**: `Content-Type: application/gzip`
+
+---
+
+### `POST /api/datasets/import`
+Streams an uploaded archive and its accompanying manifest into memory, performing byte-by-byte SHA-256 integrity verification.
+
+* **Method**: `POST`
+* **Request Headers**: `Content-Type: multipart/form-data`
+* **Form Fields**:
+  * `archive`: The compressed `.tar.gz` bundle.
+  * `manifest`: The accompanying `manifest.json`.
+* **Response Status**:
+  * `200 OK`: Manifest verified; dataset staged.
+  * `422 Unprocessable Entity`: Checksum mismatch or corrupted archive.
+
+---
+
+### `POST /api/parser/process/{fileName}`
+Executes zero-allocation `System.IO.Pipelines` trajectory ingestion across `.xyz`, `.dump`, or `.dcd` files.
+
+* **Method**: `POST`
+* **Response Status**: `200 OK`
+
+---
+
+### `POST /api/parser/export-parquet/{fileName}`
+Transforms raw text trajectory coordinate frames into compressed columnar Apache Parquet format.
+
+* **Method**: `POST`
+* **Response Status**: `200 OK`
+
+---
+
+## 5. Endocrine Regulatory Engine Endpoints
+
+### `GET /api/endocrine/profile`
+Retrieves the active endocrine target setpoints and current blood hormone concentrations.
+
+* **Method**: `GET`
+* **Response Status**: `200 OK`
+* **Response Payload (JSON)**:
+  ```json
+  {
+    "regimen": "MaleToFemale",
+    "targetEstradiolPmolL": 550.0,
+    "targetTestosteroneNmolL": 1.2,
+    "currentEstradiolPmolL": 520.4,
+    "currentTestosteroneNmolL": 1.35,
+    "circulatingAptamerCount": 10000,
+    "targetKdNm": 45.0,
+    "isReleaseSwitchOpen": true
+  }
+  ```
+
+---
+
+### `POST /api/endocrine/toggle`
+Toggles the bistable aptamer conformational state switch (Locked / Open).
+
+* **Method**: `POST`
+* **Request Headers**: `Content-Type: application/json`
+* **Request Payload**:
+  ```json
+  {
+    "isOpen": true
+  }
+  ```
+* **Response Status**: `200 OK`
+
+---
+
+### `GET /api/endocrine/kinetics`
+Retrieves the 72-hour simulated pharmacodynamics curve points.
+
+* **Method**: `GET`
+* **Response Status**: `200 OK`
+* **Response Payload (JSON)**:
+  ```json
+  [
+    {
+      "hour": 0.0,
+      "estradiolPmolL": 120.0,
+      "testosteroneNmolL": 18.2
+    },
+    {
+      "hour": 1.0,
+      "estradiolPmolL": 185.4,
+      "testosteroneNmolL": 14.1
+    }
+  ]
+  ```
+
+---
+
+### `POST /api/endocrine/analyze/{fileName}`
+Analyzes molecular dynamics coordinates to calculate aptamer binding pocket dimensions, center-of-mass drift, and binding affinity ($$K_d$$).
+
+* **Method**: `POST`
+* **Response Status**: `200 OK`
+* **Response Payload**:
+  ```json
+  {
+    "fileName": "aptamer_docking.xyz",
+    "targetKd": 45.2,
+    "pocketVolume": 12450.0,
+    "bindingAffinityScore": 0.94,
+    "centerOfMassDrift": 0.12
+  }
+  ```
+
+---
+
+## 6. Stack Microservice Orchestration
+
+### `GET /api/services`
+Inspects health status, process memory, and ping latencies across all registered microservice containers.
+
+* **Method**: `GET`
+* **Response Status**: `200 OK`
+
+---
+
+### `POST /api/services/ping/{serviceId}`
+Executes an immediate round-trip latency probe against a target service (`oxdna`, `lammps`, `database`, `proxy`).
+
+* **Method**: `POST`
+* **Response Status**: `200 OK`
+
+---
+
+## 7. Benchtop DNA Origami Fabrication
+
+### `GET /api/fabrication/presets`
+Retrieves pre-engineered physical DNA nanocarrier fabrication packages (Feminizing MtF Nanotube, Masculinizing FtM Nanocage, Neutral Carrier).
+
+* **Method**: `GET`
+* **Response Status**: `200 OK`
+
+---
+
+### `POST /api/fabrication/generate`
+Generates a complete benchtop fabrication package: staple routing, stoichiometric 50 µL pipetting recipe, 6-stage thermal annealing ramp, and quality control guidelines.
+
+* **Method**: `POST`
+* **Request Headers**: `Content-Type: application/json`
+* **Request Payload**:
+  ```json
+  {
+    "presetName": "FeminizingMtF",
+    "reactionVolumeUl": 50.0,
+    "targetKdNm": 45.0
+  }
+  ```
+* **Response Status**: `200 OK`
+* **Response Payload (JSON)**:
+  ```json
+  {
+    "sample": {
+      "sampleId": "SAMPLE-MTF-001",
+      "name": "Feminizing MtF Nanotube",
+      "regimen": "MaleToFemale",
+      "scaffoldType": "M13mp18",
+      "scaffoldLengthNt": 7249,
+      "stapleCount": 184,
+      "targetKdNm": 45.0,
+      "thermalMeltingTempCelsius": 62.5
+    },
+    "guide": {
+      "reactionVolumeUl": 50.0,
+      "waterVolumeUl": 35.0,
+      "foldingBufferVolumeUl": 5.0,
+      "scaffoldVolumeUl": 5.0,
+      "staplePoolVolumeUl": 5.0
+    }
+  }
+  ```
+
+---
+
+## 8. Pharmacogenomics & Genetic Screening
 
 ### `GET /api/genomics/markers`
 Retrieves the catalog of clinically characterized pharmacogenomic and hemostatic markers.
 
 * **Method**: `GET`
 * **Response Status**: `200 OK`
-* **Response Payload**:
+* **Response Payload (JSON)**:
   ```json
   [
     {
-      "marker_id": "F5_LEIDEN",
-      "gene_symbol": "F5",
-      "variant_name": "Factor V Leiden (rs6025, c.1691G>A, p.Arg506Gln)",
+      "markerId": "F5_LEIDEN",
+      "geneSymbol": "F5",
+      "variantName": "Factor V Leiden (rs6025, c.1691G>A, p.Arg506Gln)",
       "category": "ThromboticRisk",
       "severity": "Critical",
-      "observed_genotype": "G/A (Heterozygous Carrier)",
-      "clinical_description": "Resistance to Activated Protein C (APC) prevents inactivation of clotting Factor Va...",
-      "recommended_action": "In MtF regimens, cap peak 17β-estradiol setpoint to <= 500 pmol/L...",
-      "associated_regimen": "MaleToFemale",
-      "clearance_rate_multiplier": 1.0,
-      "target_kd_offset_nm": 0.0,
-      "max_safe_estradiol_pmol_l": 500.0,
-      "thrombosis_risk_multiplier": 4.2
+      "observedGenotype": "G/A (Heterozygous Carrier)",
+      "clinicalDescription": "Resistance to Activated Protein C (APC) prevents inactivation of clotting Factor Va...",
+      "recommendedAction": "In MtF regimens, cap peak 17β-estradiol setpoint to <= 500 pmol/L...",
+      "associatedRegimen": "MaleToFemale",
+      "clearanceRateMultiplier": 1.0,
+      "targetKdOffsetNm": 0.0,
+      "maxSafeEstradiolPmolL": 500.0,
+      "thrombosisRiskMultiplier": 4.2
     }
   ]
   ```
@@ -298,23 +454,6 @@ Retrieves standard clinical genetic test panels for rapid patient profiling.
 
 * **Method**: `GET`
 * **Response Status**: `200 OK`
-* **Response Payload**:
-  ```json
-  [
-    {
-      "preset_id": "PRESET_BASELINE",
-      "title": "Standard Cis-Typical Baseline (Zero Risk Alleles)",
-      "regimen": "MaleToFemale",
-      "marker_ids": []
-    },
-    {
-      "preset_id": "PRESET_MTF_THROMBOSIS",
-      "title": "MtF Patient - Factor V Leiden Heterozygote (High Clot Risk)",
-      "regimen": "MaleToFemale",
-      "marker_ids": ["F5_LEIDEN", "COMT_VAL158MET"]
-    }
-  ]
-  ```
 
 ---
 
@@ -326,8 +465,8 @@ Evaluates patient genetic markers and generates severity-tiered call-out alerts 
 * **Request Payload**:
   ```json
   {
-    "patient_id": "PATIENT-001",
-    "marker_ids": ["F5_LEIDEN", "COMT_VAL158MET"],
+    "patientId": "PATIENT-001",
+    "markerIds": ["F5_LEIDEN", "COMT_VAL158MET"],
     "regimen": "MaleToFemale"
   }
   ```
@@ -335,27 +474,22 @@ Evaluates patient genetic markers and generates severity-tiered call-out alerts 
 * **Response Payload**:
   ```json
   {
-    "patient_id": "PATIENT-001",
+    "patientId": "PATIENT-001",
     "regimen": "MaleToFemale",
-    "observed_markers": ["..."],
     "alerts": [
       {
-        "alert_id": "ALERT_F5_LEIDEN_...",
-        "gene_symbol": "F5",
+        "alertId": "ALERT_F5_LEIDEN",
+        "geneSymbol": "F5",
         "severity": "Critical",
         "category": "ThromboticRisk",
-        "title": "F5: Factor V Leiden (rs6025, c.1691G>A, p.Arg506Gln)",
-        "call_out_message": "[CRITICAL] Resistance to Activated Protein C (APC)...",
-        "clinical_guidance": "In MtF regimens, cap peak 17β-estradiol setpoint to <= 500 pmol/L...",
-        "kinetic_guidance": "Limit peak hormone burst; cap E2 to <= 500 pmol/L."
+        "title": "F5: Factor V Leiden",
+        "callOutMessage": "[CRITICAL] Resistance to Activated Protein C...",
+        "clinicalGuidance": "Cap peak 17β-estradiol setpoint to <= 500 pmol/L."
       }
     ],
-    "thrombosis_risk_index": 5.04,
-    "overall_clearance_multiplier": 0.75,
-    "cpg_methylation_mandatory": false,
-    "recommended_max_estradiol_pmol_l": 500.0,
-    "recommended_min_testosterone_nmol_l": null,
-    "recommended_kd_offset_nm": 0.0
+    "thrombosisRiskIndex": 5.04,
+    "overallClearanceMultiplier": 0.75,
+    "recommendedMaxEstradiolPmolL": 500.0
   }
   ```
 
@@ -369,7 +503,7 @@ Scans raw nucleotide sequences for CpG dinucleotide density (TLR9 immunogenicity
 * **Request Payload**:
   ```json
   {
-    "patient_id": "ANON-SEQ",
+    "patientId": "ANON-SEQ",
     "sequence": "5'-CGCGCGCGCGCGCGCGCGCG-3'",
     "regimen": "MaleToFemale"
   }
@@ -386,34 +520,23 @@ Evaluates markers and applies personalized setpoints and kinetic modifiers direc
 * **Request Payload**:
   ```json
   {
-    "patient_id": "PATIENT-001",
-    "marker_ids": ["F5_LEIDEN"],
+    "patientId": "PATIENT-001",
+    "markerIds": ["F5_LEIDEN"],
     "regimen": "MaleToFemale"
   }
   ```
 * **Response Status**: `200 OK`
-* **Response Payload**:
-  ```json
-  {
-    "genomic_profile": { "patient_id": "PATIENT-001", "..." : "..." },
-    "adjusted_endocrine_profile": {
-      "target_estradiol_pmol_l": 500.0,
-      "target_testosterone_nmol_l": 1.20,
-      "..." : "..."
-    }
-  }
-  ```
 
 ---
 
-## 6. Post-Quantum Cryptography & Regulatory Compliance Endpoints
+## 9. Post-Quantum Cryptography & Regulatory Compliance
 
 ### `GET /api/compliance/status`
-Returns the operational health, active lattice cryptography ciphers, and regulatory compliance posture.
+Returns active lattice cryptography ciphers (NIST FIPS 203 ML-KEM-768, FIPS 204 ML-DSA-65) and regulatory compliance posture.
 
 * **Method**: `GET`
 * **Response Status**: `200 OK`
-* **Response Payload**:
+* **Response Payload (JSON)**:
   ```json
   {
     "encryptionAtRestAlgorithm": "ML-KEM-768 + AES-256-GCM (NIST FIPS 203)",
@@ -434,36 +557,16 @@ Returns the operational health, active lattice cryptography ciphers, and regulat
 ---
 
 ### `GET /api/compliance/audit-ledger`
-Retrieves the most recent FDA 21 CFR Part 11 cryptographic hash-chained audit events.
+Retrieves FDA 21 CFR Part 11 cryptographic hash-chained audit events.
 
 * **Method**: `GET`
 * **Query Parameters**: `limit` (optional integer, default 100, clamped 1-1000)
 * **Response Status**: `200 OK`
-* **Response Payload**:
-  ```json
-  [
-    {
-      "sequenceNumber": 1,
-      "timestampUtc": "2026-10-20T22:31:00.000Z",
-      "previousHash": "384_bit_hex_hash...",
-      "currentHash": "384_bit_hex_hash...",
-      "operatorId": "USER_RESEARCHER",
-      "action": "ScreenGenomics",
-      "resource": "scaffold_01",
-      "detailsJson": "{\"gc\":42.5}",
-      "signature": {
-        "algorithm": "ML-DSA-65",
-        "keyId": "node_signing_master",
-        "signatureBase64": "base64_sig..."
-      }
-    }
-  ]
-  ```
 
 ---
 
 ### `GET /api/compliance/verify-ledger`
-Executes complete mathematical SHA-384 hash-chain dependency and ML-DSA-65 signature verification across the entire audit ledger.
+Executes mathematical SHA-384 hash-chain dependency and ML-DSA-65 signature verification across the entire audit ledger.
 
 * **Method**: `GET`
 * **Response Status**: `200 OK`
@@ -532,7 +635,7 @@ Permanently destroys a subject's private ML-KEM-768 decryption key pursuant to G
 ---
 
 ### `POST /api/compliance/encrypt-record`
-Encrypts arbitrary strongly-typed health or endocrine records using the subject's post-quantum ML-KEM-768 public key.
+Encrypts health or endocrine records using the subject's post-quantum ML-KEM-768 public key with AES-256-GCM bulk encryption.
 
 * **Method**: `POST`
 * **Request Headers**: `Content-Type: application/json`
@@ -547,18 +650,6 @@ Encrypts arbitrary strongly-typed health or endocrine records using the subject'
   }
   ```
 * **Response Status**: `200 OK`
-* **Response Payload**:
-  ```json
-  {
-    "algorithm": "ML-KEM-768+AES-256-GCM",
-    "keyId": "sub_a1b2c3d4e5f67890",
-    "encapsulatedKeyBase64": "...",
-    "initializationVectorBase64": "...",
-    "authenticationTagBase64": "...",
-    "ciphertextBase64": "...",
-    "createdAtUtc": "2026-10-20T22:35:00.000Z"
-  }
-  ```
 
 ---
 
@@ -583,16 +674,6 @@ Decrypts an authenticated post-quantum envelope using the subject's private ML-K
   }
   ```
 * **Response Status**: `200 OK`
-* **Response Payload**:
-  ```json
-  {
-    "subjectId": "sub_a1b2c3d4e5f67890",
-    "recordPayload": {
-      "regimen": "FemaleToMale",
-      "targetTestosteroneNmolL": 20.0
-    }
-  }
-  ```
 
 ---
 
@@ -610,37 +691,28 @@ Exports an authenticated `.enc.tar.gz` trajectory bundle encrypted with ML-KEM-7
   }
   ```
 * **Response Status**: `200 OK`
-* **Response Payload**:
-  ```json
-  {
-    "bundlePath": "simulations/exports/dna_nanotube_sample.xyz.sub_a1b2c3d4e5f67890.20261020_223500.enc.tar.gz",
-    "message": "Dataset successfully encrypted with ML-KEM-768 + AES-256-GCM."
-  }
-  ```
 
 ---
 
-## 7. Automated Test Suite Execution
+## 10. Automated Test Suite Execution & Coverage Gate
 
-We enforce 100% test pass rate and 100% line/branch code coverage across both .NET and JavaScript codebases.
+We mandate a 100% test pass rate and 100.00% line and branch code coverage across both .NET and JavaScript codebases.
 
-### Running .NET Test Suite & Code Coverage
+### Universal Pre-Flight Verification Script
+Run the automated verification gate before pushing changes:
 ```bash
-# Execute all unit and integration tests with Coverlet code coverage
-XDG_RUNTIME_DIR=/tmp dotnet test dotnet-weaver-lammps-hrt.sln \
-  --collect:"XPlat Code Coverage" \
-  --settings coverlet.runsettings
+./scripts/verify-all.sh
 ```
-
-### Running Frontend Visualization Unit Tests
-```bash
-cd src/WeaverLammpsHrt.TrajectoryParser/wwwroot
-npm test
-cd ../../..
-```
+This script executes:
+1. `dotnet format --verify-no-changes` (Zero formatting errors)
+2. `npm test` (100% line, branch, and function JS coverage)
+3. `dotnet test` (100% .NET unit and integration test pass rate)
+4. Cobertura coverage gate (100.00% Line and 100.00% Branch threshold)
+5. Markdown delimiter scan (Zero unescaped single-dollar LaTeX tokens)
 
 ---
 
 ## Next Steps
 * Return to the [**Portal Home**](index.md).
 * Review practical use cases in [**Example Biomedical Workflows**](example-workflows.md).
+* Explore physical synthesis in [**DIY & HomeLab Fabrication**](diy-fabrication-guide.md).
