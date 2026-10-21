@@ -36,7 +36,7 @@ The cryptographic subsystem conforms strictly to the finalized National Institut
 | :--- | :--- | :--- | :--- | :--- |
 | **Key Encapsulation (KEM)** | **ML-KEM-768** (NIST FIPS 203) | Public: 1,184 B<br>Private: 2,400 B<br>Ciphertext: 1,088 B | NIST Level 3 (equivalent to AES-192, 128-bit quantum security) | Module Learning With Errors (M-LWE) over polynomial rings |
 | **Digital Signatures** | **ML-DSA-65** (NIST FIPS 204) | Public: 1,952 B<br>Private: 4,032 B<br>Signature: 3,309 B | NIST Level 3 | Module Learning with Errors & Short Integer Solution (M-SIS) |
-| **Bulk Data Encryption** | **AES-256-GCM** | Key: 256 bits<br>IV: 96 bits<br>Tag: 128 bits | 128-bit quantum security against Grover's algorithm ($$O(2^{128})$$) | Symmetric block cipher with Galois Counter Mode authentication |
+| **Bulk Data Encryption** | **AES-256-GCM** | Key: 256 bits<br>IV: 96 bits<br>Tag: 128 bits | 128-bit quantum security against Grover's algorithm (O(2¹²⁸)) | Symmetric block cipher with Galois Counter Mode authentication |
 | **Cryptographic Hashing** | **SHA-384** / **SHA-256** | 384 bits / 256 bits | Collision resistant against quantum attack | Merkle–Damgård construction |
 
 ---
@@ -116,13 +116,13 @@ flowchart LR
 ```
 
 ### Mathematical Digest Verification
-Each record hash $$H_i$$ is calculated deterministically:
+Each record hash Hᵢ is calculated deterministically:
 
 $$H_i = \text{SHA-384}\left(\text{Seq}_i \mathbin{\Vert} \text{TimeUtc}_i \mathbin{\Vert} H_{i-1} \mathbin{\Vert} \text{Operator}_i \mathbin{\Vert} \text{Action}_i \mathbin{\Vert} \text{Resource}_i \mathbin{\Vert} \text{DetailsJson}_i\right)$$
 
 ### Continuous Integrity Auditing
 The `VerifyLedgerIntegrity()` engine continuously verifies the ledger:
-1. **Sequence Continuity**: Validates that sequences increment monotonically ($$0, 1, 2, \dots, N$$) with zero gaps.
+1. **Sequence Continuity**: Validates that sequences increment monotonically (0, 1, 2, ..., N) with zero gaps.
 2. **Unbroken Hash Links**: Verifies that each record's `PreviousHash` matches the exact `CurrentHash` of its immediate predecessor.
 3. **Payload Digest Verification**: Recomputes the SHA-384 hash over all fields and verifies match with `CurrentHash`.
 4. **Post-Quantum Signature Verification**: Verifies the ML-DSA-65 signature against the node's authoritative public key.

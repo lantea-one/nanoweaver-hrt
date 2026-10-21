@@ -28,7 +28,7 @@ In computer science, a corrupted byte crashes a program; in DNA nanotechnology, 
 
 ## 2. Reagents & Equipment Sourcing (Institutional vs. DiY)
 
-You do not need a university lab or a $50,000 capital budget to fold DNA origami. The table below lists standard laboratory reagents alongside accessible DIY alternatives:
+You do not need a university lab or a \$50,000 capital budget to fold DNA origami. The table below lists standard laboratory reagents alongside accessible DIY alternatives:
 
 | Material | Professional Research Source | DIY / Community Lab Alternative | Reaction Quantity | Biophysical Function |
 | :--- | :--- | :--- | :--- | :--- |

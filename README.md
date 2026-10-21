@@ -7,15 +7,17 @@
 
 ## 📄 Scientific Abstract
 
-> **Title:** **Autonomous Closed-Loop DNA Origami Nanocarriers for Permanent, Patient-Targeted Endocrine Regulation: An Open-Source In-Silico Modeling, Pharmacogenomics, and Benchtop Fabrication Framework**
+> **Title:** **Autonomous Closed-Loop DNA Origami Nanocarriers for Permanent, Patient-Targeted Endocrine Regulation: An Open-Source In-Silico Modeling, Pharmacogenomics, Post-Quantum Cryptography, and Benchtop Fabrication Framework**  
+> **Authors / Consortium:** Weaver-LAMMPS-HRT Computational Nanotechnology & Systems Pharmacology Working Group | *Sovereign Open-Source Biotechnology Initiative*
 
-Conventional Hormone Replacement Therapy (HRT) for gender-affirming care relies on lifelong, episodic exogenous administration of sex steroids via intramuscular depot injections, transdermal matrices, or oral formulations. This paradigm induces chronic peak-to-trough pharmacokinetic volatility, elevated thromboembolic and hepatic risks, systemic dysphoric fluctuations, and absolute dependency on vulnerable centralized pharmaceutical supply chains. Here, we present **`weaver-lammps-hrt`**, an open-source computational nanotechnology and synthetic biology platform engineering autonomous, patient-targeted DNA origami nanocarriers for permanent, closed-loop Female-to-Male (FtM) and Male-to-Female (MtF) endocrine regulation.
+Conventional Hormone Replacement Therapy (HRT) for gender-affirming care relies on lifelong, episodic exogenous administration of sex steroids via intramuscular depot injections, transdermal matrices, or oral formulations. This paradigm induces chronic peak-to-trough pharmacokinetic volatility, elevated thromboembolic and hepatic risks, systemic dysphoric fluctuations, and absolute dependency on vulnerable centralized pharmaceutical supply chains. Here, we present **`weaver-lammps-hrt`**, an open-source computational nanotechnology, biomedical simulation, and synthetic biology platform engineering autonomous, patient-targeted DNA origami nanocarriers for permanent, closed-loop Female-to-Male (FtM) and Male-to-Female (MtF) endocrine regulation.
 
-The platform couples multi-scale molecular dynamics with real-time bioinformatic streaming and decentralized fabrication protocols:
+The platform couples multi-scale molecular dynamics with real-time bioinformatic streaming, post-quantum cryptography, and decentralized fabrication protocols:
 1. **Structural Nanotechnology & Biomolecular Gating:** Engineered nanocarriers (hexagonal six-helix bundle nanotubes, hollow 3D cuboids, and tetrahedral cages folded from bacteriophage M13mp18 ssDNA scaffolds) feature surface-conjugated peptide and nucleic acid aptamer ligands displaying high-affinity tropism for anterior pituitary gonadotropes along the Hypothalamic-Pituitary-Gonadal (HPG) axis. Autonomous allosteric aptamer gates modulate steroid hormone micro-release in direct response to endogenous gonadotropin (LH/FSH) feedback signals, achieving self-regulating physiological homeostasis.
 2. **Zero-Allocation In-Silico Simulation Pipeline:** The computational engine integrates coarse-grained mechanical folding simulations via oxDNA and atomistic docking dynamics via LAMMPS across diverse hardware backends (Intel Arc, NVIDIA CUDA, AMD ROCm, CPU). Trajectory coordinate streams (`.xyz`, `.dcd`, `.lammps`) are ingested by a high-throughput, zero-allocation .NET 10 microservice utilizing `System.IO.Pipelines`, `ReadOnlySpan<byte>`, and AVX-512 SIMD vectorization, serializing multi-gigabyte atomic frames into columnar Apache Parquet with zero Garbage Collection heap pressure in steady state.
-3. **Bistable Endocrinology & Pharmacogenomics:** A mathematical bistable state machine models target endocrine setpoints (Feminizing MtF: 17β-estradiol 500–600 pmol/L, testosterone &lt; 1.8 nmol/L; Masculinizing FtM: testosterone 15–25 nmol/L, 17β-estradiol &lt; 150 pmol/L). The integrated `PharmacogenomicsService` screens high-impact genetic markers (*Factor V Leiden*, *Prothrombin G20210A*, *COMT*, *CYP1B1\*3*, *UGT2B17*, *AR CAG*, *TLR9*), triggering severity call-out alerts and closed-loop kinetic recalibration (`k_eff × 0.85`, safe estradiol capping, aptamer Kd tuning).
-4. **Decentralized Translation & Community Science ("How-To"):** Complete oligo routing tables, cryptographic SHA-256 provenance manifests, and an exhaustive benchtop fabrication protocol (50 µL stoichiometric pipetting schedules, non-toxic reagent substitutions, 90°C → 4°C thermal annealing ramps, and agarose gel electrophoresis QC guidelines).
+3. **Bistable Endocrinology & Pharmacogenomics:** A mathematical bistable state machine models target endocrine setpoints (Feminizing MtF: 17β-estradiol 500–600 pmol/L, testosterone < 1.8 nmol/L; Masculinizing FtM: testosterone 15–25 nmol/L, 17β-estradiol < 150 pmol/L). The integrated `PharmacogenomicsService` screens high-impact genetic markers (*Factor V Leiden*, *Prothrombin G20210A*, *COMT*, *CYP1B1\*3*, *UGT2B17*, *AR CAG*, *TLR9*), triggering severity call-out alerts and closed-loop kinetic recalibration (`k_eff × 0.85`, safe estradiol capping, aptamer Kd tuning).
+4. **Post-Quantum Cryptography & Regulatory Audit Trail:** Conforms to NIST FIPS 203 (ML-KEM-768) and FIPS 204 (ML-DSA-65) for quantum-resistant envelope encryption and digital signatures. Enforces FDA 21 CFR Part 11 compliant immutable hash-chained audit trails, HIPAA Safe Harbor cryptographic pseudonymization, and GDPR Article 17 "Right to be Forgotten" via authenticated crypto-shredding.
+5. **Decentralized Translation & Community Science ("How-To"):** Complete oligo routing tables, cryptographic SHA-256 and ML-DSA-65 provenance manifests, and an exhaustive benchtop fabrication protocol (50 µL stoichiometric pipetting schedules, non-toxic reagent substitutions, 90°C → 4°C thermal annealing ramps, and agarose gel electrophoresis QC guidelines).
 
 For the interactive documentation, architectural guides, and visual workflows, visit the [**Weaver-LAMMPS-HRT Documentation Wiki**](docs/index.md).
 
@@ -53,6 +55,17 @@ flowchart TD
 - **Zero-Allocation Parsing:** Ingests massive multi-gigabyte trajectory streams (`.xyz`, `.dcd`, oxDNA) using `System.IO.Pipelines`, `ReadOnlySpan<byte>`, and `Utf8Parser` with zero GC allocations in steady state.
 - **In-Silico Docking Analysis:** Live computation of ligand-pocket binding contact ratios and thermodynamic stability verdicts.
 - **Sovereign Web Dashboard:** Visual bistable toggle controls, patient profile setpoint management, and cryptographically verified dataset export/import with SHA-256 provenance manifests.
+
+### 5. In-Silico Simulation Studio (oxDNA, LAMMPS, PBPK)
+- **Campaign 1 (oxDNA Serum Stability)**: Simulates coarse-grained mechanical rigidity under physiological conditions (37.0°C, 150 mM NaCl, 0.8 mM Mg²⁺) and calculates Debye-Hückel electrostatic screening lengths.
+- **Campaign 2 (LAMMPS Aptamer Gating)**: Steered molecular dynamics and PMF free-energy profiling across unbinding coordinates to verify basal barrier latch containment (ΔG ≥ +8.5 kcal/mol) and LH-triggered unlatching (ΔG ≤ 0.0 kcal/mol) with GnRH-R tropism (Kd ≤ 5.0 nM).
+- **Campaign 3 (LAMMPS Payload Retention)**: Confinement and passive leakage dynamics of 50 discrete steroid molecules (estradiol / testosterone) inside cyclodextrin/cholesterol functionalized nanocavities (< 2.0% loss over 100 ns).
+- **Campaign 4 (Whole-Body QSP/PBPK)**: Multi-compartment systems pharmacology model simulating subcutaneous depot dissolution, anterior pituitary homing, hepatic clearance, and 90-day time-in-target range (≥ 90%).
+
+### 6. Post-Quantum Cryptography & Regulatory Compliance
+- **NIST Post-Quantum Standards**: Hybrid envelope encryption via ML-KEM-768 (FIPS 203) with AES-256-GCM, and quantum-resistant digital signatures via ML-DSA-65 (FIPS 204).
+- **FDA 21 CFR Part 11 Audit Trail**: Immutable, append-only SHA-384 hash-chained audit ledger with automated monotonic sequence and signature verification.
+- **HIPAA Safe Harbor & GDPR Article 17**: Deterministic SHA-256 HMAC pseudonymization of patient identifiers and instant cryptographic shredding / key zeroization for right-to-be-forgotten compliance.
 
 ---
 
@@ -110,10 +123,13 @@ Deploy to a public VPS, research lab server, or homelab with production TLS 1.3 
 ## 📊 Sovereign Web Dashboard (`http://localhost:5000`)
 
 The embedded dashboard provides:
-- **Endocrine Toggle Hub:** One-click switching between **`Male-to-Female (MtF / E2 Dominant)`** and **`Female-to-Male (FtM / T Dominant)`** regimens, with real-time patient setpoints for target E2, T, and aptamer Kd.
+- **Endocrine Toggle Hub (`/` & `/endocrine`):** One-click switching between **`Male-to-Female (MtF / E2 Dominant)`** and **`Female-to-Male (FtM / T Dominant)`** regimens, with real-time patient setpoints for target E2, T, and aptamer Kd.
+- **In-Silico Simulation Studio (`/simulations`):** Interactive execution and visualization of the 4 predictive biophysical campaigns (serum stability, aptamer gating PMF, steroid cavity retention, and 90-day PBPK kinetics) with stage-gate Go / No-Go decision matrix.
+- **Pharmacogenomics Screening (`/genomics`):** Screening panel for high-impact thrombotic and metabolic alleles (*Factor V Leiden*, *Prothrombin G20210A*, *COMT*, *CYP1B1\*3*, *UGT2B17*, *AR CAG*, *TLR9*) with automated kinetic recalibration and severity alerts.
+- **Regulatory & Cryptography Center (`/compliance`):** Real-time ledger verification, NIST ML-KEM/ML-DSA keypair inspection, HIPAA Safe Harbor de-identification, and GDPR crypto-shredding.
 - **In-Silico Docking Telemetry:** Live trajectory analysis reporting binding occupancy ratios (0.0 to 1.0), average pocket contacts per frame, and thermodynamic stability classifications.
 - **Zero-Allocation Telemetry:** Real-time monitoring of GC Generation 0, 1, and 2 collections to ensure the zero-allocation invariant is maintained during continuous trajectory processing.
-- **Cryptographic Dataset Export & Import:** Package simulation trajectories into compressed `.tar.gz` bundles paired with an immutable `provenance.manifest.json` featuring SHA-256 digest validation.
+- **Cryptographic Dataset Export & Import (`/datasets`):** Package simulation trajectories into compressed `.tar.gz` bundles paired with an immutable `provenance.manifest.json` featuring SHA-256 and ML-DSA-65 post-quantum signature validation.
 
 ---
 
@@ -122,17 +138,20 @@ The embedded dashboard provides:
 Comprehensive documentation, biomedical engineering primers, architectural diagrams, screenshots, and step-by-step example workflows are available in the repository's [**`docs/`**](docs/) directory and automatically deployed as an interactive wiki via GitHub Pages:
 
 * **[Live Documentation Portal](https://lantea-one.github.io/dotnet-weaver-lammps-hrt/)** (GitHub Pages)
+* **[Scientific Abstract](docs/abstract.md)**: Formal peer-reviewed abstract, biophysical gating mechanisms, zero-allocation pipeline specifications, and stage-gate verification matrix.
 * **[Getting Started & Deployment Guide](docs/getting-started.md)**: Local .NET 10 setup and Docker GPU overrides (Intel Arc, NVIDIA, AMD).
 * **[Secure Public Access & Reverse Proxies](docs/secure-public-access.md)**: Production deployment architectures, free Let's Encrypt SSL/TLS, Caddy, Nginx, Traefik, and Cloudflare Tunnels.
 * **[Guided DNA Origami Workflow Wizard](docs/workflow-wizard.md)**: 6-stage engineering pipeline from FASTA scaffold to benchtop synthesis.
 * **[Endocrine Hub & Pharmacodynamics](docs/endocrine-hub.md)**: In-vivo HPG axis feedback, bistable setpoints, and 72-hour kinetics.
-* **[In-Silico Simulation Studio](docs/in-silico-simulations.md)**: oxDNA serum stability, LAMMPS aptamer gating ($\Delta G$), payload retention, and whole-body PBPK modeling.
+* **[In-Silico Simulation Studio](docs/in-silico-simulations.md)**: oxDNA serum stability, LAMMPS aptamer gating (ΔG), payload retention, and whole-body PBPK modeling.
 * **[Configuration & Sovereign Peering](docs/configuration-peers.md)**: Database precedence law, single-use share keys, and remote federation.
 * **[Stack Topology & Hardware Telemetry](docs/stack-services.md)**: Microservice diagnostics, GC telemetry, and SIMD acceleration.
 * **[Trajectory Streaming & Columnar Datasets](docs/trajectories-and-datasets.md)**: Zero-allocation `System.IO.Pipelines` parsing and DuckDB Parquet.
 * **[Example Biomedical Workflows](docs/example-workflows.md)**: End-to-end recipes for MtF, FtM, high-throughput streaming, and lab peering.
 * **[DIY & HomeLab Benchtop Fabrication Guide](docs/diy-fabrication-guide.md)**: Accessible physical synthesis instructions, 50 µL pipetting recipe, and agarose gel QC for community bio-hackers.
+* **[Post-Quantum Cryptography & Regulatory Compliance](docs/compliance-and-security.md)**: NIST FIPS 203 (ML-KEM-768), FIPS 204 (ML-DSA-65), HIPAA Safe Harbor, GDPR Article 17 crypto-shredding, and FDA 21 CFR Part 11 audit trails.
 * **[REST API Reference & Test Harness](docs/api-reference.md)**: Programmatic minimal endpoints, JSON schemas, and test execution.
+* **[Scientific Research & Legal Disclaimer](docs/disclaimer.md)**: Formal scientific research scope, medical non-advice, and BSL-1 biosafety declarations.
 
 ---
 
@@ -140,6 +159,7 @@ Comprehensive documentation, biomedical engineering primers, architectural diagr
 
 ### Prerequisites
 - [.NET 10 SDK](https://dotnet.microsoft.com/)
+- [Node.js (v20+)](https://nodejs.org/) (for client-side visualizer tests)
 - [Docker Engine & Docker Compose](https://docs.docker.com/engine/install/)
 
 ### Run the Parser & Web Dashboard Locally
@@ -147,10 +167,16 @@ Comprehensive documentation, biomedical engineering primers, architectural diagr
 dotnet run --project src/WeaverLammpsHrt.TrajectoryParser/WeaverLammpsHrt.TrajectoryParser.csproj
 ```
 
-### Run Test Suite
+### Run Test Suite & Quality Verification Gate
 ```bash
 # Run all unit tests across parsers, cryptographic dataset services, and endocrine engines
 dotnet test dotnet-weaver-lammps-hrt.sln
+
+# Run JavaScript visualizer test suite (100% line, branch, function coverage)
+npm test
+
+# Run universal 5-step pre-flight verification gate (.NET format, JS tests, .NET tests, 100% coverage, markdown math check)
+./scripts/verify-all.sh
 ```
 
 ---

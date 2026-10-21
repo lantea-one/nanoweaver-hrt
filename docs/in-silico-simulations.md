@@ -40,7 +40,7 @@ flowchart TD
 * **Simulation Engine**: oxDNA (OpenCL / Level Zero / SYCL GPU acceleration).
 * **Biophysical Objective**: Models coarse-grained mechanical rigidity and thermal fluctuations under human physiological serum conditions (37.0°C, 150 mM NaCl, 0.8 mM Mg²⁺).
 * **Mathematical Electrostatic Screening**:
-  The engine computes the Debye-Hückel screening length ($\lambda_D$) from total ionic strength:
+  The engine computes the Debye-Hückel screening length (Debye length λ_D) from total ionic strength:
 
 $$I = [\text{Na}^+] + 3 \times [\text{Mg}^{2+}]$$
 
@@ -53,9 +53,9 @@ $$\lambda_D = \frac{0.304}{\sqrt{I}} \times \sqrt{\frac{T}{298.15}}\text{ nm}$$
 * **Simulation Engine**: LAMMPS (CHARMM36 nucleic acid & GAFF parameters).
 * **Biophysical Objective**: Steered Molecular Dynamics (SMD) and umbrella sampling along the latch unbinding coordinate (0.5 to 3.0 nm) to compute the Potential of Mean Force (PMF).
 * **Allosteric Gating Criteria**:
-  * **Unbound Basal Barrier**: Must maintain $\Delta G \ge +8.5\text{ kcal/mol}$ to prevent passive steroid leakage.
-  * **Bound Triggered Barrier**: Binding of Luteinizing Hormone (LH) must shift the free-energy landscape exergonically ($\Delta G \le 0.0\text{ kcal/mol}$), causing spontaneous gate opening.
-  * **Anterior Pituitary Tropism**: Evaluates spatial non-covalent contacts (< 5.0 Å) against human Gonadotropin-Releasing Hormone Receptor (GnRH-R), verifying high-affinity homing ($K_d \le 5.0\text{ nM}$).
+  * **Unbound Basal Barrier**: Must maintain ΔG ≥ +8.5 kcal/mol to prevent passive steroid leakage.
+  * **Bound Triggered Barrier**: Binding of Luteinizing Hormone (LH) must shift the free-energy landscape exergonically (ΔG ≤ 0.0 kcal/mol), causing spontaneous gate opening.
+  * **Anterior Pituitary Tropism**: Evaluates spatial non-covalent contacts (< 5.0 Å) against human Gonadotropin-Releasing Hormone Receptor (GnRH-R), verifying high-affinity homing (Kd ≤ 5.0 nM).
 
 ### Campaign 3: Steroid Payload Encapsulation & Micro-Leakage Dynamics
 * **Simulation Engine**: LAMMPS atomistic molecular dynamics in explicit TIP3P water.
@@ -68,14 +68,14 @@ $$\lambda_D = \frac{0.304}{\sqrt{I}} \times \sqrt{\frac{T}{298.15}}\text{ nm}$$
 * **Simulation Engine**: .NET 10 Systems Pharmacology Engine.
 * **Biomedical Objective**: Multi-compartment whole-body pharmacokinetics model tracking nanocarrier depot dissolution, organ biodistribution, and HPG-axis negative feedback over 30, 60, or 90 days.
 * **Compartment System**:
-  1. **Subcutaneous Depot**: First-order slow dissolution reservoir ($t_{1/2} \approx 95\text{ days}$).
+  1. **Subcutaneous Depot**: First-order slow dissolution reservoir (t_½ ≈ 95 days).
   2. **Central Blood Volume**: Plasma circulation with dynamic nanocarrier concentration.
   3. **Target Anterior Pituitary**: Homing site for GnRH-R mediated micro-release.
-  4. **Hepatic Clearance**: Scaled by subject-specific genetic clearance multipliers ($k_{\text{eff}}$).
+  4. **Hepatic Clearance**: Scaled by subject-specific genetic clearance multipliers (k_eff).
   5. **Reticuloendothelial System (RES)**: Macrophage phagocytosis in spleen and liver.
 * **Pharmacogenomic Coupling**:
-  * For MtF subjects carrying *Factor V Leiden* or *Prothrombin G20210A*, peak estradiol is safely capped at $\le 500\text{ pmol/L}$.
-  * For FtM subjects carrying *AR CAG* repeats or *UGT2B17* deletions, androgen targets are recalibrated ($15\text{ to }25\text{ nmol/L}$).
+  * For MtF subjects carrying *Factor V Leiden* or *Prothrombin G20210A*, peak estradiol is safely capped at ≤ 500 pmol/L.
+  * For FtM subjects carrying *AR CAG* repeats or *UGT2B17* deletions, androgen targets are recalibrated (15 to 25 nmol/L).
 * **Dosing Verdict**: Empirically confirms that a periodic subcutaneous depot (e.g. 25 mg every 180 days) maintains cis-typical endocrine levels without hormonal volatility.
 
 ---
@@ -86,10 +86,10 @@ Researchers use this matrix to enforce clear Go / No-Go decision gates before we
 
 | Campaign | Primary Metric | Target Threshold | Action if Failed |
 | :--- | :--- | :--- | :--- |
-| **1. Serum Stability** | Average RMSF | $< 1.20\text{ nm}$ at $0.8\text{ mM Mg}^{2+}$ | Apply PLL-PEG coating; reinforce low-GC crossovers with GC-clamps. |
-| **2. Aptamer Gating** | Latch Free Energy ($\Delta G$) | $\ge +8.5\text{ kcal/mol}$ unbound<br>$\le 0.0\text{ kcal/mol}$ bound | Lengthen complementary latch stem; retune aptamer binding loop. |
-| **3. Payload Leakage** | Closed Passive Leakage | $< 2.0\%$ cargo loss over 100 ns | Functionalize cavity with cyclodextrin or cholesterol anchors. |
-| **4. Whole-Body PBPK** | Target Range Time | $\ge 90\%$ over 90 simulated days | Adjust subcutaneous depot mass and release kinetics. |
+| **1. Serum Stability** | Average RMSF | < 1.20 nm at 0.8 mM Mg²⁺ | Apply PLL-PEG coating; reinforce low-GC crossovers with GC-clamps. |
+| **2. Aptamer Gating** | Latch Free Energy (ΔG) | ≥ +8.5 kcal/mol unbound<br>≤ 0.0 kcal/mol bound | Lengthen complementary latch stem; retune aptamer binding loop. |
+| **3. Payload Leakage** | Closed Passive Leakage | < 2.0% cargo loss over 100 ns | Functionalize cavity with cyclodextrin or cholesterol anchors. |
+| **4. Whole-Body PBPK** | Target Range Time | ≥ 90% over 90 simulated days | Adjust subcutaneous depot mass and release kinetics. |
 
 ---
 

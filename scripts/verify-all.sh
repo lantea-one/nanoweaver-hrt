@@ -94,26 +94,46 @@ echo ""
 echo "=============================================================================="
 echo ">> Step 5/5: Verifying Documentation Markdown Math Delimiters..."
 echo "=============================================================================="
-python3 -c "
+python3 - << 'EOF'
 import glob, re, sys
 
-files = sorted(glob.glob('docs/*.md') + ['README.md'])
+files = sorted(set(glob.glob('docs/**/*.md', recursive=True) + glob.glob('docs/*.md') + ['README.md']))
 violations = []
+inline_display_violations = []
+
 for f in files:
-    content = open(f).read()
-    matches = re.findall(r'(?<!\$)\$(?!\$)(.*?)(?<!\$)\$(?!\$)', content)
+    content = open(f, encoding='utf-8').read()
+    # Strip fenced code blocks and inline code spans to avoid false positives on shell scripts or code
+    code_stripped = re.sub(r'```.*?```', '', content, flags=re.DOTALL)
+    code_stripped = re.sub(r'`.*?`', '', code_stripped)
+    
+    matches = re.findall(r'(?<!\$)\$(?!\$)(.*?)(?<!\$)\$(?!\$)', code_stripped)
     if matches:
         violations.append((f, len(matches), matches[:3]))
+        
+    for line_idx, line in enumerate(code_stripped.split('\n'), 1):
+        sline = line.strip()
+        if '$$' in sline:
+            if not (sline.startswith('$$') and sline.endswith('$$')) or sline.count('$$') > 2:
+                inline_display_violations.append((f, line_idx, sline))
 
 if violations:
     print('ERROR: Found unescaped/broken single-dollar math delimiters in documentation:')
     for f, count, samples in violations:
         print(f'  {f}: {count} violations (Samples: {samples})')
-    print('Use clean Unicode symbols (e.g. µL, °C, 17β-estradiol, Mg²⁺) instead of \$...\$')
+    print('Use clean Unicode symbols (e.g. µL, °C, 17β-estradiol, Mg²⁺) instead of $...$')
+
+if inline_display_violations:
+    print('ERROR: Found inline double-dollar ($$) math delimiters embedded in text/tables:')
+    for f, line_idx, line in inline_display_violations:
+        print(f'  {f}:{line_idx}: {line}')
+    print('Standalone equations must be fenced on their own lines ($$...$$). Use clean Unicode for inline text.')
+
+if violations or inline_display_violations:
     sys.exit(1)
 
 print(f'✓ Scanned {len(files)} markdown files: Zero broken LaTeX interpolation tokens found.')
-"
+EOF
 
 echo ""
 echo "=============================================================================="

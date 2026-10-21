@@ -95,14 +95,14 @@ The following stage-gate criteria establish verifiable Go / No-Go decision gates
 
 | Metric Category | Target Parameter | Verification Threshold | Translational Significance |
 | :--- | :--- | :--- | :--- |
-| **Mechanical Serum Stability** | Average RMSF at 0.8 mM Mg²⁺ | $< 1.20\text{ nm}$ (with PLL-PEG coating) | Prevents premature in-vivo denaturing and endonuclease degradation in human blood serum. |
-| **Aptamer Gating Energy** | Unbound Latch Free Energy (ΔG) | $\ge +8.5\text{ kcal/mol}$ (unbound)<br>$\le 0.0\text{ kcal/mol}$ (LH-bound) | Ensures strict payload containment in basal state while enabling spontaneous release upon hormonal feedback. |
-| **Pituitary Tropism** | GnRH-R Binding Affinity (Kd) | $\le 5.0\text{ nM}$ | Guarantees high-affinity tissue homing to target gonadotropes along the HPG axis. |
-| **Cargo Confinement** | Closed Cavity Passive Leakage | $< 2.0\%$ cargo loss over 100 ns | Confirms cyclodextrin/cholesterol cavity functionalization prevents hydrophobic steroid pore diffusion. |
-| **Pharmacokinetics (PBPK)** | Time-in-Target Range | $\ge 90\%$ over 90 simulated days | Validates stable therapeutic hormone setpoints without supraphysiological spikes or valleys. |
+| **Mechanical Serum Stability** | Average RMSF at 0.8 mM Mg²⁺ | < 1.20 nm (with PLL-PEG coating) | Prevents premature in-vivo denaturing and endonuclease degradation in human blood serum. |
+| **Aptamer Gating Energy** | Unbound Latch Free Energy (ΔG) | ≥ +8.5 kcal/mol (unbound)<br>≤ 0.0 kcal/mol (LH-bound) | Ensures strict payload containment in basal state while enabling spontaneous release upon hormonal feedback. |
+| **Pituitary Tropism** | GnRH-R Binding Affinity (Kd) | ≤ 5.0 nM | Guarantees high-affinity tissue homing to target gonadotropes along the HPG axis. |
+| **Cargo Confinement** | Closed Cavity Passive Leakage | < 2.0% cargo loss over 100 ns | Confirms cyclodextrin/cholesterol cavity functionalization prevents hydrophobic steroid pore diffusion. |
+| **Pharmacokinetics (PBPK)** | Time-in-Target Range | ≥ 90% over 90 simulated days | Validates stable therapeutic hormone setpoints without supraphysiological spikes or valleys. |
 | **Stream Processing** | Steady-State GC Allocation | 0 bytes (`GC Gen 0/1/2 = 0`) | Eliminates garbage collection latency pauses during high-frequency molecular dynamics streaming. |
 | **Post-Quantum Security** | Cryptographic Hardness | NIST Level 3 (ML-KEM-768 / ML-DSA-65) | Guarantees quantum resistance against future Cryptanalytically Relevant Quantum Computers (CRQCs). |
-| **Microbiological Purity** | Endotoxin Concentration | $< 0.1\text{ EU/mL}$ (LAL Chromogenic Assay) | Guarantees freedom from pyrogenic lipopolysaccharides for safe benchtop subcutaneous depot preparation. |
+| **Microbiological Purity** | Endotoxin Concentration | < 0.1 EU/mL (LAL Chromogenic Assay) | Guarantees freedom from pyrogenic lipopolysaccharides for safe benchtop subcutaneous depot preparation. |
 
 ---
 
