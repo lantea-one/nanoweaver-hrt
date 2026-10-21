@@ -18,6 +18,6 @@
 
 ---
 
-* [Forgejo Repository (Authoritative)](https://git.lantea.one/Lantea.One/nanoweaver-hrt)
+* [Forgejo Repository (Authoritative)](https://git.lantea.one/lantea-one/nanoweaver-hrt)
 * [GitHub Mirror](https://github.com/lantea-one/nanoweaver-hrt)
-* [MIT License](https://git.lantea.one/Lantea.One/nanoweaver-hrt/src/branch/main/LICENSE)
+* [MIT License](https://git.lantea.one/lantea-one/nanoweaver-hrt/src/branch/main/LICENSE)

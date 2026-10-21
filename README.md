@@ -9,17 +9,17 @@
 
 > [!IMPORTANT]
 > **Authoritative Upstream Source:** This project is developed and maintained on a sovereign, decentralized Git forge powered by **Forgejo**:  
-> 🔗 **[https://git.lantea.one/Lantea.One/nanoweaver-hrt](https://git.lantea.one/Lantea.One/nanoweaver-hrt)**
+> 🔗 **[https://git.lantea.one/lantea-one/nanoweaver-hrt](https://git.lantea.one/lantea-one/nanoweaver-hrt)**
 >
 > **GitHub is a Read-Only Downstream Mirror:** Due to the real threat of administrative censorship, account suspension, and arbitrary deplatforming of open-source synthetic biology and gender-affirming healthcare research by centralized corporate platforms, GitHub is maintained strictly as an automated read-only distribution mirror.
 >
 > **Contributing, Forking, and Issue Tracking:**  
-> - **All forks, pull requests, issues, and active development MUST be conducted directly on the sovereign [Forgejo repository](https://git.lantea.one/Lantea.One/nanoweaver-hrt).**
+> - **All forks, pull requests, issues, and active development MUST be conducted directly on the sovereign [Forgejo repository](https://git.lantea.one/lantea-one/nanoweaver-hrt).**
 > - Do **not** fork or submit pull requests on GitHub; downstream mirrors are not the authoritative source of truth and are subject to third-party administrative disruption.
 >
 > ```bash
 > # Clone directly from the authoritative sovereign Forgejo remote:
-> git clone https://git.lantea.one/Lantea.One/nanoweaver-hrt.git
+> git clone https://git.lantea.one/lantea-one/nanoweaver-hrt.git
 > ```
 
 ---

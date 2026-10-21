@@ -39,7 +39,7 @@ For development, testing, and UI exploration, you can run the trajectory parser 
 
 ### Step 1: Clone the Repository
 ```bash
-git clone https://git.lantea.one/Lantea.One/nanoweaver-hrt.git
+git clone https://git.lantea.one/lantea-one/nanoweaver-hrt.git
 cd nanoweaver-hrt
 ```
 

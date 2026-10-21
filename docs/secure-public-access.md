@@ -91,12 +91,12 @@ sudo ufw reload
 **Caddy** is the recommended reverse proxy for both beginners and seasoned researchers. It automatically obtains, renews, and manages free Let's Encrypt certificates without any external certbot cron jobs or renewal scripts.
 
 ### 4.1. Architecture
-- Uses the included [`compose/docker-compose.public-caddy.yml`](https://git.lantea.one/Lantea.One/nanoweaver-hrt/src/branch/main/compose/docker-compose.public-caddy.yml) overlay.
+- Uses the included [`compose/docker-compose.public-caddy.yml`](https://git.lantea.one/lantea-one/nanoweaver-hrt/src/branch/main/compose/docker-compose.public-caddy.yml) overlay.
 - Rebinds the Trajectory Parser from `0.0.0.0:5000` to `127.0.0.1:5000` (loopback only), completely shielding it from direct external connections.
 - Exposes ports `80` and `443` on Caddy with non-root security boundaries and dropped Linux capabilities.
 
 ### 4.2. Hardened Caddy Configuration
-The configuration is stored in [`compose/caddy/Caddyfile`](https://git.lantea.one/Lantea.One/nanoweaver-hrt/src/branch/main/compose/caddy/Caddyfile):
+The configuration is stored in [`compose/caddy/Caddyfile`](https://git.lantea.one/lantea-one/nanoweaver-hrt/src/branch/main/compose/caddy/Caddyfile):
 
 ```caddy
 {
@@ -157,7 +157,7 @@ Caddy will automatically contact Let's Encrypt, solve the HTTP-01 challenge on p
 For enterprise environments or researchers with existing Nginx workflows, the repository provides an automated Nginx + Certbot setup.
 
 ### 5.1. Architecture
-- Uses [`compose/docker-compose.public-nginx.yml`](https://git.lantea.one/Lantea.One/nanoweaver-hrt/src/branch/main/compose/docker-compose.public-nginx.yml).
+- Uses [`compose/docker-compose.public-nginx.yml`](https://git.lantea.one/lantea-one/nanoweaver-hrt/src/branch/main/compose/docker-compose.public-nginx.yml).
 - Pairs a hardened Alpine Nginx container with the official `certbot/certbot` image.
 - Shares an ACME challenge webroot volume (`certbot_www`) and SSL certificate storage volume (`certbot_conf`).
 - The Certbot companion runs an automated 12-hour renewal check in the background.
@@ -186,7 +186,7 @@ docker compose -f docker-compose.yml -f compose/docker-compose.public-nginx.yml 
 ```
 
 ### 5.3. Nginx Virtual Host Highlights
-The configuration template in [`compose/nginx/nginx.conf`](https://git.lantea.one/Lantea.One/nanoweaver-hrt/src/branch/main/compose/nginx/nginx.conf) includes:
+The configuration template in [`compose/nginx/nginx.conf`](https://git.lantea.one/lantea-one/nanoweaver-hrt/src/branch/main/compose/nginx/nginx.conf) includes:
 - **WebSocket Upgrade Mapping:** Correctly upgrades HTTP/1.1 connections to WebSockets for Blazor Server and SignalR hubs.
 - **Zero Buffering (`proxy_buffering off;`):** Ensures real-time 60 FPS trajectory coordinate streaming reaches the client browser without intermediate chunking delays.
 - **Extended Timeouts (`proxy_read_timeout 86400s;`):** Prevents long-running simulation monitoring sessions from timing out.
