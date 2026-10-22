@@ -693,9 +693,11 @@ textarea.form-control {
     gap: 0.5rem;
     max-width: 1400px;
     margin: 0 auto;
+    flex-wrap: wrap;
 }
 
 .nav-link {
+    white-space: nowrap;
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
@@ -1278,6 +1280,10 @@ textarea.form-control {
 .justify-between { justify-content: space-between; }
 .justify-end { justify-content: flex-end; }
 .align-center { align-items: center; }
+.align-items-center { align-items: center; }
+.align-end { align-items: flex-end; }
+.flex-wrap { flex-wrap: wrap; }
+.flex-column { flex-direction: column; }
 .gap-1 { gap: 0.5rem; }
 .gap-2 { gap: 0.75rem; }
 .gap-3 { gap: 1rem; }
@@ -1480,3 +1486,397 @@ textarea.form-control {
     border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
+/* ==========================================================================
+   Focus management
+   --------------------------------------------------------------------------
+   WHAT: Suppresses the user-agent focus ring on headings that Blazor focuses
+         programmatically, while keeping a visible ring for keyboard users.
+   WHY:  Routes.razor uses <FocusOnNavigate Selector="h1" />, which assigns
+         tabindex="-1" to the layout heading and focuses it on every navigation
+         so screen readers announce the new route. Chromium then painted its
+         default outline around the NANOWEAVER-HRT brand on every page load,
+         which read as a stray border box. Removing focus styling outright would
+         instead strip the cue genuine keyboard users depend on.
+   HOW:  :focus clears the ring for the programmatic case; :focus-visible then
+         re-adds a themed ring for genuinely tabbable controls only. The tabindex="-1"
+         heading is deliberately excluded: once Blazor is interactive, Chromium treats
+         its script-driven focus as :focus-visible and would repaint the stray box.
+         A tabindex="-1" element is never reached by Tab, so no keyboard cue is lost.
+   ========================================================================== */
+h1[tabindex="-1"]:focus,
+h2[tabindex="-1"]:focus,
+[tabindex="-1"]:focus {
+    outline: none;
+}
+
+/* ==========================================================================
+   Private key entry
+   --------------------------------------------------------------------------
+   WHAT: Styles the multi-line PEM private key field on the sign-in page.
+   WHY:  The field must be a textarea so that pasted PEM text keeps its newlines;
+         a single-line input silently strips them and sign-in then fails. A
+         textarea cannot use type="password", so masking moves into CSS.
+   HOW:  Preserves literal line breaks and scrolls long base64 lines sideways
+         rather than wrapping them. .is-masked obscures the characters while the
+         "Show Key" toggle is off. Browsers without -webkit-text-security show the
+         key as plain text, which is why the toggle and file upload both remain.
+   ========================================================================== */
+.private-key-input {
+    min-height: 7.5rem;
+    resize: vertical;
+    white-space: pre;
+    overflow-wrap: normal;
+    overflow-x: auto;
+    line-height: 1.45;
+}
+
+.private-key-input.is-masked {
+    -webkit-text-security: disc;
+}
+
+a:focus-visible,
+button:focus-visible,
+[role="button"]:focus-visible,
+[tabindex]:not([tabindex="-1"]):focus-visible,
+input[type="checkbox"]:focus-visible,
+input[type="radio"]:focus-visible {
+    outline: 2px solid var(--accent-cyan);
+    outline-offset: 2px;
+    border-radius: 3px;
+}
+
+
+/* ==========================================================================
+   Alerts, modals, tabs and wizard primitives
+   --------------------------------------------------------------------------
+   WHAT: Styles for classes the Razor pages use but that had no rules at all:
+         .alert*, .modal-*, .btn-close, .btn-success, .tab-*, .setup-stepper,
+         .summary-*, .generated-box, .grid / .grid-2 and small utilities.
+   WHY:  Without them a "modal" rendered as a transparent block at the bottom of
+         the page (off screen, widening it to 400+px on phones), validation
+         messages were bare text, and wizard tabs showed raw browser buttons.
+   HOW:  Modals are a fixed full-screen flex overlay whose card scrolls inside
+         itself (max-height of the dynamic viewport); everything reuses :root
+         variables and the same rgba tints the badges already use.
+   ========================================================================== */
+a {
+    color: var(--accent-cyan);
+}
+
+.alert {
+    padding: 0.65rem 0.9rem;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    font-size: 0.85rem;
+    overflow-wrap: anywhere;
+}
+
+.alert-danger {
+    background: rgba(244, 63, 94, 0.12);
+    border-color: rgba(244, 63, 94, 0.35);
+    color: var(--accent-rose);
+}
+
+.alert-success {
+    background: rgba(16, 185, 129, 0.12);
+    border-color: rgba(16, 185, 129, 0.35);
+    color: var(--accent-emerald);
+}
+
+.alert-warning {
+    background: rgba(245, 158, 11, 0.12);
+    border-color: rgba(245, 158, 11, 0.35);
+    color: var(--accent-amber);
+}
+
+.alert-info {
+    background: rgba(0, 112, 243, 0.12);
+    border-color: rgba(0, 242, 254, 0.3);
+    color: var(--accent-cyan);
+}
+
+.modal-overlay,
+.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    padding: 1rem;
+    overflow-y: auto;
+    background-color: rgba(10, 14, 20, 0.85);
+}
+
+.modal-card,
+.modal-content {
+    margin: auto;
+    width: 100%;
+    max-width: 640px;
+    min-width: 0;
+    max-height: calc(100dvh - 2rem);
+    overflow-y: auto;
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 1.25rem;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.modal-body {
+    min-width: 0;
+}
+
+.modal-footer {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.btn-close {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 1.25rem;
+    line-height: 1;
+    padding: 0.2rem 0.6rem;
+}
+
+.btn-close:hover {
+    color: var(--text-main);
+    border-color: var(--accent-cyan);
+}
+
+.btn-success {
+    background: var(--accent-emerald);
+    color: #000;
+}
+
+.btn-success:hover {
+    opacity: 0.9;
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.4);
+}
+
+.btn-lg {
+    padding: 0.8rem 1.4rem;
+    font-size: 1rem;
+}
+
+.btn-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.btn-group .btn {
+    flex: 1 1 auto;
+}
+
+.tab-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.tab-btn {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-family: var(--font-sans);
+    font-size: 0.85rem;
+    font-weight: 500;
+    padding: 0.45rem 0.9rem;
+    transition: all 0.2s ease;
+}
+
+.tab-btn:hover {
+    color: var(--text-main);
+    border-color: var(--accent-cyan);
+}
+
+.tab-btn.active {
+    background: rgba(0, 242, 254, 0.12);
+    border-color: var(--accent-cyan);
+    color: var(--accent-cyan);
+    font-weight: 600;
+}
+
+.setup-stepper {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.25rem;
+    margin-top: 1rem;
+}
+
+.setup-stepper .step-indicator {
+    cursor: default;
+}
+
+.summary-row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.25rem 1rem;
+    padding: 0.6rem 0;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.85rem;
+}
+
+.summary-row .label {
+    color: var(--text-muted);
+}
+
+.summary-row .value {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.generated-box {
+    min-width: 0;
+}
+
+.checkbox-row {
+    align-items: flex-start;
+    font-size: 0.85rem;
+}
+
+.checkbox-row input {
+    flex-shrink: 0;
+    margin-top: 0.2rem;
+}
+
+.actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.actions.text-right {
+    justify-content: flex-end;
+}
+
+.form-row {
+    flex-wrap: wrap;
+}
+
+.flex-1 {
+    flex: 1 1 220px;
+    min-width: 0;
+}
+
+.grid {
+    display: grid;
+    gap: 1rem;
+}
+
+.grid-2 {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+}
+
+.grid > * {
+    min-width: 0;
+}
+
+.text-danger { color: var(--accent-rose); }
+.text-muted { color: var(--text-muted); }
+.text-main { color: var(--text-main); }
+.text-sm { font-size: 0.8rem; }
+.font-sm { font-size: 0.8rem; }
+.font-normal { font-weight: 400; }
+.font-semibold { font-weight: 600; }
+.break-all { word-break: break-all; }
+.d-block { display: block; }
+.m-0 { margin: 0; }
+.mb-0 { margin-bottom: 0; }
+.mb-4 { margin-bottom: 1.5rem; }
+.p-0 { padding: 0; }
+.p-2 { padding: 0.5rem; }
+.p-3 { padding: 1rem; }
+.p-4 { padding: 1.5rem; }
+.mx-auto { margin-left: auto; margin-right: auto; }
+.overflow-hidden { overflow: hidden; }
+.justify-content-between { justify-content: space-between; }
+.table-responsive { overflow-x: auto; max-width: 100%; }
+
+/* ==========================================================================
+   Narrow-viewport containment
+   --------------------------------------------------------------------------
+   WHAT: Stops the page from scrolling sideways on phone-width screens.
+   WHY:  The navbar status badges, the nav link row and several grids with
+         fixed minmax() minimums were wider than a 390px screen, pushing the
+         whole document past the viewport.
+   HOW:  Let the header wrap, make the nav row scroll inside itself, and clamp
+         grid column minimums to the container width with min().
+   ========================================================================== */
+@media (max-width: 768px) {
+    .navbar {
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        padding: 1rem;
+    }
+
+    .node-status {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        min-width: 0;
+    }
+
+    .sub-navbar {
+        padding: 0.5rem 1rem;
+        overflow-x: auto;
+    }
+
+    .nav-links {
+        width: max-content;
+    }
+
+    .nav-link {
+        white-space: nowrap;
+    }
+
+    .main-container,
+    .telemetry-grid,
+    .content-grid {
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+
+    .grid-2col {
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+    }
+
+    .card,
+    .panel,
+    .table-container {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .panel-header {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .stepper-steps {
+        overflow-x: auto;
+        justify-content: flex-start;
+        gap: 0.5rem;
+    }
+
+    .step-indicator {
+        flex-shrink: 0;
+        white-space: nowrap;
+    }
+}
