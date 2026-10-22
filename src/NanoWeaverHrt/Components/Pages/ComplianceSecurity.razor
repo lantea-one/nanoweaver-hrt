@@ -96,7 +96,7 @@
                     <td><strong>FDA 21 CFR Part 11</strong><br><small class="text-muted">§ 11.10(e)</small></td>
                     <td>Tamper-Evident Audit Trails</td>
                     <td>Immutable append-only ledger; Merkle SHA-384 hash chaining; signed with ML-DSA-65 post-quantum signatures</td>
-                    <td><span class="badge @(_statusReport.IsAuditLedgerIntact ? "badge-accent" : "badge-outline")">@(_statusReport.IsAuditLedgerIntact ? "100% VERIFIED" : "VERIFICATION REQUIRED")</span></td>
+                    <td><span class="badge @(_statusReport.IsAuditLedgerIntact ? "badge-accent" : "badge-warning")">@(_statusReport.IsAuditLedgerIntact ? "100% VERIFIED" : "VERIFICATION REQUIRED")</span></td>
                 </tr>
             </tbody>
         </table>

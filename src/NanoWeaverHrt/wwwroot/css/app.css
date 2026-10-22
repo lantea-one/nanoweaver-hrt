@@ -102,19 +102,65 @@ body {
     box-shadow: 0 0 8px var(--accent-emerald);
 }
 
-/* Badges */
+/* ==========================================================================
+   Status badges
+   --------------------------------------------------------------------------
+   WHAT: The small pill labels carrying status text - "100% ENFORCED" and
+         "100% VERIFIED" on /compliance, "DB: SQLite" in the navbar, a signed-in
+         user's role, a service volume path, and so on.
+   WHY:  The base rule set padding but left the element at its default
+         `display: inline`. Vertical padding on an inline box is painted outside
+         the line box and does not reserve space, so inside a table cell the
+         tinted pill bled over the row border and collided with the rows above
+         and below, and a two-word label such as "100% ENFORCED" could break
+         across lines leaving half a pill on each row. Three variants the pages
+         ask for (.badge-outline, .badge-primary, .badge-danger) had no rules at
+         all, so "VERIFICATION REQUIRED", the navbar database label and the
+         signed-in role chip rendered as bare padded text with no tint, border
+         or colour.
+   HOW:  Make the pill an inline-flex box with an explicit line-height so the
+         padding belongs to the box and the row reserves space for it, keep the
+         label on a single line, and define every variant the markup references
+         from the same :root accent tints the other badges already use.
+   ========================================================================== */
 .badge {
+    display: inline-block;
     font-size: 0.75rem;
     font-family: var(--font-mono);
     font-weight: 600;
+    line-height: 1.2;
     padding: 0.35rem 0.75rem;
     border-radius: 6px;
+    border: 1px solid transparent;
+    white-space: nowrap;
+    vertical-align: middle;
 }
 
 .badge-accent {
     background: rgba(0, 112, 243, 0.15);
     color: var(--accent-cyan);
     border: 1px solid rgba(0, 242, 254, 0.3);
+}
+
+/* Neutral pill for secondary facts (database backend, mounted volume, gate). */
+.badge-outline {
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-muted);
+    border: 1px solid var(--border-color);
+}
+
+/* WHY: --accent-blue (#0070f3) is too dark to read on a dark tint, so the text
+   uses a lightened blue while the tint and border keep the accent hue. */
+.badge-primary {
+    background: rgba(0, 112, 243, 0.18);
+    color: #79c0ff;
+    border: 1px solid rgba(0, 112, 243, 0.45);
+}
+
+.badge-danger {
+    background: rgba(244, 63, 94, 0.15);
+    color: var(--accent-rose);
+    border: 1px solid rgba(244, 63, 94, 0.3);
 }
 
 /* Telemetry Grid */
@@ -509,6 +555,8 @@ textarea.form-control {
 }
 
 .hash-badge {
+    display: inline-block;
+    max-width: 100%;
     font-family: var(--font-mono);
     font-size: 0.75rem;
     word-break: break-all;
@@ -1357,6 +1405,10 @@ textarea.form-control {
 }
 
 .step-badge {
+    display: inline-block;
+    line-height: 1.2;
+    white-space: nowrap;
+    vertical-align: middle;
     background: rgba(0, 229, 255, 0.2);
     color: #00e5ff;
     font-weight: 700;
@@ -1474,6 +1526,45 @@ textarea.form-control {
     font-size: 0.75rem;
 }
 
+/* ==========================================================================
+   Clinical severity badges
+   --------------------------------------------------------------------------
+   WHAT: Shared box model for the four .genomic-badge-* severity pills and the
+         .animate-pulse attention animation applied to the critical one.
+   WHY:  Each severity rule set its own padding but none set a display mode, so
+         on the endocrine dashboard - where they are used on a bare <span>
+         without the .badge class - the padding painted outside the line box and
+         the tint overlapped the heading next to it. .animate-pulse had no rule
+         at all, so the critical banner never animated.
+   HOW:  One grouped rule gives all four the same inline-flex box and single
+         line, matching .badge; .animate-pulse fades opacity on a loop.
+   ========================================================================== */
+.genomic-badge-critical,
+.genomic-badge-warning,
+.genomic-badge-advisory,
+.genomic-badge-optimal {
+    display: inline-block;
+    line-height: 1.2;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+@keyframes weaver-badge-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.55; }
+}
+
+.animate-pulse {
+    animation: weaver-badge-pulse 1.8s ease-in-out infinite;
+}
+
+/* WHY: Respects the viewer's reduced-motion preference. */
+@media (prefers-reduced-motion: reduce) {
+    .animate-pulse {
+        animation: none;
+    }
+}
+
 .genomic-guidance-pill {
     background: rgba(0, 0, 0, 0.35);
     border-radius: 4px;
@@ -1507,6 +1598,90 @@ h1[tabindex="-1"]:focus,
 h2[tabindex="-1"]:focus,
 [tabindex="-1"]:focus {
     outline: none;
+}
+
+/* ==========================================================================
+   Sign-in and first-launch wizard shells
+   --------------------------------------------------------------------------
+   WHAT: The centred card that holds the sign-in form on /login and the
+         first-launch administrator wizard on /setup, plus the two wrappers the
+         wizard body uses (.step-content, .summary-table).
+   WHY:  These are the only two pages shown when no session exists, yet none of
+         their classes had a rule: the card stretched edge to edge, the heading
+         block had no spacing and the whole form sat flush against the top of
+         the content area.
+   HOW:  Cap the card width and centre it in the remaining vertical space, give
+         the heading block its own centred stack, and let the wizard's summary
+         rows sit in a bordered container like the other panels.
+   ========================================================================== */
+.login-container,
+.setup-container {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    width: 100%;
+    padding: 2rem 0;
+}
+
+.login-card,
+.setup-card {
+    width: 100%;
+    min-width: 0;
+    padding: 2rem;
+}
+
+.login-card {
+    max-width: 30rem;
+}
+
+/* WHY: The wizard shows a three-step stepper and a key block, so it needs more
+   horizontal room than the sign-in form. */
+.setup-card {
+    max-width: 44rem;
+}
+
+.login-header,
+.setup-header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.login-header h2,
+.setup-header h2 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    font-family: var(--font-mono);
+}
+
+.step-content {
+    min-width: 0;
+}
+
+.summary-table {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
+}
+
+/* WHY: The last summary row's border would otherwise double up with the
+   container's own bottom border. */
+.summary-table .summary-row:last-child {
+    border-bottom: none;
+}
+
+@media (max-width: 768px) {
+    .login-container,
+    .setup-container {
+        padding: 1rem 0;
+    }
+
+    .login-card,
+    .setup-card {
+        padding: 1.25rem;
+    }
 }
 
 /* ==========================================================================
@@ -1811,6 +1986,531 @@ a {
 .table-responsive { overflow-x: auto; max-width: 100%; }
 
 /* ==========================================================================
+   Generic table primitives
+   --------------------------------------------------------------------------
+   WHAT: The .table / .table-hover / .table-sm trio used by the patient DNA,
+         user management and profile pages, plus the long-sequence cell in the
+         fabrication staple manifest.
+   WHY:  Those three pages were written against Bootstrap-style names while the
+         rest of the platform uses .data-table, so none of their tables had any
+         rule: they rendered as bare user-agent tables with no header tint, no
+         row separators, default type metrics and no hover feedback. A table of
+         nine columns with no minimum width is also crushed to roughly one
+         character per column on a phone instead of scrolling inside its
+         wrapper, which makes the data unreadable rather than merely narrow.
+   HOW:  Mirror the .data-table box model declaration for declaration so the two
+         vocabularies look identical, add the hover and compact variants the
+         markup asks for, and give the table a minimum width so the enclosing
+         .table-responsive scrolls it internally instead of the document
+         growing wider than the viewport.
+   ========================================================================== */
+.table {
+    width: 100%;
+    min-width: 32rem;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+    text-align: left;
+}
+
+.table th {
+    background-color: rgba(255, 255, 255, 0.03);
+    padding: 0.75rem 1rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border-color);
+    white-space: nowrap;
+}
+
+.table td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border-color);
+    vertical-align: top;
+}
+
+/* WHY: The final row's border would otherwise double up with the rounded edge
+   of the .card that encloses these tables. */
+.table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.table-hover tbody tr:hover {
+    background-color: var(--bg-card-hover);
+}
+
+.table-sm th,
+.table-sm td {
+    padding: 0.4rem 0.6rem;
+    font-size: 0.78rem;
+}
+
+/* WHAT: The 5'-to-3' staple oligonucleotide sequence cell.
+   WHY:  A 40-base sequence on a single unbreakable line makes the manifest
+         table thousands of pixels wide, so the surrounding scroll container
+         never reaches its end.
+   HOW:  Let the base string break between any two bases; the max-width is a
+         column-width hint to the auto table layout, and break-all is what
+         actually bounds the cell. */
+.sequence-cell {
+    max-width: 18rem;
+    word-break: break-all;
+}
+
+/* ==========================================================================
+   Page shells and content section wrappers
+   --------------------------------------------------------------------------
+   WHAT: The six per-page root containers (.wizard-container and friends), the
+         .max-w-xl width cap, the canvas frames, the five DIY/stage section
+         wrappers, the custom sequence box, the fabrication manifest card, the
+         two spec grids and the wizard button rows.
+   WHY:  None of these had a rule. The page roots are plain block boxes, so a
+         wide descendant - a staple manifest table, a 340px-tall canvas - could
+         overflow them and push the whole document past a 390px viewport. The
+         section wrappers left their contents with no containment at all, the
+         custom sequence box had no surface to sit on, the fabrication manifest
+         was indistinguishable from any other card even though it is the page's
+         payload, and the wizard button rows fell back to inline layout so the
+         Back and Proceed buttons sat on one unbreakable line.
+   HOW:  main.main-container already caps page width at 1400px and supplies the
+         gutters, so the page roots only need to become flex columns whose
+         children may shrink below their content width (min-width: 0) - that is
+         what actually keeps a wide table inside its own scroll container. The
+         grids use minmax(min(100%, Npx), 1fr) so a column minimum can never
+         exceed the container. The button rows copy the established
+         .actions / .actions.text-right idiom so that .flex-between keeps
+         working on the five rows that use it.
+   ========================================================================== */
+.wizard-container,
+.services-container,
+.config-container,
+.trajectory-container,
+.endocrine-container,
+.user-management-container {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-width: 0;
+}
+
+.wizard-container > *,
+.services-container > *,
+.config-container > *,
+.trajectory-container > *,
+.endocrine-container > *,
+.user-management-container > * {
+    min-width: 0;
+}
+
+.max-w-xl {
+    width: 100%;
+    max-width: 36rem;
+}
+
+/* WHY: The canvas elements declare width: 100% inline, but a canvas is a
+   replaced element and will not shrink below its attribute width on its own. */
+.canvas-box {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+}
+
+.preset-section,
+.form-section,
+.protocol-steps,
+.pipetting-section,
+.materials-section,
+.qc-section {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.form-section {
+    gap: 0.5rem;
+}
+
+/* WHY: .step-card already carries margin-bottom: 16px, so the last protocol
+   card would otherwise leave a gap before the next DIY tab section. */
+.protocol-steps .step-card:last-child {
+    margin-bottom: 0;
+}
+
+.custom-input-box {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    min-width: 0;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1.25rem;
+}
+
+.custom-input-box h3 {
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+/* WHY: This card carries the signed fabrication manifest, the single most
+   important output of the wizard, so it reuses the accent border and gradient
+   that .endocrine-panel already uses to mark a primary surface. */
+.fabrication-summary {
+    min-width: 0;
+    border-color: rgba(0, 210, 255, 0.25);
+    background: linear-gradient(180deg, #121824 0%, #0d131d 100%);
+}
+
+.specs-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+    gap: 0.5rem 1.25rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+    gap: 1rem;
+}
+
+.metrics-grid > * {
+    min-width: 0;
+}
+
+.wizard-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+/* WHY: justify-content is deliberately left unset on .wizard-actions itself.
+   Five of the six rows also carry .flex-between, which is declared earlier in
+   this file; setting justify-content here would win on source order and
+   collapse those rows to the right. */
+.wizard-actions.text-right {
+    justify-content: flex-end;
+}
+
+/* ==========================================================================
+   Card, chart and link headers
+   --------------------------------------------------------------------------
+   WHAT: The .card-header rows on /compliance and /simulations, the chart header
+         on wizard stage 5, the generated-share-link header on /configuration,
+         the stack service card header, plus the two small text labels
+         .section-label and .step-title.
+   WHY:  These are the same "title on the left, status or control on the right"
+         row that .panel-header and .step-card-header already implement, but
+         under names that had no rule, so the heading and its badge or button
+         stacked vertically and the headings fell back to user-agent h2/h3
+         sizing, which is visibly larger than every other in-card title on the
+         platform.
+   HOW:  One shared flex row that is allowed to wrap, with the heading sizes
+         aligned to the existing .panel-header h2 convention. .card-header also
+         draws the separator that distinguishes a section header from body
+         content, using the same var(--border-color) as every other separator
+         in this file.
+   ========================================================================== */
+.card-header,
+.chart-header,
+.link-header,
+.service-header {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem 1rem;
+    min-width: 0;
+}
+
+.card-header {
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.chart-header {
+    margin-bottom: 0.75rem;
+}
+
+.card-header h2,
+.card-header h3 {
+    font-size: 1.15rem;
+    font-weight: 600;
+}
+
+.chart-header h4,
+.service-header h3 {
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+/* WHY: The left-hand block of each header holds a heading plus a long
+   subtitle; without this it refuses to shrink and pushes the badge or button
+   off the row. */
+.card-header > *,
+.chart-header > *,
+.link-header > *,
+.service-header > * {
+    min-width: 0;
+}
+
+.section-label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+}
+
+/* WHY: On the six-step wizard stepper a two-word label such as "Zero-GC
+   Parser" would break mid-label inside the flex row. The stepper itself is
+   already made scrollable at phone widths by the existing media block, so
+   keeping the label on one line cannot widen the document. */
+.step-title {
+    white-space: nowrap;
+}
+
+/* ==========================================================================
+   Stack service card internals
+   --------------------------------------------------------------------------
+   WHAT: The status line, telemetry list and action row inside each card on
+         /services.
+   WHY:  .service-role inherits .subtext, whose margin-bottom: 1rem is meant
+         for form helper text and left a visible gap above the endpoint row.
+         The status line and telemetry list had no rule, so the health dot and
+         its message did not share a baseline and a long metric value (a mounted
+         volume path) pushed the card wider than its grid column. The action row
+         relied on .text-right, which a flex layout ignores.
+   HOW:  Flex rows and columns whose children may shrink, with long values
+         allowed to wrap at any character.
+   ========================================================================== */
+.service-role {
+    margin-bottom: 0;
+    line-height: 1.45;
+}
+
+.service-status-bar {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    font-size: 0.8rem;
+}
+
+.status-text {
+    min-width: 0;
+    color: var(--text-muted);
+    overflow-wrap: anywhere;
+}
+
+.metrics-list {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.metric-val {
+    min-width: 0;
+    font-weight: 600;
+    text-align: right;
+    overflow-wrap: anywhere;
+}
+
+.service-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
+
+/* ==========================================================================
+   Pharmacogenomic alert list
+   --------------------------------------------------------------------------
+   WHAT: The vertical list of CYP2D6 / TLR9 / factor V style genetic call-outs
+         on wizard stages 1 and 6, and the title and body text inside each.
+   WHY:  The severity box itself (.genomic-alert-box) was styled, but its
+         wrapper and its two text parts were not: the severity pill and the
+         alert title ran together with no gap, and the body paragraph inherited
+         the full 1rem body size, which made a four-line clinical warning
+         dominate the card.
+   HOW:  The wrapper is a plain flex column that relies on the box's own
+         margin-bottom for rhythm and cancels it on the final box. The title is
+         an inline flex row so the pill and the text share a baseline and may
+         wrap as a pair. The body uses the same #cbd5e1 secondary text colour
+         that .callout-item and .homelab-tip-box already use.
+   ========================================================================== */
+.genomic-alerts-list {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.genomic-alerts-list .genomic-alert-box:last-child {
+    margin-bottom: 0;
+}
+
+.genomic-alert-title {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+    font-weight: 600;
+    color: var(--text-main);
+}
+
+.genomic-alert-body {
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: #cbd5e1;
+    overflow-wrap: anywhere;
+}
+
+/* ==========================================================================
+   Form and button primitives
+   --------------------------------------------------------------------------
+   WHAT: The compact .form-control-sm variant, the segmented MtF/FtM regimen
+         selector, the dashed empty-state frame and the .btn-accent call to
+         action.
+   WHY:  All four names were referenced with no rule: the results filter select
+         was full height in a toolbar built for compact controls, the regimen
+         buttons lost their segmented container and read as two loose buttons,
+         the three "nothing registered yet" placeholders had no frame to mark
+         them as empty regions, and .btn-accent fell back to the bare .btn box,
+         which has border: none and no background, so the primary call to
+         action on /connect and /configuration was invisible until hovered.
+   HOW:  .form-control-sm only overrides metrics, so every .form-control state
+         (focus ring, disabled, select chevron) is inherited untouched; the
+         chevron's inset is retuned for the smaller box. The regimen selector
+         reuses the .toggle-switch-group surface but is allowed to wrap.
+         .btn-accent uses the cyan tint-plus-border idiom the badges already
+         use, and declares inline-block and text-decoration because one of its
+         four call sites is an anchor.
+   ========================================================================== */
+.form-control-sm {
+    padding: 0.35rem 0.6rem;
+    font-size: 0.78rem;
+    border-radius: 4px;
+}
+
+select.form-control-sm {
+    padding-right: 1.9rem;
+    background-position: right 0.5rem center;
+}
+
+.regimen-selector {
+    display: flex;
+    flex-wrap: wrap;
+    align-self: flex-start;
+    gap: 4px;
+    max-width: 100%;
+    background-color: var(--bg-dark);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 4px;
+}
+
+/* WHY: var(--border-color) at 1.26:1 is invisible as a dashed line, which is
+   the one place in this file where the frame is the whole point of the
+   element, so this uses a translucent tint of --text-main instead. */
+.border-dashed {
+    border: 1px dashed rgba(230, 237, 243, 0.38);
+    border-radius: 8px;
+}
+
+.btn-accent {
+    display: inline-block;
+    background: rgba(0, 242, 254, 0.15);
+    border: 1px solid var(--accent-cyan);
+    color: var(--accent-cyan);
+    text-decoration: none;
+}
+
+.btn-accent:hover {
+    background: rgba(0, 242, 254, 0.25);
+    box-shadow: 0 0 10px rgba(0, 242, 254, 0.25);
+}
+
+/* ==========================================================================
+   Status dots, loading spinner and small utilities
+   --------------------------------------------------------------------------
+   WHAT: The health dot in the /compliance and /simulations page headers, the
+         DNA page loading spinner, and four one-purpose utilities the markup
+         uses: .flex-align, .stat-item, .nav-icon and .mr-1.
+   WHY:  An empty span with no rule has zero width, so the health dot was
+         simply not rendered and the header read "ACTIVE" with nothing in front
+         of it. The spinner was an empty div, so the loading state showed only
+         its caption. .stat-item sits in .metrics-row, a flex row with a 2rem
+         gap and no wrap, so its two long labels overflowed the card. .nav-icon
+         and .mr-1 had no rule at all.
+   HOW:  The dot and the spinner copy the 8px circle and the box-shadow glow
+         that .pulse and .status-indicator-dot already use. The spinner's
+         rotation respects prefers-reduced-motion by slowing to a crawl rather
+         than stopping, because a frozen spinner reads as a hung page.
+   ========================================================================== */
+.status-dot {
+    display: inline-block;
+    flex-shrink: 0;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: var(--text-muted);
+}
+
+/* WHY: Scoped to .status-dot on purpose. ".status-healthy" is generic enough
+   that an unscoped background-color would ambush any future element that
+   happens to reuse the word. */
+.status-dot.status-healthy {
+    background-color: var(--accent-emerald);
+    box-shadow: 0 0 8px var(--accent-emerald);
+}
+
+.spinner {
+    width: 1.75rem;
+    height: 1.75rem;
+    margin: 0 auto;
+    border: 3px solid var(--border-color);
+    border-top-color: var(--accent-cyan);
+    border-radius: 50%;
+    animation: weaver-spinner-rotate 0.8s linear infinite;
+}
+
+@keyframes weaver-spinner-rotate {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* WHY: A loading indicator still has to indicate loading, so reduced motion
+   slows the rotation instead of removing it. */
+@media (prefers-reduced-motion: reduce) {
+    .spinner {
+        animation-duration: 2.4s;
+    }
+}
+
+.flex-align {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.stat-item {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.nav-icon {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    font-size: 0.95em;
+    font-style: normal;
+    line-height: 1;
+}
+
+.mr-1 { margin-right: 0.25rem; }
+
+/* ==========================================================================
    Narrow-viewport containment
    --------------------------------------------------------------------------
    WHAT: Stops the page from scrolling sideways on phone-width screens.
@@ -1869,6 +2569,15 @@ a {
         gap: 0.5rem;
     }
 
+    /* WHY: The pills keep their label on one line, so on a phone a long one
+       (a mounted volume path) is clipped inside its cell rather than pushing
+       the whole document wider than the viewport. */
+    .badge {
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
     .stepper-steps {
         overflow-x: auto;
         justify-content: flex-start;
@@ -1878,5 +2587,32 @@ a {
     .step-indicator {
         flex-shrink: 0;
         white-space: nowrap;
+    }
+
+    /* WHY: .metrics-row is a 2rem-gap flex row with no wrap, so on a phone its
+       two long composition labels would overflow the card even after
+       .stat-item is allowed to shrink. */
+    .metrics-row {
+        flex-wrap: wrap;
+        gap: 0.5rem 1.25rem;
+    }
+
+    /* WHY: Once these rows wrap, a half-width button on its own line reads as
+       a mistake; letting them grow fills the row like .btn-group already
+       does. */
+    .wizard-actions .btn,
+    .service-actions .btn {
+        flex: 1 1 auto;
+    }
+
+    .card-header {
+        gap: 0.5rem;
+    }
+
+    /* WHY: Buys back roughly 0.8rem per column, so a nine-column table needs
+       noticeably less sideways scrolling inside its wrapper. */
+    .table th,
+    .table td {
+        padding: 0.5rem 0.6rem;
     }
 }

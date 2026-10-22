@@ -263,50 +263,52 @@
                 </div>
             }
 
-            <table class="table w-100">
-                <thead>
-                    <tr>
-                        <th>Type</th>
-                        <th>Address</th>
-                        <th>City / State</th>
-                        <th>Postal / Country</th>
-                        <th>Primary</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @if (_addresses.Count == 0)
-                    {
+            <div class="table-responsive">
+                <table class="table w-100">
+                    <thead>
                         <tr>
-                            <td colspan="6" class="text-center p-3 text-muted">No addresses registered yet.</td>
+                            <th>Type</th>
+                            <th>Address</th>
+                            <th>City / State</th>
+                            <th>Postal / Country</th>
+                            <th>Primary</th>
+                            <th>Actions</th>
                         </tr>
-                    }
-                    @foreach (var addr in _addresses)
-                    {
-                        <tr>
-                            <td><span class="badge badge-outline">@addr.AddressType</span></td>
-                            <td>
-                                <div>@addr.AddressLine1</div>
-                                @if (!string.IsNullOrEmpty(addr.AddressLine2))
-                                {
-                                    <div class="text-muted font-sm">@addr.AddressLine2</div>
-                                }
-                            </td>
-                            <td>@addr.City, @addr.StateOrProvince</td>
-                            <td>@addr.PostalCode, @addr.Country</td>
-                            <td>
-                                @if (addr.IsPrimary)
-                                {
-                                    <span class="badge badge-accent">Primary</span>
-                                }
-                            </td>
-                            <td>
-                                <button class="btn btn-sm btn-outline text-danger" @onclick="() => DeleteAddressAsync(addr.Id)">Remove</button>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        @if (_addresses.Count == 0)
+                        {
+                            <tr>
+                                <td colspan="6" class="text-center p-3 text-muted">No addresses registered yet.</td>
+                            </tr>
+                        }
+                        @foreach (var addr in _addresses)
+                        {
+                            <tr>
+                                <td><span class="badge badge-outline">@addr.AddressType</span></td>
+                                <td>
+                                    <div>@addr.AddressLine1</div>
+                                    @if (!string.IsNullOrEmpty(addr.AddressLine2))
+                                    {
+                                        <div class="text-muted font-sm">@addr.AddressLine2</div>
+                                    }
+                                </td>
+                                <td>@addr.City, @addr.StateOrProvince</td>
+                                <td>@addr.PostalCode, @addr.Country</td>
+                                <td>
+                                    @if (addr.IsPrimary)
+                                    {
+                                        <span class="badge badge-accent">Primary</span>
+                                    }
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline text-danger" @onclick="() => DeleteAddressAsync(addr.Id)">Remove</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
         </div>
 
         <!-- Section 3: Patient Emergency & Outreach Contacts Lookup Table -->
@@ -374,52 +376,54 @@
                 </div>
             }
 
-            <table class="table w-100">
-                <thead>
-                    <tr>
-                        <th>Priority</th>
-                        <th>Contact Name</th>
-                        <th>Relationship</th>
-                        <th>Phone</th>
-                        <th>Email</th>
-                        <th>Medical Disclosure Consent</th>
-                        <th>Notes</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @if (_contacts.Count == 0)
-                    {
+            <div class="table-responsive">
+                <table class="table w-100">
+                    <thead>
                         <tr>
-                            <td colspan="8" class="text-center p-3 text-muted">No emergency or outreach contacts registered yet.</td>
+                            <th>Priority</th>
+                            <th>Contact Name</th>
+                            <th>Relationship</th>
+                            <th>Phone</th>
+                            <th>Email</th>
+                            <th>Medical Disclosure Consent</th>
+                            <th>Notes</th>
+                            <th>Actions</th>
                         </tr>
-                    }
-                    @foreach (var c in _contacts)
-                    {
-                        <tr>
-                            <td><span class="badge badge-accent font-mono">#@c.PriorityOrder</span></td>
-                            <td class="font-bold">@c.ContactName</td>
-                            <td><span class="badge badge-outline">@c.Relationship</span></td>
-                            <td class="font-mono">@c.PhoneNumber</td>
-                            <td>@(c.EmailAddress ?? "—")</td>
-                            <td>
-                                @if (c.CanDiscussMedicalInfo)
-                                {
-                                    <span class="badge badge-primary">Authorized</span>
-                                }
-                                else
-                                {
-                                    <span class="text-muted">Emergency Notification Only</span>
-                                }
-                            </td>
-                            <td class="font-sm text-muted">@(c.Notes ?? "—")</td>
-                            <td>
-                                <button class="btn btn-sm btn-outline text-danger" @onclick="() => DeleteContactAsync(c.Id)">Remove</button>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        @if (_contacts.Count == 0)
+                        {
+                            <tr>
+                                <td colspan="8" class="text-center p-3 text-muted">No emergency or outreach contacts registered yet.</td>
+                            </tr>
+                        }
+                        @foreach (var c in _contacts)
+                        {
+                            <tr>
+                                <td><span class="badge badge-accent font-mono">#@c.PriorityOrder</span></td>
+                                <td class="font-bold">@c.ContactName</td>
+                                <td><span class="badge badge-outline">@c.Relationship</span></td>
+                                <td class="font-mono">@c.PhoneNumber</td>
+                                <td>@(c.EmailAddress ?? "—")</td>
+                                <td>
+                                    @if (c.CanDiscussMedicalInfo)
+                                    {
+                                        <span class="badge badge-primary">Authorized</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">Emergency Notification Only</span>
+                                    }
+                                </td>
+                                <td class="font-sm text-muted">@(c.Notes ?? "—")</td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline text-danger" @onclick="() => DeleteContactAsync(c.Id)">Remove</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
         </div>
     }
 </div>
