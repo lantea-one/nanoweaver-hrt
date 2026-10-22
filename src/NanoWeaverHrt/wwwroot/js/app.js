@@ -416,109 +416,13 @@ window.weaverCopyText = async function(text) {
     }
 };
 
-/**
- * Persists an authenticated session Bearer token across cookies, sessionStorage, and localStorage.
- * @param {string} token - The Bearer token string.
+/*
+ * NOTE: The authenticated session helpers (weaverSetSession, weaverGetSessionToken,
+ * weaverClearSession, weaverPurgeLegacySession) and the idle activity watcher
+ * (weaverRegisterIdleWatcher / weaverUnregisterIdleWatcher) now live in
+ * js/weaver-session.js.
+ *
+ * WHY: they are security-critical (Prime Directive 12) and are therefore held to the
+ * same 100% line, branch and function coverage gate as js/weaver-visualizer.js, which
+ * this dashboard script is not. Both files are loaded by Components/App.razor.
  */
-window.weaverSetSession = function(token) {
-    if (!token) return;
-    try {
-        sessionStorage.setItem('weaver_session', token);
-        localStorage.setItem('weaver_session', token);
-        // Persist cookie for 8 hours (28800s)
-        document.cookie = 'weaver_session=' + encodeURIComponent(token) + '; path=/; max-age=28800; SameSite=Strict';
-    } catch (e) {
-        console.error('weaverSetSession failed:', e);
-    }
-};
-
-/**
- * Retrieves the currently active session Bearer token from sessionStorage, localStorage, or cookies.
- * @returns {string|null} The active token if present, otherwise null.
- */
-window.weaverGetSessionToken = function() {
-    try {
-        let token = sessionStorage.getItem('weaver_session') || localStorage.getItem('weaver_session');
-        if (!token) {
-            const match = document.cookie.match(/(?:^|;\s*)weaver_session=([^;]*)/);
-            if (match) token = decodeURIComponent(match[1]);
-        }
-        return token || null;
-    } catch (e) {
-        return null;
-    }
-};
-
-/**
- * Clears active session tokens from sessionStorage, localStorage, and expires the session cookie.
- */
-window.weaverClearSession = function() {
-    try {
-        sessionStorage.removeItem('weaver_session');
-        localStorage.removeItem('weaver_session');
-        document.cookie = 'weaver_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC; SameSite=Strict';
-    } catch (e) {
-        console.error('weaverClearSession failed:', e);
-    }
-};
-
-/**
- * Registers an idle activity monitor that tracks user interactions and triggers auto-signout upon inactivity.
- * @param {object} dotNetHelper - DotNetObjectReference to MainLayout or SessionState.
- * @param {number} timeoutSeconds - Inactivity threshold in seconds (default: 900s = 15 minutes).
- */
-window.weaverRegisterIdleWatcher = function(dotNetHelper, timeoutSeconds) {
-    if (window._weaverIdleCleanup) {
-        window._weaverIdleCleanup();
-    }
-
-    const timeoutMs = (timeoutSeconds && timeoutSeconds > 0 ? timeoutSeconds : 900) * 1000;
-    let timerId = null;
-    let lastNotified = Date.now();
-
-    function onActivity() {
-        const now = Date.now();
-        // Throttle server notification to at most once every 30 seconds
-        if (now - lastNotified > 30000) {
-            lastNotified = now;
-            if (dotNetHelper && typeof dotNetHelper.invokeMethodAsync === 'function') {
-                dotNetHelper.invokeMethodAsync('RecordActivity').catch(() => {});
-            }
-        }
-
-        if (timerId) {
-            clearTimeout(timerId);
-        }
-
-        timerId = setTimeout(() => {
-            if (dotNetHelper && typeof dotNetHelper.invokeMethodAsync === 'function') {
-                dotNetHelper.invokeMethodAsync('OnUserIdleTimeout').catch(() => {
-                    window.location.href = '/login?reason=idle_timeout';
-                });
-            } else {
-                window.location.href = '/login?reason=idle_timeout';
-            }
-        }, timeoutMs);
-    }
-
-    const events = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
-    events.forEach(evt => window.addEventListener(evt, onActivity, { passive: true }));
-
-    // Start initial timer
-    onActivity();
-
-    window._weaverIdleCleanup = function() {
-        if (timerId) clearTimeout(timerId);
-        events.forEach(evt => window.removeEventListener(evt, onActivity));
-        window._weaverIdleCleanup = null;
-    };
-};
-
-/**
- * Unregisters the idle activity monitor and clears any pending timeout timers.
- */
-window.weaverUnregisterIdleWatcher = function() {
-    if (window._weaverIdleCleanup) {
-        window._weaverIdleCleanup();
-    }
-};

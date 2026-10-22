@@ -159,7 +159,16 @@ docker compose -f docker-compose.yml -f compose/docker-compose.valkey.yml up -d
 ```
 
 ### 5. Run with Secure Public Access & Automated SSL Overlays
-Deploy to a public VPS, research lab server, or homelab with production TLS 1.3 encryption, automatic Let's Encrypt SSL certificates, and zero direct exposure of port 5000:
+Deploy to a public VPS, research lab server, or homelab with production TLS 1.3 encryption and automatic Let's Encrypt SSL certificates. Under these overlays the reverse proxy is the only service with a public host binding; every internal port is either loopback-bound or not published at all:
+
+| Port | Service | Default stack | Public overlays (Caddy / Nginx / Cloudflare) |
+| :--- | :--- | :--- | :--- |
+| `5000` | Sovereign Web UI & REST API (`weaver-parser`) | `0.0.0.0:5000` for local access | `127.0.0.1:5000` - proxy-only, never exposed directly |
+| `8080` | Simulation job daemon (`weaver-simulation`) | `127.0.0.1:8080` for local inspection | **Not published** - internal compose network only |
+| `5432` | PostgreSQL / pg_duckdb (`weaver-pg-duckdb`, infra overlay) | `127.0.0.1:5432` for local tooling | `127.0.0.1:5432` - never exposed to the network |
+
+A published Docker port is installed as a NAT rule that host `ufw` and `firewalld` rules do not filter, which is why these bindings - not the host firewall - are what actually keep the internal services private.
+
 - **Caddy (Automatic Let's Encrypt SSL - Recommended):**
   ```bash
   export DOMAIN="hrt.yourdomain.org"

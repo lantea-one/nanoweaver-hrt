@@ -4,7 +4,7 @@
   "description": "Decentralized Synthetic Biology, DNA Origami & Hormone Replacement Therapy Research Platform",
   "private": true,
   "scripts": {
-    "test": "node --test --experimental-test-coverage --test-coverage-branches=100 --test-coverage-lines=100 --test-coverage-functions=100 tests/weaver-visualizer.test.mjs"
+    "test": "node --test --experimental-test-coverage --test-coverage-branches=100 --test-coverage-lines=100 --test-coverage-functions=100 tests/weaver-visualizer.test.mjs tests/weaver-session.test.mjs"
   },
   "keywords": [
     "synthetic-biology",

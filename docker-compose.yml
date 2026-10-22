@@ -54,8 +54,16 @@ services:
       - ACCELERATOR_BACKEND=igpu
       - ONEAPI_DEVICE_SELECTOR=opencl:gpu,cpu
       - OCL_ICD_VENDORS=/etc/OpenCL/vendors
+    # WHAT: Publishes the simulation daemon on the loopback interface only.
+    # WHY:  The daemon has no authentication of any kind and discloses the node's hostname,
+    #       GPU inventory and data paths, so it must never be reachable off-box (Prime
+    #       Directive #9). A bare "8080:8080" binds 0.0.0.0 through a Docker DNAT rule that
+    #       host firewall rules do not see. The parser does not need this mapping at all - it
+    #       reaches the daemon over the compose network as http://simulation-node:8080.
+    # HOW:  Prefixes the host interface with 127.0.0.1 so only this machine can connect; the
+    #       three public overlays drop the mapping entirely.
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     volumes:
       - ./simulations/configs:/workspace/configs:ro
       - ./simulations/shared-data:/workspace/data:rw

@@ -18,8 +18,19 @@ services:
     container_name: weaver-pg-duckdb
     hostname: storage-node
     restart: unless-stopped
+    # WHAT: Publishes PostgreSQL on the loopback interface only.
+    # WHY:  This database holds every identity, public key, role and patient PHI record on
+    #       the node, and it ships with a default password that is published in this public
+    #       repository, so it must never be reachable off-box (Prime Directive #9). A bare
+    #       "5432:5432" binds 0.0.0.0 through a Docker NAT rule that host ufw/firewalld
+    #       rules do not filter, which means a laptop on the same cafe network - or the
+    #       whole internet on a VPS - could connect with a password anyone can read.
+    # HOW:  Prefixes the host interface with 127.0.0.1. The parser container reaches the
+    #       database over the compose network (storage-node:5432) and needs no published
+    #       port at all; loopback is kept so a host-side `dotnet run` and `psql` still work,
+    #       which is what the default Host=localhost;Port=5432 connection string expects.
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     environment:
       POSTGRES_DB: weaver_hrt
       POSTGRES_USER: weaver

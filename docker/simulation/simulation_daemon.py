@@ -80,11 +80,24 @@ class SimulationDaemonHandler(BaseHTTPRequestHandler):
     server_version = "NanoWeaverHrt-SimDaemon/1.0"
 
     def _send_json_response(self, status_code, data):
+        """Writes a JSON response body with no cross-origin sharing permission.
+
+        WHAT: Serializes the payload and emits only the headers the response needs.
+        WHY:  This daemon has exactly one legitimate caller, the .NET parser, which reaches
+              it server-to-server over the internal compose network where CORS plays no
+              part. The previous "Access-Control-Allow-Origin: *" header instead let any
+              web page a researcher happened to visit read this node's hostname, GPU
+              inventory, config filenames and data mount paths straight out of their
+              browser. No host port is published for this daemon any more (Prime Directive
+              #9), so the header had no remaining purpose and every remaining use of it
+              was an attack.
+        HOW:  Sends status, content type and length, and deliberately nothing else. Omitting
+              the header makes the browser's same-origin policy refuse cross-origin reads.
+        """
         payload = json.dumps(data, indent=2).encode("utf-8")
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(payload)))
-        self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         self.wfile.write(payload)
 

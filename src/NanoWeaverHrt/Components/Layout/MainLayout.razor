@@ -3,6 +3,7 @@
 @inject IConfigurationRepository ConfigRepo
 @inject IUserAuthenticationService AuthService
 @inject UserSessionState SessionState
+@inject IServerSessionActivityTracker SessionActivity
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
 
@@ -524,9 +525,17 @@
     /// </summary>
     private async Task HandleSignOut()
     {
-        // WHAT: Purges authenticated tokens from browser storage and clears server-side session state.
-        // WHY:  Ensures user is completely de-authenticated across both browser storage and Blazor circuit.
-        // HOW:  Invokes window.weaverClearSession, calls SessionState.SignOut(), and navigates to /login.
+        // WHAT: Revokes the session server-side, purges the browser's copy of the token, and clears the circuit.
+        // WHY:  Clearing browser storage alone leaves the credential itself valid for the rest of its
+        //       eight-hour lifetime, so a token captured before sign-out would still open the API.
+        // HOW:  Reads the token, tombstones it in the authoritative registry, invokes
+        //       window.weaverClearSession, calls SessionState.SignOut(), and navigates to /login.
+        string? token = await TryReadSessionTokenAsync();
+        if (token != null)
+        {
+            SessionActivity.Revoke(token);
+        }
+
         try
         {
             await JS.InvokeVoidAsync("weaverClearSession");
@@ -543,29 +552,83 @@
     /// <summary>
     /// Callback invoked from JavaScript when the user sits idle beyond the expiration duration.
     /// </summary>
+    /// <returns>A task that completes once the session has been revoked and the redirect issued.</returns>
     [JSInvokable]
-    public void OnUserIdleTimeout()
+    public async Task OnUserIdleTimeout()
     {
-        // WHAT: Signs out the user and redirects to login with an idle_timeout reason.
-        // WHY:  Protects sensitive biomedical, trajectory, and patient data on idle terminals.
-        // HOW:  Invokes SessionState.SignOut() and navigates to /login?reason=idle_timeout.
-        if (SessionState.IsAuthenticated)
+        // WHAT: Revokes the session server-side, purges the browser token, then redirects to the sign-in form.
+        // WHY:  The visible redirect was previously the whole of the idle sign-out: the token stayed in
+        //       browser storage and stayed valid, so pressing F5 at an abandoned terminal restored the
+        //       session. Revoking the token first is what makes the sign-out real.
+        // HOW:  Tombstones the token in the authoritative registry, clears browser storage, signs the
+        //       circuit out, and navigates to /login?reason=idle_timeout.
+        if (!SessionState.IsAuthenticated)
         {
-            SessionState.SignOut();
-            Navigation.NavigateTo("/login?reason=idle_timeout");
+            return;
         }
+
+        string? token = await TryReadSessionTokenAsync();
+        if (token != null)
+        {
+            SessionActivity.Revoke(token);
+        }
+
+        try
+        {
+            await JS.InvokeVoidAsync("weaverClearSession");
+        }
+        catch (Exception)
+        {
+            // Disconnected circuit or unit test environment
+        }
+
+        SessionState.SignOut();
+        Navigation.NavigateTo("/login?reason=idle_timeout");
     }
 
     /// <summary>
     /// Callback invoked from JavaScript when user interaction is detected in the browser.
     /// </summary>
+    /// <returns>A task that completes once the heartbeat has been recorded.</returns>
     [JSInvokable]
-    public void RecordActivity()
+    public async Task RecordActivity()
     {
-        // WHAT: Refreshes last activity timestamp in UserSessionState.
-        // WHY:  Keeps server-side session tracking synchronized with browser interactions.
-        // HOW:  Calls SessionState.RecordActivity().
+        // WHAT: Records a DOM-activity heartbeat in both the circuit's session state and the
+        //       authoritative server-side registry.
+        // WHY:  The registry is the only thing that keeps the bearer token alive, so a researcher
+        //       actively driving the UI must be seen there - the circuit's own timestamp governs
+        //       nothing beyond this circuit.
+        // HOW:  Stamps UserSessionState, then names the session by reading the token from the browser
+        //       (the client throttles these callbacks to at most one every thirty seconds).
         SessionState.RecordActivity();
+
+        string? token = await TryReadSessionTokenAsync();
+        if (token != null)
+        {
+            SessionActivity.RecordActivity(token);
+        }
+    }
+
+    /// <summary>
+    /// Reads the bearer token currently held by the browser.
+    /// </summary>
+    /// <returns>The active bearer token, or <c>null</c> when none is reachable.</returns>
+    private async Task<string?> TryReadSessionTokenAsync()
+    {
+        // WHAT: Single JS interop hop fetching the token the browser is holding.
+        // WHY:  The authoritative idle registry is keyed per session, so heartbeats, idle sign-out and
+        //       manual sign-out all have to name the session they are talking about.
+        // HOW:  Calls window.weaverGetSessionToken, treating interop failure as "no token" - that only
+        //       happens when there is no live circuit (prerendering, reconnect, or the test harness).
+        try
+        {
+            string? token = await JS.InvokeAsync<string?>("weaverGetSessionToken");
+            return string.IsNullOrWhiteSpace(token) ? null : token;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
     }
 
     /// <summary>

@@ -101,6 +101,7 @@ public sealed class RazorComponentLifecycleTests : IDisposable
         sc.AddSingleton<IComplianceAuditService, ComplianceAuditService>();
         sc.AddSingleton<IUserRepository, UserRepository>();
         sc.AddSingleton<IUserAuthenticationService, UserAuthenticationService>();
+        sc.AddSingleton<IServerSessionActivityTracker>(_ => new ServerSessionActivityTracker());
         sc.AddScoped<UserSessionState>();
         sc.AddSingleton<NavigationManager>(_navManager);
         sc.AddSingleton<IJSRuntime>(_jsRuntime);
@@ -624,8 +625,8 @@ public sealed class RazorComponentLifecycleTests : IDisposable
         InvokeMethod(layout, "UpdateTelemetry");
 
         // Exercise idle callbacks when unauthenticated
-        layout.RecordActivity();
-        layout.OnUserIdleTimeout();
+        await layout.RecordActivity();
+        await layout.OnUserIdleTimeout();
 
         // Exercise with authenticated user
         UserSessionState session = _services.GetRequiredService<UserSessionState>();
@@ -641,8 +642,9 @@ public sealed class RazorComponentLifecycleTests : IDisposable
         // Trigger OnAfterRenderAsync with authenticated state
         await InvokeAsyncMethod(layout, "OnAfterRenderAsync", false);
 
-        // Trigger OnUserIdleTimeout when authenticated -> signs out and navigates
-        layout.OnUserIdleTimeout();
+        // Trigger a heartbeat and then OnUserIdleTimeout when authenticated -> signs out and navigates
+        await layout.RecordActivity();
+        await layout.OnUserIdleTimeout();
         Assert.False(session.IsAuthenticated);
 
         // Trigger OnAfterRenderAsync when unauthenticated -> unregisters watcher

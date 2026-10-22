@@ -13,6 +13,19 @@ By default, the .NET 10 Trajectory Parser and sovereign Web UI listen on interna
 2. **Denial of Service (DoS):** Directly exposing Kestrel to public scanning invites brute-force connection exhaustion without reverse-proxy buffering or rate-limiting guards.
 3. **Missing Security Headers:** Modern browser protections (such as `Strict-Transport-Security`, `X-Frame-Options`, and `X-Content-Type-Options`) must be enforced at the network boundary.
 
+### The Internal Services Are Never Published Publicly Either
+Port 5000 is not the only thing that must stay off the public internet. Two internal services are held to a stricter rule than the Web UI, because neither has any authentication in front of it:
+
+- **The simulation daemon (container port `8080`).** The `weaver-simulation` container answers job submissions and reports the node hostname, its OpenCL/DRI device inventory, its discovered config filenames and its data mount paths to anyone who asks, with no credential of any kind.
+- **The database (container port `5432`, infra overlay).** The `weaver-pg-duckdb` container holds every identity, public key, role and patient record on the node, and it ships with a default password that is published in this repository. Change `POSTGRES_PASSWORD` before you trust it with anything, and never give it a network-reachable binding.
+
+| Service | Default stack and GPU overrides (`arc`, `nvidia`, `radeon`) | Public overlays (Caddy, Nginx, Cloudflare) |
+| :--- | :--- | :--- |
+| Simulation daemon (`8080`) | `127.0.0.1:8080` - loopback only, for local inspection | **No host binding at all** (`ports: !override []`) |
+| PostgreSQL / pg_duckdb (`5432`) | `127.0.0.1:5432` - loopback only, for `psql` and host-side `dotnet run` | `127.0.0.1:5432` - loopback only, never network-reachable |
+
+Neither published port is required for the stack to work: the Trajectory Parser reaches the daemon at `http://simulation-node:8080` and the database at `storage-node:5432` over the internal compose network. Note that a published Docker port is installed as a NAT rule that `ufw` and `firewalld` rules do not filter, so `8080:8080` or `5432:5432` would be reachable from the internet even on a host whose firewall denies it.
+
 ```mermaid
 flowchart TD
     subgraph PublicInternet["Public Internet"]
@@ -93,6 +106,7 @@ sudo ufw reload
 ### 4.1. Architecture
 - Uses the included [`compose/docker-compose.public-caddy.yml`](https://git.lantea.one/lantea-one/nanoweaver-hrt/src/branch/main/compose/docker-compose.public-caddy.yml) overlay.
 - Rebinds the Trajectory Parser from `0.0.0.0:5000` to `127.0.0.1:5000` (loopback only), completely shielding it from direct external connections.
+- Removes the simulation daemon's host port binding entirely, so container port `8080` is reachable only from inside the compose network.
 - Exposes ports `80` and `443` on Caddy with non-root security boundaries and dropped Linux capabilities.
 
 ### 4.2. Hardened Caddy Configuration
@@ -160,6 +174,7 @@ For enterprise environments or researchers with existing Nginx workflows, the re
 - Uses [`compose/docker-compose.public-nginx.yml`](https://git.lantea.one/lantea-one/nanoweaver-hrt/src/branch/main/compose/docker-compose.public-nginx.yml).
 - Pairs a hardened Alpine Nginx container with the official `certbot/certbot` image.
 - Shares an ACME challenge webroot volume (`certbot_www`) and SSL certificate storage volume (`certbot_conf`).
+- Rebinds the Trajectory Parser to `127.0.0.1:5000` and removes the simulation daemon's host port binding entirely.
 - The Certbot companion runs an automated 12-hour renewal check in the background.
 
 ### 5.2. Bootstrap: First-Time Certificate Generation
@@ -231,6 +246,7 @@ Many home lab researchers operate behind **Carrier-Grade NAT (CGNAT)** or reside
 - **No Open Inbound Ports:** Keep your router firewall 100% closed.
 - **Free Automated SSL:** Cloudflare provisions and manages SSL certificates at their edge.
 - **DDoS Protection:** Public traffic terminates at Cloudflare, keeping your home IP address completely private.
+- **Nothing Else Published:** The overlay keeps the Trajectory Parser on `127.0.0.1:5000` and removes the simulation daemon's host port binding entirely.
 
 ```mermaid
 flowchart LR

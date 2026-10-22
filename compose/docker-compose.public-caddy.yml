@@ -8,7 +8,8 @@
 #       man-in-the-middle attacks without requiring manual certbot renewal scripts.
 # HOW:  Spins up an official Caddy container with dropped privileges, mounts persistent
 #       data/config volumes for ACME certificates, rebinds the internal parser port
-#       to loopback only (127.0.0.1:5000), and proxies public ports 80/443.
+#       to loopback only (127.0.0.1:5000), unpublishes the simulation daemon entirely,
+#       and proxies public ports 80/443.
 #
 # USAGE:
 #   # 1. Set your public domain name and contact email:
@@ -25,6 +26,20 @@
 name: nanoweaver-hrt
 
 services:
+  # ----------------------------------------------------------------------------
+  # Simulation Daemon: No Published Port At All
+  # WHAT: Drops every host port mapping for the unauthenticated simulation daemon.
+  # WHY:  Prime Directive #9 - nothing in this stack may be reachable from the public
+  #       internet except the reverse proxy. The daemon has no authentication, answers
+  #       job submissions, and fingerprints the node, so publishing it on a public host
+  #       is worse than publishing port 5000. The base stack binds it to 127.0.0.1; on a
+  #       public deployment it gets no host binding whatsoever.
+  # HOW:  "ports: !override []" replaces the inherited list instead of merging with it.
+  #       The parser still reaches the daemon over the compose network as simulation-node:8080.
+  # ----------------------------------------------------------------------------
+  simulation:
+    ports: !override []
+
   # ----------------------------------------------------------------------------
   # Trajectory Parser Internal Port Rebinding
   # Rebinds port 5000 strictly to localhost (127.0.0.1) to block direct public access.

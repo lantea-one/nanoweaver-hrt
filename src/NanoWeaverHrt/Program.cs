@@ -97,7 +97,17 @@ public class Program
         builder.Services.AddSingleton<ProfileDataProtector>();
         builder.Services.AddSingleton<IUserProfileRepository, UserProfileRepository>();
         builder.Services.AddSingleton<IPatientDnaRepository, PatientDnaRepository>();
-        builder.Services.AddSingleton<IUserAuthenticationService, UserAuthenticationService>();
+        // WHAT: Registers the authentication service behind the server-side idle expiration decorator.
+        // WHY:  Prime Directive 12 requires idle sign-out to be validated server-side. The idle clock
+        //       therefore lives in a singleton registry that no browser can touch, and every token
+        //       validation - REST middleware and Blazor circuit alike - passes through the decorator.
+        // HOW:  Registers the concrete service, the activity registry, and the decorator that joins them.
+        builder.Services.AddSingleton<IServerSessionActivityTracker>(_ => new ServerSessionActivityTracker());
+        builder.Services.AddSingleton<UserAuthenticationService>();
+        builder.Services.AddSingleton<IUserAuthenticationService>(sp => new SessionIdleEnforcingAuthenticationService(
+            sp.GetRequiredService<UserAuthenticationService>(),
+            sp.GetRequiredService<IServerSessionActivityTracker>(),
+            sp.GetRequiredService<IHttpContextAccessor>()));
         builder.Services.AddScoped<UserSessionState>();
 
         // WHAT: Registers the internal in-memory channel event bus and Valkey distributed cluster bridge.
