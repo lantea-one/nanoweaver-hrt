@@ -65,7 +65,7 @@
     - Keep all changes strictly on the default tracking branch (`main`).
 
 12. **Asymmetric PKI Identity, Role Gating, and Idle Session Expiration**:
-    - Passwords are never stored in the database. Authentication is strictly public-key challenge-response PKI (Ed25519, ECDSA P-256, RSA-4096).
+    - Passwords are never stored in the database. Authentication is strictly public-key challenge-response PKI (Ed25519, ML-DSA-65).
     - Strict role gating must be enforced:
       - `Administrator`: Full cluster oversight, user creation/revocation, database overrides, and configuration management.
       - `Researcher`: Simulation execution, trajectory streaming, endocrine hub access, and dataset export/import.

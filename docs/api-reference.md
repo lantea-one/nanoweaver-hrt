@@ -425,6 +425,32 @@ Packages trajectories and signed provenance manifests into a cryptographically v
 
 ---
 
+### `GET /api/datasets/exports`
+Lists the signed `.tar.gz` export bundles currently present in the export directory.
+
+* **Method**: `GET`
+* **Response Status**: `200 OK` — array of `ExportFileItem`.
+
+---
+
+### `DELETE /api/datasets/exports/{fileName}`
+Deletes a single export bundle. The supplied name is reduced to its bare filename before use, so path-traversal sequences cannot escape the export directory.
+
+* **Method**: `DELETE`
+* **Response Status**: `200 OK`
+* **Errors**: `404 Not Found` when no such bundle exists.
+
+---
+
+### `GET /api/trajectories/download/{fileName}`
+Streams a raw trajectory file (`.xyz`, `.dcd` or `.dump`) from the incoming trajectory directory. As above, the name is reduced to its bare filename to prevent traversal.
+
+* **Method**: `GET`
+* **Response Status**: `200 OK` — the raw file stream.
+* **Errors**: `404 Not Found` when the file is absent from the incoming directory.
+
+---
+
 ### `GET /api/datasets/download/{fileName}`
 Directly downloads a signed dataset archive from the exports directory.
 
@@ -1004,36 +1030,54 @@ Exports an authenticated `.enc.tar.gz` trajectory bundle encrypted with ML-KEM-7
 
 The authentication subsystem provides public-key challenge-response authentication, role authorization (`Administrator`, `Researcher`, `Patient`), transport access boundaries (`Api`, `Web`, `ApiWeb`), and master setup locking.
 
-### `GET /api/auth/setup-status`
+### `GET /api/setup/status`
 Checks whether initial master Administrator setup is required on this node.
 
 * **Method**: `GET`
 * **Response Status**: `200 OK`
-* **Response Payload (JSON)**:
+* **Response Payload (JSON)** — `SetupStatusResponse`:
   ```json
   {
-    "isSetupRequired": false,
-    "hasAnyUsers": true,
-    "hasAdministrator": true
+    "setupRequired": false
   }
   ```
 
 ---
 
-### `POST /api/auth/setup`
+### `POST /api/setup/initialize`
 Initializes the master Administrator identity. Permanently locked once an Administrator account exists.
 
 * **Method**: `POST`
-* **Request Payload (JSON)**:
+* **Request Payload (JSON)** — `InitialSetupRequest`:
   ```json
   {
-    "username": "admin_primary",
-    "publicKeyPemOrBase64": "-----BEGIN PUBLIC KEY-----\nMC4CAQAwBQYDK2VwBCIEIA...\n-----END PUBLIC KEY-----",
+    "adminUsername": "admin_primary",
+    "publicKeyBase64": "MC4CAQAwBQYDK2VwBCIEIA==",
     "algorithm": "Ed25519",
     "accessGate": "ApiWeb"
   }
   ```
-* **Response Status**: `200 OK`
+* **Response Status**: `200 OK` — returns an `AuthTokenResponse` carrying the initial Bearer token.
+* **Errors**: `400 Bad Request` when `adminUsername` or `publicKeyBase64` is missing or blank.
+
+---
+
+### `POST /api/setup/generate-keypair`
+Generates an Ed25519 or ML-DSA-65 keypair for the initial Administrator, without requiring an external CLI.
+
+* **Method**: `POST`
+* **Request Payload (JSON)** — `GenerateKeyRequest`:
+  ```json
+  {
+    "username": "admin_primary",
+    "role": "Administrator",
+    "accessGate": "ApiWeb",
+    "algorithm": "Ed25519",
+    "password": "optional-passphrase-encrypting-the-private-key"
+  }
+  ```
+* **Response Status**: `200 OK` — returns a `GeneratedKeyBundle`. The private key is returned once and never persisted server-side.
+* **Errors**: `400 Bad Request` when `username` is missing or blank.
 
 ---
 
@@ -1060,18 +1104,68 @@ Generates a cryptographically random, ephemeral 256-bit challenge for public key
 
 ---
 
-### `POST /api/auth/verify`
-Verifies the cryptographic signature over the challenge and issues an authenticated session token.
+### `POST /api/auth/token`
+Verifies the cryptographic signature over the challenge and issues an authenticated Bearer token. This completes proof of possession without the private key ever leaving the client.
 
 * **Method**: `POST`
-* **Request Payload (JSON)**:
+* **Request Payload (JSON)** — `TokenExchangeRequest`:
   ```json
   {
+    "username": "lead_researcher",
     "challengeId": "ch_7a8b9c0d1e2f3456",
     "signatureBase64": "MEQCID...=="
   }
   ```
+* **Response Status**: `200 OK` — `AuthTokenResponse`:
+  ```json
+  {
+    "token": "eyJ1c2VybmFtZSI6...",
+    "tokenType": "Bearer",
+    "expiresInSeconds": 28800,
+    "user": { "username": "lead_researcher", "role": "Researcher" }
+  }
+  ```
+* **Errors**: `400 Bad Request` when `username`, `challengeId` or `signatureBase64` is missing; `401 Unauthorized` when the signature does not verify.
+
+---
+
+### `POST /api/auth/login-key`
+Authenticates directly with a private key PEM, for Web UI sign-in and scripts that hold a key file. The key is decrypted in memory only, used to sign an ephemeral nonce, and never stored.
+
+* **Method**: `POST`
+* **Request Payload (JSON)** — `KeyLoginRequest`:
+  ```json
+  {
+    "username": "lead_researcher",
+    "privateKeyPem": "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIA...\n-----END PRIVATE KEY-----",
+    "password": "optional-passphrase-if-the-key-is-encrypted"
+  }
+  ```
+* **Response Status**: `200 OK` — `AuthTokenResponse`, and sets the `weaver_session` cookie.
+* **Errors**: `400 Bad Request` when `username` or `privateKeyPem` is missing; `401 Unauthorized` on verification failure.
+
+---
+
+### `GET /api/auth/me`
+Returns the identity, role and access gate of the currently authenticated caller.
+
+* **Method**: `GET`
+* **Authentication**: Bearer token or `weaver_session` cookie.
+* **Response Status**: `200 OK` — the `UserAccount` for the caller.
+* **Errors**: `401 Unauthorized` when no authenticated identity is attached to the request.
+
+---
+
+### `POST /api/auth/logout`
+Terminates the interactive session by clearing the `weaver_session` cookie.
+
+* **Method**: `POST`
 * **Response Status**: `200 OK`
+  ```json
+  {
+    "message": "Successfully signed out."
+  }
+  ```
 
 ---
 
@@ -1116,6 +1210,25 @@ Creates a new user account with specified role and access gate. Requires Adminis
 
 ---
 
+### `POST /api/users/generate-keypair`
+Generates a keypair and registers the new user account in a single step, so an Administrator can onboard a collaborator without them needing local key tooling. Requires Administrator role.
+
+* **Method**: `POST`
+* **Request Payload (JSON)** — `GenerateKeyRequest`:
+  ```json
+  {
+    "username": "new_researcher",
+    "role": "Researcher",
+    "accessGate": "ApiWeb",
+    "algorithm": "Ed25519",
+    "password": "optional-passphrase-encrypting-the-private-key"
+  }
+  ```
+* **Response Status**: `200 OK` — a `GeneratedKeyBundle`. The private key is returned exactly once in this response and is never written to the database; only the public key is persisted.
+* **Errors**: `400 Bad Request` when `username` is missing or blank.
+
+---
+
 ### `DELETE /api/users/{username}`
 Revokes and deactivates a user account. Master Administrator cannot be deleted.
 
@@ -1124,7 +1237,306 @@ Revokes and deactivates a user account. Master Administrator cannot be deleted.
 
 ---
 
-## 12. Secure Exception Handling & RFC 7807 ProblemDetails
+## 12. Patient Clinical Records: Digitized DNA, Imports & Results
+
+These endpoints associate digitized DNA designs, dataset imports and clinical results with an individual patient account.
+
+### Access Control
+
+Routes under `/api/patients/{username}/...` are gated by `Program.cs` as follows:
+
+| Route family | Administrator | Researcher | Patient (own record) | Other authenticated user |
+| :--- | :---: | :---: | :---: | :---: |
+| `{username}/dna` | Full | Full | Own only | `403 Forbidden` |
+| `{username}/imports` | Full | Full | Own only | `403 Forbidden` |
+| `{username}/results` | Full | Full | Own only | `403 Forbidden` |
+
+A `Patient` acting on their own `username` is always permitted; any other non-Administrator target returns `403 Forbidden`.
+
+---
+
+### `GET /api/patients/{username}/dna`
+Lists every digitized DNA origami record belonging to the patient.
+
+* **Method**: `GET`
+* **Response Status**: `200 OK` — array of `PatientDigitalDnaRecord`.
+
+---
+
+### `POST /api/patients/{username}/dna`
+Stores a new digitized DNA origami design against the patient.
+
+* **Method**: `POST`
+* **Request Payload (JSON)** — `CreatePatientDnaRequest`:
+  ```json
+  {
+    "title": "FtM Aptamer-Gated Testosterone Carrier",
+    "regimen": "FtM",
+    "targetTissue": "Hepatic",
+    "activeLigand": "Testosterone Cypionate",
+    "nanocarrierGeometry": "Nanotube",
+    "targetAptamerKdNm": 12.5,
+    "scaffoldFasta": ">scaffold\nATGCATGCATGC",
+    "notes": "Second iteration, tightened aptamer affinity."
+  }
+  ```
+  All fields are optional; `targetAptamerKdNm` is a dissociation constant in nM.
+* **Response Status**: `200 OK` — the persisted `PatientDigitalDnaRecord`.
+
+---
+
+### `GET /api/patients/{username}/dna/{id}`
+Retrieves a single digitized DNA record by identifier.
+
+* **Method**: `GET`
+* **Response Status**: `200 OK` — `PatientDigitalDnaRecord`.
+* **Errors**: `404 Not Found` when the identifier does not belong to that patient.
+
+---
+
+### `DELETE /api/patients/{username}/dna/{id}`
+Permanently removes a digitized DNA record.
+
+* **Method**: `DELETE`
+* **Response Status**: `200 OK`
+* **Errors**: `404 Not Found` when the identifier does not belong to that patient.
+
+---
+
+### `GET /api/patients/{username}/imports`
+Lists dataset import events recorded against the patient.
+
+* **Method**: `GET`
+* **Response Status**: `200 OK` — array of `PatientDnaImportRecord`.
+
+---
+
+### `POST /api/patients/{username}/imports`
+Registers a dataset import (for example a FASTA upload) against the patient.
+
+* **Method**: `POST`
+* **Request Payload (JSON)** — `CreatePatientImportRequest`:
+  ```json
+  {
+    "importType": "FASTA",
+    "status": "Pending",
+    "metadataJson": "{\"sourceFile\":\"patient_scaffold.fasta\"}",
+    "autoAnalyze": true
+  }
+  ```
+  `importType` defaults to `FASTA` and `autoAnalyze` defaults to `true`.
+* **Response Status**: `200 OK` — the persisted `PatientDnaImportRecord`.
+
+---
+
+### `GET /api/patients/{username}/imports/{id}`
+Retrieves a single import record by identifier.
+
+* **Method**: `GET`
+* **Response Status**: `200 OK` — `PatientDnaImportRecord`.
+* **Errors**: `404 Not Found`.
+
+---
+
+### `DELETE /api/patients/{username}/imports/{id}`
+Removes an import record.
+
+* **Method**: `DELETE`
+* **Response Status**: `200 OK`
+* **Errors**: `404 Not Found`.
+
+---
+
+### `GET /api/patients/{username}/results`
+Lists clinical and simulation results recorded for the patient.
+
+* **Method**: `GET`
+* **Response Status**: `200 OK` — array of `PatientResultRecord`.
+
+---
+
+### `POST /api/patients/{username}/results`
+Records a clinical or in-silico result, optionally linked to a DNA record or an import.
+
+* **Method**: `POST`
+* **Request Payload (JSON)** — `CreatePatientResultRequest`:
+  ```json
+  {
+    "dnaRecordId": "a1b2c3d4e5f60718",
+    "importId": null,
+    "status": "Complete",
+    "metricsJson": "{\"serumHalfLifeHours\":34.2}"
+  }
+  ```
+  `status` defaults to `Complete`.
+* **Response Status**: `200 OK` — the persisted `PatientResultRecord`.
+
+---
+
+### `GET /api/patients/{username}/results/{id}`
+Retrieves a single result record by identifier.
+
+* **Method**: `GET`
+* **Response Status**: `200 OK` — `PatientResultRecord`.
+* **Errors**: `404 Not Found`.
+
+---
+
+### `DELETE /api/patients/{username}/results/{id}`
+Removes a result record.
+
+* **Method**: `DELETE`
+* **Response Status**: `200 OK`
+* **Errors**: `404 Not Found`.
+
+---
+
+### `GET /api/patient/dna`
+Generates an on-demand digital DNA payload from fabrication parameters, without persisting it. Note the singular `patient` segment: this is a stateless generator, not a stored-record route, and is therefore not gated by the `/api/patients` self-service rules above.
+
+* **Method**: `GET`
+* **Query Parameters**:
+
+| Parameter | Type | Description |
+| :--- | :--- | :--- |
+| `patientId` | string | Optional pseudonymous subject identifier. |
+| `regimen` | enum | `FtM` or `MtF`. |
+| `geometry` | string | Nanocarrier geometry, for example `Nanotube`. |
+| `targetKd` | number | Target aptamer dissociation constant in nM. |
+
+* **Response Status**: `200 OK` — a `PatientDigitalDnaPackage`.
+
+---
+
+## 13. User Profile & Patient Demographic Directory
+
+Profile, address and contact records for a user account. These carry personal data and are therefore gated strictly to the account owner or an Administrator.
+
+### Access Control
+
+| Route family | Administrator | Self | Any other user (incl. Researcher) |
+| :--- | :---: | :---: | :---: |
+| `{username}/profile` | Full | Full | `403 Forbidden` |
+| `{username}/addresses` | Full | Full | `403 Forbidden` |
+| `{username}/contacts` | Full | Full | `403 Forbidden` |
+
+Unlike the clinical record routes in section 12, the `Researcher` role has **no** implicit access to demographic data.
+
+---
+
+### `GET /api/users/{username}/profile`
+Retrieves the demographic and clinical profile for the account.
+
+* **Method**: `GET`
+* **Response Status**: `200 OK` — `UserProfile`:
+  ```json
+  {
+    "username": "patient_one",
+    "firstName": "Ada",
+    "lastName": "Lovelace",
+    "preferredName": "Ada",
+    "emailAddress": "ada@example.org",
+    "phoneNumber": "+1-555-0100",
+    "dateOfBirth": "1990-12-10",
+    "regimen": "MtF",
+    "genderAssignedAtBirth": "Male",
+    "pronouns": ["she", "her"],
+    "emergencyMedicalNotes": "Anticoagulant therapy.",
+    "bio": "Participating in the sovereign HRT study.",
+    "languagePreference": "en-US",
+    "createdAtUtc": "2026-10-21T08:30:00.000Z",
+    "updatedAtUtc": "2026-10-21T13:05:00.000Z"
+  }
+  ```
+* **Errors**: `403 Forbidden` when the caller is neither the account owner nor an Administrator.
+
+---
+
+### `PUT /api/users/{username}/profile`
+Creates or replaces the profile for the account.
+
+* **Method**: `PUT`
+* **Request Payload (JSON)**: a `UserProfile` document as shown above. Sensitive fields are encrypted at rest by `ProfileDataProtector`.
+* **Response Status**: `200 OK` — the stored `UserProfile`.
+* **Errors**: `403 Forbidden`.
+
+---
+
+### `GET /api/users/{username}/addresses`
+Lists postal addresses for the account.
+
+* **Method**: `GET`
+* **Response Status**: `200 OK` — array of `PatientAddress`.
+
+---
+
+### `POST /api/users/{username}/addresses`
+Adds a postal address to the account.
+
+* **Method**: `POST`
+* **Request Payload (JSON)** — `PatientAddress`:
+  ```json
+  {
+    "addressType": "Primary",
+    "city": "Reykjavik",
+    "stateOrProvince": "Capital Region",
+    "postalCode": "101",
+    "country": "Iceland",
+    "isPrimary": true
+  }
+  ```
+* **Response Status**: `200 OK` — the stored `PatientAddress`, including its generated `id`.
+
+---
+
+### `DELETE /api/users/{username}/addresses/{id}`
+Removes a postal address.
+
+* **Method**: `DELETE`
+* **Response Status**: `200 OK`
+* **Errors**: `404 Not Found`.
+
+---
+
+### `GET /api/users/{username}/contacts`
+Lists emergency and next-of-kin contacts for the account.
+
+* **Method**: `GET`
+* **Response Status**: `200 OK` — array of `PatientContact`.
+
+---
+
+### `POST /api/users/{username}/contacts`
+Adds an emergency contact to the account.
+
+* **Method**: `POST`
+* **Request Payload (JSON)** — `PatientContact`:
+  ```json
+  {
+    "contactName": "Grace Hopper",
+    "relationship": "Partner",
+    "phoneNumber": "+1-555-0199",
+    "emailAddress": "grace@example.org",
+    "priorityOrder": 1,
+    "canDiscussMedicalInfo": true,
+    "notes": "Primary escalation contact."
+  }
+  ```
+  `canDiscussMedicalInfo` defaults to `false` and must be set explicitly to authorize clinical disclosure.
+* **Response Status**: `200 OK` — the stored `PatientContact`, including its generated `id`.
+
+---
+
+### `DELETE /api/users/{username}/contacts/{id}`
+Removes an emergency contact.
+
+* **Method**: `DELETE`
+* **Response Status**: `200 OK`
+* **Errors**: `404 Not Found`.
+
+---
+
+## 14. Secure Exception Handling & RFC 7807 ProblemDetails
 
 All API error responses conform to **RFC 7807** Problem Details specifications with guaranteed zero-sensitive-data disclosure.
 
@@ -1172,7 +1584,7 @@ Clients receive errors in either JSON or XML:
 
 ---
 
-## 13. Automated Test Suite Execution & Coverage Gate
+## 15. Automated Test Suite Execution & Coverage Gate
 
 We mandate a 100% test pass rate and 100.00% line and branch code coverage across both .NET and JavaScript codebases.
 

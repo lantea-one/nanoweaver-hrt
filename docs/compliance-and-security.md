@@ -199,7 +199,7 @@ To prevent credential leakage, eliminate brute-force password attacks, and prote
 
 ### Cryptographic Identity & Challenge-Response Authentication
 User identities are anchored to asymmetric cryptographic keypairs:
-* **Supported Algorithms**: Ed25519 (Edwards-curve Digital Signature Algorithm), ECDSA P-256 (NIST P-256), and RSA-4096.
+* **Supported Algorithms**: Ed25519 (Edwards-curve Digital Signature Algorithm, RFC 8032) and ML-DSA-65 (NIST FIPS 204 Module-Lattice-Based Digital Signature Algorithm, post-quantum).
 * **Challenge-Response Handshake**: The client submits their username to receive a cryptographically random 256-bit challenge. The client signs the challenge with their local private key (optionally unlocked with a passphrase) and submits the signature. Upon verification, a cryptographically signed session token is issued.
 * **Zero Passwords Stored**: Passwords and private keys are never stored on the server. If a passphrase is used, it only encrypts the private key locally on the user's workstation.
 

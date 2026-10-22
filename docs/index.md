@@ -85,7 +85,7 @@ flowchart TD
 - Atomic redemption semantics preventing replay attacks or concurrent session takeover.
 
 ### 5. Sovereign Cryptographic PKI Identity, RBAC & Hardening
-- **Zero Default Passwords & Mandatory Setup**: Initial launch enforces `/setup` wizard before platform unlocks; master Administrator account bound to cryptographic keypair (Ed25519, ECDSA P-256, RSA-4096).
+- **Zero Default Passwords & Mandatory Setup**: Initial launch enforces `/setup` wizard before platform unlocks; master Administrator account bound to cryptographic keypair (Ed25519 or ML-DSA-65).
 - **Role-Based Authorization & Access Gating**: Strict enforcement across `Administrator`, `Researcher`, and `Patient` roles and transport boundaries (`Api`, `Web`, `ApiWeb`).
 - **Automated Browser Idle Expiration**: Inactivity watchdog tracks client interactions and terminates abandoned sessions after 15 minutes.
 - **Deterministic SQL Schema Migrations**: Versioned, dialect-aware DDL pipeline (`DatabaseMigrationRunner`) tracking applied revisions in `weaver_schema_migrations`.
