@@ -14,25 +14,37 @@
             <p class="subtitle">Decentralized Synthetic Biology &amp; DNA Origami Engineering Platform</p>
         </div>
     </div>
-    <div class="node-status">
-        <div class="status-indicator">
-            <span class="pulse"></span>
-            <span>NODE: @Environment.MachineName.ToUpperInvariant()</span>
-        </div>
-        <div class="badge badge-accent">@_acceleratorBackend.ToUpperInvariant()</div>
-        <div class="badge badge-outline">DB: @ConfigRepo.ActiveBackendName</div>
-        @if (SessionState.IsAuthenticated)
-        {
+    @*
+        WHAT: Node identity, accelerator, database backend and the signed-in user chip.
+        WHY:  Every one of these discloses how this sovereign node is configured,
+              so none of it may render to a visitor without a session.
+        HOW:  Rendered only when ShellVisible is true (see the @code block).
+    *@
+    @if (ShellVisible)
+    {
+        <div class="node-status">
+            <div class="status-indicator">
+                <span class="pulse"></span>
+                <span>NODE: @Environment.MachineName.ToUpperInvariant()</span>
+            </div>
+            <div class="badge badge-accent">@_acceleratorBackend.ToUpperInvariant()</div>
+            <div class="badge badge-outline">DB: @ConfigRepo.ActiveBackendName</div>
             <div class="badge badge-primary">@SessionState.CurrentUser?.Username (@SessionState.CurrentUser?.Role)</div>
             <button class="btn btn-sm btn-outline text-muted" @onclick="HandleSignOut">Sign Out</button>
-        }
-        else
-        {
-            <a href="/login" class="btn btn-sm btn-outline">Sign In</a>
-        }
-    </div>
+        </div>
+    }
 </header>
 
+@*
+    WHAT: Platform navigation and the live node telemetry banner.
+    WHY:  Both are operational surfaces: the nav row is the entry point to every
+          platform page and the banner streams live frame, GC and memory counters.
+          A visitor with no session must see neither.
+    HOW:  The whole block is gated behind ShellVisible, so when no session exists
+          the document is header, sign-in form, footer - nothing else.
+*@
+@if (ShellVisible)
+{
 <nav class="sub-navbar">
     <div class="nav-links">
         <NavLink href="/" class="nav-link" Match="NavLinkMatch.All">
@@ -97,9 +109,21 @@
         <div class="stat-sub">Continuous Operation</div>
     </div>
 </section>
+}
 
 <main class="main-container">
-    @Body
+    @*
+        WHAT: The routed page body.
+        WHY:  Rendering a protected page even briefly before the redirect lands
+              would run its initialiser and flash its data on screen. Only the
+              two unauthenticated routes (/login, /setup) render without a session.
+        HOW:  Renders when the signed-in shell is visible, or when the current
+              route is one of the public ones.
+    *@
+    @if (ShellVisible || IsPublicRoute())
+    {
+        @Body
+    }
 </main>
 
 <footer class="footer">
@@ -108,9 +132,146 @@
 
 @code {
     /// <summary>
+    /// Routes that are reachable without an authenticated session, in lower-case
+    /// base-relative form: the sign-in form and the first-launch setup wizard.
+    /// </summary>
+    private static readonly string[] PublicRoutes = ["login", "setup"];
+
+    /// <summary>
+    /// Indicates whether first-launch setup is still outstanding, which locks the
+    /// platform to the setup wizard until an Administrator identity exists.
+    /// </summary>
+    private bool _setupRequired;
+
+    /// <summary>
+    /// Indicates whether the session state is settled - that is, whether the
+    /// first-launch check has run and the attempt to restore a persisted browser
+    /// session token has completed.
+    /// </summary>
+    private bool _sessionResolved;
+
+    /// <summary>
+    /// Gets a value indicating whether the signed-in application shell (status
+    /// cluster, navigation row, telemetry banner and routed page) may render.
+    /// </summary>
+    /// <remarks>
+    /// False until <see cref="_sessionResolved"/> is set, so a protected page is
+    /// never rendered during prerendering or while the persisted token is still
+    /// being validated.
+    /// </remarks>
+    private bool ShellVisible => _sessionResolved && !_setupRequired && SessionState.IsAuthenticated;
+
+    /// <summary>
+    /// Returns the current route in lower-case, base-relative form with any query
+    /// string or fragment removed.
+    /// </summary>
+    /// <returns>The normalized route, for example <c>login</c> or <c>compliance</c>.</returns>
+    private string CurrentRoute()
+    {
+        // WHAT: Reduces the absolute browser URI to a bare comparable route segment.
+        // WHY:  The guard compares against route names, and "/login?reason=idle_timeout"
+        //       must match "login" so an idle redirect is not itself redirected again.
+        // HOW:  Strips the base path, truncates at the first '?' or '#', then trims slashes.
+        string relative = Navigation.ToBaseRelativePath(Navigation.Uri);
+        int cut = relative.IndexOfAny(['?', '#']);
+        if (cut >= 0)
+        {
+            relative = relative[..cut];
+        }
+
+        return relative.Trim('/').ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// Determines whether the current route is reachable without a session.
+    /// </summary>
+    /// <returns>True for the sign-in form and the setup wizard; otherwise, false.</returns>
+    private bool IsPublicRoute() => Array.IndexOf(PublicRoutes, CurrentRoute()) >= 0;
+
+    /// <summary>
+    /// Redirects to the setup wizard or the sign-in form when the current route is
+    /// not permitted for the current session state.
+    /// </summary>
+    private void EnforceRouteGuard()
+    {
+        // WHAT: Central access gate for every routed page in the platform.
+        // WHY:  Hiding navigation links is not access control - a typed URL, a
+        //       bookmark or the browser back button would otherwise still open a
+        //       platform page with no session behind it.
+        // HOW:  Setup lock-out takes precedence; otherwise an unauthenticated
+        //       visitor on any non-public route is sent to the sign-in form.
+        string route = CurrentRoute();
+
+        if (_setupRequired)
+        {
+            if (!string.Equals(route, "setup", StringComparison.Ordinal))
+            {
+                Navigation.NavigateTo("/setup");
+            }
+
+            return;
+        }
+
+        if (!SessionState.IsAuthenticated && Array.IndexOf(PublicRoutes, route) < 0)
+        {
+            Navigation.NavigateTo("/login");
+        }
+    }
+
+    /// <summary>
+    /// Re-evaluates the route guard whenever the browser location changes, refreshing
+    /// the first-launch flag so a completed setup wizard is not bounced back to itself.
+    /// </summary>
+    /// <param name="sender">The navigation manager raising the event.</param>
+    /// <param name="args">Details of the completed navigation.</param>
+    /// <remarks>
+    /// Kept synchronous because it is an event handler; the work it needs to do is
+    /// asynchronous, so it is dispatched onto the renderer's synchronization context.
+    /// </remarks>
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs args)
+    {
+        // WHAT: Re-checks first-launch state, then re-applies the access gate.
+        // WHY:  The setup wizard navigates to "/" the moment it provisions the master
+        //       Administrator, but this circuit still believes setup is outstanding -
+        //       guarding on the stale flag would redirect straight back to /setup and
+        //       trap the operator in an inescapable loop after a successful setup.
+        // HOW:  Dispatches onto the renderer via InvokeAsync, re-queries the
+        //       authentication service only while the flag is still set (so the common
+        //       navigation costs no database round trip), guards, then starts telemetry
+        //       for the now-visible shell and re-renders.
+        _ = InvokeAsync(async () =>
+        {
+            if (!_sessionResolved)
+            {
+                return;
+            }
+
+            if (_setupRequired)
+            {
+                _setupRequired = await AuthService.IsSetupRequiredAsync();
+            }
+
+            EnforceRouteGuard();
+            await EnsureTelemetryStartedAsync();
+            StateHasChanged();
+        });
+    }
+
+    /// <summary>
     /// Background periodic timer polling node telemetry.
     /// </summary>
     private System.Threading.Timer? _telemetryTimer;
+
+    /// <summary>
+    /// Indicates whether the telemetry poll loop and the accelerator label have
+    /// already been initialised for this circuit.
+    /// </summary>
+    /// <remarks>
+    /// Acts as a one-shot latch for <see cref="EnsureTelemetryStartedAsync"/> so
+    /// that repeated renders of the signed-in shell can never construct a second
+    /// <see cref="_telemetryTimer"/> and leak the first one.
+    /// </remarks>
+    private bool _telemetryStarted;
 
     /// <summary>
     /// Total simulation frames parsed.
@@ -143,17 +304,59 @@
     private static readonly DateTime StartTimeUtc = DateTime.UtcNow;
 
     /// <summary>
-    /// Initializes layout and starts real-time telemetry polling.
+    /// Initializes the layout: subscribes to session and navigation notifications
+    /// and applies the first-launch setup lock-out.
     /// </summary>
+    /// <returns>A task that completes once the first-launch check has been applied.</returns>
+    /// <remarks>
+    /// Telemetry is intentionally not started here; see
+    /// <see cref="EnsureTelemetryStartedAsync"/>.
+    /// </remarks>
     protected override async Task OnInitializedAsync()
     {
         SessionState.OnChange += OnSessionChanged;
+        Navigation.LocationChanged += OnLocationChanged;
 
-        if (await AuthService.IsSetupRequiredAsync() && !Navigation.Uri.Contains("/setup"))
+        // WHAT: Records whether the node still needs its first Administrator.
+        // WHY:  Until one exists the platform must stay locked to the wizard, and
+        //       the flag is kept so the shell stays hidden on the wizard route too.
+        // HOW:  Queries the authentication service, then hands the redirect to the
+        //       shared route guard.
+        _setupRequired = await AuthService.IsSetupRequiredAsync();
+        if (_setupRequired)
         {
-            Navigation.NavigateTo("/setup");
+            EnforceRouteGuard();
+        }
+    }
+
+    /// <summary>
+    /// Starts the node telemetry poll loop and resolves the accelerator label the
+    /// first time the signed-in application shell becomes visible.
+    /// </summary>
+    /// <returns>
+    /// A task that completes once telemetry has been started, or immediately when
+    /// the shell is hidden or telemetry is already running.
+    /// </returns>
+    /// <remarks>
+    /// Deliberately lazy: a circuit that begins on the first-launch wizard has no
+    /// shell to feed, and eager initialisation there would leave the banner frozen
+    /// at zeros and the accelerator badge stuck on its placeholder once the newly
+    /// provisioned Administrator signs in inside that same circuit.
+    /// </remarks>
+    private async Task EnsureTelemetryStartedAsync()
+    {
+        // WHAT: One-shot start of the two-second telemetry sampling loop.
+        // WHY:  Telemetry only has a consumer once the signed-in shell renders, and
+        //       it must start exactly once no matter how many renders occur.
+        // HOW:  Bails out unless the shell is visible and the latch is still clear,
+        //       then raises the latch BEFORE any await so a re-entrant render cannot
+        //       slip past it and construct a second timer.
+        if (!ShellVisible || _telemetryStarted)
+        {
             return;
         }
+
+        _telemetryStarted = true;
 
         _acceleratorBackend = await ConfigRepo.GetValueAsync("Simulation:AcceleratorBackend", "Intel iGPU / OpenCL");
         UpdateTelemetry();
@@ -164,11 +367,25 @@
                 if (SessionState.CheckIdleTimeout())
                 {
                     Navigation.NavigateTo("/login?reason=idle_timeout");
+                    return;
                 }
+
+                // WHAT: Skips the sampling pass while the signed-in shell is hidden.
+                // WHY:  The banner is not on screen for a visitor sitting on the
+                //       sign-in form, so polling the process every two seconds
+                //       would be pure waste.
+                // HOW:  Returns early unless ShellVisible is true.
+                if (!ShellVisible)
+                {
+                    return;
+                }
+
                 UpdateTelemetry();
                 StateHasChanged();
             });
         }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
+
+        StateHasChanged();
     }
 
     /// <summary>
@@ -206,26 +423,47 @@
         // WHAT: Restores authenticated user session from browser storage/cookies if circuit reloaded unauthenticated.
         // WHY:  Ensures that browser navigation across tabs or pages preserves the authenticated researcher identity.
         // HOW:  Queries window.weaverGetSessionToken via JS interop and validates against IUserAuthenticationService.
-        if (firstRender && !SessionState.IsAuthenticated)
+        if (firstRender)
         {
-            try
+            if (!SessionState.IsAuthenticated)
             {
-                string? token = await JS.InvokeAsync<string?>("weaverGetSessionToken");
-                if (!string.IsNullOrWhiteSpace(token))
+                try
                 {
-                    var (valid, user, _) = await AuthService.ValidateTokenAsync(token);
-                    if (valid && user != null)
+                    string? token = await JS.InvokeAsync<string?>("weaverGetSessionToken");
+                    if (!string.IsNullOrWhiteSpace(token))
                     {
-                        SessionState.SetUser(user);
-                        StateHasChanged();
+                        var (valid, user, _) = await AuthService.ValidateTokenAsync(token);
+                        if (valid && user != null)
+                        {
+                            SessionState.SetUser(user);
+                        }
                     }
                 }
+                catch (Exception)
+                {
+                    // Prerendering, disconnected JS circuit, or headless unit test environment
+                }
             }
-            catch (Exception)
-            {
-                // Prerendering, disconnected JS circuit, or headless unit test environment
-            }
+
+            // WHAT: Marks the session settled and applies the access gate.
+            // WHY:  The restore attempt above is the last thing that can turn an
+            //       apparently anonymous circuit into an authenticated one, so the
+            //       guard must run after it - otherwise a signed-in user returning
+            //       to a bookmarked page would be bounced to the sign-in form.
+            // HOW:  Sets the resolved flag, runs the guard, then re-renders so the
+            //       shell appears (or stays hidden) for the settled state.
+            _sessionResolved = true;
+            EnforceRouteGuard();
+            StateHasChanged();
         }
+
+        // WHAT: Starts node telemetry once the signed-in shell is on screen.
+        // WHY:  Runs on every render, not just the first, because _sessionResolved is
+        //       set inside the block above and because a sign-in (or a completed setup
+        //       wizard) can make the shell visible many renders into the circuit.
+        // HOW:  Delegates to the latched helper, which is a no-op until the shell is
+        //       visible and then never starts a second timer.
+        await EnsureTelemetryStartedAsync();
 
         // WHAT: Binds client-side DOM activity listeners when an authenticated session exists.
         // WHY:  Ensures that if the user sits idle in their browser, they are automatically logged out.
@@ -265,7 +503,20 @@
     /// </summary>
     private void OnSessionChanged()
     {
-        InvokeAsync(StateHasChanged);
+        // WHAT: Re-renders the shell and re-applies the access gate.
+        // WHY:  A sign-out or an idle expiry raised from anywhere in the circuit
+        //       must take the visitor off whatever protected page they were on.
+        // HOW:  Marshals onto the renderer's synchronization context, then runs
+        //       the guard before re-rendering.
+        InvokeAsync(() =>
+        {
+            if (_sessionResolved)
+            {
+                EnforceRouteGuard();
+            }
+
+            StateHasChanged();
+        });
     }
 
     /// <summary>
@@ -326,6 +577,12 @@
         {
             SessionState.OnChange -= OnSessionChanged;
         }
+
+        if (Navigation != null)
+        {
+            Navigation.LocationChanged -= OnLocationChanged;
+        }
+
         _telemetryTimer?.Dispose();
         _dotNetRef?.Dispose();
     }
