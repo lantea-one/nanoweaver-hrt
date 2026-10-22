@@ -13,9 +13,15 @@ public static class SecureExceptionSanitizer
     private static readonly Regex PathRegex = new(@"(\/[a-zA-Z0-9_\.\-]+)+|[a-zA-Z]:\\[a-zA-Z0-9_\.\-\\]+", RegexOptions.Compiled);
 
     /// <summary>
-    /// Regular expression matching connection string key-value credential pairs.
+    /// Regular expression matching connection string key-value pairs that identify or authenticate against a database.
     /// </summary>
-    private static readonly Regex ConnectionStringRegex = new(@"(Password|pwd|user id|uid|host|data source)\s*=\s*[^;]+", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    /// <remarks>
+    /// Covers (case-insensitive) Password, pwd, Username, User Id, uid, User, Database, Initial Catalog, Server, Host,
+    /// Data Source, Port, Application Name, and Persist Security Info. Alternation is first-match-wins, so longer keys
+    /// (username, user id) precede the shorter key they contain (user). The left lookbehind stops a key from matching
+    /// inside an unrelated word such as "superuser".
+    /// </remarks>
+    private static readonly Regex ConnectionStringRegex = new(@"(?<![A-Za-z])(Password|pwd|username|user id|uid|user|database|initial catalog|server|host|data source|port|application name|persist security info)\s*=\s*[^;]+", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     /// <summary>
     /// Regular expression matching PEM cryptographic key envelopes.

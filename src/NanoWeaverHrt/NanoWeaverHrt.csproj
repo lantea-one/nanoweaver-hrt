@@ -9,7 +9,11 @@
     <GarbageCollectionAdaptationMode>1</GarbageCollectionAdaptationMode>
     <InvariantGlobalization>true</InvariantGlobalization>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <NoWarn>$(NoWarn);1591;NU1900</NoWarn>
+    <!-- CS1591 (missing XML doc comment) is deliberately NOT suppressed: AGENTS.md Prime Directive #2
+         mandates 100% docblock coverage, so the compiler must fail the build on any undocumented
+         publicly visible member rather than silently accepting it. NU1900 remains suppressed because
+         it reports transient NuGet audit-feed connectivity, not a code defect. -->
+    <NoWarn>$(NoWarn);NU1900</NoWarn>
     <WarningsNotAsErrors>NU1900</WarningsNotAsErrors>
   </PropertyGroup>
 
