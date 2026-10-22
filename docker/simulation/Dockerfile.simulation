@@ -81,5 +81,8 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 
 WORKDIR /workspace
 
+LABEL org.opencontainers.image.source="https://git.lantea.one/lantea-one/nanoweaver-hrt" \
+      org.opencontainers.image.description="NanoWeaverHrt Coarse-Grained and All-Atom Molecular Dynamics Simulation Engine"
+
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["sleep", "infinity"]

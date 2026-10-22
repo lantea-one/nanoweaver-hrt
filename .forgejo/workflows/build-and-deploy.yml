@@ -162,7 +162,6 @@ jobs:
         with:
           images: |
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/nanoweaver-hrt-web
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/nanoweaver-hrt
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,format=short,prefix=sha-
@@ -196,3 +195,17 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta-simulation.outputs.tags }}
           labels: ${{ steps.meta-simulation.outputs.labels }}
+
+      - name: Ensure Container Packages Linked to Repository
+        # WHAT: Guarantee OCI container packages appear on repository's Packages tab in Forgejo.
+        # WHY:  Packages without matching repo names (nanoweaver-hrt-web, nanoweaver-hrt-simulation)
+        #       default to organization-level unless explicitly linked via Forgejo's link API.
+        # HOW:  Call POST /api/v1/packages/{owner}/container/{name}/-/link/{repo} with auth token.
+        if: github.event_name != 'pull_request'
+        run: |
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          for pkg in nanoweaver-hrt-web nanoweaver-hrt-simulation; do
+            curl -s -X POST \
+              -H "Authorization: token ${{ secrets.PACKAGE_TOKEN || secrets.GITHUB_TOKEN }}" \
+              "https://${{ env.REGISTRY }}/api/v1/packages/${{ github.repository_owner }}/container/${pkg}/-/link/${REPO_NAME}" || true
+          done

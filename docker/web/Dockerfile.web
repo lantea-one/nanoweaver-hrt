@@ -36,6 +36,9 @@ RUN dotnet publish "NanoWeaverHrt.csproj" \
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 
+LABEL org.opencontainers.image.source="https://git.lantea.one/lantea-one/nanoweaver-hrt" \
+      org.opencontainers.image.description="NanoWeaverHrt Sovereign Web UI and Real-Time Trajectory Streaming Node"
+
 # Install curl for container runtime healthcheck probe
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
