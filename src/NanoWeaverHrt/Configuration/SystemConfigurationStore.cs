@@ -16,12 +16,34 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
     /// <summary>
     /// Metadata definition for known stack settings and their environment variable mappings.
     /// </summary>
+    /// <param name="Key">Canonical setting key (e.g. 'Storage:PostgresConnectionString').</param>
+    /// <param name="DefaultValue">Built-in fallback used when neither the database nor the environment supplies a value.</param>
+    /// <param name="EnvironmentVariable">Environment variable consulted before the built-in default, or null when the setting has none.</param>
+    /// <param name="Category">Categorical grouping used to organize the setting in the Web UI.</param>
+    /// <param name="Description">Plain-English explanation of what the setting controls.</param>
+    /// <param name="IsSecret">
+    /// True when the value carries a credential and must never be rendered, logged, or serialized. This flag is
+    /// the single authority consulted by both the REST API redaction and the Web UI, so the two cannot drift.
+    /// </param>
     private sealed record ConfigDefinition(
         string Key,
         string DefaultValue,
         string? EnvironmentVariable,
         string Category,
-        string Description);
+        string Description,
+        bool IsSecret = false);
+
+    /// <summary>
+    /// Case-insensitive key-name markers identifying a credential-bearing setting that is not in the catalog.
+    /// </summary>
+    /// <remarks>
+    /// Operators may persist ad-hoc database overrides whose keys are absent from <see cref="Definitions"/>.
+    /// The markers keep such a key protected by default, so secrecy can only ever be added, never silently lost.
+    /// </remarks>
+    private static readonly string[] SecretKeyNameMarkers =
+    [
+        "connectionstring", "password", "secret", "credential", "privatekey", "apikey", "token", "pepper"
+    ];
 
     /// <summary>
     /// Master catalog of supported system settings across simulation, storage, and peer collaboration.
@@ -32,7 +54,7 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
         new("Simulation:AcceleratorBackend", "Intel iGPU / OpenCL (Default)", "ACCELERATOR_BACKEND", "Simulation Engine", "Active hardware accelerator backend (e.g., Arc A770, NVIDIA CUDA, AMD ROCm, or CPU)."),
         new("Simulation:DefaultTimeStep", "0.002", "SIMULATION_TIMESTEP", "Simulation Engine", "Integration time step in picoseconds for molecular dynamics solvers."),
         new("Storage:DatabaseProvider", "AutoDetect", "DATABASE_PROVIDER", "Storage & Database", "Database engine used for metadata ('PostgreSQL', 'SQLite', or 'AutoDetect')."),
-        new("Storage:PostgresConnectionString", "Host=localhost;Port=5432;Database=weaver_hrt;Username=weaver;Password=weaver_secret_change_me", "POSTGRES_CONNECTION_STRING", "Storage & Database", "Connection string for the PostgreSQL / pg-duckdb storage node."),
+        new("Storage:PostgresConnectionString", "Host=localhost;Port=5432;Database=weaver_hrt;Username=weaver;Password=weaver_secret_change_me", "POSTGRES_CONNECTION_STRING", "Storage & Database", "Connection string for the PostgreSQL / pg-duckdb storage node.", IsSecret: true),
         new("Storage:TrajectoryIncomingDir", "./simulations/shared-data", "TRAJECTORY_INCOMING_DIR", "Storage & Database", "Directory containing raw incoming molecular trajectory files (.xyz, .dcd)."),
         new("Storage:TrajectoryExportDir", "./simulations/exports", "TRAJECTORY_EXPORT_DIR", "Storage & Database", "Directory where signed dataset tarballs and SHA-256 manifests are saved."),
         new("Storage:TrajectoryParquetDir", "./simulations/parquet", "TRAJECTORY_PARQUET_DIR", "Storage & Database", "Directory where columnar Apache Parquet files are stored for DuckDB queries."),
@@ -157,6 +179,44 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
     }
 
     /// <summary>
+    /// Determines whether a configuration key carries a credential that must never be published or rendered.
+    /// </summary>
+    /// <param name="key">Configuration key such as 'Storage:PostgresConnectionString'.</param>
+    /// <returns>True when the key's value must stay inside the node; otherwise false.</returns>
+    /// <remarks>
+    /// The single authority behind both the REST API redaction (GET /api/configuration) and the Web UI
+    /// configuration screen. Catalog entries declare secrecy explicitly through
+    /// <see cref="ConfigDefinition.IsSecret"/>; keys outside the catalog fall back to name markers, so the
+    /// classification is monotone — a catalog entry can add secrecy but never remove it.
+    /// </remarks>
+    public static bool IsSecretConfigurationKey(string key)
+    {
+        // WHAT: Classifies a configuration key as credential-bearing.
+        // WHY:  Prime Directive 14 forbids exposing credentials to API clients, and the same value must not be
+        //       painted onto an operator's screen either; one classifier keeps both surfaces in agreement.
+        // HOW:  Consults the declarative catalog flag first, then the key-name markers for ad-hoc overrides.
+        ArgumentNullException.ThrowIfNull(key);
+
+        foreach (ConfigDefinition def in Definitions)
+        {
+            if (def.IsSecret && string.Equals(def.Key, key, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        foreach (string marker in SecretKeyNameMarkers)
+        {
+            if (key.Contains(marker, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Retrieves all configuration settings, evaluating database overrides against environment variables and defaults.
     /// </summary>
     /// <param name="ct">Cancellation token.</param>
@@ -183,7 +243,8 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
                     Description = def.Description,
                     Category = def.Category,
                     Source = ConfigurationSource.DatabaseOverride,
-                    LastUpdatedUtc = dbVal.UpdatedAt
+                    LastUpdatedUtc = dbVal.UpdatedAt,
+                    IsSecret = def.IsSecret
                 });
             }
             else
@@ -199,7 +260,8 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
                         Description = def.Description,
                         Category = def.Category,
                         Source = ConfigurationSource.EnvironmentVariable,
-                        LastUpdatedUtc = null
+                        LastUpdatedUtc = null,
+                        IsSecret = def.IsSecret
                     });
                 }
                 else
@@ -212,7 +274,8 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
                         Description = def.Description,
                         Category = def.Category,
                         Source = ConfigurationSource.DefaultFallback,
-                        LastUpdatedUtc = null
+                        LastUpdatedUtc = null,
+                        IsSecret = def.IsSecret
                     });
                 }
             }

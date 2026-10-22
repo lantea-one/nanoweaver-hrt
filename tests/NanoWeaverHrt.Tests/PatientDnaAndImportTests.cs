@@ -772,9 +772,10 @@ public sealed class PatientDnaAndImportTests : IClassFixture<WebApplicationFacto
         Assert.NotNull(ownDna);
         Assert.Empty(ownDna);
 
-        // Patient CANNOT view other patient's DNA (403 Forbidden)
+        // Patient CANNOT view other patient's DNA, and the rejection is masked as 404 Not Found so that
+        // another patient's records are indistinguishable from a subject that does not exist (Directive 12).
         var forbiddenDnaRes = await patientClient.GetAsync($"/api/patients/{otherPatientUser}/dna");
-        Assert.Equal(HttpStatusCode.Forbidden, forbiddenDnaRes.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, forbiddenDnaRes.StatusCode);
 
         // Admin can create DNA blueprint for patient
         CreatePatientDnaRequest createDnaReq = new()

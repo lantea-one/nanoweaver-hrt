@@ -45,15 +45,33 @@
                             <tr>
                                 <td>
                                     <div class="font-mono text-accent">@item.Key</div>
-                                    <div class="subtext">Default: <code>@item.DefaultValue</code></div>
+                                    @if (item.IsSecret)
+                                    {
+                                        <div class="subtext">Default: <code>[REDACTED]</code></div>
+                                    }
+                                    else
+                                    {
+                                        <div class="subtext">Default: <code>@item.DefaultValue</code></div>
+                                    }
                                 </td>
                                 <td>
                                     <div class="config-input-group">
-                                        <input type="text" class="input-text font-mono" @bind="_editValues[item.Key]" />
+                                        @if (item.IsSecret)
+                                        {
+                                            <input type="password" class="input-text font-mono" autocomplete="new-password" placeholder="Stored credential is never displayed — type a new value to replace it" @bind="_editValues[item.Key]" />
+                                        }
+                                        else
+                                        {
+                                            <input type="text" class="input-text font-mono" @bind="_editValues[item.Key]" />
+                                        }
                                         <span class="badge @GetSourceBadgeClass(item.Source)">
                                             @GetSourceBadgeLabel(item.Source)
                                         </span>
                                     </div>
+                                    @if (item.IsSecret)
+                                    {
+                                        <div class="subtext">Credential setting: the active value is never rendered. Leave blank to keep the stored value.</div>
+                                    }
                                     @if (item.LastUpdatedUtc.HasValue)
                                     {
                                         <div class="subtext">Overridden at @item.LastUpdatedUtc.Value.ToString("u")</div>
@@ -282,9 +300,13 @@
     /// </summary>
     private async Task LoadConfigurationsAsync()
     {
+        // WHAT: Seeds the editable fields, leaving credential-bearing settings blank.
+        // WHY:  Prime Directive 14 keeps credentials off every surface, screens included, so the live
+        //       PostgreSQL connection string is never painted into an input an operator can read or copy.
+        // HOW:  Binds each non-secret setting to its active value and each secret setting to an empty string.
         _configurations = await ConfigRepo.GetAllConfigurationsAsync();
         _categories = _configurations.Select(c => c.Category).Distinct().ToList();
-        _editValues = _configurations.ToDictionary(c => c.Key, c => c.Value);
+        _editValues = _configurations.ToDictionary(c => c.Key, c => c.IsSecret ? string.Empty : c.Value);
     }
 
     /// <summary>
@@ -308,6 +330,15 @@
     {
         if (_editValues.TryGetValue(key, out string? val))
         {
+            // WHAT: Skips the write when a credential field was submitted blank.
+            // WHY:  Credential fields start empty because the stored value is never rendered; saving that
+            //       empty field would silently destroy the working connection string.
+            // HOW:  Treats a blank value on a secret key as "leave the stored value untouched".
+            if (SystemConfigurationStore.IsSecretConfigurationKey(key) && string.IsNullOrWhiteSpace(val))
+            {
+                return;
+            }
+
             await ConfigRepo.SetDatabaseOverrideAsync(key, val);
             await LoadConfigurationsAsync();
         }

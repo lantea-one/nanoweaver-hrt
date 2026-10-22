@@ -29,6 +29,27 @@ public static class SecureExceptionSanitizer
     private static readonly Regex PemKeyRegex = new(@"-----BEGIN[^\-]+-----[A-Za-z0-9+/=\s]+-----END[^\-]+-----", RegexOptions.Compiled);
 
     /// <summary>
+    /// Regular expression matching UNC network share paths such as '\\fileserver\weaver-data\patients'.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="PathRegex"/> only recognizes rooted Unix paths and drive-letter Windows paths, so a UNC
+    /// share — the normal shape of a clustered simulation volume — previously passed through a 4xx detail intact.
+    /// </remarks>
+    private static readonly Regex UncPathRegex = new(@"\\\\[A-Za-z0-9_\.\-]+(\\[A-Za-z0-9_\.\-\$]+)+", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Regular expression matching SQL statement fragments that would disclose internal schema or query structure.
+    /// </summary>
+    /// <remarks>
+    /// Prime Directive 14 names "internal SQL fragments" explicitly. Each alternative requires two SQL tokens
+    /// (for example SELECT paired with FROM, or UPDATE paired with SET) so that ordinary English prose using the
+    /// word "update" or "select" is not redacted. A match is consumed up to the next statement terminator.
+    /// </remarks>
+    private static readonly Regex SqlFragmentRegex = new(
+        @"\b(?:select\b[\s\S]*?\bfrom\b|insert\s+(?:or\s+replace\s+)?into\b|update\b[\s\S]*?\bset\b|delete\s+from\b|create\s+(?:unique\s+)?(?:table|index)\b|alter\s+table\b|drop\s+(?:table|index)\b|truncate\s+table\b|on\s+conflict\b)[^;]*",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    /// <summary>
     /// Sanitizes an exception message, redacting any sensitive server paths, credentials, or SQL syntax.
     /// </summary>
     /// <param name="message">Raw exception message text.</param>
@@ -38,8 +59,11 @@ public static class SecureExceptionSanitizer
     public static string SanitizeDetail(string? message, int statusCode, string traceId)
     {
         // WHAT: Sanitizes error message strings or replaces internal 500 details with safe correlation notices.
-        // WHY:  Provides accurate diagnostic feedback to API consumers without leaking filesystem paths or credentials.
-        // HOW:  Checks status code; if 500+, returns a redacted correlation message; otherwise strips sensitive regex patterns.
+        // WHY:  Provides accurate diagnostic feedback to API consumers without leaking filesystem paths,
+        //       credentials, private key material, or internal SQL schema (Prime Directive 14).
+        // HOW:  Checks status code; if 500+, returns a redacted correlation message; otherwise applies the
+        //       redaction passes in decreasing specificity: key envelopes, credential pairs, SQL statements,
+        //       UNC shares, and finally rooted Unix and Windows paths.
         if (statusCode >= 500)
         {
             return $"An internal error occurred during request processing. Correlation ID: {traceId}.";
@@ -53,6 +77,8 @@ public static class SecureExceptionSanitizer
         string sanitized = message;
         sanitized = PemKeyRegex.Replace(sanitized, "[REDACTED_KEY]");
         sanitized = ConnectionStringRegex.Replace(sanitized, "$1=[REDACTED]");
+        sanitized = SqlFragmentRegex.Replace(sanitized, "[REDACTED_SQL]");
+        sanitized = UncPathRegex.Replace(sanitized, "[REDACTED_PATH]");
         sanitized = PathRegex.Replace(sanitized, "[REDACTED_PATH]");
 
         return sanitized.Trim();

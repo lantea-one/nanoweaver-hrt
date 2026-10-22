@@ -188,11 +188,11 @@ public sealed record GranularSystemHealth : SystemHealthOverview, IExamplesProvi
             Storage = new StorageHealthInfo
             {
                 Status = "Healthy",
-                IncomingDirectory = "/workspace/data",
+                IncomingDirectory = "Configured by TRAJECTORY_INCOMING_DIR; absolute path withheld.",
                 IncomingWritable = true,
-                ExportDirectory = "/workspace/exports",
+                ExportDirectory = "Configured by TRAJECTORY_EXPORT_DIR; absolute path withheld.",
                 ExportWritable = true,
-                ParquetDirectory = "/workspace/parquet",
+                ParquetDirectory = "Configured by TRAJECTORY_PARQUET_DIR; absolute path withheld.",
                 ParquetWritable = true
             },
             Simulations = new SimulationHealthInfo
@@ -478,9 +478,13 @@ public sealed record StorageHealthInfo
     public required string Status { get; init; }
 
     /// <summary>
-    /// Gets the incoming trajectory storage directory path.
+    /// Gets a non-disclosing descriptor of the incoming trajectory storage directory.
     /// </summary>
-    [Description("Incoming trajectory directory path.")]
+    /// <remarks>
+    /// Names the environment variable that configures the directory rather than the absolute path, because
+    /// Prime Directive 14 keeps local filesystem paths out of every API response at every role.
+    /// </remarks>
+    [Description("Descriptor naming the setting that configures the incoming trajectory directory.")]
     [JsonPropertyName("incomingDirectory")]
     public required string IncomingDirectory { get; init; }
 
@@ -492,9 +496,12 @@ public sealed record StorageHealthInfo
     public required bool IncomingWritable { get; init; }
 
     /// <summary>
-    /// Gets the dataset exports storage directory path.
+    /// Gets a non-disclosing descriptor of the dataset exports storage directory.
     /// </summary>
-    [Description("Dataset export directory path.")]
+    /// <remarks>
+    /// Names the configuring environment variable rather than the absolute path, per Prime Directive 14.
+    /// </remarks>
+    [Description("Descriptor naming the setting that configures the dataset export directory.")]
     [JsonPropertyName("exportDirectory")]
     public required string ExportDirectory { get; init; }
 
@@ -506,9 +513,12 @@ public sealed record StorageHealthInfo
     public required bool ExportWritable { get; init; }
 
     /// <summary>
-    /// Gets the columnar Parquet storage directory path.
+    /// Gets a non-disclosing descriptor of the columnar Parquet storage directory.
     /// </summary>
-    [Description("Parquet columnar directory path.")]
+    /// <remarks>
+    /// Names the configuring environment variable rather than the absolute path, per Prime Directive 14.
+    /// </remarks>
+    [Description("Descriptor naming the setting that configures the Parquet columnar directory.")]
     [JsonPropertyName("parquetDirectory")]
     public required string ParquetDirectory { get; init; }
 

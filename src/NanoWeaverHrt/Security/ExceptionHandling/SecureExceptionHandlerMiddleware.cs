@@ -45,14 +45,27 @@ public sealed class SecureExceptionHandlerMiddleware
     /// <returns>Asynchronous task.</returns>
     public async Task InvokeAsync(HttpContext context)
     {
-        // WHAT: Intercepts unhandled exceptions thrown during API endpoint execution.
-        // WHY:  Guarantees consistent, descriptive RFC 7807 problem responses without leaking secrets or paths.
-        // HOW:  Wraps _next for /api routes in a try-catch block and formats SecureProblemDetails.
+        // WHAT: Intercepts unhandled exceptions thrown anywhere downstream in the pipeline.
+        // WHY:  Guarantees consistent, descriptive RFC 7807 problem responses for /api routes without leaking
+        //       secrets or paths, and guarantees that no other route (a Web UI page, /healthz, /health) can
+        //       surface a stack trace either. ASP.NET Core registers its Development-mode developer exception
+        //       page ahead of this middleware, so an escaping exception would otherwise be rendered in full —
+        //       exactly the disclosure Prime Directive 14 prohibits.
+        // HOW:  Wraps _next in a try-catch for every path, formatting SecureProblemDetails for /api routes and
+        //       an opaque correlation notice for everything else.
         ArgumentNullException.ThrowIfNull(context);
 
         if (!context.Request.Path.StartsWithSegments("/api"))
         {
-            await _next(context);
+            try
+            {
+                await _next(context);
+            }
+            catch (Exception ex)
+            {
+                await HandleNonApiExceptionAsync(context, ex);
+            }
+
             return;
         }
 
@@ -64,6 +77,34 @@ public sealed class SecureExceptionHandlerMiddleware
         {
             await HandleApiExceptionAsync(context, ex);
         }
+    }
+
+    /// <summary>
+    /// Writes an opaque, trace-correlated failure notice for a non-API request.
+    /// </summary>
+    /// <param name="context">Active HTTP context.</param>
+    /// <param name="ex">The intercepted exception.</param>
+    /// <returns>Asynchronous task.</returns>
+    /// <remarks>
+    /// Non-API callers are browsers and container orchestrators, so no problem-details content negotiation
+    /// applies; they receive the same opaque correlation sentence that a 500-class API response carries,
+    /// and the full exception is recorded in the server log only.
+    /// </remarks>
+    private async Task HandleNonApiExceptionAsync(HttpContext context, Exception ex)
+    {
+        _logger.LogError(ex, "Non-API Internal Error on {Path} (Trace: {TraceId})", context.Request.Path, context.TraceIdentifier);
+
+        if (context.Response.HasStarted)
+        {
+            _logger.LogWarning("Response has already started; cannot write failure notice for trace {TraceId}", context.TraceIdentifier);
+            return;
+        }
+
+        context.Response.Clear();
+        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        context.Response.ContentType = "text/plain; charset=utf-8";
+        await context.Response.WriteAsync(
+            SecureExceptionSanitizer.SanitizeDetail(ex.Message, StatusCodes.Status500InternalServerError, context.TraceIdentifier));
     }
 
     /// <summary>

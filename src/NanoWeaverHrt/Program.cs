@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Runtime;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Microsoft.OpenApi.Models;
 using Swashbuckle.AspNetCore.Annotations;
@@ -258,7 +259,12 @@ public class Program
 
                 if (!string.IsNullOrEmpty(candidateHealthToken))
                 {
-                    var (isHealthTokenValid, healthUser, _) = await authService.ValidateTokenAsync(candidateHealthToken, context.RequestAborted);
+                    // WHAT: Validates the optional probe session token through a failure-tolerant wrapper.
+                    // WHY:  A liveness probe must never fail because a browser presented a malformed session
+                    //       cookie; the raw validator throws FormatException on non-Base64 token segments.
+                    // HOW:  TryValidateTokenAsync reports malformed encodings as an ordinary validation failure,
+                    //       so the probe simply degrades to the unauthenticated high-level overview.
+                    var (isHealthTokenValid, healthUser, _) = await TryValidateTokenAsync(authService, candidateHealthToken, context.RequestAborted);
                     if (isHealthTokenValid && healthUser != null)
                     {
                         context.Items["CurrentUser"] = healthUser;
@@ -282,9 +288,7 @@ public class Program
 
                 if (!isSetupRequired && (path.Equals("/api/setup/initialize", StringComparison.OrdinalIgnoreCase) || path.Equals("/api/setup/generate-keypair", StringComparison.OrdinalIgnoreCase)))
                 {
-                    context.Response.StatusCode = StatusCodes.Status400BadRequest;
-                    context.Response.ContentType = "application/json";
-                    await context.Response.WriteAsJsonAsync(new { error = "System has already completed initial Administrator setup." });
+                    await WriteSecureProblemAsync(context, StatusCodes.Status400BadRequest, "System has already completed initial Administrator setup.");
                     return;
                 }
 
@@ -297,13 +301,11 @@ public class Program
             {
                 if (path.StartsWithSegments("/api"))
                 {
-                    context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
-                    context.Response.ContentType = "application/json";
-                    await context.Response.WriteAsJsonAsync(new
-                    {
-                        error = "First-launch system setup is required. Please initialize the master Administrator via /api/setup/initialize or navigate to /setup.",
-                        setupRequired = true
-                    });
+                    await WriteSecureProblemAsync(
+                        context,
+                        StatusCodes.Status503ServiceUnavailable,
+                        "First-launch system setup is required. Please initialize the master Administrator via /api/setup/initialize or navigate to /setup.",
+                        includeSetupRequiredFlag: true);
                     return;
                 }
 
@@ -347,101 +349,62 @@ public class Program
 
             if (string.IsNullOrEmpty(token))
             {
-                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                context.Response.ContentType = "application/json";
-                await context.Response.WriteAsJsonAsync(new { error = "Authentication required. Provide a valid Bearer token in Authorization header." });
+                await WriteSecureProblemAsync(context, StatusCodes.Status401Unauthorized, "Authentication required. Provide a valid Bearer token in Authorization header.");
                 return;
             }
 
-            var (valid, user, errorReason) = await authService.ValidateTokenAsync(token, context.RequestAborted);
+            var (valid, user, errorReason) = await TryValidateTokenAsync(authService, token, context.RequestAborted);
             if (!valid || user == null)
             {
-                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                context.Response.ContentType = "application/json";
-                await context.Response.WriteAsJsonAsync(new { error = errorReason ?? "Invalid or expired authentication token." });
+                await WriteSecureProblemAsync(context, StatusCodes.Status401Unauthorized, errorReason ?? "Invalid or expired authentication token.");
                 return;
             }
 
             // 7. Access Gating: Web-only users cannot access REST API endpoints
             if (user.AccessGate == AccessGate.Web)
             {
-                context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                context.Response.ContentType = "application/json";
-                await context.Response.WriteAsJsonAsync(new { error = "Access Denied: This user account is gated to Web interface access only." });
+                await WriteSecureProblemAsync(context, StatusCodes.Status403Forbidden, "Access Denied: This user account is gated to Web interface access only.");
                 return;
             }
 
-            // 8. Role Gating: Administrator-only endpoints (permits self-service user profile, addresses, contacts, DNA, imports, and results access)
+            // 8. Role Gating: per-subject identity, profile, and PHI record routes (self-service or Administrator)
             PathString userSubPath = default;
             PathString patientSubPath = default;
             bool isUsersPath = path.StartsWithSegments("/api/users", out userSubPath);
             bool isPatientsPath = path.StartsWithSegments("/api/patients", out patientSubPath);
             if (isUsersPath || isPatientsPath)
             {
+                // WHAT: Resolves the subject of the record from the route and compares it with the session identity.
+                // WHY:  Prime Directive 12 scopes the Patient role to its own personalized records and does not
+                //       grant the Researcher role the patient identity or PHI surface at all.
+                // HOW:  ResolveSubjectRecordAccess is a pure, exhaustively unit-tested decision; a cross-subject
+                //       denial is masked as a 404 so that another patient's records look exactly like no records.
                 PathString effectiveSubPath = isUsersPath ? userSubPath : patientSubPath;
-                bool isAuthorizedRoute = false;
-                if (effectiveSubPath.HasValue)
-                {
-                    string sub = effectiveSubPath.Value.TrimStart('/');
-                    int slashIdx = sub.IndexOf('/');
-                    if (slashIdx > 0)
-                    {
-                        string targetUser = sub[..slashIdx];
-                        string remainder = sub[(slashIdx + 1)..];
-                        bool isSelf = string.Equals(user.Username, targetUser, StringComparison.OrdinalIgnoreCase);
+                SubjectRecordAccessDecision decision = ResolveSubjectRecordAccess(effectiveSubPath.Value, user.Username, user.Role);
 
-                        if (remainder.StartsWith("dna", StringComparison.OrdinalIgnoreCase) ||
-                            remainder.StartsWith("imports", StringComparison.OrdinalIgnoreCase) ||
-                            remainder.StartsWith("results", StringComparison.OrdinalIgnoreCase))
-                        {
-                            if (user.Role == UserRole.Administrator || user.Role == UserRole.Researcher || isSelf)
-                            {
-                                isAuthorizedRoute = true;
-                            }
-                        }
-                        else if (isSelf &&
-                            (remainder.StartsWith("profile", StringComparison.OrdinalIgnoreCase) ||
-                             remainder.StartsWith("addresses", StringComparison.OrdinalIgnoreCase) ||
-                             remainder.StartsWith("contacts", StringComparison.OrdinalIgnoreCase)))
-                        {
-                            isAuthorizedRoute = true;
-                        }
-                    }
+                if (decision == SubjectRecordAccessDecision.MaskedAsNotFound)
+                {
+                    await WriteSecureProblemAsync(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
+                    return;
                 }
 
-                if (user.Role != UserRole.Administrator && !isAuthorizedRoute)
+                if (decision == SubjectRecordAccessDecision.Forbidden)
                 {
-                    context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                    context.Response.ContentType = "application/json";
-                    await context.Response.WriteAsJsonAsync(new { error = "Forbidden: Administrator role required for this administrative resource." });
+                    await WriteSecureProblemAsync(context, StatusCodes.Status403Forbidden, "Forbidden: Administrator role required for this administrative resource.");
                     return;
                 }
             }
-            else if ((path.StartsWithSegments("/api/config") && context.Request.Method != "GET") ||
-                     (path.StartsWithSegments("/api/stack") && context.Request.Method != "GET"))
+            else
             {
-                if (user.Role != UserRole.Administrator)
+                // 9. Role Gating: every other API route resolves its requirement from the declarative route tables.
+                // WHAT: Looks up the minimum role for the requested verb and path, then enforces it.
+                // WHY:  Prime Directive 12 role gating must not depend on hand-maintained string prefixes that can
+                //       silently stop matching; ResolveRouteRoleRequirement is pure and exhaustively unit tested.
+                // HOW:  Resolves the requirement once, then rejects with RFC 7807 problem details when unmet.
+                RouteRoleRequirement requirement = ResolveRouteRoleRequirement(context.Request.Method, path);
+                if (!IsRoleAuthorizedForRequirement(user.Role, requirement))
                 {
-                    context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                    context.Response.ContentType = "application/json";
-                    await context.Response.WriteAsJsonAsync(new { error = "Forbidden: Administrator role required for this administrative resource." });
-                    return;
-                }
-            }
-
-            // 9. Role Gating: Administrator or Researcher endpoints (computational execution and modifications)
-            if (path.StartsWithSegments("/api/parser/process") ||
-                path.StartsWithSegments("/api/simulations/run") ||
-                (path.StartsWithSegments("/api/simulations/campaigns") && context.Request.Method == "POST") ||
-                path.Equals("/api/datasets/export", StringComparison.OrdinalIgnoreCase) ||
-                path.Equals("/api/datasets/import", StringComparison.OrdinalIgnoreCase) ||
-                path.StartsWithSegments("/api/fabrication/generate"))
-            {
-                if (user.Role != UserRole.Administrator && user.Role != UserRole.Researcher)
-                {
-                    context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                    context.Response.ContentType = "application/json";
-                    await context.Response.WriteAsJsonAsync(new { error = "Forbidden: Administrator or Researcher role required to execute simulations and modifications." });
+                    await WriteSecureProblemAsync(context, StatusCodes.Status403Forbidden, DescribeRoleRequirement(requirement));
                     return;
                 }
             }
@@ -517,9 +480,15 @@ public class Program
         app.MapGet("/api/datasets/download/{fileName}", (string fileName, IConfiguration config) =>
         {
             string exportDir = config["TRAJECTORY_EXPORT_DIR"] ?? Path.Combine(Directory.GetCurrentDirectory(), "simulations", "exports");
-            string safePath = Path.Combine(exportDir, Path.GetFileName(fileName));
+            string safeFileName = Path.GetFileName(fileName);
+            string safePath = Path.Combine(exportDir, safeFileName);
 
-            if (!File.Exists(safePath))
+            // WHAT: Restricts the endpoint to packaged export artifacts, answering 404 for anything else.
+            // WHY:  A download route must only ever serve the artifact class it documents; an allow-list keeps
+            //       any future non-export file dropped into the export volume unreachable (Prime Directive 14).
+            // HOW:  Treats a disallowed extension exactly like a missing file, so the response discloses
+            //       neither the allow-list itself nor whether the requested file exists on disk.
+            if (!IsDownloadableFileName(safeFileName, DownloadableExportExtensions) || !File.Exists(safePath))
             {
                 return Results.NotFound(new { error = "Exported file not found." });
             }
@@ -529,7 +498,7 @@ public class Program
         .WithName("DownloadExport")
         .WithTags("Datasets & Trajectories")
         .WithSummary("Downloads an exported dataset bundle or its manifest.")
-        .WithDescription("Streams raw binary or JSON bytes from the export storage directory.")
+        .WithDescription("Streams raw binary or JSON bytes from the export storage directory. Requires the Administrator or Researcher role.")
         .Produces(StatusCodes.Status200OK, contentType: "application/octet-stream")
         .Produces(StatusCodes.Status404NotFound);
 
@@ -539,9 +508,18 @@ public class Program
         app.MapGet("/api/trajectories/download/{fileName}", (string fileName, IConfiguration config) =>
         {
             string incomingDir = config["TRAJECTORY_INCOMING_DIR"] ?? Path.Combine(Directory.GetCurrentDirectory(), "simulations", "shared-data");
-            string safePath = Path.Combine(incomingDir, Path.GetFileName(fileName));
+            string safeFileName = Path.GetFileName(fileName);
+            string safePath = Path.Combine(incomingDir, safeFileName);
 
-            if (!File.Exists(safePath))
+            // WHAT: Restricts the endpoint to molecular dynamics coordinate artifacts, answering 404 for anything else.
+            // WHY:  The same shared volume stores the authoritative SQLite identity and patient-record database
+            //       ('weaver_config.db'), which this route previously streamed verbatim to any valid token. The
+            //       authoritative database must never leave the node through a download route, at any role,
+            //       Administrator included.
+            // HOW:  Treats any extension outside the trajectory allow-list — which excludes '.db' and every
+            //       SQLite side file by construction — exactly like a missing file, so the response discloses
+            //       neither the allow-list nor the presence of the database on disk.
+            if (!IsDownloadableFileName(safeFileName, DownloadableTrajectoryExtensions) || !File.Exists(safePath))
             {
                 return Results.NotFound(new { error = "Trajectory file not found." });
             }
@@ -551,7 +529,7 @@ public class Program
         .WithName("DownloadTrajectory")
         .WithTags("Datasets & Trajectories")
         .WithSummary("Downloads a raw trajectory file from the active shared volume.")
-        .WithDescription("Streams raw .xyz, .dcd, or .dump simulation coordinates to the client.")
+        .WithDescription("Streams raw .xyz, .dcd, or .dump simulation coordinates to the client. Requires the Administrator or Researcher role; patients obtain their own payload from /api/patient/dna.")
         .Produces(StatusCodes.Status200OK, contentType: "application/octet-stream")
         .Produces(StatusCodes.Status404NotFound);
 
@@ -1006,13 +984,18 @@ public class Program
         // ---------------------------------------------------------------------
         app.MapGet("/api/configuration", async (IConfigurationRepository repo, CancellationToken ct) =>
         {
+            // WHAT: Returns the effective configuration listing with every secret-bearing value redacted.
+            // WHY:  Prime Directive 14 forbids disclosing database connection strings or credentials to API
+            //       clients at any role, so the live POSTGRES_CONNECTION_STRING (password included) is never
+            //       serialized — redaction, not role gating, is what keeps the credential inside the node.
+            // HOW:  Pipes the repository listing through RedactSecretConfigurationValues before serialization.
             IReadOnlyList<ConfigurationItem> configs = await repo.GetAllConfigurationsAsync(ct);
-            return Results.Ok(configs);
+            return Results.Ok(RedactSecretConfigurationValues(configs));
         })
         .WithName("GetAllConfigurations")
         .WithTags("Configuration Management")
         .WithSummary("Retrieves all stack configurations, enforcing database overrides over environment variables.")
-        .WithDescription("Returns all configuration keys, their current effective values, and an indication of database precedence.")
+        .WithDescription("Returns all configuration keys, their current effective values, and an indication of database precedence. Requires the Administrator role; credential-bearing values always read '[REDACTED]'.")
         .Produces<IReadOnlyList<ConfigurationItem>>(StatusCodes.Status200OK);
 
         app.MapPost("/api/configuration/override", async (ConfigOverrideRequest req, IConfigurationRepository repo, CancellationToken ct) =>
@@ -1023,7 +1006,12 @@ public class Program
             }
 
             await repo.SetDatabaseOverrideAsync(req.Key, req.Value, req.Description ?? "", ct);
-            return Results.Ok(new { message = $"Database override saved for '{req.Key}'. Database setting is now active.", key = req.Key, value = req.Value });
+
+            // WHAT: Echoes the stored key, redacting the value when the key carries a credential.
+            // WHY:  Echoing a connection string back would re-publish the credential the GET route redacts.
+            // HOW:  Substitutes the redaction placeholder for secret-bearing keys before responding.
+            string echoedValue = IsSecretConfigurationKey(req.Key) ? RedactedConfigurationValue : req.Value;
+            return Results.Ok(new { message = $"Database override saved for '{req.Key}'. Database setting is now active.", key = req.Key, value = echoedValue });
         })
         .WithName("SetConfigurationOverride")
         .WithTags("Configuration Management")
@@ -1494,14 +1482,14 @@ public class Program
         // ---------------------------------------------------------------------
         // REST API: First-Launch Administrator Initialization
         // ---------------------------------------------------------------------
-        app.MapPost("/api/setup/initialize", async (InitialSetupRequest request, IUserAuthenticationService auth, CancellationToken ct) =>
+        app.MapPost("/api/setup/initialize", async (InitialSetupRequest request, IUserAuthenticationService auth, HttpContext context, CancellationToken ct) =>
         {
             // WHAT: Provisions the master initial Administrator and locks the first-launch wizard.
             // WHY:  Bootstraps the node's authoritative cryptographic identity and unblocks operational API endpoints.
             // HOW:  Validates inputs, registers administrator account, and issues initial Bearer token.
             if (string.IsNullOrWhiteSpace(request.AdminUsername) || string.IsNullOrWhiteSpace(request.PublicKeyBase64))
             {
-                return Results.BadRequest(new { error = "Administrator username and public key are required." });
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Administrator username and public key are required.");
             }
 
             try
@@ -1524,7 +1512,14 @@ public class Program
             }
             catch (InvalidOperationException ex)
             {
-                return Results.BadRequest(new { error = ex.Message });
+                // WHAT: Converts a setup conflict into sanitized RFC 7807 problem details.
+                // WHY:  Directive 14 requires the single SecureProblemDetails schema for API rejections and
+                //       forbids exception text reaching clients with paths, credentials or SQL still in it.
+                // HOW:  Routes the conflict sentence through SecureExceptionSanitizer before publishing it.
+                return SecureProblemResult(
+                    context,
+                    StatusCodes.Status400BadRequest,
+                    SecureExceptionSanitizer.SanitizeDetail(ex.Message, StatusCodes.Status400BadRequest, context.TraceIdentifier));
             }
         })
         .WithName("InitializeSetup")
@@ -1538,14 +1533,14 @@ public class Program
         // ---------------------------------------------------------------------
         // REST API: First-Launch Keypair Generation
         // ---------------------------------------------------------------------
-        app.MapPost("/api/setup/generate-keypair", (GenerateKeyRequest request, IUserAuthenticationService auth) =>
+        app.MapPost("/api/setup/generate-keypair", (GenerateKeyRequest request, IUserAuthenticationService auth, HttpContext context) =>
         {
             // WHAT: Generates a high-security asymmetric keypair (Ed25519 or ML-DSA-65) for the initial administrator.
             // WHY:  Allows administrators to generate secure cryptographic credentials directly without external CLI tools.
             // HOW:  Invokes IUserAuthenticationService.GenerateSecureKeyBundle with optional passphrase encryption.
             if (string.IsNullOrWhiteSpace(request.Username))
             {
-                return Results.BadRequest(new { error = "Username is required." });
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Username is required.");
             }
 
             GeneratedKeyBundle bundle = auth.GenerateSecureKeyBundle(
@@ -1568,14 +1563,14 @@ public class Program
         // ---------------------------------------------------------------------
         // REST API: Authentication Challenge Issuance
         // ---------------------------------------------------------------------
-        app.MapPost("/api/auth/challenge", (ChallengeRequest request, IUserAuthenticationService auth) =>
+        app.MapPost("/api/auth/challenge", (ChallengeRequest request, IUserAuthenticationService auth, HttpContext context) =>
         {
             // WHAT: Mints a time-bounded cryptographic challenge nonce.
             // WHY:  Initiates zero-knowledge asymmetric challenge-response authentication.
             // HOW:  Generates 32 random bytes and stores in active challenges with a 60-second TTL.
             if (string.IsNullOrWhiteSpace(request.Username))
             {
-                return Results.BadRequest(new { error = "Username is required." });
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Username is required.");
             }
 
             AuthChallenge challenge = auth.CreateChallenge(request.Username);
@@ -1592,14 +1587,14 @@ public class Program
         // ---------------------------------------------------------------------
         // REST API: Challenge-Response Token Exchange
         // ---------------------------------------------------------------------
-        app.MapPost("/api/auth/token", async (TokenExchangeRequest request, IUserAuthenticationService auth, CancellationToken ct) =>
+        app.MapPost("/api/auth/token", async (TokenExchangeRequest request, IUserAuthenticationService auth, HttpContext context, CancellationToken ct) =>
         {
             // WHAT: Verifies a digitally signed challenge nonce and mints a Bearer token.
             // WHY:  Completes private-key proof of possession without transmitting private key bytes over the wire.
             // HOW:  Validates signature against user's registered public key and derives HMAC-signed token.
             if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.ChallengeId) || string.IsNullOrWhiteSpace(request.SignatureBase64))
             {
-                return Results.BadRequest(new { error = "Username, challengeId, and signatureBase64 are all required." });
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Username, challengeId, and signatureBase64 are all required.");
             }
 
             var (success, errorMessage, token, user) = await auth.VerifyChallengeAndIssueTokenAsync(
@@ -1611,7 +1606,7 @@ public class Program
 
             if (!success || token == null || user == null)
             {
-                return Results.Json(new { error = errorMessage ?? "Authentication failed." }, statusCode: StatusCodes.Status401Unauthorized);
+                return SecureProblemResult(context, StatusCodes.Status401Unauthorized, errorMessage ?? "Authentication failed.");
             }
 
             return Results.Ok(new AuthTokenResponse
@@ -1641,7 +1636,7 @@ public class Program
             // HOW:  Decrypts private key in-memory, signs an ephemeral nonce, validates against public key, and sets session cookie.
             if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.PrivateKeyPem))
             {
-                return Results.BadRequest(new { error = "Username and privateKeyPem are required." });
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Username and privateKeyPem are required.");
             }
 
             var (success, errorMessage, token, user) = await auth.AuthenticateWithPrivateKeyAsync(
@@ -1653,7 +1648,7 @@ public class Program
 
             if (!success || token == null || user == null)
             {
-                return Results.Json(new { error = errorMessage ?? "Authentication failed." }, statusCode: StatusCodes.Status401Unauthorized);
+                return SecureProblemResult(context, StatusCodes.Status401Unauthorized, errorMessage ?? "Authentication failed.");
             }
 
             context.Response.Cookies.Append("weaver_session", token, new CookieOptions
@@ -1873,7 +1868,7 @@ public class Program
             UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
             if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
             {
-                return Results.Json(new { error = "Forbidden: You are not authorized to view this user profile." }, statusCode: StatusCodes.Status403Forbidden);
+                return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: You may only view or manage your own profile, addresses, and contacts.");
             }
 
             UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
@@ -1913,7 +1908,7 @@ public class Program
             UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
             if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
             {
-                return Results.Json(new { error = "Forbidden: You are not authorized to update this user profile." }, statusCode: StatusCodes.Status403Forbidden);
+                return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: You may only view or manage your own profile, addresses, and contacts.");
             }
 
             UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
@@ -1957,7 +1952,7 @@ public class Program
             UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
             if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
             {
-                return Results.Json(new { error = "Forbidden: You are not authorized to view addresses for this user." }, statusCode: StatusCodes.Status403Forbidden);
+                return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: You may only view or manage your own profile, addresses, and contacts.");
             }
 
             UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
@@ -1992,7 +1987,7 @@ public class Program
             UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
             if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
             {
-                return Results.Json(new { error = "Forbidden: You are not authorized to manage addresses for this user." }, statusCode: StatusCodes.Status403Forbidden);
+                return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: You may only view or manage your own profile, addresses, and contacts.");
             }
 
             UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
@@ -2040,7 +2035,7 @@ public class Program
             UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
             if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
             {
-                return Results.Json(new { error = "Forbidden: You are not authorized to delete addresses for this user." }, statusCode: StatusCodes.Status403Forbidden);
+                return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: You may only view or manage your own profile, addresses, and contacts.");
             }
 
             UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
@@ -2082,7 +2077,7 @@ public class Program
             UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
             if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
             {
-                return Results.Json(new { error = "Forbidden: You are not authorized to view contacts for this user." }, statusCode: StatusCodes.Status403Forbidden);
+                return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: You may only view or manage your own profile, addresses, and contacts.");
             }
 
             UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
@@ -2117,7 +2112,7 @@ public class Program
             UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
             if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
             {
-                return Results.Json(new { error = "Forbidden: You are not authorized to manage contacts for this user." }, statusCode: StatusCodes.Status403Forbidden);
+                return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: You may only view or manage your own profile, addresses, and contacts.");
             }
 
             UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
@@ -2165,7 +2160,7 @@ public class Program
             UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
             if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
             {
-                return Results.Json(new { error = "Forbidden: You are not authorized to delete contacts for this user." }, statusCode: StatusCodes.Status403Forbidden);
+                return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: You may only view or manage your own profile, addresses, and contacts.");
             }
 
             UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
@@ -2260,9 +2255,9 @@ public class Program
             // WHY:  Allows patients, clinicians, and researchers to review nanocarrier architectures and sequences.
             // HOW:  Validates permissions, verifies patient existence, and queries the repository.
             UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (currentUser == null || (currentUser.Role != UserRole.Administrator && currentUser.Role != UserRole.Researcher && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
             {
-                return Results.Json(new { error = "Forbidden: You are not authorized to view DNA blueprints for this user." }, statusCode: StatusCodes.Status403Forbidden);
+                return SecureProblemResult(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
             }
 
             UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
@@ -2295,9 +2290,9 @@ public class Program
             // WHY:  Supplies detailed staple routings, annealing schedule, and provenance for inspection or download.
             // HOW:  Validates authorization, checks record existence, and verifies patient ownership.
             UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (currentUser == null || (currentUser.Role != UserRole.Administrator && currentUser.Role != UserRole.Researcher && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
             {
-                return Results.Json(new { error = "Forbidden: You are not authorized to view DNA blueprints for this user." }, statusCode: StatusCodes.Status403Forbidden);
+                return SecureProblemResult(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
             }
 
             UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
@@ -2337,9 +2332,9 @@ public class Program
             // WHY:  Allows clinicians and researchers to design and assign custom nanocarrier configurations.
             // HOW:  Synthesizes origami components via IFabricationService, computes composition, and saves blueprint and kinetics result.
             UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (currentUser == null || (currentUser.Role != UserRole.Administrator && currentUser.Role != UserRole.Researcher && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
             {
-                return Results.Json(new { error = "Forbidden: You are not authorized to create DNA blueprints for this user." }, statusCode: StatusCodes.Status403Forbidden);
+                return SecureProblemResult(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
             }
 
             UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
@@ -2412,9 +2407,9 @@ public class Program
             // WHY:  Allows researchers and patients to retire superseded blueprints.
             // HOW:  Validates permissions, verifies ownership, and deletes record via repository.
             UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (currentUser == null || (currentUser.Role != UserRole.Administrator && currentUser.Role != UserRole.Researcher && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
             {
-                return Results.Json(new { error = "Forbidden: You are not authorized to delete DNA blueprints for this user." }, statusCode: StatusCodes.Status403Forbidden);
+                return SecureProblemResult(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
             }
 
             UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
@@ -2455,9 +2450,9 @@ public class Program
             // WHY:  Supplies imported file assets to the DNA management interface.
             // HOW:  Validates authorization, checks user existence, and queries repository.
             UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (currentUser == null || (currentUser.Role != UserRole.Administrator && currentUser.Role != UserRole.Researcher && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
             {
-                return Results.Json(new { error = "Forbidden: You are not authorized to view imports for this user." }, statusCode: StatusCodes.Status403Forbidden);
+                return SecureProblemResult(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
             }
 
             UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
@@ -2490,9 +2485,9 @@ public class Program
             // WHY:  Allows reviewing the raw sequence text, checksums, and metadata of an import.
             // HOW:  Validates caller permissions and queries import by ID.
             UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (currentUser == null || (currentUser.Role != UserRole.Administrator && currentUser.Role != UserRole.Researcher && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
             {
-                return Results.Json(new { error = "Forbidden: You are not authorized to view imports for this user." }, statusCode: StatusCodes.Status403Forbidden);
+                return SecureProblemResult(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
             }
 
             UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
@@ -2532,9 +2527,9 @@ public class Program
             // WHY:  Integrates external patient genetic sequences into the decentralized sovereign platform.
             // HOW:  Calculates SHA-256 checksum, persists import record, and optionally triggers automated pharmacogenomics analysis.
             UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (currentUser == null || (currentUser.Role != UserRole.Administrator && currentUser.Role != UserRole.Researcher && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
             {
-                return Results.Json(new { error = "Forbidden: You are not authorized to import DNA data for this user." }, statusCode: StatusCodes.Status403Forbidden);
+                return SecureProblemResult(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
             }
 
             if (string.IsNullOrWhiteSpace(request.FileName))
@@ -2610,9 +2605,9 @@ public class Program
             // WHY:  Allows cleaning up superseded or corrupted import files.
             // HOW:  Validates caller permissions and deletes entry from repository.
             UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (currentUser == null || (currentUser.Role != UserRole.Administrator && currentUser.Role != UserRole.Researcher && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
             {
-                return Results.Json(new { error = "Forbidden: You are not authorized to delete imports for this user." }, statusCode: StatusCodes.Status403Forbidden);
+                return SecureProblemResult(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
             }
 
             UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
@@ -2654,9 +2649,9 @@ public class Program
             // WHY:  Allows patients and clinicians to review physiological responses and nanocarrier metrics.
             // HOW:  Validates permissions, queries results, and applies optional resultType filtering.
             UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (currentUser == null || (currentUser.Role != UserRole.Administrator && currentUser.Role != UserRole.Researcher && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
             {
-                return Results.Json(new { error = "Forbidden: You are not authorized to view results for this user." }, statusCode: StatusCodes.Status403Forbidden);
+                return SecureProblemResult(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
             }
 
             UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
@@ -2694,9 +2689,9 @@ public class Program
             // WHY:  Provides fine-grained access to individual metric reports and findings.
             // HOW:  Validates caller permissions and queries result by ID.
             UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (currentUser == null || (currentUser.Role != UserRole.Administrator && currentUser.Role != UserRole.Researcher && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
             {
-                return Results.Json(new { error = "Forbidden: You are not authorized to view results for this user." }, statusCode: StatusCodes.Status403Forbidden);
+                return SecureProblemResult(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
             }
 
             UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
@@ -2734,9 +2729,9 @@ public class Program
             // WHY:  Allows laboratory tools and simulation runners to record outcomes against the patient.
             // HOW:  Validates input fields, verifies target patient existence, and persists result record.
             UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (currentUser == null || (currentUser.Role != UserRole.Administrator && currentUser.Role != UserRole.Researcher && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
             {
-                return Results.Json(new { error = "Forbidden: You are not authorized to record results for this user." }, statusCode: StatusCodes.Status403Forbidden);
+                return SecureProblemResult(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
             }
 
             if (string.IsNullOrWhiteSpace(request.Title) || string.IsNullOrWhiteSpace(request.ResultType) || string.IsNullOrWhiteSpace(request.Summary))
@@ -2790,9 +2785,9 @@ public class Program
             // WHY:  Allows cleaning up test or superseded result snapshots.
             // HOW:  Validates caller permissions and deletes entry from repository.
             UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (currentUser == null || (currentUser.Role != UserRole.Administrator && currentUser.Role != UserRole.Researcher && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
             {
-                return Results.Json(new { error = "Forbidden: You are not authorized to delete results for this user." }, statusCode: StatusCodes.Status403Forbidden);
+                return SecureProblemResult(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
             }
 
             UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
@@ -2847,6 +2842,511 @@ public class Program
             "never" or "infinite" => TimeSpan.FromDays(36525), // 100 years
             _ => int.TryParse(window, out int parsedHours) ? TimeSpan.FromHours(parsedHours) : TimeSpan.FromHours(fallbackHours > 0 ? fallbackHours : 24)
         };
+    }
+
+    /// <summary>
+    /// Declares the minimum authorization role an authenticated identity must hold to reach a REST API route.
+    /// </summary>
+    /// <remarks>
+    /// Prime Directive 12 defines three roles. <see cref="UserRole.Administrator"/> owns cluster oversight,
+    /// user lifecycle, database overrides and configuration management; <see cref="UserRole.Researcher"/> owns
+    /// simulation execution, trajectory streaming, the endocrine hub and dataset export/import;
+    /// <see cref="UserRole.Patient"/> may only view its own personalized results and download its own DNA payload.
+    /// </remarks>
+    public enum RouteRoleRequirement
+    {
+        /// <summary>
+        /// Any authenticated identity whose access gate permits REST API transport may call the route.
+        /// </summary>
+        None,
+
+        /// <summary>
+        /// Only the Administrator and Researcher roles may call the route.
+        /// </summary>
+        AdministratorOrResearcher,
+
+        /// <summary>
+        /// Only the Administrator role may call the route.
+        /// </summary>
+        AdministratorOnly
+    }
+
+    /// <summary>
+    /// Outcome of an authorization decision on a per-subject identity, profile, or PHI record route.
+    /// </summary>
+    /// <remarks>
+    /// Prime Directive 12 grants the Researcher role "simulation execution, trajectory streaming, endocrine hub
+    /// access, and dataset export/import" — patient records are not in that grant — and scopes the Patient role
+    /// to <em>personalized</em> results. Only the Administrator role spans subjects.
+    /// </remarks>
+    public enum SubjectRecordAccessDecision
+    {
+        /// <summary>
+        /// The caller may proceed: it is the subject of the record, or it holds the Administrator role.
+        /// </summary>
+        Allowed,
+
+        /// <summary>
+        /// The caller may not proceed and is told so plainly, because the route carries no subject whose
+        /// existence could be inferred from the rejection (for example the user administration collection).
+        /// </summary>
+        Forbidden,
+
+        /// <summary>
+        /// The caller may not proceed and the rejection is masked as an ordinary 404, so that requesting
+        /// another subject's record is indistinguishable from requesting a record that does not exist.
+        /// </summary>
+        MaskedAsNotFound
+    }
+
+    /// <summary>
+    /// Sub-resources beneath '/api/patients/{username}' and '/api/users/{username}' that hold protected health
+    /// information and are therefore readable and writable only by their own subject or an Administrator.
+    /// </summary>
+    private static readonly string[] SubjectHealthRecordResources = ["dna", "imports", "results"];
+
+    /// <summary>
+    /// Sub-resources beneath '/api/users/{username}' that hold self-service identity details.
+    /// </summary>
+    private static readonly string[] SubjectSelfServiceResources = ["profile", "addresses", "contacts"];
+
+    /// <summary>
+    /// Rejection sentence published whenever a caller asks for a subject record it may not see.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately identical for "this subject's record exists but is not yours" and "no such subject",
+    /// so that a Patient cannot enumerate the other patients registered on the node.
+    /// </remarks>
+    private const string SubjectRecordNotFoundDetail = "The requested patient record was not found.";
+
+    /// <summary>
+    /// Describes a single role-gated REST API route pattern.
+    /// </summary>
+    /// <param name="Pattern">Absolute route path spelled out in complete URL segments (e.g. '/api/configuration').</param>
+    /// <param name="MatchDescendants">True to gate every descendant route beneath the pattern as well as the pattern itself.</param>
+    /// <remarks>
+    /// Matching uses <see cref="PathString.StartsWithSegments(PathString, StringComparison)"/> and
+    /// <see cref="PathString.Equals(PathString, StringComparison)"/>, both of which respect URL segment boundaries.
+    /// That is deliberate: the historical gate tested the partial segment '/api/config', which never matched the
+    /// real '/api/configuration' route and therefore left every configuration override reachable by any role.
+    /// Every pattern below must be a complete segment path that a mapped endpoint actually serves.
+    /// </remarks>
+    private readonly record struct RoleGatedRoute(string Pattern, bool MatchDescendants);
+
+    /// <summary>
+    /// Routes reserved exclusively for the Administrator role regardless of HTTP verb.
+    /// </summary>
+    private static readonly RoleGatedRoute[] AdministratorRoutes =
+    [
+        new("/api/configuration", MatchDescendants: true),
+        new("/api/share-keys", MatchDescendants: false),
+        new("/api/share-keys/create", MatchDescendants: false),
+        new("/api/compliance/de-identify", MatchDescendants: false),
+        new("/api/compliance/crypto-shred", MatchDescendants: false),
+        new("/api/compliance/encrypt-record", MatchDescendants: false),
+        new("/api/compliance/decrypt-record", MatchDescendants: false),
+        new("/api/compliance/status", MatchDescendants: false),
+        new("/api/compliance/audit-ledger", MatchDescendants: false)
+    ];
+
+    /// <summary>
+    /// Routes whose state-changing verbs are reserved exclusively for the Administrator role.
+    /// </summary>
+    private static readonly RoleGatedRoute[] AdministratorMutationRoutes =
+    [
+        new("/api/services", MatchDescendants: true)
+    ];
+
+    /// <summary>
+    /// Routes reserved for the Administrator and Researcher roles regardless of HTTP verb.
+    /// </summary>
+    private static readonly RoleGatedRoute[] ResearchRoutes =
+    [
+        new("/api/parser/process", MatchDescendants: true),
+        new("/api/parser/export-parquet", MatchDescendants: true),
+        new("/api/simulations", MatchDescendants: true),
+        new("/api/fabrication/generate", MatchDescendants: true),
+        new("/api/endocrine/analyze", MatchDescendants: true),
+        new("/api/endocrine/toggle", MatchDescendants: false),
+        new("/api/datasets/export", MatchDescendants: false),
+        new("/api/datasets/import", MatchDescendants: false),
+        new("/api/datasets/export-encrypted", MatchDescendants: false),
+        new("/api/datasets/exports", MatchDescendants: true),
+        new("/api/datasets/download", MatchDescendants: true),
+        new("/api/trajectories/download", MatchDescendants: true),
+        new("/api/compliance/verify-ledger", MatchDescendants: false)
+    ];
+
+    /// <summary>
+    /// File extensions that the trajectory download endpoint is permitted to stream.
+    /// </summary>
+    /// <remarks>
+    /// The shared simulation volume also holds the authoritative SQLite identity database
+    /// ('weaver_config.db', plus its '-wal' and '-shm' side files). An allow-list — rather than a
+    /// deny-list — guarantees that neither the database nor any future non-trajectory artifact
+    /// placed in that directory can ever be streamed to an API client, at any role.
+    /// </remarks>
+    private static readonly string[] DownloadableTrajectoryExtensions =
+    [
+        ".xyz", ".dcd", ".dump", ".lammpstrj", ".top", ".dat", ".conf", ".in"
+    ];
+
+    /// <summary>
+    /// File extensions that the dataset export download endpoint is permitted to stream.
+    /// </summary>
+    private static readonly string[] DownloadableExportExtensions =
+    [
+        ".gz", ".tgz", ".tar", ".zip", ".json", ".parquet", ".sig", ".pqc"
+    ];
+
+    /// <summary>
+    /// Replacement text substituted for any configuration value that carries a credential or secret.
+    /// </summary>
+    private const string RedactedConfigurationValue = "[REDACTED]";
+
+    /// <summary>
+    /// JSON serialization options used for RFC 7807 problem detail rejection bodies.
+    /// </summary>
+    private static readonly JsonSerializerOptions SecureProblemJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = true
+    };
+
+    /// <summary>
+    /// Resolves the minimum authorization role required to reach a REST API route.
+    /// </summary>
+    /// <param name="method">HTTP verb of the incoming request (e.g. 'GET', 'POST').</param>
+    /// <param name="path">Request path of the incoming request.</param>
+    /// <returns>The strictest <see cref="RouteRoleRequirement"/> matching the route, or <see cref="RouteRoleRequirement.None"/>.</returns>
+    /// <remarks>
+    /// Resolution is a pure function of verb and path so that it can be exhaustively unit tested; the
+    /// authentication middleware merely applies the answer. Read-only GET requests are evaluated against the
+    /// unconditional tables only, so listing endpoints stay broadly readable while every state-changing verb
+    /// on an administrative resource is gated.
+    /// </remarks>
+    public static RouteRoleRequirement ResolveRouteRoleRequirement(string method, PathString path)
+    {
+        // WHAT: Resolves the role requirement for a route from four declarative, segment-exact route tables.
+        // WHY:  Prime Directive 12 demands strict role gating, and the previous hand-maintained string-prefix
+        //       chain silently matched nothing ('/api/config' is not a segment prefix of '/api/configuration',
+        //       and no route ever began '/api/stack'), leaving administrative routes open to every role.
+        // HOW:  Tests the unconditional tables first, then the mutation-only table for non-GET verbs,
+        //       returning the strictest requirement that matches the request.
+        ArgumentNullException.ThrowIfNull(method);
+
+        bool isReadOnly = HttpMethods.IsGet(method);
+
+        if (MatchesAnyRoute(path, AdministratorRoutes) || (!isReadOnly && MatchesAnyRoute(path, AdministratorMutationRoutes)))
+        {
+            return RouteRoleRequirement.AdministratorOnly;
+        }
+
+        if (MatchesAnyRoute(path, ResearchRoutes))
+        {
+            return RouteRoleRequirement.AdministratorOrResearcher;
+        }
+
+        return RouteRoleRequirement.None;
+    }
+
+    /// <summary>
+    /// Resolves whether a caller may reach a per-subject identity, profile, or PHI record route.
+    /// </summary>
+    /// <param name="subPath">Path remainder below '/api/users' or '/api/patients' (e.g. '/alice/dna/42').</param>
+    /// <param name="callerUsername">Username taken from the validated session, never from the request body.</param>
+    /// <param name="callerRole">Role taken from the validated session.</param>
+    /// <returns>The access decision the authentication middleware must apply.</returns>
+    /// <remarks>
+    /// The subject is read out of the route itself and compared against the authenticated identity, so a caller
+    /// can never widen its own scope with a client-supplied identifier. Researchers are not granted this
+    /// surface at all: Prime Directive 12 scopes them to simulation, trajectory, endocrine and dataset work,
+    /// and a cohort view would have to be a separate de-identified projection.
+    /// </remarks>
+    public static SubjectRecordAccessDecision ResolveSubjectRecordAccess(string? subPath, string callerUsername, UserRole callerRole)
+    {
+        // WHAT: Decides self / Administrator / deny for the patient record and profile sub-resources.
+        // WHY:  Blanket Researcher read-write over every patient's DNA, imports and results is outside the
+        //       Directive 12 grant, and a Patient must only ever reach its own records.
+        // HOW:  Splits the subject username off the route remainder, compares it with the session identity,
+        //       and masks a cross-subject denial as a 404 so subjects cannot be enumerated.
+        ArgumentNullException.ThrowIfNull(callerUsername);
+
+        if (callerRole == UserRole.Administrator)
+        {
+            return SubjectRecordAccessDecision.Allowed;
+        }
+
+        string sub = (subPath ?? string.Empty).TrimStart('/');
+        int slashIndex = sub.IndexOf('/', StringComparison.Ordinal);
+        if (slashIndex <= 0)
+        {
+            // Administrative collection routes such as '/api/users' or '/api/users/{username}' carry no
+            // subject sub-resource, so a plain rejection discloses nothing.
+            return SubjectRecordAccessDecision.Forbidden;
+        }
+
+        string targetSubject = sub[..slashIndex];
+        string resource = sub[(slashIndex + 1)..];
+        bool isSelf = string.Equals(callerUsername, targetSubject, StringComparison.OrdinalIgnoreCase);
+
+        if (MatchesSubjectResource(resource, SubjectHealthRecordResources))
+        {
+            return isSelf ? SubjectRecordAccessDecision.Allowed : SubjectRecordAccessDecision.MaskedAsNotFound;
+        }
+
+        if (MatchesSubjectResource(resource, SubjectSelfServiceResources))
+        {
+            return isSelf ? SubjectRecordAccessDecision.Allowed : SubjectRecordAccessDecision.Forbidden;
+        }
+
+        return SubjectRecordAccessDecision.Forbidden;
+    }
+
+    /// <summary>
+    /// Produces a non-disclosing descriptor for a configured storage directory.
+    /// </summary>
+    /// <param name="environmentVariableName">Name of the environment variable that configures the directory.</param>
+    /// <returns>A sentence naming the configuring variable without revealing the absolute path.</returns>
+    /// <remarks>
+    /// Health telemetry answers "is storage reachable", which the accompanying writable flags express. The
+    /// absolute mount path is server topology that Prime Directive 14 keeps off every API response, so it is
+    /// replaced by a pointer to the setting that controls it.
+    /// </remarks>
+    public static string DescribeStorageLocation(string environmentVariableName)
+    {
+        ArgumentNullException.ThrowIfNull(environmentVariableName);
+
+        return $"Configured by {environmentVariableName}; absolute path withheld.";
+    }
+
+    /// <summary>
+    /// Determines whether a route remainder addresses one of the named subject sub-resources.
+    /// </summary>
+    /// <param name="resource">Route remainder below the subject username (e.g. 'dna/42').</param>
+    /// <param name="resourceNames">Sub-resource names to test against.</param>
+    /// <returns>True when the remainder addresses one of the named sub-resources; otherwise false.</returns>
+    private static bool MatchesSubjectResource(string resource, string[] resourceNames)
+    {
+        foreach (string resourceName in resourceNames)
+        {
+            if (resource.StartsWith(resourceName, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Determines whether a request path matches any pattern in a role-gated route table.
+    /// </summary>
+    /// <param name="path">Request path to test.</param>
+    /// <param name="routes">Route table to test against.</param>
+    /// <returns>True when the path matches at least one pattern; otherwise false.</returns>
+    private static bool MatchesAnyRoute(PathString path, RoleGatedRoute[] routes)
+    {
+        // WHAT: Scans a route table for a segment-boundary match against the request path.
+        // WHY:  Segment-aware comparison prevents both partial-segment misses and over-broad prefix matches.
+        // HOW:  Uses StartsWithSegments for descendant patterns and an exact Equals for leaf patterns.
+        foreach (RoleGatedRoute route in routes)
+        {
+            if (route.MatchDescendants
+                ? path.StartsWithSegments(route.Pattern, StringComparison.OrdinalIgnoreCase)
+                : path.Equals(route.Pattern, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Determines whether an authenticated role satisfies a resolved route role requirement.
+    /// </summary>
+    /// <param name="role">Role carried by the authenticated identity.</param>
+    /// <param name="requirement">Requirement resolved by <see cref="ResolveRouteRoleRequirement(string, PathString)"/>.</param>
+    /// <returns>True when the role is permitted to proceed; otherwise false.</returns>
+    public static bool IsRoleAuthorizedForRequirement(UserRole role, RouteRoleRequirement requirement) => requirement switch
+    {
+        RouteRoleRequirement.AdministratorOnly => role == UserRole.Administrator,
+        RouteRoleRequirement.AdministratorOrResearcher => role is UserRole.Administrator or UserRole.Researcher,
+        _ => true
+    };
+
+    /// <summary>
+    /// Returns the human-readable rejection sentence describing an unsatisfied route role requirement.
+    /// </summary>
+    /// <param name="requirement">The unsatisfied requirement.</param>
+    /// <returns>A rejection sentence safe to publish to API clients.</returns>
+    private static string DescribeRoleRequirement(RouteRoleRequirement requirement) => requirement switch
+    {
+        RouteRoleRequirement.AdministratorOnly => "Forbidden: Administrator role required for this administrative resource.",
+        _ => "Forbidden: Administrator or Researcher role required to execute simulations, analyses, and dataset transfers."
+    };
+
+    /// <summary>
+    /// Determines whether a configuration key carries a credential, connection string, or other secret value.
+    /// </summary>
+    /// <param name="key">Configuration key such as 'Storage:PostgresConnectionString'.</param>
+    /// <returns>True when the key's value must never be published to an API client; otherwise false.</returns>
+    public static bool IsSecretConfigurationKey(string key)
+    {
+        // WHAT: Classifies a configuration key as secret-bearing.
+        // WHY:  Prime Directive 14 forbids disclosing database connection strings or credentials to API
+        //       clients at any role, so these values are redacted rather than merely role-gated.
+        // HOW:  Delegates to the configuration store, which owns the authoritative IsSecret catalog flag,
+        //       so the REST API and the Web UI configuration screen cannot drift apart.
+        return SystemConfigurationStore.IsSecretConfigurationKey(key);
+    }
+
+    /// <summary>
+    /// Produces a copy of a configuration listing in which every secret-bearing value is redacted.
+    /// </summary>
+    /// <param name="items">Configuration items resolved from the database, environment, and code defaults.</param>
+    /// <returns>A new list in which secret-bearing active values and defaults read '[REDACTED]'.</returns>
+    public static IReadOnlyList<ConfigurationItem> RedactSecretConfigurationValues(IReadOnlyList<ConfigurationItem> items)
+    {
+        // WHAT: Rewrites secret-bearing configuration values before they leave the process.
+        // WHY:  GET /api/configuration previously returned the live PostgreSQL connection string, password
+        //       included, to every authenticated caller — a direct Prime Directive 14 violation.
+        // HOW:  Copies each record, substituting the redaction placeholder for both the active and default value.
+        ArgumentNullException.ThrowIfNull(items);
+
+        List<ConfigurationItem> redacted = new(items.Count);
+        foreach (ConfigurationItem item in items)
+        {
+            // The item's own IsSecret flag is authoritative, and the key classifier is a second, independent
+            // check: an item constructed without the flag still cannot leak a credential-bearing value.
+            redacted.Add(item.IsSecret || IsSecretConfigurationKey(item.Key)
+                ? item with { Value = RedactedConfigurationValue, DefaultValue = RedactedConfigurationValue, IsSecret = true }
+                : item);
+        }
+
+        return redacted;
+    }
+
+    /// <summary>
+    /// Determines whether a requested download file name carries one of the permitted extensions.
+    /// </summary>
+    /// <param name="fileName">Bare file name (already stripped of directory components).</param>
+    /// <param name="permittedExtensions">Allow-list of permitted lower-case file extensions.</param>
+    /// <returns>True when the file may be streamed to the caller; otherwise false.</returns>
+    public static bool IsDownloadableFileName(string fileName, string[] permittedExtensions)
+    {
+        // WHAT: Enforces an extension allow-list on a download request.
+        // WHY:  The shared simulation volume also stores the authoritative identity/PHI database, so a
+        //       deny-list would eventually be outrun by a new artifact landing in the same directory.
+        // HOW:  Extracts the final extension and checks membership in the supplied allow-list.
+        ArgumentNullException.ThrowIfNull(fileName);
+        ArgumentNullException.ThrowIfNull(permittedExtensions);
+
+        string extension = Path.GetExtension(fileName);
+        foreach (string permitted in permittedExtensions)
+        {
+            if (string.Equals(extension, permitted, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Serializes an RFC 7807 <see cref="SecureProblemDetails"/> rejection body for the active request.
+    /// </summary>
+    /// <param name="context">Active HTTP context supplying the trace identifier and request path.</param>
+    /// <param name="statusCode">HTTP status code of the rejection.</param>
+    /// <param name="detail">Rejection sentence. Always an explicitly published sentence, never raw exception text.</param>
+    /// <param name="includeSetupRequiredFlag">True to append the 'setupRequired' RFC 7807 extension member.</param>
+    /// <returns>Indented JSON problem details text.</returns>
+    private static string SerializeSecureProblem(HttpContext context, int statusCode, string detail, bool includeSetupRequiredFlag)
+    {
+        // WHAT: Builds the single rejection schema used by the authentication middleware and auth/setup endpoints.
+        // WHY:  Prime Directive 14 mandates SecureProblemDetails for API errors; hand-rolled '{ error }' objects
+        //       gave API clients a second, incompatible error schema.
+        // HOW:  Serializes SecureProblemDetails, then attaches the optional RFC 7807 extension member.
+        SecureProblemDetails problem = new()
+        {
+            Type = SecureExceptionSanitizer.GetProblemType(statusCode),
+            Title = SecureExceptionSanitizer.GetTitle(statusCode),
+            Status = statusCode,
+            Detail = detail,
+            Instance = context.Request.Path,
+            TraceId = context.TraceIdentifier,
+            Timestamp = DateTimeOffset.UtcNow
+        };
+
+        // Justification: SerializeToNode never returns null for a non-null reference-type instance.
+        JsonObject payload = JsonSerializer.SerializeToNode(problem, SecureProblemJsonOptions)!.AsObject();
+        if (includeSetupRequiredFlag)
+        {
+            payload["setupRequired"] = true;
+        }
+
+        return payload.ToJsonString(SecureProblemJsonOptions);
+    }
+
+    /// <summary>
+    /// Writes an RFC 7807 <see cref="SecureProblemDetails"/> rejection directly to the HTTP response.
+    /// </summary>
+    /// <param name="context">Active HTTP context.</param>
+    /// <param name="statusCode">HTTP status code of the rejection.</param>
+    /// <param name="detail">Rejection sentence safe to publish to API clients.</param>
+    /// <param name="includeSetupRequiredFlag">True to append the 'setupRequired' RFC 7807 extension member.</param>
+    /// <returns>A task that completes once the rejection body has been written.</returns>
+    private static async Task WriteSecureProblemAsync(HttpContext context, int statusCode, string detail, bool includeSetupRequiredFlag = false)
+    {
+        context.Response.StatusCode = statusCode;
+        context.Response.ContentType = "application/problem+json; charset=utf-8";
+        await context.Response.WriteAsync(SerializeSecureProblem(context, statusCode, detail, includeSetupRequiredFlag));
+    }
+
+    /// <summary>
+    /// Builds an RFC 7807 <see cref="SecureProblemDetails"/> rejection result for a minimal API endpoint handler.
+    /// </summary>
+    /// <param name="context">Active HTTP context.</param>
+    /// <param name="statusCode">HTTP status code of the rejection.</param>
+    /// <param name="detail">Rejection sentence safe to publish to API clients.</param>
+    /// <returns>An <see cref="IResult"/> producing the problem details body.</returns>
+    public static IResult SecureProblemResult(HttpContext context, int statusCode, string detail)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        return Results.Text(
+            SerializeSecureProblem(context, statusCode, detail, includeSetupRequiredFlag: false),
+            "application/problem+json; charset=utf-8",
+            statusCode: statusCode);
+    }
+
+    /// <summary>
+    /// Validates a bearer token without ever propagating a malformed-encoding exception to the caller.
+    /// </summary>
+    /// <param name="authService">Authentication service performing signature and claim validation.</param>
+    /// <param name="token">Raw bearer token taken from the Authorization header or session cookie.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The validation outcome; a malformed token encoding is reported as an ordinary validation failure.</returns>
+    private static async Task<(bool Valid, UserAccount? User, string? ErrorReason)> TryValidateTokenAsync(
+        IUserAuthenticationService authService,
+        string token,
+        CancellationToken ct)
+    {
+        // WHAT: Converts a malformed token encoding into a plain validation failure.
+        // WHY:  Token decoding throws FormatException on non-Base64 input, which surfaced as an unhandled 500
+        //       (and, under ASPNETCORE_ENVIRONMENT=Development, a full stack trace) on the /healthz and /health
+        //       liveness probes, and as a misleading 400 instead of 401 on /api routes.
+        // HOW:  Awaits the real validation inside a narrowly scoped FormatException handler.
+        try
+        {
+            return await authService.ValidateTokenAsync(token, ct);
+        }
+        catch (FormatException)
+        {
+            return (false, null, "Malformed bearer token encoding.");
+        }
     }
 
     /// <summary>
@@ -2988,14 +3488,20 @@ public class Program
                     Gen1Collections = GC.CollectionCount(1),
                     Gen2Collections = GC.CollectionCount(2)
                 },
+                // WHAT: Reports storage accessibility without ever naming a local filesystem path.
+                // WHY:  Prime Directive 14 forbids disclosing local filesystem paths to API clients and grants
+                //       no role an exemption; the absolute mount layout is server topology, not health data.
+                // HOW:  Publishes the configuring environment variable name plus the accessibility booleans.
+                //       An operator who needs the configured values reads them from the Administrator-gated
+                //       /api/configuration surface instead.
                 Storage = new StorageHealthInfo
                 {
                     Status = "Healthy",
-                    IncomingDirectory = incomingDir,
+                    IncomingDirectory = DescribeStorageLocation("TRAJECTORY_INCOMING_DIR"),
                     IncomingWritable = Directory.Exists(incomingDir),
-                    ExportDirectory = exportDir,
+                    ExportDirectory = DescribeStorageLocation("TRAJECTORY_EXPORT_DIR"),
                     ExportWritable = Directory.Exists(exportDir),
-                    ParquetDirectory = parquetDir,
+                    ParquetDirectory = DescribeStorageLocation("TRAJECTORY_PARQUET_DIR"),
                     ParquetWritable = Directory.Exists(parquetDir)
                 },
                 Simulations = new SimulationHealthInfo

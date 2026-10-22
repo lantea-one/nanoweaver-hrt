@@ -83,6 +83,18 @@ public sealed record ConfigurationItem : IExamplesProvider<ConfigurationItem>
     public DateTime? LastUpdatedUtc { get; init; }
 
     /// <summary>
+    /// Indicates whether this setting carries a credential, so its value is never published or rendered.
+    /// </summary>
+    /// <remarks>
+    /// When true, <see cref="Value"/> and <see cref="DefaultValue"/> read '[REDACTED]' in every REST API
+    /// response, and the Web UI configuration screen renders a masked, empty field instead of the stored
+    /// value. Prime Directive 14 grants no role an exemption, Administrator included.
+    /// </remarks>
+    [Description("Indicates whether this setting carries a credential whose value is never disclosed.")]
+    [JsonPropertyName("isSecret")]
+    public bool IsSecret { get; init; }
+
+    /// <summary>
     /// Generates a representative example instance of <see cref="ConfigurationItem"/> for OpenAPI documentation.
     /// </summary>
     /// <returns>A populated configuration setting example.</returns>
