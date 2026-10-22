@@ -15,6 +15,9 @@
 #
 #   # 2. Launch the stack:
 #   docker compose -f docker-compose.yml -f compose/docker-compose.public-nginx.yml up -d
+#
+# IDENTITY: the container user and GPU groups come from .env (see example.env);
+#           this overlay must not redefine them.
 # ==============================================================================
 
 name: nanoweaver-hrt

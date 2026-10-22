@@ -17,6 +17,9 @@
 #
 #   # 2. Launch the stack with the Caddy public overlay:
 #   docker compose -f docker-compose.yml -f compose/docker-compose.public-caddy.yml up -d
+#
+# IDENTITY: the container user and GPU groups come from .env (see example.env);
+#           this overlay must not redefine them.
 # ==============================================================================
 
 name: nanoweaver-hrt

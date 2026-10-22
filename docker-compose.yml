@@ -8,6 +8,11 @@
 # HOW:  Mounts /dev/dri for GPU acceleration, creates shared in-memory volumes, 
 #       and exposes the sovereign Web Dashboard on http://localhost:5000.
 #
+# IDENTITY (.env):
+#   Both services run as a non-root user so files in ./simulations/* belong to
+#   the host account that launched the stack. Copy example.env to .env and set
+#   WEAVER_UID, WEAVER_GID, WEAVER_VIDEO_GID and WEAVER_RENDER_GID (see example.env).
+#
 # HARDWARE OVERRIDES:
 #   - Intel Arc A770:  docker compose -f docker-compose.yml -f compose/docker-compose.arc.yml up -d
 #   - NVIDIA CUDA:     docker compose -f docker-compose.yml -f compose/docker-compose.nvidia.yml up -d
@@ -30,10 +35,22 @@ services:
     hostname: simulation-node
     devices:
       - "/dev/dri:/dev/dri"
+    # WHAT: Run as the host user instead of root.
+    # WHY:  Files written to the bind mounts get the host user's ownership.
+    # HOW:  Numeric UID:GID from .env (defaults 1000:1000).
+    user: "${WEAVER_UID:-1000}:${WEAVER_GID:-1000}"
+    # WHAT: Supplementary groups that own the GPU device nodes.
+    # WHY:  A non-root process can open /dev/dri (and /dev/kfd for ROCm) only if one
+    #       of its groups numerically matches the host device's group. Root skipped
+    #       this check, so the old hard-coded Debian values (44/109) never mattered.
+    # HOW:  GIDs come from .env; defaults are the Debian/Ubuntu values.
     group_add:
-      - "44"   # Host 'video' GID (verify with `getent group video | cut -d: -f3`)
-      - "109"  # Host 'render' GID (verify with `getent group render | cut -d: -f3`)
+      - "${WEAVER_VIDEO_GID:-44}"    # Host 'video' GID (getent group video | cut -d: -f3)
+      - "${WEAVER_RENDER_GID:-109}"  # Host 'render' GID (getent group render | cut -d: -f3)
     environment:
+      # WHAT/WHY/HOW: a UID with no passwd entry gets HOME=/ (unwritable); point it at
+      # /tmp so shader caches and ASP.NET key storage have somewhere to write.
+      - HOME=/tmp
       - ACCELERATOR_BACKEND=igpu
       - ONEAPI_DEVICE_SELECTOR=opencl:gpu,cpu
       - OCL_ICD_VENDORS=/etc/OpenCL/vendors
@@ -64,9 +81,20 @@ services:
     image: git.lantea.one/lantea-one/nanoweaver-hrt-web:latest
     container_name: weaver-parser
     hostname: parser-node
+    # WHAT: Run as the host user, with no extra privileges.
+    # WHY:  Host file ownership (see simulation) plus defense in depth for the
+    #       publicly proxied service (Prime Directive #9).
+    # HOW:  user from .env; no-new-privileges blocks setuid escalation; cap_drop ALL
+    #       removes every Linux capability (ports above 1024 need none).
+    user: "${WEAVER_UID:-1000}:${WEAVER_GID:-1000}"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     ports:
       - "5000:5000"
     environment:
+      - HOME=/tmp
       - ASPNETCORE_URLS=http://+:5000
       - DOTNET_EnableDiagnostics=0
       - DOTNET_gcServer=1

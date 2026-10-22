@@ -80,6 +80,17 @@ COPY docker/simulation/entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY docker/simulation/simulation_daemon.py /usr/local/bin/simulation_daemon.py
 RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/simulation_daemon.py
 
+# WHAT: Pre-create writable workspace directories and run as non-root UID/GID 1000
+#       (the stock 'ubuntu' user in ubuntu:24.04).
+# WHY:  Files written to bind mounts should belong to the host user, not root.
+# HOW:  mkdir + chown, then numeric USER. GPU access without root works through
+#       compose 'group_add': device nodes keep their host GID inside the container,
+#       and a supplementary GID matching it lets this user open them. Compose sets
+#       the real UID/GID and GPU GIDs from .env (see example.env).
+RUN mkdir -p /workspace/configs /workspace/data /workspace/exports \
+    && chown 1000:1000 /workspace /workspace/data /workspace/exports
+USER 1000:1000
+
 EXPOSE 8080
 
 WORKDIR /workspace

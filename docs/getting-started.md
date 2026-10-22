@@ -72,7 +72,7 @@ On initial boot, the sovereign node enforces a strict zero-backdoor policy: **no
 1. **Automatic Redirection**: Navigating to any page on a fresh node automatically redirects to `/setup`.
 2. **Master Identity**: Choose your Administrator username and configure the access gate boundary (`ApiWeb` or `Web`).
 3. **Cryptographic Keypair Generation**:
-   - Generate a high-security keypair directly in the browser (Ed25519 recommended, ECDSA P-256, or RSA-4096).
+   - Generate a high-security keypair directly in the browser (Ed25519 recommended, or ML-DSA-65 for post-quantum signatures).
    - Optionally encrypt the private key with a passphrase (AES-256-CBC with PBKDF2 HMAC-SHA256).
    - Alternatively, supply an existing public key in PEM or Base64 format.
 4. **Mandatory Backup & Lock-In**:
@@ -100,6 +100,38 @@ docker compose build
 # Or pull pre-built images directly from Forgejo:
 docker compose pull
 ```
+
+### Container identity (.env)
+Both containers run as a non-root user so that files they create in `./simulations/shared-data`, `./simulations/exports` and `./simulations/parquet` belong to you instead of root. Linux decides file access by numeric user and group IDs, so Compose needs to know yours. Generate a `.env` file in the repository root (it is git-ignored; `example.env` documents each variable):
+```bash
+cat > .env <<EOF
+WEAVER_UID=$(id -u)
+WEAVER_GID=$(id -g)
+WEAVER_VIDEO_GID=$(getent group video | cut -d: -f3)
+WEAVER_RENDER_GID=$(getent group render | cut -d: -f3)
+EOF
+```
+If `.env` is missing the defaults are `1000:1000` for the user and `44` / `109` for the video and render groups, which are Debian and Ubuntu values. Other distributions (Arch, Fedora and others) use different group numbers, so run the `getent` commands above rather than trusting the defaults.
+
+#### Alternative: resolve the groups at launch time
+
+A `.env` file records the group numbers as they were on the day you wrote it. A kernel or graphics-driver update can renumber the `video` and `render` groups, which leaves a stale `.env` quietly removing GPU access. To re-resolve them on every launch, export the variables instead and skip `.env` altogether — values present in the environment take precedence over `.env`:
+
+```bash
+export WEAVER_UID=$(id -u)
+export WEAVER_GID=$(id -g)
+export WEAVER_VIDEO_GID=$(getent group video | cut -d: -f3)
+export WEAVER_RENDER_GID=$(getent group render | cut -d: -f3)
+docker compose up -d
+```
+
+Add those four `export` lines to your shell profile to make the behaviour permanent.
+
+> **Why these must be numbers, not group names.** Compose passes `group_add` straight through to the container, where a *name* is resolved against the container image's own `/etc/group` — not the host's. The `/dev/dri` device nodes, by contrast, keep the host's numeric group ID when they are passed in, and nothing translates between the two. Writing `video` would therefore resolve to whatever that name means inside the image (44 on Debian and Ubuntu) and silently fail to match a host group of, say, 983. Writing `render` is worse: the `ubuntu:24.04` base image has no `render` group at all, so the container refuses to start with `unable to find group render: no matching entries in group file`. Always supply the host's numeric GID, which is what the `getent ... | cut -d: -f3` commands above produce.
+
+> **Why the GPU group numbers matter:** device nodes in `/dev/dri` keep their host group number inside the container, and a non-root process can open them only if it belongs to a group with that same number. Render nodes (`renderD*`) are often world read/write, but the `card*` nodes are typically `root:video` with mode `0660`, so a wrong `WEAVER_VIDEO_GID` silently removes card access. The same applies to `/dev/kfd` on AMD Radeon, which is reached through the render group.
+
+> **Rootless Docker / Podman:** in rootless mode container UID 0 maps to your own host user. Set `WEAVER_UID=0` and `WEAVER_GID=0` in `.env`; any other value maps to a sub-UID and produces files your host account cannot write.
 
 ### Scenario A: Default Deployment (Intel iGPU or CPU Fallback)
 This configuration passes through `/dev/dri` for Intel integrated graphics or falls back cleanly to multi-threaded CPU execution:
@@ -150,6 +182,18 @@ docker compose ps
 To view real-time log outputs:
 ```bash
 docker compose logs -f trajectory-parser
+```
+
+### Recovering from root-owned files (upgrading from earlier releases)
+Earlier releases ran as root, so `weaver_config.db`, its `-wal` / `-shm` journals, exports and parquet files may be owned by root on the host. SQLite needs write access to the directory (to create the journals), not just the file, so fix ownership recursively. This is a one-time step and no data is deleted. `simulations/configs` is read-only and needs no change.
+```bash
+docker compose down
+# Option 1: with sudo
+sudo chown -R "$(id -u):$(id -g)" simulations/shared-data simulations/exports simulations/parquet
+# Option 2: without sudo (any member of the docker group)
+docker run --rm -v "$PWD/simulations:/s" alpine chown -R "$(id -u):$(id -g)" /s/shared-data /s/exports /s/parquet
+# Then create .env (see "Container identity" above) and restart
+docker compose up -d
 ```
 
 ---

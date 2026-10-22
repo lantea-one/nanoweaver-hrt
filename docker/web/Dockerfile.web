@@ -53,6 +53,13 @@ ENV ASPNETCORE_URLS=http://+:5000 \
     TRAJECTORY_INCOMING_DIR=/workspace/data \
     TRAJECTORY_EXPORT_DIR=/workspace/exports
 
+# WHAT: Pre-create the writable workspace directories owned by UID/GID 1000.
+# WHY:  The service will run as non-root; Docker discards ownership changes made
+#       after the VOLUME instruction, so this must come first.
+# HOW:  mkdir + chown here. /app stays root-owned so the service cannot rewrite its own code.
+RUN mkdir -p /workspace/data /workspace/exports /workspace/parquet \
+    && chown 1000:1000 /workspace /workspace/data /workspace/exports /workspace/parquet
+
 # Mount points for shared simulation streams and cryptographic dataset exports
 VOLUME ["/workspace/data", "/workspace/exports"]
 
@@ -60,5 +67,12 @@ EXPOSE 5000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:5000/healthz || exit 1
+
+# WHAT: Drop root for the runtime process.
+# WHY:  Least privilege; also makes bare `docker run` non-root. Compose overrides the
+#       value with WEAVER_UID:WEAVER_GID so bind-mounted files match the host user.
+# HOW:  Numeric USER (not a name) so orchestrators can verify it and it works for
+#       UIDs without a passwd entry.
+USER 1000:1000
 
 ENTRYPOINT ["dotnet", "NanoWeaverHrt.dll"]

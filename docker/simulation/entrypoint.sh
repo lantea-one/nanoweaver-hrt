@@ -17,6 +17,8 @@ echo "  Target Backend: ${ACCELERATOR_BACKEND:-auto}"
 echo "=========================================================="
 
 echo "==> Inspecting Available Hardware Acceleration..."
+echo "Running as: $(id)"
+
 if [ -d "/dev/dri" ]; then
     echo "Found /dev/dri devices:"
     ls -la /dev/dri || true

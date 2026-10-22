@@ -10,6 +10,10 @@
 #
 # USAGE:
 #   docker compose -f docker-compose.yml -f compose/docker-compose.radeon.yml up -d
+#
+# IDENTITY: the container user and GPU groups come from .env (see example.env);
+#           this overlay must not redefine them.
+# NOTE: /dev/kfd access for the non-root user is granted through the render GID (WEAVER_RENDER_GID).
 # ==============================================================================
 
 services:
