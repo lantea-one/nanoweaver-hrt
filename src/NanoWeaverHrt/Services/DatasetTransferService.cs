@@ -254,6 +254,90 @@ public sealed class DatasetTransferService : IDatasetManager
         }
     }
 
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<ExportFileItem>> ListExportsAsync(CancellationToken cancellationToken = default)
+    {
+        // WHAT: Discovers and catalogs all exported archive bundles and manifests in the exports volume.
+        // WHY:  Allows sovereign research operators to inspect and download generated dataset bundles via the web UI.
+        // HOW:  Enumerates files in _exportDirectory, filters out .gitkeep, and categorizes by extension and naming convention.
+        List<ExportFileItem> items = new();
+        if (!Directory.Exists(_exportDirectory))
+        {
+            return Task.FromResult<IReadOnlyList<ExportFileItem>>(items);
+        }
+
+        DirectoryInfo dir = new(_exportDirectory);
+        foreach (FileInfo file in dir.EnumerateFiles().OrderByDescending(f => f.LastWriteTimeUtc))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (file.Name.Equals(".gitkeep", StringComparison.OrdinalIgnoreCase) ||
+                file.Name.Equals("README.md", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            string ext = file.Extension.ToLowerInvariant();
+            string category;
+            if (file.Name.EndsWith(".enc.tar.gz", StringComparison.OrdinalIgnoreCase))
+            {
+                category = "PQC Encrypted Bundle";
+            }
+            else if (file.Name.EndsWith(".tar.gz", StringComparison.OrdinalIgnoreCase) || ext == ".zip" || ext == ".tar")
+            {
+                category = "Archive Bundle";
+            }
+            else if (file.Name.EndsWith(".manifest.pqc.json", StringComparison.OrdinalIgnoreCase))
+            {
+                category = "PQC Signature Manifest";
+            }
+            else if (file.Name.EndsWith(".manifest.json", StringComparison.OrdinalIgnoreCase) || ext == ".json")
+            {
+                category = "Provenance Manifest";
+            }
+            else if (ext == ".parquet")
+            {
+                category = "Analytical Parquet";
+            }
+            else
+            {
+                category = "Export Artifact";
+            }
+
+            items.Add(new ExportFileItem
+            {
+                Name = file.Name,
+                SizeBytes = file.Length,
+                SizeFormatted = FormatBytes(file.Length),
+                LastModifiedUtc = file.LastWriteTimeUtc.ToString("o"),
+                Category = category
+            });
+        }
+
+        return Task.FromResult<IReadOnlyList<ExportFileItem>>(items);
+    }
+
+    /// <inheritdoc/>
+    public Task<bool> DeleteExportAsync(string fileName, CancellationToken cancellationToken = default)
+    {
+        // WHAT: Safely deletes an export artifact from disk.
+        // WHY:  Allows users to purge stale test or transient export bundles from the web interface.
+        // HOW:  Combines _exportDirectory with Path.GetFileName to prevent path traversal attacks.
+        ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        string safeName = Path.GetFileName(fileName);
+        string filePath = Path.Combine(_exportDirectory, safeName);
+
+        if (File.Exists(filePath))
+        {
+            File.Delete(filePath);
+            _logger.LogInformation("Deleted export artifact {FileName} from {ExportDir}", safeName, _exportDirectory);
+            return Task.FromResult(true);
+        }
+
+        return Task.FromResult(false);
+    }
+
     /// <summary>
     /// Formats a raw byte count into a human-friendly size representation.
     /// </summary>

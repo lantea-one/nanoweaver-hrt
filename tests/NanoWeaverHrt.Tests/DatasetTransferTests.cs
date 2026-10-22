@@ -114,6 +114,153 @@ public sealed class DatasetTransferTests : IDisposable
     }
 
     /// <summary>
+    /// Verifies that <see cref="DatasetTransferService.ListExportsAsync"/> returns an empty list when the directory does not exist.
+    /// </summary>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    [Fact]
+    public async Task ListExportsAsync_WhenDirectoryDoesNotExist_ReturnsEmpty()
+    {
+        // WHAT: Initializes DatasetTransferService pointing to a non-existent export directory.
+        // WHY:  Ensures graceful handling without throwing DirectoryNotFoundException.
+        // HOW:  Points configuration to a randomized missing path and asserts an empty list.
+        string missingDir = Path.Combine(Path.GetTempPath(), $"missing-dir-{Guid.NewGuid():N}");
+        IConfiguration config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["TRAJECTORY_INCOMING_DIR"] = _testDataDir,
+                ["TRAJECTORY_EXPORT_DIR"] = missingDir
+            })
+            .Build();
+
+        DatasetTransferService missingService = new(config, NullLogger<DatasetTransferService>.Instance);
+        if (Directory.Exists(missingDir))
+        {
+            Directory.Delete(missingDir, recursive: true);
+        }
+        IReadOnlyList<ExportFileItem> result = await missingService.ListExportsAsync();
+
+        Assert.NotNull(result);
+        Assert.Empty(result);
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="DatasetTransferService.ListExportsAsync"/> discovers and correctly categorizes all supported export artifacts.
+    /// </summary>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    [Fact]
+    public async Task ListExportsAsync_DiscoversAndCategorizesAllExportTypes()
+    {
+        // WHAT: Creates a spectrum of exported files (encrypted bundles, archives, signatures, manifests, Parquet) in the export directory.
+        // WHY:  Guarantees that categorization rules match file extensions correctly and ignore hidden/metadata files.
+        // HOW:  Creates sample files, invokes ListExportsAsync, and asserts category mappings and metadata fields.
+        await File.WriteAllTextAsync(Path.Combine(_testExportDir, ".gitkeep"), "");
+        await File.WriteAllTextAsync(Path.Combine(_testExportDir, "README.md"), "# Readme");
+
+        await File.WriteAllTextAsync(Path.Combine(_testExportDir, "sim1.enc.tar.gz"), "encrypted");
+        await File.WriteAllTextAsync(Path.Combine(_testExportDir, "sim2.tar.gz"), "archive-tgz");
+        await File.WriteAllTextAsync(Path.Combine(_testExportDir, "sim3.zip"), "archive-zip");
+        await File.WriteAllTextAsync(Path.Combine(_testExportDir, "sim4.tar"), "archive-tar");
+        await File.WriteAllTextAsync(Path.Combine(_testExportDir, "sim5.manifest.pqc.json"), "pqc-manifest");
+        await File.WriteAllTextAsync(Path.Combine(_testExportDir, "sim6.manifest.json"), "provenance-manifest");
+        await File.WriteAllTextAsync(Path.Combine(_testExportDir, "sim7.json"), "general-json");
+        await File.WriteAllTextAsync(Path.Combine(_testExportDir, "sim8.parquet"), "parquet-data");
+        await File.WriteAllTextAsync(Path.Combine(_testExportDir, "sim9.dat"), "raw-data");
+
+        IReadOnlyList<ExportFileItem> list = await _service.ListExportsAsync();
+
+        Assert.NotNull(list);
+        Assert.Equal(9, list.Count);
+
+        Dictionary<string, string> categoryMap = list.ToDictionary(f => f.Name, f => f.Category);
+        Assert.Equal("PQC Encrypted Bundle", categoryMap["sim1.enc.tar.gz"]);
+        Assert.Equal("Archive Bundle", categoryMap["sim2.tar.gz"]);
+        Assert.Equal("Archive Bundle", categoryMap["sim3.zip"]);
+        Assert.Equal("Archive Bundle", categoryMap["sim4.tar"]);
+        Assert.Equal("PQC Signature Manifest", categoryMap["sim5.manifest.pqc.json"]);
+        Assert.Equal("Provenance Manifest", categoryMap["sim6.manifest.json"]);
+        Assert.Equal("Provenance Manifest", categoryMap["sim7.json"]);
+        Assert.Equal("Analytical Parquet", categoryMap["sim8.parquet"]);
+        Assert.Equal("Export Artifact", categoryMap["sim9.dat"]);
+
+        ExportFileItem firstItem = list.First(f => f.Name == "sim1.enc.tar.gz");
+        Assert.Equal("/api/datasets/download/sim1.enc.tar.gz", firstItem.DownloadUrl);
+        Assert.NotEmpty(firstItem.SizeFormatted);
+        Assert.NotEmpty(firstItem.LastModifiedUtc);
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="DatasetTransferService.DeleteExportAsync"/> removes existing files, handles non-existent files, and guards against invalid input.
+    /// </summary>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    [Fact]
+    public async Task DeleteExportAsync_DeletesExistingFile_And_HandlesMissing_And_SanitizesTraversal()
+    {
+        // WHAT: Creates a test file, deletes it, attempts deletion of a non-existent file, and verifies argument validation.
+        // WHY:  Guarantees safe file lifecycle management and directory traversal protection.
+        // HOW:  Creates dummy artifact, invokes DeleteExportAsync, and asserts boolean results and exceptions.
+        string targetFile = Path.Combine(_testExportDir, "deletable_bundle.tar.gz");
+        await File.WriteAllTextAsync(targetFile, "temporary bundle contents");
+        Assert.True(File.Exists(targetFile));
+
+        bool deleteSuccess = await _service.DeleteExportAsync("deletable_bundle.tar.gz");
+        Assert.True(deleteSuccess);
+        Assert.False(File.Exists(targetFile));
+
+        bool deleteNonExistent = await _service.DeleteExportAsync("non_existent_file.tar.gz");
+        Assert.False(deleteNonExistent);
+
+        bool deleteTraversal = await _service.DeleteExportAsync("../../etc/passwd");
+        Assert.False(deleteTraversal);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => _service.DeleteExportAsync(string.Empty));
+        await Assert.ThrowsAsync<ArgumentException>(() => _service.DeleteExportAsync("   "));
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="DatasetTransferService.ListTrajectoriesAsync"/> populates the <see cref="TrajectoryFileItem.DownloadUrl"/> property.
+    /// </summary>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    [Fact]
+    public async Task ListTrajectoriesAsync_PopulatesDownloadUrl()
+    {
+        // WHAT: Writes a trajectory file to the incoming directory and queries ListTrajectoriesAsync.
+        // WHY:  Ensures the web download endpoint is populated for frontend user consumption.
+        // HOW:  Writes a sample .xyz file, queries ListTrajectoriesAsync, and asserts DownloadUrl formatting.
+        string sampleFile = Path.Combine(_testDataDir, "sample_nanocarrier.xyz");
+        await File.WriteAllTextAsync(sampleFile, "1\nNanocarrier Test\nC 0.0 0.0 0.0\n");
+
+        IReadOnlyList<TrajectoryFileItem> items = await _service.ListTrajectoriesAsync();
+        TrajectoryFileItem item = Assert.Single(items);
+
+        Assert.Equal("sample_nanocarrier.xyz", item.Name);
+        Assert.Equal("/api/trajectories/download/sample_nanocarrier.xyz", item.DownloadUrl);
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="ExportFileItem"/> OpenAPI example generator creates valid metadata.
+    /// </summary>
+    [Fact]
+    public void ExportFileItem_GetExamples_ReturnsValidModel()
+    {
+        // WHAT: Instantiates ExportFileItem and calls GetExamples.
+        // WHY:  Enforces 100% code coverage on OpenAPI example provider contracts.
+        // HOW:  Invokes GetExamples and asserts properties are populated.
+        ExportFileItem example = new ExportFileItem
+        {
+            Name = "placeholder",
+            SizeBytes = 0,
+            SizeFormatted = "0 B",
+            LastModifiedUtc = "2026-01-01T00:00:00Z",
+            Category = "Archive"
+        }.GetExamples();
+
+        Assert.NotNull(example);
+        Assert.Equal("dna-origami-nanocarrier-001.tar.gz", example.Name);
+        Assert.Equal("Archive", example.Category);
+        Assert.Equal("/api/datasets/download/dna-origami-nanocarrier-001.tar.gz", example.DownloadUrl);
+    }
+
+    /// <summary>
     /// Cleans up temporary test directories.
     /// </summary>
     public void Dispose()

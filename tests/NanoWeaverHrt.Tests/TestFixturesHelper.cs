@@ -14,14 +14,14 @@ namespace NanoWeaverHrt.Tests;
 public static class TestFixturesHelper
 {
     /// <summary>
-    /// Initializes test fixtures automatically upon test assembly load.
+    /// Resolves the absolute path to the solution root directory containing NanoWeaverHrt.slnx.
     /// </summary>
-    [ModuleInitializer]
-    internal static void InitializeModuleFixtures()
+    /// <returns>The absolute filesystem path of the repository solution root.</returns>
+    public static string GetSolutionRoot()
     {
-        // WHAT: Guarantees test fixtures exist prior to the execution of any unit or integration tests.
-        // WHY:  Prevents race conditions in parallel xUnit test execution on fresh Git checkouts.
-        // HOW:  Resolves solution directory and invokes EnsureTestFixtures during module initialization.
+        // WHAT: Discovers the solution root by traversing parent directories until NanoWeaverHrt.slnx is located.
+        // WHY:  Ensures integration tests reliably target project subdirectories across different test runners.
+        // HOW:  Loops up the directory hierarchy starting from AppContext.BaseDirectory.
         string? current = AppContext.BaseDirectory;
         while (!string.IsNullOrEmpty(current) && !File.Exists(Path.Combine(current, "NanoWeaverHrt.slnx")))
         {
@@ -33,9 +33,22 @@ public static class TestFixturesHelper
             current = parent;
         }
 
-        if (!string.IsNullOrEmpty(current) && File.Exists(Path.Combine(current, "NanoWeaverHrt.slnx")))
+        return current ?? Directory.GetCurrentDirectory();
+    }
+
+    /// <summary>
+    /// Initializes test fixtures automatically upon test assembly load.
+    /// </summary>
+    [ModuleInitializer]
+    internal static void InitializeModuleFixtures()
+    {
+        // WHAT: Guarantees test fixtures exist prior to the execution of any unit or integration tests.
+        // WHY:  Prevents race conditions in parallel xUnit test execution on fresh Git checkouts.
+        // HOW:  Resolves solution directory and invokes EnsureTestFixtures during module initialization.
+        string solutionRoot = GetSolutionRoot();
+        if (File.Exists(Path.Combine(solutionRoot, "NanoWeaverHrt.slnx")))
         {
-            EnsureTestFixtures(Path.Combine(current, "simulations", "shared-data"));
+            EnsureTestFixtures(Path.Combine(solutionRoot, "simulations", "shared-data"));
         }
     }
 

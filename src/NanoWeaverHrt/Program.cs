@@ -93,6 +93,8 @@ public class Program
         builder.Services.AddSingleton<ISimulationCampaignService, SimulationCampaignService>();
         builder.Services.AddSingleton<DatabaseMigrationRunner>();
         builder.Services.AddSingleton<IUserRepository, UserRepository>();
+        builder.Services.AddSingleton<ProfileDataProtector>();
+        builder.Services.AddSingleton<IUserProfileRepository, UserProfileRepository>();
         builder.Services.AddSingleton<IUserAuthenticationService, UserAuthenticationService>();
         builder.Services.AddScoped<UserSessionState>();
 
@@ -368,10 +370,38 @@ public class Program
                 return;
             }
 
-            // 8. Role Gating: Administrator-only endpoints
-            if (path.StartsWithSegments("/api/users") ||
-                (path.StartsWithSegments("/api/config") && context.Request.Method != "GET") ||
-                (path.StartsWithSegments("/api/stack") && context.Request.Method != "GET"))
+            // 8. Role Gating: Administrator-only endpoints (permits self-service user profile, addresses, and contacts access)
+            if (path.StartsWithSegments("/api/users", out PathString userSubPath))
+            {
+                bool isSelfRoute = false;
+                if (userSubPath.HasValue)
+                {
+                    string sub = userSubPath.Value.TrimStart('/');
+                    int slashIdx = sub.IndexOf('/');
+                    if (slashIdx > 0)
+                    {
+                        string targetUser = sub[..slashIdx];
+                        string remainder = sub[(slashIdx + 1)..];
+                        if (string.Equals(user.Username, targetUser, StringComparison.OrdinalIgnoreCase) &&
+                            (remainder.StartsWith("profile", StringComparison.OrdinalIgnoreCase) ||
+                             remainder.StartsWith("addresses", StringComparison.OrdinalIgnoreCase) ||
+                             remainder.StartsWith("contacts", StringComparison.OrdinalIgnoreCase)))
+                        {
+                            isSelfRoute = true;
+                        }
+                    }
+                }
+
+                if (user.Role != UserRole.Administrator && !isSelfRoute)
+                {
+                    context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                    context.Response.ContentType = "application/json";
+                    await context.Response.WriteAsJsonAsync(new { error = "Forbidden: Administrator role required for this administrative resource." });
+                    return;
+                }
+            }
+            else if ((path.StartsWithSegments("/api/config") && context.Request.Method != "GET") ||
+                     (path.StartsWithSegments("/api/stack") && context.Request.Method != "GET"))
             {
                 if (user.Role != UserRole.Administrator)
                 {
@@ -484,6 +514,61 @@ public class Program
         .WithSummary("Downloads an exported dataset bundle or its manifest.")
         .WithDescription("Streams raw binary or JSON bytes from the export storage directory.")
         .Produces(StatusCodes.Status200OK, contentType: "application/octet-stream")
+        .Produces(StatusCodes.Status404NotFound);
+
+        // ---------------------------------------------------------------------
+        // REST API: Download Active Trajectory File
+        // ---------------------------------------------------------------------
+        app.MapGet("/api/trajectories/download/{fileName}", (string fileName, IConfiguration config) =>
+        {
+            string incomingDir = config["TRAJECTORY_INCOMING_DIR"] ?? Path.Combine(Directory.GetCurrentDirectory(), "simulations", "shared-data");
+            string safePath = Path.Combine(incomingDir, Path.GetFileName(fileName));
+
+            if (!File.Exists(safePath))
+            {
+                return Results.NotFound(new { error = "Trajectory file not found." });
+            }
+
+            return Results.File(safePath, "application/octet-stream", fileDownloadName: fileName);
+        })
+        .WithName("DownloadTrajectory")
+        .WithTags("Datasets & Trajectories")
+        .WithSummary("Downloads a raw trajectory file from the active shared volume.")
+        .WithDescription("Streams raw .xyz, .dcd, or .dump simulation coordinates to the client.")
+        .Produces(StatusCodes.Status200OK, contentType: "application/octet-stream")
+        .Produces(StatusCodes.Status404NotFound);
+
+        // ---------------------------------------------------------------------
+        // REST API: List Exported Dataset Artifacts
+        // ---------------------------------------------------------------------
+        app.MapGet("/api/datasets/exports", async (IDatasetManager manager, CancellationToken ct) =>
+        {
+            IReadOnlyList<ExportFileItem> items = await manager.ListExportsAsync(ct);
+            return Results.Ok(items);
+        })
+        .WithName("ListExports")
+        .WithTags("Datasets & Trajectories")
+        .WithSummary("Lists all packaged dataset archives, manifests, and signatures in the export volume.")
+        .WithDescription("Retrieves metadata descriptors and direct download URLs for generated export files.")
+        .Produces<IReadOnlyList<ExportFileItem>>(StatusCodes.Status200OK);
+
+        // ---------------------------------------------------------------------
+        // REST API: Delete Exported Dataset Artifact
+        // ---------------------------------------------------------------------
+        app.MapDelete("/api/datasets/exports/{fileName}", async (string fileName, IDatasetManager manager, CancellationToken ct) =>
+        {
+            bool deleted = await manager.DeleteExportAsync(fileName, ct);
+            if (!deleted)
+            {
+                return Results.NotFound(new { error = "Exported file not found." });
+            }
+            return Results.Ok(new { message = $"Export artifact '{Path.GetFileName(fileName)}' deleted successfully." });
+        })
+        .WithName("DeleteExport")
+        .WithTags("Datasets & Trajectories")
+        .WithSummary("Deletes an export bundle or manifest from disk.")
+        .WithDescription("Permanently purges a designated file from the export volume.")
+        .Produces(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status404NotFound);
 
         // ---------------------------------------------------------------------
@@ -1754,6 +1839,340 @@ public class Program
         .Produces(StatusCodes.Status400BadRequest)
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status403Forbidden);
+
+        // ---------------------------------------------------------------------
+        // REST API: User Profile & Patient Demographic Directory
+        // ---------------------------------------------------------------------
+        app.MapGet("/api/users/{username}/profile", async (
+            string username,
+            IUserProfileRepository profileRepo,
+            IUserRepository userRepo,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Retrieves demographic, clinical, and pronoun profile data for a specific user.
+            // WHY:  Allows users to inspect their profile and administrators to view patient demographic information.
+            // HOW:  Validates caller authorization, checks account existence, and queries IUserProfileRepository.
+            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
+            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            {
+                return Results.Json(new { error = "Forbidden: You are not authorized to view this user profile." }, statusCode: StatusCodes.Status403Forbidden);
+            }
+
+            UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
+            if (targetAccount == null)
+            {
+                return Results.NotFound(new { error = $"User '{username}' does not exist." });
+            }
+
+            UserProfile? profile = await profileRepo.GetProfileAsync(username, ct);
+            if (profile == null)
+            {
+                return Results.NotFound(new { error = $"Profile for user '{username}' not found." });
+            }
+
+            return Results.Ok(profile);
+        })
+        .WithName("GetUserProfile")
+        .WithTags("User Profile & Patient Directory")
+        .WithSummary("Retrieves demographic, clinical, and pronoun profile for a user.")
+        .WithDescription("Returns user demographic profile, preferred name, encrypted avatar, regimen, biological sex at birth, and pronouns (self-access or Administrator role required).")
+        .Produces<UserProfile>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status404NotFound);
+
+        app.MapPut("/api/users/{username}/profile", async (
+            string username,
+            UserProfile inputProfile,
+            IUserProfileRepository profileRepo,
+            IUserRepository userRepo,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Inserts or updates demographic, clinical, and pronoun profile data for a specific user.
+            // WHY:  Allows patients and users to keep their profiles up-to-date with encrypted storage of sensitive assets.
+            // HOW:  Validates caller authorization, verifies account existence, binds the username, and upserts into repository.
+            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
+            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            {
+                return Results.Json(new { error = "Forbidden: You are not authorized to update this user profile." }, statusCode: StatusCodes.Status403Forbidden);
+            }
+
+            UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
+            if (targetAccount == null)
+            {
+                return Results.NotFound(new { error = $"User '{username}' does not exist." });
+            }
+
+            UserProfile updatedProfile = inputProfile with
+            {
+                Username = username,
+                UpdatedAtUtc = DateTimeOffset.UtcNow
+            };
+
+            await profileRepo.UpsertProfileAsync(updatedProfile, ct);
+            return Results.Ok(updatedProfile);
+        })
+        .WithName("UpdateUserProfile")
+        .WithTags("User Profile & Patient Directory")
+        .WithSummary("Creates or updates a user profile record.")
+        .WithDescription("Upserts demographic fields, pronouns, regimen, and encrypts profile picture data-URIs at rest (self-access or Administrator role required).")
+        .Produces<UserProfile>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status404NotFound);
+
+        // ---------------------------------------------------------------------
+        // REST API: Patient Addresses Lookup & Management
+        // ---------------------------------------------------------------------
+        app.MapGet("/api/users/{username}/addresses", async (
+            string username,
+            IUserProfileRepository profileRepo,
+            IUserRepository userRepo,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Retrieves all structured addresses registered for a patient or user.
+            // WHY:  Provides delivery, residential, or clinic address lookup for patient logistics.
+            // HOW:  Validates caller permissions, checks target existence, and fetches address records.
+            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
+            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            {
+                return Results.Json(new { error = "Forbidden: You are not authorized to view addresses for this user." }, statusCode: StatusCodes.Status403Forbidden);
+            }
+
+            UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
+            if (targetAccount == null)
+            {
+                return Results.NotFound(new { error = $"User '{username}' does not exist." });
+            }
+
+            IReadOnlyList<PatientAddress> addresses = await profileRepo.GetAddressesAsync(username, ct);
+            return Results.Ok(addresses);
+        })
+        .WithName("GetUserAddresses")
+        .WithTags("User Profile & Patient Directory")
+        .WithSummary("Retrieves all registered addresses for a user.")
+        .WithDescription("Returns primary, postal, clinic, and delivery addresses associated with the specified user account.")
+        .Produces<IReadOnlyList<PatientAddress>>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status404NotFound);
+
+        app.MapPost("/api/users/{username}/addresses", async (
+            string username,
+            PatientAddress inputAddress,
+            IUserProfileRepository profileRepo,
+            IUserRepository userRepo,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Adds or updates a structured address record for a specified patient or user.
+            // WHY:  Enables maintenance of clinic, home, or nanocarrier delivery addresses.
+            // HOW:  Validates required fields, sets ownership username and GUID identifier, and persists via repository.
+            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
+            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            {
+                return Results.Json(new { error = "Forbidden: You are not authorized to manage addresses for this user." }, statusCode: StatusCodes.Status403Forbidden);
+            }
+
+            UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
+            if (targetAccount == null)
+            {
+                return Results.NotFound(new { error = $"User '{username}' does not exist." });
+            }
+
+            if (string.IsNullOrWhiteSpace(inputAddress.AddressLine1) || string.IsNullOrWhiteSpace(inputAddress.City))
+            {
+                return Results.BadRequest(new { error = "Address line 1 and city are required fields." });
+            }
+
+            PatientAddress address = inputAddress with
+            {
+                Id = string.IsNullOrWhiteSpace(inputAddress.Id) ? Guid.NewGuid().ToString("N") : inputAddress.Id,
+                Username = username,
+                UpdatedAtUtc = DateTimeOffset.UtcNow
+            };
+
+            await profileRepo.UpsertAddressAsync(address, ct);
+            return Results.Created($"/api/users/{username}/addresses/{address.Id}", address);
+        })
+        .WithName("AddOrUpdateUserAddress")
+        .WithTags("User Profile & Patient Directory")
+        .WithSummary("Registers or updates a patient address.")
+        .WithDescription("Adds or updates a structured residential, postal, clinic, or delivery address (self-access or Administrator role required).")
+        .Produces<PatientAddress>(StatusCodes.Status201Created)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status404NotFound);
+
+        app.MapDelete("/api/users/{username}/addresses/{id}", async (
+            string username,
+            string id,
+            IUserProfileRepository profileRepo,
+            IUserRepository userRepo,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Removes an existing address record for a specified patient or user.
+            // WHY:  Allows pruning outdated or erroneous postal/clinic addresses.
+            // HOW:  Validates permissions, verifies target account, and deletes entry via repository.
+            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
+            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            {
+                return Results.Json(new { error = "Forbidden: You are not authorized to delete addresses for this user." }, statusCode: StatusCodes.Status403Forbidden);
+            }
+
+            UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
+            if (targetAccount == null)
+            {
+                return Results.NotFound(new { error = $"User '{username}' does not exist." });
+            }
+
+            bool deleted = await profileRepo.DeleteAddressAsync(id, username, ct);
+            if (!deleted)
+            {
+                return Results.NotFound(new { error = $"Address '{id}' not found for user '{username}'." });
+            }
+
+            return Results.Ok(new { message = $"Address '{id}' successfully removed." });
+        })
+        .WithName("DeleteUserAddress")
+        .WithTags("User Profile & Patient Directory")
+        .WithSummary("Deletes an address record.")
+        .WithDescription("Permanently removes the specified address entry from the patient directory.")
+        .Produces(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status404NotFound);
+
+        // ---------------------------------------------------------------------
+        // REST API: Patient Emergency & Caregiver Outreach Contacts
+        // ---------------------------------------------------------------------
+        app.MapGet("/api/users/{username}/contacts", async (
+            string username,
+            IUserProfileRepository profileRepo,
+            IUserRepository userRepo,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Retrieves the trusted contact lookup table for a specified patient or user.
+            // WHY:  Identifies outreach individuals, caregivers, and emergency contacts if patient cannot be reached.
+            // HOW:  Validates permissions, checks account existence, and queries contacts ordered by priority.
+            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
+            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            {
+                return Results.Json(new { error = "Forbidden: You are not authorized to view contacts for this user." }, statusCode: StatusCodes.Status403Forbidden);
+            }
+
+            UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
+            if (targetAccount == null)
+            {
+                return Results.NotFound(new { error = $"User '{username}' does not exist." });
+            }
+
+            IReadOnlyList<PatientContact> contacts = await profileRepo.GetContactsAsync(username, ct);
+            return Results.Ok(contacts);
+        })
+        .WithName("GetUserContacts")
+        .WithTags("User Profile & Patient Directory")
+        .WithSummary("Retrieves emergency and caregiver contact lookup table for a patient.")
+        .WithDescription("Returns trusted outreach contacts to communicate with in case the patient cannot be reached directly.")
+        .Produces<IReadOnlyList<PatientContact>>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status404NotFound);
+
+        app.MapPost("/api/users/{username}/contacts", async (
+            string username,
+            PatientContact inputContact,
+            IUserProfileRepository profileRepo,
+            IUserRepository userRepo,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Adds or updates a trusted outreach/emergency contact entry for a patient.
+            // WHY:  Maintains critical contact relationships for safety and clinical follow-up.
+            // HOW:  Validates required contact name and phone number, binds username, and persists via repository.
+            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
+            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            {
+                return Results.Json(new { error = "Forbidden: You are not authorized to manage contacts for this user." }, statusCode: StatusCodes.Status403Forbidden);
+            }
+
+            UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
+            if (targetAccount == null)
+            {
+                return Results.NotFound(new { error = $"User '{username}' does not exist." });
+            }
+
+            if (string.IsNullOrWhiteSpace(inputContact.ContactName) || string.IsNullOrWhiteSpace(inputContact.PhoneNumber))
+            {
+                return Results.BadRequest(new { error = "Contact name and phone number are required fields." });
+            }
+
+            PatientContact contact = inputContact with
+            {
+                Id = string.IsNullOrWhiteSpace(inputContact.Id) ? Guid.NewGuid().ToString("N") : inputContact.Id,
+                Username = username,
+                UpdatedAtUtc = DateTimeOffset.UtcNow
+            };
+
+            await profileRepo.UpsertContactAsync(contact, ct);
+            return Results.Created($"/api/users/{username}/contacts/{contact.Id}", contact);
+        })
+        .WithName("AddOrUpdateUserContact")
+        .WithTags("User Profile & Patient Directory")
+        .WithSummary("Registers or updates an emergency or outreach contact.")
+        .WithDescription("Adds or updates a trusted contact person with relationship, priority order, and disclosure consent.")
+        .Produces<PatientContact>(StatusCodes.Status201Created)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status404NotFound);
+
+        app.MapDelete("/api/users/{username}/contacts/{id}", async (
+            string username,
+            string id,
+            IUserProfileRepository profileRepo,
+            IUserRepository userRepo,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Removes an emergency contact from a patient's contact lookup table.
+            // WHY:  Allows patients to revoke or modify authorized outreach individuals.
+            // HOW:  Validates caller permissions, checks target existence, and deletes entry via repository.
+            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
+            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            {
+                return Results.Json(new { error = "Forbidden: You are not authorized to delete contacts for this user." }, statusCode: StatusCodes.Status403Forbidden);
+            }
+
+            UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
+            if (targetAccount == null)
+            {
+                return Results.NotFound(new { error = $"User '{username}' does not exist." });
+            }
+
+            bool deleted = await profileRepo.DeleteContactAsync(id, username, ct);
+            if (!deleted)
+            {
+                return Results.NotFound(new { error = $"Contact '{id}' not found for user '{username}'." });
+            }
+
+            return Results.Ok(new { message = $"Contact '{id}' successfully removed." });
+        })
+        .WithName("DeleteUserContact")
+        .WithTags("User Profile & Patient Directory")
+        .WithSummary("Deletes an outreach contact.")
+        .WithDescription("Permanently removes the specified contact entry from the patient lookup table.")
+        .Produces(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status404NotFound);
 
         // ---------------------------------------------------------------------
         // REST API: Patient Digital DNA Package Generation & Download

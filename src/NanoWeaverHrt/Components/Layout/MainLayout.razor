@@ -62,6 +62,12 @@
                 <span class="nav-icon">👥</span> User Management
             </NavLink>
         }
+        @if (SessionState.IsAuthenticated)
+        {
+            <NavLink href="/profile" class="nav-link">
+                <span class="nav-icon">👤</span> My Profile
+            </NavLink>
+        }
     </div>
 </nav>
 
@@ -190,10 +196,34 @@
     }
 
     /// <summary>
-    /// Configures client-side idle watcher after rendering when authenticated.
+    /// Configures client-side idle watcher after rendering when authenticated, and restores persistent sessions across page navigations.
     /// </summary>
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        // WHAT: Restores authenticated user session from browser storage/cookies if circuit reloaded unauthenticated.
+        // WHY:  Ensures that browser navigation across tabs or pages preserves the authenticated researcher identity.
+        // HOW:  Queries window.weaverGetSessionToken via JS interop and validates against IUserAuthenticationService.
+        if (firstRender && !SessionState.IsAuthenticated)
+        {
+            try
+            {
+                string? token = await JS.InvokeAsync<string?>("weaverGetSessionToken");
+                if (!string.IsNullOrWhiteSpace(token))
+                {
+                    var (valid, user, _) = await AuthService.ValidateTokenAsync(token);
+                    if (valid && user != null)
+                    {
+                        SessionState.SetUser(user);
+                        StateHasChanged();
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                // Prerendering, disconnected JS circuit, or headless unit test environment
+            }
+        }
+
         // WHAT: Binds client-side DOM activity listeners when an authenticated session exists.
         // WHY:  Ensures that if the user sits idle in their browser, they are automatically logged out.
         // HOW:  Invokes window.weaverRegisterIdleWatcher via IJSRuntime.
@@ -205,7 +235,7 @@
                 await JS.InvokeVoidAsync("weaverRegisterIdleWatcher", _dotNetRef, (int)SessionState.IdleTimeout.TotalSeconds);
                 _idleWatcherRegistered = true;
             }
-            catch (InvalidOperationException)
+            catch (Exception)
             {
                 // Prerendering or test harness without active JS circuit
             }
@@ -217,7 +247,7 @@
             {
                 await JS.InvokeVoidAsync("weaverUnregisterIdleWatcher");
             }
-            catch (InvalidOperationException)
+            catch (Exception)
             {
                 // Circuit disconnected or test harness
             }
@@ -238,8 +268,20 @@
     /// <summary>
     /// Handles user sign-out and navigates to the login page.
     /// </summary>
-    private void HandleSignOut()
+    private async Task HandleSignOut()
     {
+        // WHAT: Purges authenticated tokens from browser storage and clears server-side session state.
+        // WHY:  Ensures user is completely de-authenticated across both browser storage and Blazor circuit.
+        // HOW:  Invokes window.weaverClearSession, calls SessionState.SignOut(), and navigates to /login.
+        try
+        {
+            await JS.InvokeVoidAsync("weaverClearSession");
+        }
+        catch (Exception)
+        {
+            // Disconnected circuit or unit test environment
+        }
+
         SessionState.SignOut();
         Navigation.NavigateTo("/login");
     }

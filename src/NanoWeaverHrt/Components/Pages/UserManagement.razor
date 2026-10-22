@@ -97,6 +97,7 @@
                                 }
                             </td>
                             <td>
+                                <a href="/profile/@user.Username" class="btn btn-sm btn-outline mr-1">Profile &amp; Contacts</a>
                                 <button class="btn btn-sm btn-outline text-danger" @onclick="() => ConfirmDelete(user)">Revoke</button>
                             </td>
                         </tr>
@@ -129,13 +130,19 @@
                     </div>
 
                     <div class="form-group">
-                        <label>Generated Private Key PEM (@_newGeneratedBundle.Algorithm)</label>
+                        <label class="form-label">Generated Private Key PEM (@_newGeneratedBundle.Algorithm)</label>
                         <textarea class="form-control font-mono code-box" rows="7" readonly>@_newGeneratedBundle.PrivateKeyPem</textarea>
                     </div>
 
-                    <div class="mt-2 text-right">
+                    <div class="mt-2 text-right d-flex justify-end gap-2">
                         <button class="btn btn-primary" @onclick="DownloadNewPrivateKey">💾 Download Private Key (.pem)</button>
+                        <button class="btn btn-secondary" @onclick="CopyNewPrivateKey">📋 Copy to Clipboard</button>
                     </div>
+
+                    @if (!string.IsNullOrEmpty(_downloadStatus))
+                    {
+                        <div class="alert alert-info mt-2">@_downloadStatus</div>
+                    }
 
                     <div class="mt-4 text-center">
                         <button class="btn btn-outline" @onclick="CloseCreateModal">Done</button>
@@ -146,57 +153,63 @@
             {
                 <div class="modal-body mt-2">
                     <div class="form-group">
-                        <label for="newUsername">Username</label>
+                        <label for="newUsername" class="form-label">Username</label>
                         <input id="newUsername" class="form-control font-mono" placeholder="e.g. researcher-01 or patient-402" @bind="_newUsername" />
+                        <div class="form-hint">Unique identity handle for the new user.</div>
                     </div>
 
                     <div class="grid grid-2 mt-2">
                         <div class="form-group">
-                            <label for="newRole">Authorization Role</label>
+                            <label for="newRole" class="form-label">Authorization Role</label>
                             <select id="newRole" class="form-control" @bind="_newRole">
                                 <option value="@UserRole.Researcher">Researcher (Execute Simulations &amp; View Data)</option>
                                 <option value="@UserRole.Patient">Patient (View Results &amp; Download Digital DNA)</option>
                                 <option value="@UserRole.Administrator">Administrator (Full Control)</option>
                             </select>
+                            <div class="form-hint">Permissions granted to this identity.</div>
                         </div>
                         <div class="form-group">
-                            <label for="newGate">Access Gate</label>
+                            <label for="newGate" class="form-label">Access Gate</label>
                             <select id="newGate" class="form-control" @bind="_newGate">
                                 <option value="@AccessGate.ApiWeb">ApiWeb (Interactive Web &amp; REST API)</option>
                                 <option value="@AccessGate.Web">Web (Interactive Web UI Only)</option>
                                 <option value="@AccessGate.Api">Api (Headless REST API Only)</option>
                             </select>
+                            <div class="form-hint">Network transport boundary.</div>
                         </div>
                     </div>
 
                     <div class="form-group mt-2">
-                        <label for="newAlgo">Cryptographic Algorithm</label>
+                        <label for="newAlgo" class="form-label">Cryptographic Algorithm</label>
                         <select id="newAlgo" class="form-control" @bind="_newAlgo">
                             <option value="@KeyAlgorithm.Ed25519">Ed25519 (Fast, Compact, Universal Standard)</option>
                             <option value="@KeyAlgorithm.MlDsa65">ML-DSA-65 (NIST FIPS 204 Post-Quantum Module-Lattice)</option>
                         </select>
+                        <div class="form-hint">Signature algorithm for public-key challenge-response.</div>
                     </div>
 
                     <div class="form-group mt-2">
-                        <label>Key Provisioning Mode</label>
+                        <label class="form-label">Key Provisioning Mode</label>
                         <div class="d-flex gap-3">
-                            <label><input type="radio" name="keyMode" checked="@(_generateKeyMode)" @onchange="() => _generateKeyMode = true" /> Generate Keypair</label>
-                            <label><input type="radio" name="keyMode" checked="@(!_generateKeyMode)" @onchange="() => _generateKeyMode = false" /> Provide Public Key</label>
+                            <label class="cursor-pointer d-flex align-center gap-1"><input type="radio" name="keyMode" checked="@(_generateKeyMode)" @onchange="() => _generateKeyMode = true" /> Generate Keypair</label>
+                            <label class="cursor-pointer d-flex align-center gap-1"><input type="radio" name="keyMode" checked="@(!_generateKeyMode)" @onchange="() => _generateKeyMode = false" /> Provide Public Key</label>
                         </div>
                     </div>
 
                     @if (_generateKeyMode)
                     {
                         <div class="form-group mt-2">
-                            <label for="newKeyPassword">Optional Private Key Password</label>
+                            <label for="newKeyPassword" class="form-label">Optional Private Key Password</label>
                             <input id="newKeyPassword" type="password" class="form-control" placeholder="Leave empty for plain PEM" @bind="_newKeyPassword" />
+                            <div class="form-hint">Optional: Password-protect the generated private key.</div>
                         </div>
                     }
                     else
                     {
                         <div class="form-group mt-2">
-                            <label for="newCustomPubKey">Public Key (Base64 DER or PEM)</label>
-                            <textarea id="newCustomPubKey" class="form-control font-mono" rows="4" placeholder="-----BEGIN PUBLIC KEY-----..." @bind="_newCustomPubKey"></textarea>
+                            <label for="newCustomPubKey" class="form-label">Public Key (Base64 DER or PEM)</label>
+                            <textarea id="newCustomPubKey" class="form-control font-mono code-box" rows="4" placeholder="-----BEGIN PUBLIC KEY-----..." @bind="_newCustomPubKey"></textarea>
+                            <div class="form-hint">Paste an existing public key to bind to this user.</div>
                         </div>
                     }
 
@@ -255,6 +268,7 @@
         _newKeyPassword = string.Empty;
         _newCustomPubKey = string.Empty;
         _modalError = null;
+        _downloadStatus = null;
         _newGeneratedBundle = null;
         _showCreateModal = true;
     }
@@ -321,11 +335,42 @@
         }
     }
 
+    private string? _downloadStatus;
+
     private async Task DownloadNewPrivateKey()
     {
         if (_newGeneratedBundle == null) return;
         string fileName = $"{_newGeneratedBundle.Username}_private_key.pem";
-        await JSRuntime.InvokeVoidAsync("weaverDownloadBlob", fileName, _newGeneratedBundle.PrivateKeyPem, "application/x-pem-file");
+        try
+        {
+            bool ok = await JSRuntime.InvokeAsync<bool>("weaverDownloadBlob", fileName, _newGeneratedBundle.PrivateKeyPem, "application/x-pem-file");
+            if (ok)
+            {
+                _downloadStatus = "Private key (.pem) downloaded successfully!";
+            }
+            else
+            {
+                _downloadStatus = "Automatic download could not start. Please click 'Copy to Clipboard' below.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _downloadStatus = $"Download failed ({ex.Message}). Please use 'Copy to Clipboard' below.";
+        }
+    }
+
+    private async Task CopyNewPrivateKey()
+    {
+        if (_newGeneratedBundle == null) return;
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("weaverCopyText", _newGeneratedBundle.PrivateKeyPem);
+            _downloadStatus = "Private key copied to clipboard!";
+        }
+        catch (Exception ex)
+        {
+            _downloadStatus = $"Clipboard copy failed ({ex.Message}). Please manually copy the private key.";
+        }
     }
 
     private async Task ConfirmDelete(UserAccount user)

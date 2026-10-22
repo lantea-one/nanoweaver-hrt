@@ -50,6 +50,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const metricContacts = document.getElementById('metric-contacts');
     const metricVerdict = document.getElementById('metric-verdict');
 
+    // Only run telemetry polling and DOM binding if legacy dashboard elements exist on current page
+    const hasDashboardElements = statFrames || trajectoriesBody || btnExport || importForm || dispTargetE2;
+    if (!hasDashboardElements) {
+        return;
+    }
+
     // -------------------------------------------------------------------------
     // Telemetry Polling (Every 2 seconds)
     // -------------------------------------------------------------------------
@@ -62,12 +68,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!response.ok) return;
 
             const data = await response.json();
-            statFrames.textContent = (data.framesParsed ?? data.frames_parsed ?? 0).toLocaleString();
-            statGc.textContent = `${data.gcGen0Collections ?? data.gc_gen0_collections ?? 0} / ${data.gcGen1Collections ?? data.gc_gen1_collections ?? 0} / ${data.gcGen2Collections ?? data.gc_gen2_collections ?? 0}`;
-            statMem.textContent = `${((data.heapMemoryMb ?? data.heap_memory_mb) ?? 0).toFixed(2)} / ${((data.workingSetMb ?? data.working_set_mb) ?? 0).toFixed(1)} MB`;
-            statUptime.textContent = data.uptime ?? '00:00:00';
-            nodeNameEl.textContent = `NODE: ${(data.nodeName ?? data.node_name ?? 'LOCAL').toUpperCase()}`;
-            acceleratorEl.textContent = (data.acceleratorBackend ?? data.accelerator_backend ?? 'CPU').toUpperCase();
+            if (statFrames) statFrames.textContent = (data.framesParsed ?? data.frames_parsed ?? 0).toLocaleString();
+            if (statGc) statGc.textContent = `${data.gcGen0Collections ?? data.gc_gen0_collections ?? 0} / ${data.gcGen1Collections ?? data.gc_gen1_collections ?? 0} / ${data.gcGen2Collections ?? data.gc_gen2_collections ?? 0}`;
+            if (statMem) statMem.textContent = `${((data.heapMemoryMb ?? data.heap_memory_mb) ?? 0).toFixed(2)} / ${((data.workingSetMb ?? data.working_set_mb) ?? 0).toFixed(1)} MB`;
+            if (statUptime) statUptime.textContent = data.uptime ?? '00:00:00';
+            if (nodeNameEl) nodeNameEl.textContent = `NODE: ${(data.nodeName ?? data.node_name ?? 'LOCAL').toUpperCase()}`;
+            if (acceleratorEl) acceleratorEl.textContent = (data.acceleratorBackend ?? data.accelerator_backend ?? 'CPU').toUpperCase();
         } catch (err) {
             console.error('Failed to poll telemetry:', err);
         }
@@ -152,73 +158,83 @@ document.addEventListener('DOMContentLoaded', () => {
     // -------------------------------------------------------------------------
     // Dataset Export with SHA-256 Manifest
     // -------------------------------------------------------------------------
-    btnExport.addEventListener('click', async () => {
-        const name = exportNameInput.value.trim() || `dataset-${new Date().toISOString().replace(/[:.]/g, '-')}`;
-        btnExport.disabled = true;
-        btnExport.textContent = 'Packaging & Hashing...';
+    if (btnExport) {
+        btnExport.addEventListener('click', async () => {
+            const name = (exportNameInput && exportNameInput.value.trim()) || `dataset-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+            btnExport.disabled = true;
+            btnExport.textContent = 'Packaging & Hashing...';
 
-        try {
-            const response = await fetch('/api/datasets/export', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ datasetName: name, dataset_name: name })
-            });
+            try {
+                const response = await fetch('/api/datasets/export', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ datasetName: name, dataset_name: name })
+                });
 
-            const manifest = await response.json();
-            if (!response.ok) throw new Error(manifest.error || 'Export failed.');
+                const manifest = await response.json();
+                if (!response.ok) throw new Error(manifest.error || 'Export failed.');
 
-            exportResult.classList.remove('hidden');
-            exportHash.textContent = `SHA-256: ${manifest.sha256}`;
-            downloadArchiveLink.href = `/api/datasets/download/${encodeURIComponent(manifest.archive)}`;
-            const archiveSize = manifest.sizeBytes ?? manifest.size_bytes ?? 0;
-            downloadArchiveLink.textContent = `Download ${manifest.archive} (${(archiveSize / 1024 / 1024).toFixed(2)} MB)`;
-        } catch (err) {
-            alert(`Export failed: ${err.message}`);
-        } finally {
-            btnExport.disabled = false;
-            btnExport.textContent = 'Export Dataset';
-        }
-    });
+                if (exportResult) exportResult.classList.remove('hidden');
+                if (exportHash) exportHash.textContent = `SHA-256: ${manifest.sha256}`;
+                if (downloadArchiveLink) {
+                    downloadArchiveLink.href = `/api/datasets/download/${encodeURIComponent(manifest.archive)}`;
+                    const archiveSize = manifest.sizeBytes ?? manifest.size_bytes ?? 0;
+                    downloadArchiveLink.textContent = `Download ${manifest.archive} (${(archiveSize / 1024 / 1024).toFixed(2)} MB)`;
+                }
+            } catch (err) {
+                alert(`Export failed: ${err.message}`);
+            } finally {
+                btnExport.disabled = false;
+                btnExport.textContent = 'Export Dataset';
+            }
+        });
+    }
 
     // -------------------------------------------------------------------------
     // Dataset Import & Cryptographic Integrity Verification
     // -------------------------------------------------------------------------
-    importForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
+    if (importForm) {
+        importForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
 
-        const archiveFile = document.getElementById('import-archive').files[0];
-        const manifestFile = document.getElementById('import-manifest').files[0];
+            const archiveInput = document.getElementById('import-archive');
+            const manifestInput = document.getElementById('import-manifest');
+            const archiveFile = archiveInput ? archiveInput.files[0] : null;
+            const manifestFile = manifestInput ? manifestInput.files[0] : null;
 
-        if (!archiveFile || !manifestFile) {
-            alert('Please select both the archive (.tar.gz) and manifest (.json) files.');
-            return;
-        }
-
-        const formData = new FormData();
-        formData.append('archive', archiveFile);
-        formData.append('manifest', manifestFile);
-
-        importStatus.classList.remove('hidden');
-        importStatus.innerHTML = '<span class="text-muted">Computing SHA-256 hash and verifying cryptographic provenance...</span>';
-
-        try {
-            const response = await fetch('/api/datasets/import', {
-                method: 'POST',
-                body: formData
-            });
-
-            const result = await response.json();
-            if (!response.ok) {
-                importStatus.innerHTML = `<span style="color:var(--accent-rose);">❌ ${escapeHtml(result.error || 'Verification failed')}</span>`;
+            if (!archiveFile || !manifestFile) {
+                alert('Please select both the archive (.tar.gz) and manifest (.json) files.');
                 return;
             }
 
-            importStatus.innerHTML = `<span class="text-success">✔ Provenance verified! ${escapeHtml(result.message)}</span>`;
-            loadTrajectories();
-        } catch (err) {
-            importStatus.innerHTML = `<span style="color:var(--accent-rose);">❌ Network error: ${escapeHtml(err.message)}</span>`;
-        }
-    });
+            const formData = new FormData();
+            formData.append('archive', archiveFile);
+            formData.append('manifest', manifestFile);
+
+            if (importStatus) {
+                importStatus.classList.remove('hidden');
+                importStatus.innerHTML = '<span class="text-muted">Computing SHA-256 hash and verifying cryptographic provenance...</span>';
+            }
+
+            try {
+                const response = await fetch('/api/datasets/import', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+                if (!response.ok) {
+                    if (importStatus) importStatus.innerHTML = `<span style="color:var(--accent-rose);">❌ ${escapeHtml(result.error || 'Verification failed')}</span>`;
+                    return;
+                }
+
+                if (importStatus) importStatus.innerHTML = `<span class="text-success">✔ Provenance verified! ${escapeHtml(result.message)}</span>`;
+                loadTrajectories();
+            } catch (err) {
+                if (importStatus) importStatus.innerHTML = `<span style="color:var(--accent-rose);">❌ Network error: ${escapeHtml(err.message)}</span>`;
+            }
+        });
+    }
 
     // -------------------------------------------------------------------------
     // Endocrine Bistable Toggle State Management
@@ -236,9 +252,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderEndocrineProfile(profile) {
-        dispTargetE2.innerHTML = `${profile.target_estradiol_pmol_l.toFixed(1)} <small>pmol/L</small>`;
-        dispTargetT.innerHTML = `${profile.target_testosterone_nmol_l.toFixed(2)} <small>nmol/L</small>`;
-        dispTargetKd.innerHTML = `${profile.kd_target_nanomolar.toFixed(1)} <small>nM</small>`;
+        if (dispTargetE2) dispTargetE2.innerHTML = `${profile.target_estradiol_pmol_l.toFixed(1)} <small>pmol/L</small>`;
+        if (dispTargetT) dispTargetT.innerHTML = `${profile.target_testosterone_nmol_l.toFixed(2)} <small>nmol/L</small>`;
+        if (dispTargetKd) dispTargetKd.innerHTML = `${profile.kd_target_nanomolar.toFixed(1)} <small>nM</small>`;
 
         if (dispTargetTissue) {
             dispTargetTissue.innerHTML = profile.target_tissue === 0 || profile.target_tissue === 'AnteriorPituitaryGonadotrope'
@@ -252,16 +268,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const isMtF = profile.regimen === 0 || profile.regimen === 'MaleToFemale' || profile.target_state === 0 || profile.target_state === 'EstrogenicDominant';
 
-        if (isMtF) {
-            btnToggleEstrogen.className = 'toggle-btn active-estrogen';
-            btnToggleTestosterone.className = 'toggle-btn';
-            activeStateBadge.textContent = 'MALE-TO-FEMALE (MtF)';
-            activeStateBadge.className = 'badge badge-accent';
-        } else {
-            btnToggleEstrogen.className = 'toggle-btn';
-            btnToggleTestosterone.className = 'toggle-btn active-testosterone';
-            activeStateBadge.textContent = 'FEMALE-TO-MALE (FtM)';
-            activeStateBadge.className = 'badge badge-accent';
+        if (btnToggleEstrogen && btnToggleTestosterone && activeStateBadge) {
+            if (isMtF) {
+                btnToggleEstrogen.className = 'toggle-btn active-estrogen';
+                btnToggleTestosterone.className = 'toggle-btn';
+                activeStateBadge.textContent = 'MALE-TO-FEMALE (MtF)';
+                activeStateBadge.className = 'badge badge-accent';
+            } else {
+                btnToggleEstrogen.className = 'toggle-btn';
+                btnToggleTestosterone.className = 'toggle-btn active-testosterone';
+                activeStateBadge.textContent = 'FEMALE-TO-MALE (FtM)';
+                activeStateBadge.className = 'badge badge-accent';
+            }
         }
     }
 
@@ -281,19 +299,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    btnToggleEstrogen.addEventListener('click', () => setToggleState(0));      // EstrogenicDominant
-    btnToggleTestosterone.addEventListener('click', () => setToggleState(1));  // AndrogenicDominant
+    if (btnToggleEstrogen) btnToggleEstrogen.addEventListener('click', () => setToggleState(0));      // EstrogenicDominant
+    if (btnToggleTestosterone) btnToggleTestosterone.addEventListener('click', () => setToggleState(1));  // AndrogenicDominant
 
     // -------------------------------------------------------------------------
     // In-Silico Aptamer Docking Analysis
     // -------------------------------------------------------------------------
     window.analyzeAptamerDocking = async function (fileName) {
-        metricOccupancy.textContent = 'Evaluating...';
-        metricContacts.textContent = 'Slicing...';
-        metricVerdict.textContent = 'Computing contact map...';
+        if (metricOccupancy) metricOccupancy.textContent = 'Evaluating...';
+        if (metricContacts) metricContacts.textContent = 'Slicing...';
+        if (metricVerdict) metricVerdict.textContent = 'Computing contact map...';
 
-        parseConsole.classList.remove('hidden');
-        parseOutput.textContent = `[ENDOCRINE DOCKING] Slicing trajectory ${fileName} for aptamer-steroid contact geometry...\n`;
+        if (parseConsole) parseConsole.classList.remove('hidden');
+        if (parseOutput) parseOutput.textContent = `[ENDOCRINE DOCKING] Slicing trajectory ${fileName} for aptamer-steroid contact geometry...\n`;
 
         try {
             const res = await fetch(`/api/endocrine/analyze/${encodeURIComponent(fileName)}`, {
@@ -302,24 +320,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const metrics = await res.json();
             if (!res.ok) {
-                metricVerdict.textContent = 'Analysis Failed';
-                parseOutput.textContent += `[ERROR] ${metrics.error || 'Aptamer analysis failed.'}\n`;
+                if (metricVerdict) metricVerdict.textContent = 'Analysis Failed';
+                if (parseOutput) parseOutput.textContent += `[ERROR] ${metrics.error || 'Aptamer analysis failed.'}\n`;
                 return;
             }
 
-            metricOccupancy.textContent = `${(metrics.binding_occupancy_ratio * 100).toFixed(1)}%`;
-            metricContacts.textContent = `${metrics.average_contacts_per_frame.toFixed(2)}`;
-            metricVerdict.textContent = metrics.stability_verdict;
+            if (metricOccupancy) metricOccupancy.textContent = `${(metrics.binding_occupancy_ratio * 100).toFixed(1)}%`;
+            if (metricContacts) metricContacts.textContent = `${metrics.average_contacts_per_frame.toFixed(2)}`;
+            if (metricVerdict) metricVerdict.textContent = metrics.stability_verdict;
 
-            parseOutput.textContent += `[SUCCESS] Aptamer Docking Analysis Completed.\n`
-                + `  - Target Trajectory: ${metrics.trajectory_file}\n`
-                + `  - Frames Evaluated: ${metrics.frames_analyzed.toLocaleString()}\n`
-                + `  - Binding Occupancy Ratio: ${(metrics.binding_occupancy_ratio * 100).toFixed(1)}%\n`
-                + `  - Mean Contacts / Frame: ${metrics.average_contacts_per_frame.toFixed(2)}\n`
-                + `  - Thermodynamic Verdict: ${metrics.stability_verdict}\n`;
+            if (parseOutput) {
+                parseOutput.textContent += `[SUCCESS] Aptamer Docking Analysis Completed.\n`
+                    + `  - Target Trajectory: ${metrics.trajectory_file}\n`
+                    + `  - Frames Evaluated: ${metrics.frames_analyzed.toLocaleString()}\n`
+                    + `  - Binding Occupancy Ratio: ${(metrics.binding_occupancy_ratio * 100).toFixed(1)}%\n`
+                    + `  - Mean Contacts / Frame: ${metrics.average_contacts_per_frame.toFixed(2)}\n`
+                    + `  - Thermodynamic Verdict: ${metrics.stability_verdict}\n`;
+            }
         } catch (err) {
-            metricVerdict.textContent = 'Network Error';
-            parseOutput.textContent += `[CRITICAL] Network error: ${err.message}\n`;
+            if (metricVerdict) metricVerdict.textContent = 'Network Error';
+            if (parseOutput) parseOutput.textContent += `[CRITICAL] Network error: ${err.message}\n`;
         }
     };
 
@@ -335,7 +355,7 @@ document.addEventListener('DOMContentLoaded', () => {
             .replace(/"/g, '&quot;');
     }
 
-    btnRefresh.addEventListener('click', loadTrajectories);
+    if (btnRefresh) btnRefresh.addEventListener('click', loadTrajectories);
 
     // Initial boot sequence
     updateTelemetry();
@@ -349,17 +369,97 @@ document.addEventListener('DOMContentLoaded', () => {
  * @param {string} fileName - Target file name.
  * @param {string} content - Text content.
  * @param {string} mimeType - MIME type.
+ * @returns {boolean} True if download was initiated without error.
  */
 window.weaverDownloadBlob = function(fileName, content, mimeType) {
-    const blob = new Blob([content], { type: mimeType || 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    try {
+        const blob = new Blob([content], { type: mimeType || 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        return true;
+    } catch (err) {
+        console.error('weaverDownloadBlob failed:', err);
+        return false;
+    }
+};
+
+/**
+ * Copies text safely to the user's system clipboard.
+ * @param {string} text - Text to copy.
+ * @returns {Promise<boolean>} True if copied successfully.
+ */
+window.weaverCopyText = async function(text) {
+    try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(text);
+            return true;
+        }
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        const successful = document.execCommand('copy');
+        document.body.removeChild(textArea);
+        return successful;
+    } catch (err) {
+        console.error('weaverCopyText failed:', err);
+        return false;
+    }
+};
+
+/**
+ * Persists an authenticated session Bearer token across cookies, sessionStorage, and localStorage.
+ * @param {string} token - The Bearer token string.
+ */
+window.weaverSetSession = function(token) {
+    if (!token) return;
+    try {
+        sessionStorage.setItem('weaver_session', token);
+        localStorage.setItem('weaver_session', token);
+        // Persist cookie for 8 hours (28800s)
+        document.cookie = 'weaver_session=' + encodeURIComponent(token) + '; path=/; max-age=28800; SameSite=Strict';
+    } catch (e) {
+        console.error('weaverSetSession failed:', e);
+    }
+};
+
+/**
+ * Retrieves the currently active session Bearer token from sessionStorage, localStorage, or cookies.
+ * @returns {string|null} The active token if present, otherwise null.
+ */
+window.weaverGetSessionToken = function() {
+    try {
+        let token = sessionStorage.getItem('weaver_session') || localStorage.getItem('weaver_session');
+        if (!token) {
+            const match = document.cookie.match(/(?:^|;\s*)weaver_session=([^;]*)/);
+            if (match) token = decodeURIComponent(match[1]);
+        }
+        return token || null;
+    } catch (e) {
+        return null;
+    }
+};
+
+/**
+ * Clears active session tokens from sessionStorage, localStorage, and expires the session cookie.
+ */
+window.weaverClearSession = function() {
+    try {
+        sessionStorage.removeItem('weaver_session');
+        localStorage.removeItem('weaver_session');
+        document.cookie = 'weaver_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC; SameSite=Strict';
+    } catch (e) {
+        console.error('weaverClearSession failed:', e);
+    }
 };
 
 /**

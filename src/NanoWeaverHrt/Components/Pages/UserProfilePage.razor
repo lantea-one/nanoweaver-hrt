@@ -1,0 +1,796 @@
+@page "/profile"
+@page "/profile/{TargetUsername}"
+@using NanoWeaverHrt.Endocrine
+@using NanoWeaverHrt.Security.Authentication
+@using System.Text.Json
+@inject IUserProfileRepository ProfileRepo
+@inject IUserRepository UserRepo
+@inject UserSessionState SessionState
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<div class="user-management-container">
+    <div class="d-flex justify-between align-center mb-3">
+        <div>
+            <h2>SOVEREIGN USER &amp; PATIENT PROFILE</h2>
+            <p class="subtext">
+                Manage demographic records, personal pronouns, clinical regimens, cryptographic avatars, addresses, and emergency outreach contacts.
+            </p>
+        </div>
+        <div>
+            @if (SessionState.IsAdmin && !string.Equals(_effectiveUsername, SessionState.CurrentUser?.Username, StringComparison.OrdinalIgnoreCase))
+            {
+                <a href="/users" class="btn btn-outline">&larr; Back to User Management</a>
+            }
+        </div>
+    </div>
+
+    @if (!SessionState.IsAuthenticated)
+    {
+        <div class="alert alert-warning">
+            <strong>Authentication Required:</strong> Please <a href="/login">sign in</a> with your private key to view or update profile records.
+        </div>
+    }
+    else if (!_hasAccess)
+    {
+        <div class="alert alert-danger">
+            <strong>Access Denied:</strong> You are not authorized to view or modify profile records for user '@TargetUsername'.
+        </div>
+    }
+    else if (_targetAccount == null && !_isLoading)
+    {
+        <div class="alert alert-danger">
+            <strong>User Not Found:</strong> The user account '@_effectiveUsername' does not exist in the authoritative database.
+        </div>
+    }
+    else
+    {
+        @if (!string.IsNullOrEmpty(_statusMessage))
+        {
+            <div class="alert @(_isStatusError ? "alert-danger" : "alert-success") mb-3">
+                @_statusMessage
+            </div>
+        }
+
+        <!-- Profile Header Badge -->
+        <div class="card mb-3 d-flex justify-between align-center">
+            <div class="d-flex align-center gap-3">
+                @if (!string.IsNullOrEmpty(_avatarPreview))
+                {
+                    <img src="@_avatarPreview" alt="Avatar" style="width: 72px; height: 72px; border-radius: 50%; object-fit: cover; border: 2px solid var(--accent, #00ffff);" />
+                }
+                else
+                {
+                    <div style="width: 72px; height: 72px; border-radius: 50%; background: #1a2332; display: flex; align-items: center; justify-content: center; font-size: 2rem; border: 2px dashed #4a5568;">
+                        👤
+                    </div>
+                }
+                <div>
+                    <h3 class="mb-0">
+                        @(!string.IsNullOrWhiteSpace(_profile.PreferredName) ? _profile.PreferredName : (!string.IsNullOrWhiteSpace(_profile.FirstName) ? $"{_profile.FirstName} {_profile.LastName}" : _effectiveUsername))
+                    </h3>
+                    <div class="subtext font-mono">
+                        @@@_effectiveUsername &bull; Role: @_targetAccount?.Role &bull; Gate: @_targetAccount?.AccessGate
+                    </div>
+                    <div class="d-flex gap-2 mt-1">
+                        @if (_profile.Pronouns.Length > 0)
+                        {
+                            <span class="badge badge-accent">@string.Join("/", _profile.Pronouns)</span>
+                        }
+                        @if (_profile.Regimen.HasValue)
+                        {
+                            <span class="badge badge-primary">Regimen: @_profile.Regimen</span>
+                        }
+                        <span class="badge badge-outline">Sex at Birth: @_profile.GenderAssignedAtBirth</span>
+                    </div>
+                </div>
+            </div>
+            <div>
+                <span class="badge badge-outline text-success">AES-256-GCM Envelope Encryption Active</span>
+            </div>
+        </div>
+
+        <!-- Section 1: Demographic & Clinical Profile -->
+        <div class="card mb-3">
+            <h3>Demographic &amp; Clinical Information</h3>
+            <p class="subtext mb-3">Personal identity details, contact coordinates, endocrine regimen, and encrypted avatar image.</p>
+
+            <div class="grid grid-2">
+                <div class="form-group">
+                    <label for="firstName" class="form-label">Legal / Primary First Name</label>
+                    <input id="firstName" class="form-control" placeholder="First Name" @bind="_profile.FirstName" />
+                </div>
+                <div class="form-group">
+                    <label for="lastName" class="form-label">Legal / Primary Last Name</label>
+                    <input id="lastName" class="form-control" placeholder="Last Name" @bind="_profile.LastName" />
+                </div>
+            </div>
+
+            <div class="grid grid-2 mt-2">
+                <div class="form-group">
+                    <label for="preferredName" class="form-label">Chosen / Preferred Name</label>
+                    <input id="preferredName" class="form-control" placeholder="Chosen Name" @bind="_profile.PreferredName" />
+                    <div class="form-hint">Used across UI greetings and reports.</div>
+                </div>
+                <div class="form-group">
+                    <label for="pronounsInput" class="form-label">Pronouns (Comma-Separated)</label>
+                    <input id="pronounsInput" class="form-control" placeholder="e.g. she, her or they, them" @bind="_pronounsRaw" />
+                    <div class="form-hint">Specified as comma-separated values (e.g. "she, her" or "he, him").</div>
+                </div>
+            </div>
+
+            <div class="grid grid-2 mt-2">
+                <div class="form-group">
+                    <label for="emailAddress" class="form-label">Email Address</label>
+                    <input id="emailAddress" type="email" class="form-control" placeholder="user@domain.org" @bind="_profile.EmailAddress" />
+                </div>
+                <div class="form-group">
+                    <label for="phoneNumber" class="form-label">Primary Telephone Number</label>
+                    <input id="phoneNumber" type="tel" class="form-control" placeholder="+1 (555) 000-0000" @bind="_profile.PhoneNumber" />
+                </div>
+            </div>
+
+            <div class="grid grid-2 mt-2">
+                <div class="form-group">
+                    <label for="dob" class="form-label">Date of Birth (YYYY-MM-DD)</label>
+                    <input id="dob" type="text" class="form-control font-mono" placeholder="YYYY-MM-DD" @bind="_profile.DateOfBirth" />
+                </div>
+                <div class="form-group">
+                    <label for="languagePref" class="form-label">Language Preference</label>
+                    <input id="languagePref" class="form-control" placeholder="en-US" @bind="_profile.LanguagePreference" />
+                </div>
+            </div>
+
+            <div class="grid grid-2 mt-2">
+                <div class="form-group">
+                    <label for="regimenSelect" class="form-label">Target Therapeutic Regimen</label>
+                    <select id="regimenSelect" class="form-control" @bind="_selectedRegimenString">
+                        <option value="">None / Unassigned (Researcher / Observer)</option>
+                        <option value="MaleToFemale">Male to Female (MtF) - Estradiol &amp; Antiandrogen</option>
+                        <option value="FemaleToMale">Female to Male (FtM) - Testosterone</option>
+                    </select>
+                    <div class="form-hint">Assigns target hormone kinetics models.</div>
+                </div>
+                <div class="form-group">
+                    <label for="assignedSex" class="form-label">Biological Sex / Gender Assigned at Birth</label>
+                    <select id="assignedSex" class="form-control" @bind="_profile.GenderAssignedAtBirth">
+                        <option value="@GenderAssignedAtBirth.Female">Female</option>
+                        <option value="@GenderAssignedAtBirth.Male">Male</option>
+                        <option value="@GenderAssignedAtBirth.Both">Both</option>
+                    </select>
+                    <div class="form-hint">Used for physiological baseline pharmacokinetic modeling.</div>
+                </div>
+            </div>
+
+            <div class="form-group mt-2">
+                <label class="form-label">Profile Avatar Picture (Encrypted Data-URI)</label>
+                <div class="d-flex align-center gap-3">
+                    <InputFile OnChange="HandleAvatarSelected" accept="image/*" class="form-control" />
+                    @if (!string.IsNullOrEmpty(_avatarPreview))
+                    {
+                        <button type="button" class="btn btn-outline text-danger" @onclick="ClearAvatar">Remove Avatar</button>
+                    }
+                </div>
+                <div class="form-hint">Uploaded images are encrypted using AES-256-GCM before database persistence.</div>
+            </div>
+
+            <div class="form-group mt-2">
+                <label for="emergencyNotes" class="form-label">Emergency Medical Notes, Allergies &amp; Contraindications</label>
+                <textarea id="emergencyNotes" class="form-control" rows="2" placeholder="e.g. Penicillin allergy, history of deep vein thrombosis, etc." @bind="_profile.EmergencyMedicalNotes"></textarea>
+            </div>
+
+            <div class="form-group mt-2">
+                <label for="bioNotes" class="form-label">Clinical / Personal Bio</label>
+                <textarea id="bioNotes" class="form-control" rows="2" placeholder="Clinical notes, patient narrative, or researcher background." @bind="_profile.Bio"></textarea>
+            </div>
+
+            <div class="mt-3 text-right d-flex justify-end">
+                <button class="btn btn-primary" @onclick="SaveProfileAsync">💾 Save Profile Information</button>
+            </div>
+        </div>
+
+        <!-- Section 2: Structured Patient Addresses -->
+        <div class="card mb-3">
+            <div class="d-flex justify-between align-center mb-2">
+                <div>
+                    <h3>Patient Addresses Lookup</h3>
+                    <p class="subtext">Residential, postal, clinical lab, and nanocarrier delivery addresses.</p>
+                </div>
+                <button class="btn btn-secondary btn-sm" @onclick="() => _showAddressForm = !_showAddressForm">
+                    @(_showAddressForm ? "Cancel" : "+ Add New Address")
+                </button>
+            </div>
+
+            @if (_showAddressForm)
+            {
+                <div class="card mb-3 p-3" style="background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border, #2d3748);">
+                    <h4>Add Structured Address</h4>
+                    <div class="grid grid-2 mt-2">
+                        <div class="form-group">
+                            <label for="addrType" class="form-label">Address Type</label>
+                            <select id="addrType" class="form-control" @bind="_newAddress.AddressType">
+                                <option value="Primary">Primary Residential</option>
+                                <option value="Secondary">Secondary Residential</option>
+                                <option value="ClinicLab">Clinical Laboratory</option>
+                                <option value="Delivery">Nanocarrier Delivery Hub</option>
+                            </select>
+                        </div>
+                        <div class="form-group d-flex align-center mt-3">
+                            <label class="cursor-pointer d-flex align-center gap-1">
+                                <input type="checkbox" @bind="_newAddress.IsPrimary" />
+                                <span>Set as Primary Address</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-group mt-2">
+                        <label for="addrLine1" class="form-label">Address Line 1</label>
+                        <input id="addrLine1" class="form-control" placeholder="123 Sovereign Way" @bind="_newAddress.AddressLine1" />
+                    </div>
+
+                    <div class="form-group mt-2">
+                        <label for="addrLine2" class="form-label">Address Line 2 (Optional)</label>
+                        <input id="addrLine2" class="form-control" placeholder="Suite, Apt, Floor" @bind="_newAddress.AddressLine2" />
+                    </div>
+
+                    <div class="grid grid-2 mt-2">
+                        <div class="form-group">
+                            <label for="addrCity" class="form-label">City</label>
+                            <input id="addrCity" class="form-control" placeholder="City" @bind="_newAddress.City" />
+                        </div>
+                        <div class="form-group">
+                            <label for="addrState" class="form-label">State / Province / Region</label>
+                            <input id="addrState" class="form-control" placeholder="State/Province" @bind="_newAddress.StateOrProvince" />
+                        </div>
+                    </div>
+
+                    <div class="grid grid-2 mt-2">
+                        <div class="form-group">
+                            <label for="addrPostal" class="form-label">Postal / ZIP Code</label>
+                            <input id="addrPostal" class="form-control" placeholder="Postal Code" @bind="_newAddress.PostalCode" />
+                        </div>
+                        <div class="form-group">
+                            <label for="addrCountry" class="form-label">Country</label>
+                            <input id="addrCountry" class="form-control" placeholder="Country" @bind="_newAddress.Country" />
+                        </div>
+                    </div>
+
+                    <div class="mt-3 text-right d-flex justify-end gap-2">
+                        <button class="btn btn-outline btn-sm" @onclick="() => _showAddressForm = false">Cancel</button>
+                        <button class="btn btn-primary btn-sm" @onclick="SaveAddressAsync">Save Address</button>
+                    </div>
+                </div>
+            }
+
+            <table class="table w-100">
+                <thead>
+                    <tr>
+                        <th>Type</th>
+                        <th>Address</th>
+                        <th>City / State</th>
+                        <th>Postal / Country</th>
+                        <th>Primary</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_addresses.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="6" class="text-center p-3 text-muted">No addresses registered yet.</td>
+                        </tr>
+                    }
+                    @foreach (var addr in _addresses)
+                    {
+                        <tr>
+                            <td><span class="badge badge-outline">@addr.AddressType</span></td>
+                            <td>
+                                <div>@addr.AddressLine1</div>
+                                @if (!string.IsNullOrEmpty(addr.AddressLine2))
+                                {
+                                    <div class="text-muted font-sm">@addr.AddressLine2</div>
+                                }
+                            </td>
+                            <td>@addr.City, @addr.StateOrProvince</td>
+                            <td>@addr.PostalCode, @addr.Country</td>
+                            <td>
+                                @if (addr.IsPrimary)
+                                {
+                                    <span class="badge badge-accent">Primary</span>
+                                }
+                            </td>
+                            <td>
+                                <button class="btn btn-sm btn-outline text-danger" @onclick="() => DeleteAddressAsync(addr.Id)">Remove</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Section 3: Patient Emergency & Outreach Contacts Lookup Table -->
+        <div class="card mb-3">
+            <div class="d-flex justify-between align-center mb-2">
+                <div>
+                    <h3>Patient Outreach &amp; Emergency Contacts Lookup</h3>
+                    <p class="subtext">
+                        People to reach out to in case the patient cannot be reached. Ordered by priority.
+                    </p>
+                </div>
+                <button class="btn btn-secondary btn-sm" @onclick="() => _showContactForm = !_showContactForm">
+                    @(_showContactForm ? "Cancel" : "+ Add Outreach Contact")
+                </button>
+            </div>
+
+            @if (_showContactForm)
+            {
+                <div class="card mb-3 p-3" style="background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border, #2d3748);">
+                    <h4>Add Trusted Outreach Contact</h4>
+                    <div class="grid grid-2 mt-2">
+                        <div class="form-group">
+                            <label for="contactName" class="form-label">Full Contact Name</label>
+                            <input id="contactName" class="form-control" placeholder="Contact Name" @bind="_newContact.ContactName" />
+                        </div>
+                        <div class="form-group">
+                            <label for="relationship" class="form-label">Relationship to Patient</label>
+                            <input id="relationship" class="form-control" placeholder="e.g. Partner, Parent, Sibling, Physician, Advocate" @bind="_newContact.Relationship" />
+                        </div>
+                    </div>
+
+                    <div class="grid grid-2 mt-2">
+                        <div class="form-group">
+                            <label for="cPhone" class="form-label">Telephone / Mobile Number</label>
+                            <input id="cPhone" type="tel" class="form-control" placeholder="+1 (555) 000-0000" @bind="_newContact.PhoneNumber" />
+                        </div>
+                        <div class="form-group">
+                            <label for="cEmail" class="form-label">Email Address (Optional)</label>
+                            <input id="cEmail" type="email" class="form-control" placeholder="contact@domain.org" @bind="_newContact.EmailAddress" />
+                        </div>
+                    </div>
+
+                    <div class="grid grid-2 mt-2">
+                        <div class="form-group">
+                            <label for="priorityOrder" class="form-label">Priority Order (1 = Call First)</label>
+                            <input id="priorityOrder" type="number" min="1" max="10" class="form-control" @bind="_newContact.PriorityOrder" />
+                        </div>
+                        <div class="form-group d-flex align-center mt-3">
+                            <label class="cursor-pointer d-flex align-center gap-1">
+                                <input type="checkbox" @bind="_newContact.CanDiscussMedicalInfo" />
+                                <span>Authorized to Discuss Medical / Treatment Info</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-group mt-2">
+                        <label for="cNotes" class="form-label">Outreach Instructions / Notes</label>
+                        <textarea id="cNotes" class="form-control" rows="2" placeholder="e.g. Call mobile first; lives 10 minutes away." @bind="_newContact.Notes"></textarea>
+                    </div>
+
+                    <div class="mt-3 text-right d-flex justify-end gap-2">
+                        <button class="btn btn-outline btn-sm" @onclick="() => _showContactForm = false">Cancel</button>
+                        <button class="btn btn-primary btn-sm" @onclick="SaveContactAsync">Save Contact</button>
+                    </div>
+                </div>
+            }
+
+            <table class="table w-100">
+                <thead>
+                    <tr>
+                        <th>Priority</th>
+                        <th>Contact Name</th>
+                        <th>Relationship</th>
+                        <th>Phone</th>
+                        <th>Email</th>
+                        <th>Medical Disclosure Consent</th>
+                        <th>Notes</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_contacts.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="8" class="text-center p-3 text-muted">No emergency or outreach contacts registered yet.</td>
+                        </tr>
+                    }
+                    @foreach (var c in _contacts)
+                    {
+                        <tr>
+                            <td><span class="badge badge-accent font-mono">#@c.PriorityOrder</span></td>
+                            <td class="font-bold">@c.ContactName</td>
+                            <td><span class="badge badge-outline">@c.Relationship</span></td>
+                            <td class="font-mono">@c.PhoneNumber</td>
+                            <td>@(c.EmailAddress ?? "—")</td>
+                            <td>
+                                @if (c.CanDiscussMedicalInfo)
+                                {
+                                    <span class="badge badge-primary">Authorized</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">Emergency Notification Only</span>
+                                }
+                            </td>
+                            <td class="font-sm text-muted">@(c.Notes ?? "—")</td>
+                            <td>
+                                <button class="btn btn-sm btn-outline text-danger" @onclick="() => DeleteContactAsync(c.Id)">Remove</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// Gets or sets the target username from route parameters when managed by an administrator.
+    /// </summary>
+    [Parameter]
+    public string? TargetUsername { get; set; }
+
+    /// <summary>
+    /// The effective username being managed on this page.
+    /// </summary>
+    private string _effectiveUsername = string.Empty;
+
+    /// <summary>
+    /// Indicates whether the active session has access to view or edit this profile.
+    /// </summary>
+    private bool _hasAccess;
+
+    /// <summary>
+    /// Indicates whether profile data is currently being fetched from the database.
+    /// </summary>
+    private bool _isLoading = true;
+
+    /// <summary>
+    /// Status message displayed above profile content.
+    /// </summary>
+    private string? _statusMessage;
+
+    /// <summary>
+    /// Indicates whether the status message represents an error.
+    /// </summary>
+    private bool _isStatusError;
+
+    /// <summary>
+    /// The user account principal record.
+    /// </summary>
+    private UserAccount? _targetAccount;
+
+    /// <summary>
+    /// The active user profile data record.
+    /// </summary>
+    private UserProfile _profile = new();
+
+    /// <summary>
+    /// Comma-separated pronouns input buffer.
+    /// </summary>
+    private string _pronounsRaw = string.Empty;
+
+    /// <summary>
+    /// Selected regimen string for select dropdown binding.
+    /// </summary>
+    private string _selectedRegimenString = string.Empty;
+
+    /// <summary>
+    /// Decrypted or preview avatar data-URI.
+    /// </summary>
+    private string? _avatarPreview;
+
+    /// <summary>
+    /// Collection of structured addresses.
+    /// </summary>
+    private IReadOnlyList<PatientAddress> _addresses = [];
+
+    /// <summary>
+    /// Collection of outreach/emergency contacts.
+    /// </summary>
+    private IReadOnlyList<PatientContact> _contacts = [];
+
+    /// <summary>
+    /// Controls visibility of the add-address form.
+    /// </summary>
+    private bool _showAddressForm;
+
+    /// <summary>
+    /// Buffer for creating a new address.
+    /// </summary>
+    private PatientAddress _newAddress = new();
+
+    /// <summary>
+    /// Controls visibility of the add-contact form.
+    /// </summary>
+    private bool _showContactForm;
+
+    /// <summary>
+    /// Buffer for creating a new contact.
+    /// </summary>
+    private PatientContact _newContact = new();
+
+    /// <inheritdoc/>
+    protected override async Task OnParametersSetAsync()
+    {
+        // WHAT: Resolves effective username and validates authorization boundaries.
+        // WHY:  Allows administrators to manage any user profile, while regular users manage their own.
+        // HOW:  Compares TargetUsername with current session username and checks SessionState.IsAdmin.
+        _isLoading = true;
+        _statusMessage = null;
+
+        if (!SessionState.IsAuthenticated || SessionState.CurrentUser == null)
+        {
+            _hasAccess = false;
+            _isLoading = false;
+            return;
+        }
+
+        _effectiveUsername = !string.IsNullOrWhiteSpace(TargetUsername)
+            ? TargetUsername.Trim()
+            : SessionState.CurrentUser.Username;
+
+        _hasAccess = SessionState.IsAdmin || string.Equals(_effectiveUsername, SessionState.CurrentUser.Username, StringComparison.OrdinalIgnoreCase);
+        if (!_hasAccess)
+        {
+            _isLoading = false;
+            return;
+        }
+
+        await LoadDataAsync();
+        _isLoading = false;
+    }
+
+    /// <summary>
+    /// Loads user account, profile, addresses, and contacts from the authoritative repository.
+    /// </summary>
+    private async Task LoadDataAsync()
+    {
+        // WHAT: Fetches account, profile, addresses, and contacts from database repositories.
+        // WHY:  Hydrates the UI state with existing demographic and lookup information.
+        // HOW:  Queries UserRepo and ProfileRepo concurrently or sequentially.
+        try
+        {
+            _targetAccount = await UserRepo.GetUserAsync(_effectiveUsername);
+            if (_targetAccount == null)
+            {
+                return;
+            }
+
+            UserProfile? existingProfile = await ProfileRepo.GetProfileAsync(_effectiveUsername);
+            if (existingProfile != null)
+            {
+                _profile = existingProfile;
+                _avatarPreview = _profile.Picture;
+                _pronounsRaw = string.Join(", ", _profile.Pronouns);
+                _selectedRegimenString = _profile.Regimen?.ToString() ?? string.Empty;
+            }
+            else
+            {
+                _profile = new UserProfile { Username = _effectiveUsername };
+                _avatarPreview = null;
+                _pronounsRaw = string.Empty;
+                _selectedRegimenString = string.Empty;
+            }
+
+            _addresses = await ProfileRepo.GetAddressesAsync(_effectiveUsername);
+            _contacts = await ProfileRepo.GetContactsAsync(_effectiveUsername);
+        }
+        catch (Exception ex)
+        {
+            _statusMessage = $"Failed to load user profile: {ex.Message}";
+            _isStatusError = true;
+        }
+    }
+
+    /// <summary>
+    /// Handles file selection from the avatar input control, converting the image to a base64 data-URI.
+    /// </summary>
+    /// <param name="e">Input file change event arguments.</param>
+    private async Task HandleAvatarSelected(InputFileChangeEventArgs e)
+    {
+        // WHAT: Reads selected image file and encodes it as a base64 data-URI.
+        // WHY:  Permits previewing the avatar and staging it for encrypted persistence.
+        // HOW:  Opens read stream from IBrowserFile with 2MB limit, reads bytes, and formats data-URI.
+        try
+        {
+            IBrowserFile file = e.File;
+            if (file == null)
+            {
+                return;
+            }
+
+            long maxAllowedSize = 2 * 1024 * 1024; // 2 MB limit
+            using Stream stream = file.OpenReadStream(maxAllowedSize);
+            using MemoryStream ms = new();
+            await stream.CopyToAsync(ms);
+            byte[] bytes = ms.ToArray();
+            string mimeType = file.ContentType ?? "image/png";
+            _avatarPreview = $"data:{mimeType};base64,{Convert.ToBase64String(bytes)}";
+        }
+        catch (Exception ex)
+        {
+            _statusMessage = $"Failed to read avatar image: {ex.Message}";
+            _isStatusError = true;
+        }
+    }
+
+    /// <summary>
+    /// Clears the active profile avatar picture.
+    /// </summary>
+    private void ClearAvatar()
+    {
+        // WHAT: Removes the current avatar preview and resets the Picture property.
+        // WHY:  Allows users to erase their avatar image.
+        // HOW:  Sets _avatarPreview to null.
+        _avatarPreview = null;
+    }
+
+    /// <summary>
+    /// Persists demographic and clinical profile information to the repository.
+    /// </summary>
+    private async Task SaveProfileAsync()
+    {
+        // WHAT: Sanitizes inputs and persists UserProfile to IUserProfileRepository.
+        // WHY:  Ensures patient records and encrypted pictures are saved reliably.
+        // HOW:  Parses pronouns, parses regimen enum, binds username and avatar, and calls UpsertProfileAsync.
+        _statusMessage = null;
+        try
+        {
+            string[] parsedPronouns = _pronounsRaw
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            TherapeuticRegimen? parsedRegimen = Enum.TryParse<TherapeuticRegimen>(_selectedRegimenString, true, out var r)
+                ? r
+                : null;
+
+            _profile = _profile with
+            {
+                Username = _effectiveUsername,
+                Picture = _avatarPreview,
+                Pronouns = parsedPronouns,
+                Regimen = parsedRegimen,
+                UpdatedAtUtc = DateTimeOffset.UtcNow
+            };
+
+            await ProfileRepo.UpsertProfileAsync(_profile);
+            _statusMessage = "Profile information successfully saved and encrypted.";
+            _isStatusError = false;
+        }
+        catch (Exception ex)
+        {
+            _statusMessage = $"Failed to save profile: {ex.Message}";
+            _isStatusError = true;
+        }
+    }
+
+    /// <summary>
+    /// Saves a new structured address record for the active user.
+    /// </summary>
+    private async Task SaveAddressAsync()
+    {
+        // WHAT: Validates and saves an address entry.
+        // WHY:  Maintains accurate physical and delivery addresses for the patient.
+        // HOW:  Validates AddressLine1 and City, sets username and timestamps, and calls UpsertAddressAsync.
+        if (string.IsNullOrWhiteSpace(_newAddress.AddressLine1) || string.IsNullOrWhiteSpace(_newAddress.City))
+        {
+            _statusMessage = "Address Line 1 and City are required fields.";
+            _isStatusError = true;
+            return;
+        }
+
+        try
+        {
+            PatientAddress address = _newAddress with
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                Username = _effectiveUsername,
+                CreatedAtUtc = DateTimeOffset.UtcNow,
+                UpdatedAtUtc = DateTimeOffset.UtcNow
+            };
+
+            await ProfileRepo.UpsertAddressAsync(address);
+            _newAddress = new PatientAddress();
+            _showAddressForm = false;
+            _addresses = await ProfileRepo.GetAddressesAsync(_effectiveUsername);
+            _statusMessage = "Address record successfully added.";
+            _isStatusError = false;
+        }
+        catch (Exception ex)
+        {
+            _statusMessage = $"Failed to save address: {ex.Message}";
+            _isStatusError = true;
+        }
+    }
+
+    /// <summary>
+    /// Deletes a structured address record by its unique identifier.
+    /// </summary>
+    /// <param name="id">The address identifier to remove.</param>
+    private async Task DeleteAddressAsync(string id)
+    {
+        // WHAT: Deletes an address record from the repository.
+        // WHY:  Allows removing outdated or incorrect addresses.
+        // HOW:  Calls DeleteAddressAsync and re-queries the address list.
+        try
+        {
+            bool ok = await ProfileRepo.DeleteAddressAsync(id, _effectiveUsername);
+            if (ok)
+            {
+                _addresses = await ProfileRepo.GetAddressesAsync(_effectiveUsername);
+                _statusMessage = "Address record successfully removed.";
+                _isStatusError = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            _statusMessage = $"Failed to remove address: {ex.Message}";
+            _isStatusError = true;
+        }
+    }
+
+    /// <summary>
+    /// Saves a new trusted emergency or outreach contact for the active user.
+    /// </summary>
+    private async Task SaveContactAsync()
+    {
+        // WHAT: Validates and saves an emergency outreach contact entry.
+        // WHY:  Ensures designated contacts are available if the patient cannot be reached.
+        // HOW:  Validates ContactName and PhoneNumber, assigns username and timestamps, and calls UpsertContactAsync.
+        if (string.IsNullOrWhiteSpace(_newContact.ContactName) || string.IsNullOrWhiteSpace(_newContact.PhoneNumber))
+        {
+            _statusMessage = "Contact Name and Telephone Number are required fields.";
+            _isStatusError = true;
+            return;
+        }
+
+        try
+        {
+            PatientContact contact = _newContact with
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                Username = _effectiveUsername,
+                CreatedAtUtc = DateTimeOffset.UtcNow,
+                UpdatedAtUtc = DateTimeOffset.UtcNow
+            };
+
+            await ProfileRepo.UpsertContactAsync(contact);
+            _newContact = new PatientContact();
+            _showContactForm = false;
+            _contacts = await ProfileRepo.GetContactsAsync(_effectiveUsername);
+            _statusMessage = "Outreach contact successfully saved.";
+            _isStatusError = false;
+        }
+        catch (Exception ex)
+        {
+            _statusMessage = $"Failed to save contact: {ex.Message}";
+            _isStatusError = true;
+        }
+    }
+
+    /// <summary>
+    /// Deletes an emergency outreach contact by its unique identifier.
+    /// </summary>
+    /// <param name="id">The contact identifier to remove.</param>
+    private async Task DeleteContactAsync(string id)
+    {
+        // WHAT: Removes an outreach contact entry from the repository.
+        // WHY:  Allows patients to update or revoke designated emergency contacts.
+        // HOW:  Calls DeleteContactAsync and re-queries the contact list.
+        try
+        {
+            bool ok = await ProfileRepo.DeleteContactAsync(id, _effectiveUsername);
+            if (ok)
+            {
+                _contacts = await ProfileRepo.GetContactsAsync(_effectiveUsername);
+                _statusMessage = "Outreach contact successfully removed.";
+                _isStatusError = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            _statusMessage = $"Failed to remove contact: {ex.Message}";
+            _isStatusError = true;
+        }
+    }
+}

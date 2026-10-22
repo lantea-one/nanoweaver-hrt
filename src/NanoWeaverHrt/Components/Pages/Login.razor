@@ -2,6 +2,7 @@
 @inject IUserAuthenticationService AuthService
 @inject UserSessionState SessionState
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 
 <div class="login-container">
     <div class="card login-card">
@@ -34,18 +35,32 @@
             }
 
             <div class="form-group mt-3">
-                <label for="loginUser">Username</label>
-                <input id="loginUser" class="form-control font-mono" placeholder="Registered username" @bind="_username" />
+                <label for="loginUser" class="form-label">Username</label>
+                <input id="loginUser" class="form-control font-mono" placeholder="e.g., administrator or researcher-01" @bind="_username" />
+                <div class="form-hint">Enter your registered identity handle on this sovereign node.</div>
             </div>
 
-            <div class="form-group mt-2">
-                <label for="privKeyPem">Private Key (.pem / .key text)</label>
-                <textarea id="privKeyPem" class="form-control font-mono code-box" rows="6" placeholder="-----BEGIN PRIVATE KEY----- ... or -----BEGIN ENCRYPTED PRIVATE KEY-----" @bind="_privateKeyPem"></textarea>
+            <div class="form-group mt-3">
+                <div class="d-flex justify-between align-center mb-1">
+                    <label for="privKeyPem" class="form-label" style="margin-bottom:0;">Private Key (.pem / .key)</label>
+                    <div class="d-flex gap-1">
+                        <label for="keyFileUpload" class="btn btn-sm btn-outline cursor-pointer" style="margin:0;">
+                            📁 Upload Key File
+                        </label>
+                        <InputFile id="keyFileUpload" OnChange="HandleKeyFileUpload" accept=".pem,.key,.txt" style="display:none;" />
+                        <button type="button" class="btn btn-sm btn-secondary" @onclick="() => _showPrivateKey = !_showPrivateKey">
+                            @(_showPrivateKey ? "🔒 Mask Key" : "👁 Show Key")
+                        </button>
+                    </div>
+                </div>
+                <input id="privKeyPem" type="@(_showPrivateKey ? "text" : "password")" class="form-control font-mono" placeholder="Paste private key PEM text or upload key file above..." @bind="_privateKeyPem" />
+                <div class="form-hint">Paste your cryptographic private key or upload your .pem/.key file. Keys are verified locally in-memory and never stored.</div>
             </div>
 
-            <div class="form-group mt-2">
-                <label for="loginPassword">Passphrase (if key is encrypted)</label>
-                <input id="loginPassword" type="password" class="form-control" placeholder="Leave empty for unencrypted private key" @bind="_password" />
+            <div class="form-group mt-3">
+                <label for="loginPassword" class="form-label">Passphrase (if key is encrypted)</label>
+                <input id="loginPassword" type="password" class="form-control" placeholder="Leave blank for unencrypted private key" @bind="_password" />
+                <div class="form-hint">Optional: Enter your decryption passphrase if your private key was password-protected.</div>
             </div>
 
             <div class="actions mt-4 text-center">
@@ -76,6 +91,11 @@
     private string _password = string.Empty;
 
     /// <summary>
+    /// Controls whether the private key input is masked as a password or displayed as plain text.
+    /// </summary>
+    private bool _showPrivateKey;
+
+    /// <summary>
     /// Informational message banner (e.g., session idle timeout notification).
     /// </summary>
     private string? _infoMessage;
@@ -96,6 +116,31 @@
         if (Navigation.Uri.Contains("reason=idle_timeout", StringComparison.OrdinalIgnoreCase))
         {
             _infoMessage = "Your session has expired due to inactivity. Please sign in again to access the platform.";
+        }
+    }
+
+    /// <summary>
+    /// Reads an uploaded private key file directly into the private key input field.
+    /// </summary>
+    /// <param name="e">File input event arguments.</param>
+    private async Task HandleKeyFileUpload(InputFileChangeEventArgs e)
+    {
+        // WHAT: Reads the raw contents of an uploaded .pem or .key file in the browser.
+        // WHY:  Permits researchers to select their key file without manually copy-pasting multi-line text.
+        // HOW:  Opens a bounded stream (max 64 KB) and decodes text using UTF-8 StreamReader.
+        _errorMessage = null;
+        try
+        {
+            if (e.File != null)
+            {
+                using Stream stream = e.File.OpenReadStream(maxAllowedSize: 65536);
+                using StreamReader reader = new(stream, System.Text.Encoding.UTF8);
+                _privateKeyPem = await reader.ReadToEndAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to read uploaded key file: {ex.Message}";
         }
     }
 
@@ -124,14 +169,35 @@
         }
 
         SessionState.SetUser(result.User);
+        if (!string.IsNullOrEmpty(result.Token))
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("weaverSetSession", result.Token);
+            }
+            catch (Exception)
+            {
+                // Disconnected circuit or unit test environment
+            }
+        }
+
         Navigation.NavigateTo("/");
     }
 
     /// <summary>
     /// Signs out the currently authenticated user and resets page state.
     /// </summary>
-    private void SignOut()
+    private async Task SignOut()
     {
+        try
+        {
+            await JS.InvokeVoidAsync("weaverClearSession");
+        }
+        catch (Exception)
+        {
+            // Disconnected circuit or unit test environment
+        }
+
         SessionState.SignOut();
         Navigation.NavigateTo("/login");
     }

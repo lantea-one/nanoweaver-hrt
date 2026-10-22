@@ -100,6 +100,66 @@ public sealed class EndpointIntegrationTests : IClassFixture<WebApplicationFacto
     }
 
     /// <summary>
+    /// Verifies that GET /api/trajectories/download/{fileName} handles existing trajectories and missing files.
+    /// </summary>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    [Fact]
+    public async Task DownloadTrajectory_ExistingAndNotFound()
+    {
+        // WHAT: Tests the raw trajectory download endpoint with both an existing and non-existent file.
+        // WHY:  Ensures operators and downstream tools can fetch coordinate data over HTTP without errors.
+        // HOW:  Sends GET requests to /api/trajectories/download/{fileName} and asserts 200 OK and 404 NotFound.
+        HttpResponseMessage okResp = await _client.GetAsync("/api/trajectories/download/dna_nanotube_sample.xyz");
+        Assert.Equal(HttpStatusCode.OK, okResp.StatusCode);
+        Assert.Equal("application/octet-stream", okResp.Content.Headers.ContentType?.MediaType);
+
+        HttpResponseMessage notFoundResp = await _client.GetAsync("/api/trajectories/download/nonexistent_sample.xyz");
+        Assert.Equal(HttpStatusCode.NotFound, notFoundResp.StatusCode);
+    }
+
+    /// <summary>
+    /// Verifies that GET /api/datasets/exports and DELETE /api/datasets/exports/{fileName} manage export bundles cleanly.
+    /// </summary>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    [Fact]
+    public async Task ListExports_And_DeleteExport_Endpoints()
+    {
+        // WHAT: Tests listing and deleting exported simulation bundles via REST endpoints.
+        // WHY:  Ensures full CRUD lifecycle management of export packages over HTTP.
+        // HOW:  Creates a temporary export file, verifies its presence in GET /api/datasets/exports,
+        //       deletes it via DELETE /api/datasets/exports/{fileName}, and asserts 404 on subsequent deletion.
+        string solutionRoot = TestFixturesHelper.GetSolutionRoot();
+        string exportDir = Path.Combine(solutionRoot, "simulations", "exports");
+        Directory.CreateDirectory(exportDir);
+
+        string testFileName = $"integration_export_{Guid.NewGuid():N}.tar.gz";
+        string fullPath = Path.Combine(exportDir, testFileName);
+        await File.WriteAllTextAsync(fullPath, "temporary integration archive data");
+
+        try
+        {
+            HttpResponseMessage listResp = await _client.GetAsync("/api/datasets/exports");
+            Assert.Equal(HttpStatusCode.OK, listResp.StatusCode);
+            ExportFileItem[]? items = await listResp.Content.ReadFromJsonAsync<ExportFileItem[]>();
+            Assert.NotNull(items);
+            Assert.Contains(items, item => item.Name == testFileName);
+
+            HttpResponseMessage deleteResp = await _client.DeleteAsync($"/api/datasets/exports/{testFileName}");
+            Assert.Equal(HttpStatusCode.OK, deleteResp.StatusCode);
+
+            HttpResponseMessage deleteAgainResp = await _client.DeleteAsync($"/api/datasets/exports/{testFileName}");
+            Assert.Equal(HttpStatusCode.NotFound, deleteAgainResp.StatusCode);
+        }
+        finally
+        {
+            if (File.Exists(fullPath))
+            {
+                File.Delete(fullPath);
+            }
+        }
+    }
+
+    /// <summary>
     /// Verifies that POST /api/datasets/import rejects missing files and bad data.
     /// </summary>
     [Fact]

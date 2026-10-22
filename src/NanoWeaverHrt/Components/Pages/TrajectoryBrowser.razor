@@ -46,6 +46,9 @@
                                 <td class="subtext">@file.LastModifiedUtc</td>
                                 <td class="text-right">
                                     <div class="btn-group">
+                                        <a href="@file.DownloadUrl" class="btn btn-sm btn-outline" download="@file.Name" title="Download raw trajectory file">
+                                            📥 Download
+                                        </a>
                                         <button class="btn btn-sm btn-primary" @onclick="() => StreamParseFileAsync(file.Name)">
                                             ⚡ Stream Parse
                                         </button>
@@ -116,6 +119,61 @@
             </div>
         </div>
     </div>
+
+    <!-- Exported Sovereign Bundles & Provenance Artifacts Management -->
+    <div class="card panel mt-4">
+        <div class="panel-header">
+            <div>
+                <h3>Exported Sovereign Bundles &amp; Provenance Artifacts</h3>
+                <p class="panel-desc">Manage cryptographically hashed <code>.tar.gz</code> archive packages and SHA-256 provenance manifests available for direct web download.</p>
+            </div>
+            <button class="btn btn-secondary btn-sm" disabled="@_isExportLoading" @onclick="LoadExportsAsync">
+                @(_isExportLoading ? "Refreshing..." : "⟳ Refresh Exports")
+            </button>
+        </div>
+
+        <div class="table-container mt-3">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Artifact Name</th>
+                        <th>Category</th>
+                        <th>Size</th>
+                        <th>Last Modified</th>
+                        <th class="text-right">Export Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_exports.Count == 0)
+                    {
+                        <tr><td colspan="5" class="empty-state">No export bundles or manifests found in export directory (<code>/simulations/exports</code>).</td></tr>
+                    }
+                    else
+                    {
+                        @foreach (ExportFileItem item in _exports)
+                        {
+                            <tr>
+                                <td class="font-mono"><strong>@item.Name</strong></td>
+                                <td><span class="badge badge-accent">@item.Category</span></td>
+                                <td class="font-mono">@item.SizeFormatted</td>
+                                <td class="subtext">@item.LastModifiedUtc</td>
+                                <td class="text-right">
+                                    <div class="btn-group">
+                                        <a href="@item.DownloadUrl" class="btn btn-sm btn-primary" download="@item.Name" title="Download artifact directly">
+                                            📥 Download
+                                        </a>
+                                        <button class="btn btn-sm btn-danger" @onclick="() => DeleteExportAsync(item.Name)" title="Delete artifact from disk">
+                                            🗑 Delete
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
 </div>
 
 @code {
@@ -125,9 +183,19 @@
     private IReadOnlyList<TrajectoryFileItem> _files = [];
 
     /// <summary>
-    /// Loading state flag.
+    /// Collection of discovered exported bundle files.
+    /// </summary>
+    private IReadOnlyList<ExportFileItem> _exports = [];
+
+    /// <summary>
+    /// Loading state flag for trajectory files.
     /// </summary>
     private bool _isLoading;
+
+    /// <summary>
+    /// Loading state flag for exported files.
+    /// </summary>
+    private bool _isExportLoading;
 
     /// <summary>
     /// Exporting state flag.
@@ -150,18 +218,26 @@
     private string _consoleOutput = "";
 
     /// <summary>
-    /// Loads initial file list.
+    /// Loads initial file lists for trajectories and exports.
     /// </summary>
+    /// <returns>A task representing the asynchronous operation.</returns>
     protected override async Task OnInitializedAsync()
     {
-        await LoadTrajectoriesAsync();
+        // WHAT: Discovers both active trajectory inputs and exported packages on startup.
+        // WHY: Prepares the user interface with full volume oversight.
+        // HOW: Concurrently queries both directory listings.
+        await Task.WhenAll(LoadTrajectoriesAsync(), LoadExportsAsync());
     }
 
     /// <summary>
     /// Scans the shared storage volume for trajectory files.
     /// </summary>
+    /// <returns>A task representing the asynchronous operation.</returns>
     private async Task LoadTrajectoriesAsync()
     {
+        // WHAT: Discovers active trajectory files (.xyz, .dcd, .lammpstrj).
+        // WHY: Populates the trajectory table for streaming and Parquet conversion.
+        // HOW: Calls DatasetManager.ListTrajectoriesAsync.
         _isLoading = true;
         try
         {
@@ -174,9 +250,52 @@
     }
 
     /// <summary>
+    /// Scans the export storage volume for package archives and manifests.
+    /// </summary>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    private async Task LoadExportsAsync()
+    {
+        // WHAT: Discovers exported .tar.gz and .json manifest artifacts from the exports directory.
+        // WHY: Exposes completed research packages for authenticated download and management.
+        // HOW: Calls DatasetManager.ListExportsAsync to query the filesystem.
+        _isExportLoading = true;
+        try
+        {
+            _exports = await DatasetManager.ListExportsAsync();
+        }
+        finally
+        {
+            _isExportLoading = false;
+        }
+    }
+
+    /// <summary>
+    /// Deletes an exported package or manifest from disk.
+    /// </summary>
+    /// <param name="fileName">The file name of the export artifact to delete.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    private async Task DeleteExportAsync(string fileName)
+    {
+        // WHAT: Safely deletes an export bundle or manifest artifact from disk.
+        // WHY: Enables researchers to clean up redundant or stale simulation archives.
+        // HOW: Calls IDatasetManager.DeleteExportAsync and reloads the export list on success.
+        bool deleted = await DatasetManager.DeleteExportAsync(fileName);
+        if (deleted)
+        {
+            _consoleOutput += $"[EXPORT] Deleted artifact: {fileName}\n";
+            await LoadExportsAsync();
+        }
+        else
+        {
+            _consoleOutput += $"[ERROR] Failed to delete artifact: {fileName}\n";
+        }
+    }
+
+    /// <summary>
     /// Triggers the zero-allocation parser on the selected file.
     /// </summary>
     /// <param name="fileName">The trajectory file name.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
     private async Task StreamParseFileAsync(string fileName)
     {
         _consoleOutput = $"[PIPELINE] Initializing zero-allocation parser for {fileName}...\n";
@@ -227,6 +346,7 @@
     /// Converts the selected trajectory file to columnar Apache Parquet.
     /// </summary>
     /// <param name="fileName">The trajectory file name.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
     private async Task ConvertToParquetAsync(string fileName)
     {
         _consoleOutput = $"[PARQUET] Converting {fileName} to Apache Parquet via DuckDB...\n";
@@ -257,12 +377,14 @@
     /// <summary>
     /// Packages the active volume into a signed dataset bundle.
     /// </summary>
+    /// <returns>A task representing the asynchronous operation.</returns>
     private async Task ExportDatasetAsync()
     {
         _isExporting = true;
         try
         {
             _lastExportManifest = await DatasetManager.ExportDatasetAsync(_exportBundleName, null);
+            await LoadExportsAsync();
         }
         finally
         {

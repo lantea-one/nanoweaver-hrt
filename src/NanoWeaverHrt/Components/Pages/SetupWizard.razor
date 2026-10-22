@@ -47,16 +47,18 @@
                     </p>
 
                     <div class="form-group mt-3">
-                        <label for="adminUsername">Administrator Username</label>
-                        <input id="adminUsername" class="form-control font-mono" placeholder="e.g. sysadmin or sovereign-lead" @bind="_adminUsername" />
+                        <label for="adminUsername" class="form-label">Administrator Username</label>
+                        <input id="adminUsername" class="form-control font-mono" placeholder="e.g., sysadmin or sovereign-lead" @bind="_adminUsername" />
+                        <div class="form-hint">Master Administrator identity handle (alphanumeric and dashes/underscores).</div>
                     </div>
 
-                    <div class="form-group mt-2">
-                        <label for="accessGate">Access Gating Boundary</label>
+                    <div class="form-group mt-3">
+                        <label for="accessGate" class="form-label">Access Gating Boundary</label>
                         <select id="accessGate" class="form-control" @bind="_accessGate">
                             <option value="@AccessGate.ApiWeb">ApiWeb (Interactive Dashboard &amp; REST API Access)</option>
                             <option value="@AccessGate.Web">Web (Interactive Web Dashboard Only)</option>
                         </select>
+                        <div class="form-hint">Defines transport security boundaries: API only, Web UI only, or both (ApiWeb).</div>
                     </div>
 
                     <div class="actions mt-4 text-right">
@@ -79,23 +81,25 @@
                     </div>
 
                     <div class="form-group mt-3">
-                        <label for="keyAlgo">Signature Algorithm</label>
+                        <label for="keyAlgo" class="form-label">Signature Algorithm</label>
                         <select id="keyAlgo" class="form-control" @bind="_selectedAlgorithm">
-                            <option value="@KeyAlgorithm.Ed25519">Ed25519 (Fast, Compact, Universal SSH/API Standard)</option>
+                            <option value="@KeyAlgorithm.Ed25519">Ed25519 (Fast, Compact, Universal Edwards Curve Standard)</option>
                             <option value="@KeyAlgorithm.MlDsa65">ML-DSA-65 (NIST FIPS 204 Post-Quantum Module-Lattice)</option>
                         </select>
+                        <div class="form-hint">Cryptographic algorithm used for authentication signature challenges.</div>
                     </div>
 
                     @if (_keyOption == 0)
                     {
-                        <div class="form-group mt-2">
-                            <label for="keyPassword">Optional Passphrase Encryption (Private Key Password)</label>
+                        <div class="form-group mt-3">
+                            <label for="keyPassword" class="form-label">Optional Passphrase Encryption (Private Key Password)</label>
                             <input id="keyPassword" type="password" class="form-control" placeholder="Leave empty for unencrypted key, or enter passphrase" @bind="_keyPassword" />
+                            <div class="form-hint">Optional: Enter a passphrase to encrypt your private key with AES-256/PBKDF2.</div>
                         </div>
 
                         @if (_generatedBundle == null)
                         {
-                            <button class="btn btn-secondary mt-3" @onclick="GenerateKeys">Generate High-Security Keypair</button>
+                            <button class="btn btn-secondary mt-3" @onclick="GenerateKeys">⚡ Generate High-Security Keypair</button>
                         }
                         else
                         {
@@ -104,26 +108,41 @@
                                 <p class="subtext">Save this private key securely. It will <strong>never</strong> be stored on the server.</p>
 
                                 <div class="form-group">
-                                    <label>Generated Private Key PEM</label>
+                                    <label class="form-label">Generated Private Key PEM (@_selectedAlgorithm)</label>
                                     <textarea class="form-control font-mono code-box" rows="6" readonly>@_generatedBundle.PrivateKeyPem</textarea>
                                 </div>
 
-                                <div class="btn-group mt-2">
+                                <div class="btn-group mt-2 d-flex gap-2">
                                     <button class="btn btn-outline" @onclick="DownloadPrivateKey">💾 Download Private Key (.pem)</button>
+                                    <button class="btn btn-secondary" @onclick="CopyPrivateKey">📋 Copy to Clipboard</button>
                                 </div>
 
-                                <div class="checkbox-row mt-3">
+                                @if (!string.IsNullOrEmpty(_downloadStatus))
+                                {
+                                    <div class="alert alert-info mt-2">@_downloadStatus</div>
+                                }
+
+                                <div class="checkbox-row mt-3 d-flex align-center gap-2">
                                     <input type="checkbox" id="backupConfirm" @bind="_backedUpConfirmed" />
-                                    <label for="backupConfirm">I have downloaded and backed up my private key. I understand that access cannot be recovered without it.</label>
+                                    <label for="backupConfirm" class="cursor-pointer">I have downloaded, copied, or backed up my private key. I understand that access cannot be recovered without it.</label>
                                 </div>
                             </div>
                         }
                     }
                     else
                     {
-                        <div class="form-group mt-2">
-                            <label for="customPubKey">Public Key (Base64 DER or PEM string)</label>
+                        <div class="form-group mt-3">
+                            <div class="d-flex justify-between align-center mb-1">
+                                <label for="customPubKey" class="form-label" style="margin-bottom:0;">Public Key (Base64 DER or PEM string)</label>
+                                <div>
+                                    <label for="pubKeyUpload" class="btn btn-sm btn-outline cursor-pointer" style="margin:0;">
+                                        📁 Upload Public Key (.pub / .pem)
+                                    </label>
+                                    <InputFile id="pubKeyUpload" OnChange="HandleCustomPubKeyUpload" accept=".pub,.pem,.txt,.crt" style="display:none;" />
+                                </div>
+                            </div>
                             <textarea id="customPubKey" class="form-control font-mono code-box" rows="5" placeholder="-----BEGIN PUBLIC KEY----- ... or raw Base64" @bind="_customPublicKeyText"></textarea>
+                            <div class="form-hint">Paste your RFC 7468 public key PEM or raw Base64 DER string, or upload your public key file above.</div>
                         </div>
                     }
 
@@ -184,6 +203,7 @@
     private GeneratedKeyBundle? _generatedBundle;
     private bool _backedUpConfirmed;
     private string? _errorMessage;
+    private string? _downloadStatus;
 
     /// <inheritdoc/>
     protected override async Task OnInitializedAsync()
@@ -205,6 +225,7 @@
     private void GenerateKeys()
     {
         _errorMessage = null;
+        _downloadStatus = null;
         try
         {
             _generatedBundle = AuthService.GenerateSecureKeyBundle(
@@ -225,7 +246,56 @@
         if (_generatedBundle == null) return;
         string fileName = $"{_adminUsername}_private_key.pem";
         string content = _generatedBundle.PrivateKeyPem;
-        await JSRuntime.InvokeVoidAsync("weaverDownloadBlob", fileName, content, "application/x-pem-file");
+        try
+        {
+            bool ok = await JSRuntime.InvokeAsync<bool>("weaverDownloadBlob", fileName, content, "application/x-pem-file");
+            if (ok)
+            {
+                _downloadStatus = "Private key (.pem) downloaded successfully!";
+                _backedUpConfirmed = true;
+            }
+            else
+            {
+                _downloadStatus = "Download could not be started automatically. Please use 'Copy to Clipboard' below.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _downloadStatus = $"Download trigger encountered an issue ({ex.Message}). Please use 'Copy to Clipboard' below to save your key.";
+        }
+    }
+
+    private async Task CopyPrivateKey()
+    {
+        if (_generatedBundle == null) return;
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("weaverCopyText", _generatedBundle.PrivateKeyPem);
+            _downloadStatus = "Private key copied to clipboard!";
+            _backedUpConfirmed = true;
+        }
+        catch (Exception ex)
+        {
+            _downloadStatus = $"Clipboard copy failed ({ex.Message}). Please manually copy the private key text box above.";
+        }
+    }
+
+    private async Task HandleCustomPubKeyUpload(InputFileChangeEventArgs e)
+    {
+        _errorMessage = null;
+        try
+        {
+            if (e.File != null)
+            {
+                using Stream stream = e.File.OpenReadStream(maxAllowedSize: 65536);
+                using StreamReader reader = new(stream, System.Text.Encoding.UTF8);
+                _customPublicKeyText = await reader.ReadToEndAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to read uploaded public key file: {ex.Message}";
+        }
     }
 
     private void ProceedToStep3()
@@ -240,7 +310,7 @@
             }
             if (!_backedUpConfirmed)
             {
-                _errorMessage = "You must confirm that you have downloaded and backed up your private key.";
+                _errorMessage = "You must confirm that you have downloaded, copied, or backed up your private key.";
                 return;
             }
         }
@@ -281,8 +351,20 @@
                 _selectedAlgorithm,
                 _accessGate);
 
+            // Generate authoritative Bearer token and persist session in browser so it carries across all pages
+            string token = AuthService.GenerateBearerToken(admin);
             SessionState.SetUser(admin);
-            Navigation.NavigateTo("/", forceLoad: true);
+
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("weaverSetSession", token);
+            }
+            catch (Exception)
+            {
+                // Disconnected circuit or unit test environment
+            }
+
+            Navigation.NavigateTo("/");
         }
         catch (Exception ex)
         {

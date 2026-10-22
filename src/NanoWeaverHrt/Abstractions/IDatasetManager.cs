@@ -40,4 +40,19 @@ public interface IDatasetManager
     /// <param name="cancellationToken">Cancellation token to abort the import.</param>
     /// <returns>True if the SHA-256 checksum matched and files were successfully extracted; otherwise false.</returns>
     Task<bool> ImportDatasetAsync(Stream archiveStream, DatasetManifest manifest, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lists all exported simulation archives, manifests, and cryptographic bundles present in the export directory.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token to abort the file scan.</param>
+    /// <returns>A collection of metadata descriptors for each discovered export file.</returns>
+    Task<IReadOnlyList<ExportFileItem>> ListExportsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Permanently removes a designated export artifact from the export storage volume.
+    /// </summary>
+    /// <param name="fileName">The filename of the artifact to delete.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>True if the file was found and deleted; otherwise, false.</returns>
+    Task<bool> DeleteExportAsync(string fileName, CancellationToken cancellationToken = default);
 }

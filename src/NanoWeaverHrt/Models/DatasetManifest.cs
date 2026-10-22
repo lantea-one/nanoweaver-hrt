@@ -120,6 +120,13 @@ public sealed record TrajectoryFileItem : IExamplesProvider<TrajectoryFileItem>
     public required string Format { get; init; }
 
     /// <summary>
+    /// Relative web API URL for downloading the raw trajectory file.
+    /// </summary>
+    [Description("Relative web API URL for downloading the raw trajectory file.")]
+    [JsonPropertyName("downloadUrl")]
+    public string DownloadUrl => $"/api/trajectories/download/{Uri.EscapeDataString(Name)}";
+
+    /// <summary>
     /// Generates a representative example instance of <see cref="TrajectoryFileItem"/> for OpenAPI documentation.
     /// </summary>
     /// <returns>A populated trajectory file metadata example.</returns>
@@ -130,5 +137,67 @@ public sealed record TrajectoryFileItem : IExamplesProvider<TrajectoryFileItem>
         SizeFormatted = "15.0 MB",
         LastModifiedUtc = "2026-10-20T18:30:00Z",
         Format = "XYZ"
+    };
+}
+
+/// <summary>
+/// Metadata describing an exported dataset bundle, manifest, or cryptographic signature stored on disk.
+/// </summary>
+[SwaggerSchema(Title = "ExportFileItem", Description = "Metadata describing an exported simulation bundle archive or cryptographic manifest.")]
+public sealed record ExportFileItem : IExamplesProvider<ExportFileItem>
+{
+    /// <summary>
+    /// The filename of the export artifact.
+    /// </summary>
+    [Description("The filename of the export artifact.")]
+    [JsonPropertyName("name")]
+    public required string Name { get; init; }
+
+    /// <summary>
+    /// Total file size in bytes.
+    /// </summary>
+    [Description("Total file size in bytes.")]
+    [JsonPropertyName("sizeBytes")]
+    public required long SizeBytes { get; init; }
+
+    /// <summary>
+    /// Formatted human-readable file size (e.g., '4.2 MB', '120 KB').
+    /// </summary>
+    [Description("Formatted human-readable file size.")]
+    [JsonPropertyName("sizeFormatted")]
+    public required string SizeFormatted { get; init; }
+
+    /// <summary>
+    /// Last modified timestamp in ISO 8601 UTC.
+    /// </summary>
+    [Description("Last modified timestamp in ISO 8601 UTC.")]
+    [JsonPropertyName("lastModified")]
+    public required string LastModifiedUtc { get; init; }
+
+    /// <summary>
+    /// Artifact categorization (e.g., 'Archive', 'Manifest', 'PQC Signature', 'Analytical Parquet').
+    /// </summary>
+    [Description("Artifact categorization (Archive, Manifest, PQC Signature, or Parquet).")]
+    [JsonPropertyName("category")]
+    public required string Category { get; init; }
+
+    /// <summary>
+    /// Relative web download endpoint URL.
+    /// </summary>
+    [Description("Relative web download endpoint URL.")]
+    [JsonPropertyName("downloadUrl")]
+    public string DownloadUrl => $"/api/datasets/download/{Uri.EscapeDataString(Name)}";
+
+    /// <summary>
+    /// Generates a representative example instance of <see cref="ExportFileItem"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A populated export file metadata example.</returns>
+    public ExportFileItem GetExamples() => new()
+    {
+        Name = "dna-origami-nanocarrier-001.tar.gz",
+        SizeBytes = 4398120,
+        SizeFormatted = "4.2 MB",
+        LastModifiedUtc = "2026-10-21T18:00:00Z",
+        Category = "Archive"
     };
 }

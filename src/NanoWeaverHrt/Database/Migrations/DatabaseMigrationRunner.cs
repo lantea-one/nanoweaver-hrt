@@ -36,7 +36,8 @@ public sealed class DatabaseMigrationRunner : IDisposable
             _migrations = new List<IDatabaseMigration>
             {
                 new Migration001_InitialSchema(),
-                new Migration002_UserAuditAndIndexes()
+                new Migration002_UserAuditAndIndexes(),
+                new Migration003_UserProfileAddressesAndContacts()
             }.OrderBy(m => m.Version).ToList();
         }
     }

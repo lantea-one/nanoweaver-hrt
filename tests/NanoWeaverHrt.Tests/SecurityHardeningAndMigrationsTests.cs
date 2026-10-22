@@ -164,22 +164,22 @@ public sealed class SecurityHardeningAndMigrationsTests
         await conn.OpenAsync();
 
         using DatabaseMigrationRunner runner = new();
-        Assert.Equal(2, runner.RegisteredMigrations.Count);
+        Assert.Equal(3, runner.RegisteredMigrations.Count);
 
         // Initial state: no applied migrations
         IReadOnlyList<long> initialApplied = await runner.GetAppliedVersionsAsync(conn, "sqlite");
         Assert.Empty(initialApplied);
 
         IReadOnlyList<IDatabaseMigration> initialPending = await runner.GetPendingMigrationsAsync(conn, "sqlite");
-        Assert.Equal(2, initialPending.Count);
+        Assert.Equal(3, initialPending.Count);
 
         // Apply migrations
         int appliedCount = await runner.ApplyPendingMigrationsAsync(conn, "sqlite");
-        Assert.Equal(2, appliedCount);
+        Assert.Equal(3, appliedCount);
 
         // Post-migration verification
         IReadOnlyList<long> postApplied = await runner.GetAppliedVersionsAsync(conn, "sqlite");
-        Assert.Equal(new long[] { 1, 2 }, postApplied);
+        Assert.Equal(new long[] { 1, 2, 3 }, postApplied);
 
         IReadOnlyList<IDatabaseMigration> postPending = await runner.GetPendingMigrationsAsync(conn, "sqlite");
         Assert.Empty(postPending);
@@ -196,6 +196,18 @@ public sealed class SecurityHardeningAndMigrationsTests
         using SqliteCommand verifyConfigCmd = new("SELECT name FROM sqlite_master WHERE type='table' AND name='weaver_configuration'", conn);
         object? configTable = await verifyConfigCmd.ExecuteScalarAsync();
         Assert.Equal("weaver_configuration", configTable?.ToString());
+
+        using SqliteCommand verifyProfileCmd = new("SELECT name FROM sqlite_master WHERE type='table' AND name='weaver_user_profiles'", conn);
+        object? profileTable = await verifyProfileCmd.ExecuteScalarAsync();
+        Assert.Equal("weaver_user_profiles", profileTable?.ToString());
+
+        using SqliteCommand verifyAddrCmd = new("SELECT name FROM sqlite_master WHERE type='table' AND name='weaver_patient_addresses'", conn);
+        object? addrTable = await verifyAddrCmd.ExecuteScalarAsync();
+        Assert.Equal("weaver_patient_addresses", addrTable?.ToString());
+
+        using SqliteCommand verifyContactCmd = new("SELECT name FROM sqlite_master WHERE type='table' AND name='weaver_patient_contacts'", conn);
+        object? contactTable = await verifyContactCmd.ExecuteScalarAsync();
+        Assert.Equal("weaver_patient_contacts", contactTable?.ToString());
     }
 
     /// <summary>
