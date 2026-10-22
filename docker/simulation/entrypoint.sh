@@ -32,5 +32,13 @@ fi
 # Create shared data and config directories if they do not exist
 mkdir -p /workspace/configs /workspace/data /workspace/exports
 
-echo "==> Simulation Node ready. Listening for execution jobs..."
+# WHAT: Launches the simulation daemon if no custom command or if sleep is specified.
+# WHY:  Ensures the simulation node responds to HTTP health probes on port 8080 by default.
+# HOW:  Checks arguments: defaults to simulation_daemon.py when empty or running sleep infinity.
+if [ "$#" -eq 0 ] || [ "$*" = "sleep infinity" ] || [ "$1" = "sleep" ]; then
+    echo "==> Simulation Node ready. Starting HTTP simulation daemon on port 8080..."
+    exec python3 /usr/local/bin/simulation_daemon.py
+fi
+
+echo "==> Simulation Node ready. Executing custom job: $*"
 exec "$@"

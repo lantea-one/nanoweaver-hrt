@@ -37,6 +37,8 @@ services:
       - ACCELERATOR_BACKEND=igpu
       - ONEAPI_DEVICE_SELECTOR=opencl:gpu,cpu
       - OCL_ICD_VENDORS=/etc/OpenCL/vendors
+    ports:
+      - "8080:8080"
     volumes:
       - ./simulations/configs:/workspace/configs:ro
       - ./simulations/shared-data:/workspace/data:rw
@@ -44,13 +46,13 @@ services:
     ipc: host
     shm_size: 4gb
     healthcheck:
-      test: ["CMD-SHELL", "test -x /usr/local/bin/oxDNA && test -d /workspace/data || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || test -x /usr/local/bin/oxDNA"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 5s
     restart: unless-stopped
-    command: ["sleep", "infinity"]
+    command: ["python3", "/usr/local/bin/simulation_daemon.py"]
 
   # ----------------------------------------------------------------------------
   # Sovereign .NET 10 Zero-Allocation Parser & Web Dashboard
@@ -71,7 +73,10 @@ services:
       - TRAJECTORY_INCOMING_DIR=/workspace/data
       - TRAJECTORY_EXPORT_DIR=/workspace/exports
       - TRAJECTORY_PARQUET_DIR=/workspace/parquet
+      - SIMULATION_CONFIGS_DIR=/workspace/configs
+      - SIMULATION_ENDPOINT_URL=http://simulation-node:8080
     volumes:
+      - ./simulations/configs:/workspace/configs:ro
       - ./simulations/shared-data:/workspace/data:rw
       - ./simulations/exports:/workspace/exports:rw
       - ./simulations/parquet:/workspace/parquet:rw

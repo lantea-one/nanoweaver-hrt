@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.Intrinsics;
+using System.Text.Json;
 using NanoWeaverHrt.Configuration;
 
 namespace NanoWeaverHrt.Services.Stack;
@@ -23,17 +24,24 @@ public sealed class StackServiceManager : IStackServiceManager
     /// <summary>
     /// Reusable HTTP client factory or instance for service health probing.
     /// </summary>
-    private static readonly HttpClient ProbeClient = new() { Timeout = TimeSpan.FromSeconds(2) };
+    private readonly HttpClient _probeClient;
+
+    /// <summary>
+    /// Default static HTTP client instance for standard runtime operations.
+    /// </summary>
+    private static readonly HttpClient DefaultProbeClient = new() { Timeout = TimeSpan.FromSeconds(2) };
 
     /// <summary>
     /// Initializes a new instance of the <see cref="StackServiceManager"/> class.
     /// </summary>
     /// <param name="configRepo">The configuration repository.</param>
     /// <param name="hostConfig">The host configuration.</param>
-    public StackServiceManager(IConfigurationRepository configRepo, IConfiguration hostConfig)
+    /// <param name="probeClient">Optional custom HTTP client for test isolation.</param>
+    public StackServiceManager(IConfigurationRepository configRepo, IConfiguration hostConfig, HttpClient? probeClient = null)
     {
         _configRepo = configRepo;
         _hostConfig = hostConfig;
+        _probeClient = probeClient ?? DefaultProbeClient;
     }
 
     /// <summary>
@@ -122,46 +130,125 @@ public sealed class StackServiceManager : IStackServiceManager
         IReadOnlyList<string> configs = GetDiscoveredSimulationConfigs();
 
         bool isOnline = false;
-        string statusMsg = "Offline / Standby (Awaiting Container Startup)";
+        string statusMsg;
+        string activeEndpoint = endpoint;
+        string daemonStatus = "Offline / Standby";
 
-        try
+        // WHAT: Probes the configured simulation node endpoint with localhost fallback for local development.
+        // WHY:  Ensures the dashboard reports online health both when deployed in Docker and when tested locally.
+        // HOW:  Issues a rapid GET request to endpoint; on failure against simulation-node, attempts localhost.
+        HttpResponseMessage? resp = await TryProbeEndpointAsync(endpoint, ct);
+        if (resp == null && endpoint.Contains("simulation-node", StringComparison.OrdinalIgnoreCase))
         {
-            // WHAT: Pings the simulation node endpoint to check for remote API or Docker responsiveness.
-            // WHY:  Provides instant feedback in the UI if the engine container or external node is reachable.
-            // HOW:  Issues a rapid GET request with a short timeout.
-            HttpResponseMessage resp = await ProbeClient.GetAsync(endpoint, ct);
-            if (resp.IsSuccessStatusCode)
+            string localFallback = endpoint.Replace("simulation-node", "localhost", StringComparison.OrdinalIgnoreCase);
+            resp = await TryProbeEndpointAsync(localFallback, ct);
+            if (resp != null)
             {
-                isOnline = true;
-                statusMsg = $"Online & Connected ({accelerator})";
+                activeEndpoint = localFallback;
             }
         }
-        catch
+
+        if (resp != null)
         {
-            // If offline, check if local simulation config templates exist in workspace
-            if (configs.Count > 0)
-            {
-                statusMsg = $"Local Mode Active ({configs.Count} simulation presets available)";
-            }
+            isOnline = true;
+            daemonStatus = "Active (HTTP/1.1 REST API)";
+            accelerator = await ExtractAcceleratorAsync(resp, accelerator, ct);
+            statusMsg = $"Online & Connected ({accelerator})";
+            resp.Dispose();
         }
+        else if (configs.Count > 0)
+        {
+            statusMsg = $"Local Mode Active ({configs.Count} simulation presets available)";
+        }
+        else
+        {
+            statusMsg = "Offline / Standby (Awaiting Container Startup)";
+        }
+
+        ServiceHealthState healthState = isOnline
+            ? ServiceHealthState.Healthy
+            : (configs.Count > 0 ? ServiceHealthState.DegradedOrFallback : ServiceHealthState.Offline);
 
         return new StackServiceInfo
         {
             ServiceId = "simulation-engine",
             DisplayName = "Molecular Simulation Engine (oxDNA / LAMMPS)",
             RoleDescription = "Executes hardware-accelerated molecular dynamics, coarse-grained DNA folding, and allosteric simulations.",
-            EndpointOrLocation = endpoint,
-            Health = isOnline ? ServiceHealthState.Healthy : ServiceHealthState.DegradedOrFallback,
+            EndpointOrLocation = activeEndpoint,
+            Health = healthState,
             StatusMessage = statusMsg,
             TechnologyStack = $"oxDNA / LAMMPS 2024 ({accelerator})",
             Metrics = new Dictionary<string, string>
             {
+                ["Simulation Daemon"] = daemonStatus,
                 ["Engine Presets"] = $"{configs.Count} templates discovered",
                 ["Target Accelerator"] = accelerator,
                 ["IPC Shm Size"] = "4 GB Host Shared Memory",
-                ["Coordinate Mount"] = "/workspace/data (Shared In-Memory Volume)"
+                ["Coordinate Mount"] = "/workspace/data (Shared In-Memory Volume)",
+                ["Daemon Endpoint"] = activeEndpoint
             }
         };
+    }
+
+    /// <summary>
+    /// Attempts to query an HTTP probe endpoint, returning the response if 2xx success or null on failure.
+    /// </summary>
+    /// <param name="url">The HTTP endpoint URL to probe.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The successful HTTP response message, or null if unreachable.</returns>
+    private async Task<HttpResponseMessage?> TryProbeEndpointAsync(string url, CancellationToken ct)
+    {
+        // WHAT: Probes an endpoint and safely catches network or HTTP faults.
+        // WHY:  Prevents connection drops or unresolvable DNS names from crashing status checks.
+        // HOW:  Calls GetAsync on _probeClient, disposing any non-2xx response.
+        try
+        {
+            HttpResponseMessage response = await _probeClient.GetAsync(url, ct);
+            if (response.IsSuccessStatusCode)
+            {
+                return response;
+            }
+
+            response.Dispose();
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Extracts the accelerator backend name from a simulation daemon response if present.
+    /// </summary>
+    /// <param name="response">The active HTTP response message.</param>
+    /// <param name="defaultAccelerator">Fallback accelerator name.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The resolved accelerator backend description.</returns>
+    private static async Task<string> ExtractAcceleratorAsync(HttpResponseMessage response, string defaultAccelerator, CancellationToken ct)
+    {
+        // WHAT: Reads and parses the JSON response payload from the simulation daemon.
+        // WHY:  Displays the dynamic hardware accelerator (e.g., Level Zero or OpenCL) in telemetry.
+        // HOW:  Parses JSON document looking for "accelerator" property.
+        try
+        {
+            string json = await response.Content.ReadAsStringAsync(ct);
+            using JsonDocument doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("accelerator", out JsonElement elem))
+            {
+                string? acc = elem.GetString();
+                if (!string.IsNullOrWhiteSpace(acc))
+                {
+                    return acc;
+                }
+            }
+        }
+        catch
+        {
+            // Corrupted payload falls back to default
+        }
+
+        return defaultAccelerator;
     }
 
     /// <summary>

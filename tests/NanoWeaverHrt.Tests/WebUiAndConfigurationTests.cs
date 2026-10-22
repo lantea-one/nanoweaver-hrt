@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -293,6 +294,107 @@ public sealed class WebUiAndConfigurationTests : IClassFixture<WebApplicationFac
             .Build();
         StackServiceManager emptyMgr = new(store, emptyConfig);
         Assert.Empty(emptyMgr.GetDiscoveredSimulationConfigs());
+    }
+
+    /// <summary>
+    /// Verifies all probing branches of StackServiceManager for the simulation node (daemon online, corrupted JSON, localhost fallback, failure).
+    /// </summary>
+    [Fact]
+    public async Task StackServiceManager_SimulationNode_AllProbingBranches()
+    {
+        // WHAT: Exercises all branches of InspectSimulationNodeAsync with various HTTP responses and failures.
+        // WHY:  Guarantees 100% line and branch coverage across simulation engine telemetry checks.
+        // HOW:  Uses custom TestMockHttpMessageHandler to simulate online daemon, corrupted JSON, fallback, and errors.
+        string configsDir = Path.Combine(_testTempDir, "sim_probe_configs_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(configsDir);
+        await File.WriteAllTextAsync(Path.Combine(configsDir, "deck.in"), "units real\n");
+
+        IConfiguration config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["SIMULATION_CONFIGS_DIR"] = configsDir,
+                ["TRAJECTORY_INCOMING_DIR"] = _testTempDir,
+                ["POSTGRES_CONNECTION_STRING"] = "Host=nonexistent_test_host;Timeout=1"
+            })
+            .Build();
+
+        using SystemConfigurationStore store = new(config);
+        await store.InitializeAsync();
+
+        IConfiguration emptyConfig = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["SIMULATION_CONFIGS_DIR"] = Path.Combine(_testTempDir, "empty_configs_" + Guid.NewGuid().ToString("N"))
+            })
+            .Build();
+
+        // 1. Online simulation daemon with valid accelerator property
+        using HttpClient clientOnline = new(new TestMockHttpMessageHandler(req =>
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{\"status\":\"Healthy\",\"accelerator\":\"Intel Arc A770 (Level Zero)\"}", Encoding.UTF8, "application/json")
+            }));
+        StackServiceManager mgrOnline = new(store, config, clientOnline);
+        StackServiceInfo infoOnline = await mgrOnline.PingServiceAsync("simulation-engine");
+        Assert.Equal(ServiceHealthState.Healthy, infoOnline.Health);
+        Assert.Contains("Online & Connected (Intel Arc A770 (Level Zero))", infoOnline.StatusMessage);
+        Assert.Equal("Active (HTTP/1.1 REST API)", infoOnline.Metrics["Simulation Daemon"]);
+
+        // 2. Online simulation daemon with corrupted JSON payload (falls back to default accelerator)
+        using HttpClient clientCorrupt = new(new TestMockHttpMessageHandler(req =>
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{malformed_json", Encoding.UTF8, "application/json")
+            }));
+        StackServiceManager mgrCorrupt = new(store, config, clientCorrupt);
+        StackServiceInfo infoCorrupt = await mgrCorrupt.PingServiceAsync("simulation-engine");
+        Assert.Equal(ServiceHealthState.Healthy, infoCorrupt.Health);
+        Assert.Contains("Online & Connected", infoCorrupt.StatusMessage);
+
+        // 3. simulation-node throws exception, but localhost fallback succeeds
+        using HttpClient clientFallback = new(new TestMockHttpMessageHandler(req =>
+        {
+            if (req.RequestUri != null && req.RequestUri.Host.Equals("simulation-node", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new HttpRequestException("simulation-node host resolution failed");
+            }
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{\"status\":\"Healthy\",\"accelerator\":\"CUDA Fallback\"}", Encoding.UTF8, "application/json")
+            };
+        }));
+        StackServiceManager mgrFallback = new(store, config, clientFallback);
+        StackServiceInfo infoFallback = await mgrFallback.PingServiceAsync("simulation-engine");
+        Assert.Equal(ServiceHealthState.Healthy, infoFallback.Health);
+        Assert.Contains("localhost", infoFallback.EndpointOrLocation);
+        Assert.Contains("Online & Connected (CUDA Fallback)", infoFallback.StatusMessage);
+
+        // 4. Primary endpoint returns non-success (500) and localhost fallback throws exception; configs == 0 -> Offline
+        using HttpClient clientFail = new(new TestMockHttpMessageHandler(req =>
+        {
+            if (req.RequestUri != null && req.RequestUri.Host.Equals("simulation-node", StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(HttpStatusCode.InternalServerError);
+            }
+            throw new HttpRequestException("Localhost fallback failed");
+        }));
+        StackServiceManager mgrFail = new(store, emptyConfig, clientFail);
+        StackServiceInfo infoFail = await mgrFail.PingServiceAsync("simulation-engine");
+        Assert.Equal(ServiceHealthState.Offline, infoFail.Health);
+        Assert.Contains("Offline / Standby", infoFail.StatusMessage);
+
+        // 5. Localhost fallback returns non-success (503); configs == 0 -> Offline
+        using HttpClient clientFallbackFail = new(new TestMockHttpMessageHandler(req =>
+        {
+            if (req.RequestUri != null && req.RequestUri.Host.Equals("simulation-node", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new HttpRequestException("simulation-node unreachable");
+            }
+            return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
+        }));
+        StackServiceManager mgrFallbackFail = new(store, emptyConfig, clientFallbackFail);
+        StackServiceInfo infoFallbackFail = await mgrFallbackFail.PingServiceAsync("simulation-engine");
+        Assert.Equal(ServiceHealthState.Offline, infoFallbackFail.Health);
     }
 
     /// <summary>
@@ -693,4 +795,27 @@ public sealed class MockPostgresConfigRepo : IConfigurationRepository
 
     /// <inheritdoc/>
     public Task<bool> RevokeShareKeyAsync(string tokenId, CancellationToken ct = default) => Task.FromResult(false);
+}
+
+/// <summary>
+/// Test mock HTTP message handler supporting customized delegate responses for probe checks.
+/// </summary>
+public sealed class TestMockHttpMessageHandler : HttpMessageHandler
+{
+    private readonly Func<HttpRequestMessage, HttpResponseMessage> _responder;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="TestMockHttpMessageHandler"/> class.
+    /// </summary>
+    /// <param name="responder">The delegate producing mock HTTP responses.</param>
+    public TestMockHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> responder)
+    {
+        _responder = responder;
+    }
+
+    /// <inheritdoc/>
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        return Task.FromResult(_responder(request));
+    }
 }

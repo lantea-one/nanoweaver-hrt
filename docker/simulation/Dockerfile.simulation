@@ -77,7 +77,10 @@ ENV PATH="/usr/local/bin:${PATH}" \
     OCL_ICD_VENDORS=/etc/OpenCL/vendors
 
 COPY docker/simulation/entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
+COPY docker/simulation/simulation_daemon.py /usr/local/bin/simulation_daemon.py
+RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/simulation_daemon.py
+
+EXPOSE 8080
 
 WORKDIR /workspace
 
@@ -85,4 +88,4 @@ LABEL org.opencontainers.image.source="https://git.lantea.one/lantea-one/nanowea
       org.opencontainers.image.description="NanoWeaverHrt Coarse-Grained and All-Atom Molecular Dynamics Simulation Engine"
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-CMD ["sleep", "infinity"]
+CMD ["python3", "/usr/local/bin/simulation_daemon.py"]
