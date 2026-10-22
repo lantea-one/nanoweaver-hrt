@@ -1,0 +1,1141 @@
+@page "/dna"
+@page "/dna/{TargetUsername}"
+@using System.Security.Cryptography
+@using System.Text
+@using System.Text.Json
+@using NanoWeaverHrt.Abstractions
+@using NanoWeaverHrt.Endocrine
+@using NanoWeaverHrt.Fabrication
+@using NanoWeaverHrt.Genomics
+@using NanoWeaverHrt.Models
+@using NanoWeaverHrt.Security.Authentication
+@inject IPatientDnaRepository DnaRepo
+@inject IUserRepository UserRepo
+@inject IUserProfileRepository ProfileRepo
+@inject IFabricationService FabService
+@inject IPharmacogenomicsService GenomicsService
+@inject UserSessionState SessionState
+@inject NavigationManager NavManager
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Patient DNA &amp; Imports Management - NanoWeaverHrt</PageTitle>
+
+<div class="user-management-container">
+    <div class="d-flex justify-between align-center mb-3">
+        <div>
+            <h2>🧬 Patient DNA &amp; Sequence Imports</h2>
+            <div class="subtext">
+                Manage digitized DNA origami nanocarrier blueprints, imported genomic sequences, and personalized biophysical simulation results.
+            </div>
+        </div>
+        <div class="d-flex gap-2">
+            @if (CanManage)
+            {
+                <button class="btn btn-primary" @onclick="OpenSynthesizeModal">➕ Synthesize Blueprint</button>
+                <button class="btn btn-secondary" @onclick="OpenImportModal">📥 Import DNA Data</button>
+            }
+        </div>
+    </div>
+
+    @if (!SessionState.IsAuthenticated)
+    {
+        <div class="alert alert-warning">
+            <strong>Authentication Required:</strong> Please <a href="/login">sign in</a> to view or manage patient DNA records.
+        </div>
+    }
+    else
+    {
+        @if (!string.IsNullOrEmpty(_statusMessage))
+        {
+            <div class="alert @(_isStatusError ? "alert-danger" : "alert-success") mb-3">
+                @_statusMessage
+            </div>
+        }
+
+        <!-- Patient Selection Toolbar (for Admins & Researchers) -->
+        @if (SessionState.IsAdmin || SessionState.IsResearcher)
+        {
+            <div class="card mb-3 d-flex justify-between align-center">
+                <div class="d-flex align-center gap-3">
+                    <label for="patientSelector" class="form-label mb-0 font-bold">Selected Patient:</label>
+                    <select id="patientSelector" class="form-control" style="max-width: 280px;" value="@_effectiveUsername" @onchange="OnPatientChanged">
+                        @foreach (var patient in _patients)
+                        {
+                            <option value="@patient.Username">@patient.Username (@patient.Role - @patient.AccessGate)</option>
+                        }
+                    </select>
+                </div>
+                <div class="d-flex gap-2">
+                    <a href="@($"/profile/{_effectiveUsername}")" class="btn btn-outline btn-sm">👤 View Profile</a>
+                </div>
+            </div>
+        }
+
+        <!-- Interactive Navigation Tabs -->
+        <div class="d-flex gap-2 mb-3">
+            <button class="btn @(_activeTab == "dna" ? "btn-primary" : "btn-outline")" @onclick='() => _activeTab = "dna"'>
+                🧬 Digitized DNA Blueprints (@_dnaRecords.Count)
+            </button>
+            <button class="btn @(_activeTab == "imports" ? "btn-primary" : "btn-outline")" @onclick='() => _activeTab = "imports"'>
+                📂 Sequence &amp; Data Imports (@_imports.Count)
+            </button>
+            <button class="btn @(_activeTab == "results" ? "btn-primary" : "btn-outline")" @onclick='() => _activeTab = "results"'>
+                📊 Analytical &amp; Simulation Results (@_results.Count)
+            </button>
+        </div>
+
+        @if (_isLoading)
+        {
+            <div class="text-center p-4 text-muted">
+                <div class="spinner mb-2"></div>
+                Loading patient DNA and simulation records...
+            </div>
+        }
+        else
+        {
+            <!-- TAB 1: Digitized DNA Blueprints -->
+            @if (_activeTab == "dna")
+            {
+                <div class="card">
+                    <div class="d-flex justify-between align-center mb-3">
+                        <h3 class="mb-0">🧬 Digitized DNA Origami Nanocarriers for @@@_effectiveUsername</h3>
+                        @if (CanManage)
+                        {
+                            <button class="btn btn-sm btn-primary" @onclick="OpenSynthesizeModal">➕ Synthesize Blueprint</button>
+                        }
+                    </div>
+
+                    @if (_dnaRecords.Count == 0)
+                    {
+                        <div class="text-center p-4 text-muted border-dashed">
+                            <p class="mb-2">No digitized DNA blueprints registered for this patient.</p>
+                            @if (CanManage)
+                            {
+                                <button class="btn btn-sm btn-primary" @onclick="OpenSynthesizeModal">Synthesize First Blueprint</button>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Design Title</th>
+                                        <th>Regimen</th>
+                                        <th>Geometry</th>
+                                        <th>Active Ligand</th>
+                                        <th>Target Kd</th>
+                                        <th>GC%</th>
+                                        <th>MW (kDa)</th>
+                                        <th>Provenance SHA-256</th>
+                                        <th>Created</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var dna in _dnaRecords)
+                                    {
+                                        <tr>
+                                            <td class="font-bold">@dna.Title</td>
+                                            <td>
+                                                <span class="badge @(dna.Regimen == TherapeuticRegimen.MaleToFemale ? "badge-primary" : "badge-accent")">
+                                                    @dna.Regimen
+                                                </span>
+                                            </td>
+                                            <td>@dna.NanocarrierGeometry</td>
+                                            <td>@dna.ActiveLigand</td>
+                                            <td class="font-mono">@dna.TargetAptamerKdNm.ToString("F1") nM</td>
+                                            <td class="font-mono">@dna.GcPercentage.ToString("F1")%</td>
+                                            <td class="font-mono">@dna.EstimatedMwKDa.ToString("N0")</td>
+                                            <td class="font-mono text-muted" title="@dna.ProvenanceSha256">
+                                                @(dna.ProvenanceSha256.Length >= 12 ? dna.ProvenanceSha256[..12] + "..." : dna.ProvenanceSha256)
+                                            </td>
+                                            <td>@dna.CreatedAtUtc.ToString("yyyy-MM-dd HH:mm")</td>
+                                            <td>
+                                                <div class="d-flex gap-1">
+                                                    <button class="btn btn-sm btn-outline" @onclick="() => InspectDna(dna)">Inspect</button>
+                                                    <button class="btn btn-sm btn-outline" @onclick="() => DownloadDnaPackage(dna)">💾 JSON</button>
+                                                    @if (CanManage)
+                                                    {
+                                                        <button class="btn btn-sm btn-outline text-danger" @onclick="() => DeleteDna(dna)">🗑</button>
+                                                    }
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            }
+
+            <!-- TAB 2: Sequence & Data Imports -->
+            @if (_activeTab == "imports")
+            {
+                <div class="card">
+                    <div class="d-flex justify-between align-center mb-3">
+                        <h3 class="mb-0">📂 Imported Sequence Files &amp; Datasets for @@@_effectiveUsername</h3>
+                        @if (CanManage)
+                        {
+                            <button class="btn btn-sm btn-secondary" @onclick="OpenImportModal">📥 Import DNA Data</button>
+                        }
+                    </div>
+
+                    @if (_imports.Count == 0)
+                    {
+                        <div class="text-center p-4 text-muted border-dashed">
+                            <p class="mb-2">No imported DNA sequence or variant records found for this patient.</p>
+                            @if (CanManage)
+                            {
+                                <button class="btn btn-sm btn-secondary" @onclick="OpenImportModal">Import Sequence Now</button>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>File Name</th>
+                                        <th>Type</th>
+                                        <th>Size</th>
+                                        <th>Checksum (SHA-256)</th>
+                                        <th>Imported By</th>
+                                        <th>Status</th>
+                                        <th>Imported At</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var imp in _imports)
+                                    {
+                                        <tr>
+                                            <td class="font-bold font-mono">@imp.FileName</td>
+                                            <td>
+                                                <span class="badge badge-outline">@imp.ImportType</span>
+                                            </td>
+                                            <td class="font-mono">@FormatBytes(imp.SizeBytes)</td>
+                                            <td class="font-mono text-muted" title="@imp.Sha256Checksum">
+                                                @(imp.Sha256Checksum.Length >= 12 ? imp.Sha256Checksum[..12] + "..." : imp.Sha256Checksum)
+                                            </td>
+                                            <td class="font-mono">@@@imp.ImportedBy</td>
+                                            <td>
+                                                <span class="badge badge-accent">@imp.Status</span>
+                                            </td>
+                                            <td>@imp.ImportedAtUtc.ToString("yyyy-MM-dd HH:mm")</td>
+                                            <td>
+                                                <div class="d-flex gap-1">
+                                                    <button class="btn btn-sm btn-outline" @onclick="() => InspectImport(imp)">Inspect</button>
+                                                    <button class="btn btn-sm btn-outline" @onclick="() => DownloadImport(imp)">💾 File</button>
+                                                    @if (CanManage)
+                                                    {
+                                                        <button class="btn btn-sm btn-outline text-danger" @onclick="() => DeleteImport(imp)">🗑</button>
+                                                    }
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            }
+
+            <!-- TAB 3: Analytical & Simulation Results -->
+            @if (_activeTab == "results")
+            {
+                <div class="card">
+                    <div class="d-flex justify-between align-center mb-3">
+                        <h3 class="mb-0">📊 Personalized Simulation &amp; Endocrine Results for @@@_effectiveUsername</h3>
+                        <div class="d-flex align-center gap-2">
+                            <label for="resultFilter" class="form-label mb-0">Filter:</label>
+                            <select id="resultFilter" class="form-control form-control-sm" style="max-width: 200px;" @bind="_resultFilter">
+                                <option value="">All Categories</option>
+                                <option value="EndocrineKinetics">Endocrine Kinetics</option>
+                                <option value="Pharmacogenomics">Pharmacogenomics</option>
+                                <option value="SynthesisFabrication">Synthesis Fabrication</option>
+                                <option value="SimulationTrajectory">Simulation Trajectory</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    @{
+                        var filteredResults = string.IsNullOrWhiteSpace(_resultFilter)
+                            ? _results
+                            : _results.Where(r => string.Equals(r.ResultType, _resultFilter, StringComparison.OrdinalIgnoreCase)).ToList();
+                    }
+
+                    @if (filteredResults.Count == 0)
+                    {
+                        <div class="text-center p-4 text-muted border-dashed">
+                            <p class="mb-0">No analytical or simulation results registered under this filter.</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Result Title</th>
+                                        <th>Category</th>
+                                        <th>Status</th>
+                                        <th>Summary Findings</th>
+                                        <th>Recorded At</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var res in filteredResults)
+                                    {
+                                        <tr>
+                                            <td class="font-bold">@res.Title</td>
+                                            <td>
+                                                <span class="badge badge-outline">@res.ResultType</span>
+                                            </td>
+                                            <td>
+                                                <span class="badge @GetStatusBadgeClass(res.Status)">
+                                                    @res.Status
+                                                </span>
+                                            </td>
+                                            <td style="max-width: 380px;">@res.Summary</td>
+                                            <td>@res.CreatedAtUtc.ToString("yyyy-MM-dd HH:mm")</td>
+                                            <td>
+                                                <div class="d-flex gap-1">
+                                                    <button class="btn btn-sm btn-outline" @onclick="() => InspectResult(res)">Inspect</button>
+                                                    @if (CanManage)
+                                                    {
+                                                        <button class="btn btn-sm btn-outline text-danger" @onclick="() => DeleteResult(res)">🗑</button>
+                                                    }
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            }
+        }
+    }
+</div>
+
+<!-- MODAL: Synthesize New DNA Origami Blueprint -->
+@if (_showSynthesizeModal)
+{
+    <div class="modal-backdrop">
+        <div class="modal-content" style="max-width: 680px;">
+            <div class="modal-header d-flex justify-between align-center">
+                <h3 class="mb-0">🧬 Synthesize Digital DNA Blueprint</h3>
+                <button class="btn btn-sm btn-outline" @onclick="() => _showSynthesizeModal = false">✕</button>
+            </div>
+            <div class="modal-body mt-2">
+                <div class="form-group">
+                    <label class="form-label">Patient</label>
+                    <input class="form-control font-mono" value="@@@_effectiveUsername" disabled />
+                </div>
+                <div class="form-group">
+                    <label for="dnaTitle" class="form-label">Design Title</label>
+                    <input id="dnaTitle" class="form-control" placeholder="e.g. Hexagonal Nanotube 6HB - 17β-Estradiol Delivery" @bind="_newDnaTitle" />
+                    <div class="form-hint">Descriptive label for this nanocarrier origami synthesis blueprint.</div>
+                </div>
+                <div class="form-row d-flex gap-3">
+                    <div class="form-group flex-1">
+                        <label for="dnaRegimen" class="form-label">Target Regimen</label>
+                        <select id="dnaRegimen" class="form-control" @bind="_newDnaRegimen">
+                            <option value="@TherapeuticRegimen.MaleToFemale">Male to Female (MtF) - Estrogen</option>
+                            <option value="@TherapeuticRegimen.FemaleToMale">Female to Male (FtM) - Testosterone</option>
+                        </select>
+                    </div>
+                    <div class="form-group flex-1">
+                        <label for="dnaGeometry" class="form-label">Nanocarrier Geometry</label>
+                        <select id="dnaGeometry" class="form-control" @bind="_newDnaGeometry">
+                            <option value="Hexagonal Nanotube (6HB)">Hexagonal Nanotube (6HB)</option>
+                            <option value="Hollow Cuboid (Lattice)">Hollow Cuboid (Lattice)</option>
+                            <option value="Tetrahedral Nanocage">Tetrahedral Nanocage</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row d-flex gap-3">
+                    <div class="form-group flex-1">
+                        <label for="dnaKd" class="form-label">Target Aptamer Kd (nM)</label>
+                        <input id="dnaKd" type="number" step="0.1" class="form-control" @bind="_newDnaKd" />
+                        <div class="form-hint">Dissociation constant for target tissue binding pocket.</div>
+                    </div>
+                    <div class="form-group flex-1">
+                        <label for="dnaTissue" class="form-label">Target Tissue</label>
+                        <input id="dnaTissue" class="form-control" @bind="_newDnaTissue" />
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="dnaScaffold" class="form-label">Scaffold Sequence (Optional Custom FASTA)</label>
+                    <textarea id="dnaScaffold" class="form-control font-mono code-box" rows="3" placeholder="Leave blank to use default M13mp18 bacteriophage scaffold..." @bind="_newDnaScaffold"></textarea>
+                    <div class="form-hint">Single-stranded DNA scaffold sequence.</div>
+                </div>
+                <div class="form-group">
+                    <label for="dnaNotes" class="form-label">Clinical / Synthesis Notes</label>
+                    <input id="dnaNotes" class="form-control" placeholder="e.g. Calibrated for patient's CYP3A4 clearance rate" @bind="_newDnaNotes" />
+                </div>
+            </div>
+            <div class="modal-footer d-flex justify-end gap-2 mt-3">
+                <button class="btn btn-outline" @onclick="() => _showSynthesizeModal = false">Cancel</button>
+                <button class="btn btn-primary" @onclick="SaveSynthesizedBlueprint" disabled="@_isSubmitting">
+                    @(_isSubmitting ? "Synthesizing..." : "⚡ Synthesize & Save")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- MODAL: Import DNA Sequence Data -->
+@if (_showImportModal)
+{
+    <div class="modal-backdrop">
+        <div class="modal-content" style="max-width: 680px;">
+            <div class="modal-header d-flex justify-between align-center">
+                <h3 class="mb-0">📥 Import Patient DNA / Genomic Data</h3>
+                <button class="btn btn-sm btn-outline" @onclick="() => _showImportModal = false">✕</button>
+            </div>
+            <div class="modal-body mt-2">
+                <div class="form-group">
+                    <label class="form-label">Target Patient</label>
+                    <input class="form-control font-mono" value="@@@_effectiveUsername" disabled />
+                </div>
+                <div class="form-group">
+                    <label for="importFileName" class="form-label">File Name</label>
+                    <input id="importFileName" class="form-control font-mono" placeholder="e.g. patient_m13_variant.fasta" @bind="_newImportFileName" />
+                    <div class="form-hint">Original filename of the imported sequence or dataset file.</div>
+                </div>
+                <div class="form-group">
+                    <label for="importType" class="form-label">Import Type</label>
+                    <select id="importType" class="form-control" @bind="_newImportType">
+                        <option value="FASTA">FASTA Nucleotide Sequence</option>
+                        <option value="GenomicPanel">Pharmacogenomic Variant Panel (JSON)</option>
+                        <option value="AptamerProfile">Aptamer Affinity Profile</option>
+                        <option value="TrajectoryArchive">oxDNA / LAMMPS Trajectory Dataset</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="importUpload" class="form-label">Upload File from Local Storage</label>
+                    <InputFile id="importUpload" class="form-control cursor-pointer" OnChange="HandleImportFileUpload" />
+                    <div class="form-hint">Upload a text or FASTA file directly to populate the sequence field.</div>
+                </div>
+                <div class="form-group">
+                    <label for="importContent" class="form-label">Sequence or Dataset Payload</label>
+                    <textarea id="importContent" class="form-control font-mono code-box" rows="5" placeholder="Paste raw FASTA sequence or JSON variant manifest here..." @bind="_newImportContent"></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="d-flex align-center gap-2 cursor-pointer">
+                        <input type="checkbox" @bind="_newImportAutoAnalyze" />
+                        <span><strong>Automatically execute sequence analysis</strong> (computes CpG immunogenicity &amp; pharmacogenomic alerts)</span>
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer d-flex justify-end gap-2 mt-3">
+                <button class="btn btn-outline" @onclick="() => _showImportModal = false">Cancel</button>
+                <button class="btn btn-primary" @onclick="SaveImportedData" disabled="@_isSubmitting">
+                    @(_isSubmitting ? "Importing..." : "💾 Process Import")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- MODAL: Inspect DNA Blueprint -->
+@if (_selectedDna != null)
+{
+    <div class="modal-backdrop">
+        <div class="modal-content" style="max-width: 840px;">
+            <div class="modal-header d-flex justify-between align-center">
+                <h3 class="mb-0">🧬 Blueprint: @_selectedDna.Title</h3>
+                <button class="btn btn-sm btn-outline" @onclick="() => _selectedDna = null">✕</button>
+            </div>
+            <div class="modal-body mt-2">
+                <div class="d-flex gap-2 mb-3">
+                    <span class="badge badge-primary">Regimen: @_selectedDna.Regimen</span>
+                    <span class="badge badge-accent">Geometry: @_selectedDna.NanocarrierGeometry</span>
+                    <span class="badge badge-outline">Active Ligand: @_selectedDna.ActiveLigand</span>
+                    <span class="badge badge-outline">Target Kd: @_selectedDna.TargetAptamerKdNm.ToString("F1") nM</span>
+                </div>
+
+                <div class="card mb-3">
+                    <div class="stat-label">PROVENANCE MANIFEST (SHA-256)</div>
+                    <div class="font-mono text-sm break-all">@_selectedDna.ProvenanceSha256</div>
+                </div>
+
+                <div class="form-row d-flex gap-3 mb-3">
+                    <div class="card flex-1">
+                        <div class="stat-label">GC BASE RATIO</div>
+                        <div class="stat-value font-mono">@_selectedDna.GcPercentage.ToString("F1")%</div>
+                    </div>
+                    <div class="card flex-1">
+                        <div class="stat-label">MOLECULAR WEIGHT</div>
+                        <div class="stat-value font-mono">@_selectedDna.EstimatedMwKDa.ToString("N0") kDa</div>
+                    </div>
+                    <div class="card flex-1">
+                        <div class="stat-label">STAPLE OLIGOS</div>
+                        <div class="stat-value font-mono">@_selectedDna.Staples.Count strands</div>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <h4>Synthetic Staple Ensemble (@_selectedDna.Staples.Count Oligonucleotides)</h4>
+                    <div class="table-responsive" style="max-height: 180px; overflow-y: auto;">
+                        <table class="table table-hover table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Staple ID</th>
+                                    <th>Length</th>
+                                    <th>Melting Temp (°C)</th>
+                                    <th>GC%</th>
+                                    <th>Functional Role</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var staple in _selectedDna.Staples)
+                                {
+                                    <tr>
+                                        <td class="font-mono">@staple.StapleId</td>
+                                        <td class="font-mono">@staple.Length nt</td>
+                                        <td class="font-mono">@staple.MeltingTemperatureCelsius.ToString("F1")°C</td>
+                                        <td class="font-mono">@staple.GcPercentage.ToString("F1")%</td>
+                                        <td>@staple.FunctionalRole</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div>
+                    <h4>Thermal Annealing Schedule (@_selectedDna.AnnealingProtocol.Count Stages)</h4>
+                    <div class="table-responsive" style="max-height: 140px; overflow-y: auto;">
+                        <table class="table table-hover table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Step</th>
+                                    <th>Target Temp</th>
+                                    <th>Hold Duration</th>
+                                    <th>Ramp Rate</th>
+                                    <th>Biophysical Purpose</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var ramp in _selectedDna.AnnealingProtocol)
+                                {
+                                    <tr>
+                                        <td class="font-mono">#@ramp.StepIndex</td>
+                                        <td class="font-mono">@ramp.TargetTemperatureCelsius.ToString("F1")°C</td>
+                                        <td class="font-mono">@ramp.HoldDurationMinutes min</td>
+                                        <td class="font-mono">@ramp.RampRateCelsiusPerMinute.ToString("F2")°C/min</td>
+                                        <td>@ramp.BiophysicalPurpose</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer d-flex justify-between align-center mt-3">
+                <button class="btn btn-outline" @onclick="() => DownloadDnaPackage(_selectedDna)">💾 Download Digital DNA JSON</button>
+                <button class="btn btn-primary" @onclick="() => _selectedDna = null">Done</button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- MODAL: Inspect Import Record -->
+@if (_selectedImport != null)
+{
+    <div class="modal-backdrop">
+        <div class="modal-content" style="max-width: 720px;">
+            <div class="modal-header d-flex justify-between align-center">
+                <h3 class="mb-0">📂 Import: @_selectedImport.FileName</h3>
+                <button class="btn btn-sm btn-outline" @onclick="() => _selectedImport = null">✕</button>
+            </div>
+            <div class="modal-body mt-2">
+                <div class="d-flex gap-2 mb-3">
+                    <span class="badge badge-outline">Type: @_selectedImport.ImportType</span>
+                    <span class="badge badge-accent">Status: @_selectedImport.Status</span>
+                    <span class="badge badge-primary">Size: @FormatBytes(_selectedImport.SizeBytes)</span>
+                    <span class="badge badge-outline">Imported by: @@@_selectedImport.ImportedBy</span>
+                </div>
+
+                <div class="card mb-3">
+                    <div class="stat-label">SHA-256 CHECKSUM</div>
+                    <div class="font-mono text-sm break-all">@_selectedImport.Sha256Checksum</div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Sequence / Data Content</label>
+                    <textarea class="form-control font-mono code-box" rows="8" readonly>@_selectedImport.SequenceOrData</textarea>
+                </div>
+            </div>
+            <div class="modal-footer d-flex justify-between align-center mt-3">
+                <button class="btn btn-outline" @onclick="() => DownloadImport(_selectedImport)">💾 Download Asset</button>
+                <button class="btn btn-primary" @onclick="() => _selectedImport = null">Close</button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- MODAL: Inspect Result Record -->
+@if (_selectedResult != null)
+{
+    <div class="modal-backdrop">
+        <div class="modal-content" style="max-width: 680px;">
+            <div class="modal-header d-flex justify-between align-center">
+                <h3 class="mb-0">📊 Result: @_selectedResult.Title</h3>
+                <button class="btn btn-sm btn-outline" @onclick="() => _selectedResult = null">✕</button>
+            </div>
+            <div class="modal-body mt-2">
+                <div class="d-flex gap-2 mb-3">
+                    <span class="badge badge-outline">Category: @_selectedResult.ResultType</span>
+                    <span class="badge @GetStatusBadgeClass(_selectedResult.Status)">Status: @_selectedResult.Status</span>
+                    <span class="badge badge-outline">Date: @_selectedResult.CreatedAtUtc.ToString("yyyy-MM-dd HH:mm")</span>
+                </div>
+
+                <div class="card mb-3">
+                    <div class="stat-label">CLINICAL / BIOPHYSICAL SUMMARY</div>
+                    <p class="mb-0 mt-1">@_selectedResult.Summary</p>
+                </div>
+
+                <div>
+                    <h4>Quantitative Biophysical Metrics</h4>
+                    @{
+                        var metrics = _selectedResult.GetMetrics();
+                    }
+                    @if (metrics.Count == 0)
+                    {
+                        <div class="text-muted">No quantitative metrics captured in this result record.</div>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-hover table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Metric Name</th>
+                                        <th>Measured Value</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var kvp in metrics)
+                                    {
+                                        <tr>
+                                            <td class="font-bold">@kvp.Key</td>
+                                            <td class="font-mono">@kvp.Value</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+            <div class="modal-footer d-flex justify-end gap-2 mt-3">
+                <button class="btn btn-primary" @onclick="() => _selectedResult = null">Close</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>
+    /// Optional route parameter identifying the targeted patient username.
+    /// </summary>
+    [Parameter]
+    public string? TargetUsername { get; set; }
+
+    /// <summary>
+    /// Currently effective patient username for queries and creations.
+    /// </summary>
+    private string _effectiveUsername = string.Empty;
+
+    /// <summary>
+    /// Active UI tab view ("dna", "imports", or "results").
+    /// </summary>
+    private string _activeTab = "dna";
+
+    /// <summary>
+    /// Loading indicator for asynchronous repository operations.
+    /// </summary>
+    private bool _isLoading = true;
+
+    /// <summary>
+    /// Submitting indicator for modals.
+    /// </summary>
+    private bool _isSubmitting = false;
+
+    /// <summary>
+    /// Banner feedback message.
+    /// </summary>
+    private string? _statusMessage;
+
+    /// <summary>
+    /// Flag indicating whether the banner feedback message represents an error.
+    /// </summary>
+    private bool _isStatusError = false;
+
+    /// <summary>
+    /// All patient accounts available to Administrators and Researchers.
+    /// </summary>
+    private List<UserAccount> _patients = [];
+
+    /// <summary>
+    /// Collection of digitized DNA blueprints for the active patient.
+    /// </summary>
+    private List<PatientDigitalDnaRecord> _dnaRecords = [];
+
+    /// <summary>
+    /// Collection of imported sequences and datasets for the active patient.
+    /// </summary>
+    private List<PatientDnaImportRecord> _imports = [];
+
+    /// <summary>
+    /// Collection of simulation and clinical results for the active patient.
+    /// </summary>
+    private List<PatientResultRecord> _results = [];
+
+    /// <summary>
+    /// Category filter for analytical results.
+    /// </summary>
+    private string _resultFilter = string.Empty;
+
+    /// <summary>
+    /// Modal visibility flags.
+    /// </summary>
+    private bool _showSynthesizeModal = false;
+    private bool _showImportModal = false;
+
+    /// <summary>
+    /// Active inspection modal models.
+    /// </summary>
+    private PatientDigitalDnaRecord? _selectedDna;
+    private PatientDnaImportRecord? _selectedImport;
+    private PatientResultRecord? _selectedResult;
+
+    /// <summary>
+    /// Form fields for synthesizing a new DNA blueprint.
+    /// </summary>
+    private string _newDnaTitle = string.Empty;
+    private TherapeuticRegimen _newDnaRegimen = TherapeuticRegimen.MaleToFemale;
+    private string _newDnaGeometry = "Hexagonal Nanotube (6HB)";
+    private string _newDnaTissue = "Anterior Pituitary Gonadotrope";
+    private double _newDnaKd = 3.5;
+    private string _newDnaScaffold = string.Empty;
+    private string _newDnaNotes = string.Empty;
+
+    /// <summary>
+    /// Form fields for importing DNA sequence data.
+    /// </summary>
+    private string _newImportFileName = string.Empty;
+    private string _newImportType = "FASTA";
+    private string _newImportContent = string.Empty;
+    private bool _newImportAutoAnalyze = true;
+
+    /// <summary>
+    /// Determines whether the current user is authorized to create or modify DNA records.
+    /// </summary>
+    private bool CanManage => SessionState.IsAdmin || SessionState.IsResearcher ||
+        (SessionState.IsAuthenticated && string.Equals(SessionState.CurrentUser?.Username, _effectiveUsername, StringComparison.OrdinalIgnoreCase));
+
+    /// <inheritdoc/>
+    protected override async Task OnInitializedAsync()
+    {
+        // WHAT: Discovers the active target patient and loads DNA, import, and result records.
+        // WHY:  Ensures data isolation according to role and requested URL route.
+        // HOW:  Falls back to current session username if TargetUsername is omitted or user is a non-admin.
+        await InitializeViewAsync();
+    }
+
+    /// <inheritdoc/>
+    protected override async Task OnParametersSetAsync()
+    {
+        // WHAT: Refreshes records when route parameters change.
+        // WHY:  Enables switching between patients via URL navigation without a full page reload.
+        // HOW:  Compares TargetUsername against effective username and triggers data reload if different.
+        if (!string.IsNullOrWhiteSpace(TargetUsername) && !string.Equals(TargetUsername, _effectiveUsername, StringComparison.OrdinalIgnoreCase))
+        {
+            await InitializeViewAsync();
+        }
+    }
+
+    /// <summary>
+    /// Initializes patient selection and queries associated records.
+    /// </summary>
+    private async Task InitializeViewAsync()
+    {
+        if (!SessionState.IsAuthenticated)
+        {
+            _isLoading = false;
+            return;
+        }
+
+        _isLoading = true;
+        try
+        {
+            if (SessionState.IsAdmin || SessionState.IsResearcher)
+            {
+                var allUsers = await UserRepo.ListUsersAsync();
+                _patients = allUsers.Where(u => u.Role == UserRole.Patient).ToList();
+                if (_patients.Count == 0)
+                {
+                    _patients = allUsers.ToList();
+                }
+
+                if (!string.IsNullOrWhiteSpace(TargetUsername) && allUsers.Any(u => string.Equals(u.Username, TargetUsername, StringComparison.OrdinalIgnoreCase)))
+                {
+                    _effectiveUsername = TargetUsername;
+                }
+                else if (_patients.Count > 0)
+                {
+                    _effectiveUsername = _patients[0].Username;
+                }
+                else
+                {
+                    _effectiveUsername = SessionState.CurrentUser?.Username ?? string.Empty;
+                }
+            }
+            else
+            {
+                _effectiveUsername = SessionState.CurrentUser?.Username ?? string.Empty;
+            }
+
+            await LoadPatientRecordsAsync();
+        }
+        catch (Exception ex)
+        {
+            _statusMessage = "Error loading patient records: " + ex.Message;
+            _isStatusError = true;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    /// <summary>
+    /// Queries the repository for DNA blueprints, imports, and simulation results for the effective patient.
+    /// </summary>
+    private async Task LoadPatientRecordsAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_effectiveUsername))
+        {
+            return;
+        }
+
+        var dnaList = await DnaRepo.GetDnaRecordsAsync(_effectiveUsername);
+        _dnaRecords = dnaList.ToList();
+
+        var importList = await DnaRepo.GetImportsAsync(_effectiveUsername);
+        _imports = importList.ToList();
+
+        var resultList = await DnaRepo.GetResultsAsync(_effectiveUsername);
+        _results = resultList.ToList();
+    }
+
+    /// <summary>
+    /// Handles patient selection change from dropdown.
+    /// </summary>
+    private async Task OnPatientChanged(ChangeEventArgs e)
+    {
+        string? selected = e.Value?.ToString();
+        if (!string.IsNullOrWhiteSpace(selected))
+        {
+            _effectiveUsername = selected;
+            NavManager.NavigateTo($"/dna/{_effectiveUsername}");
+            await LoadPatientRecordsAsync();
+        }
+    }
+
+    /// <summary>
+    /// Opens the synthesis modal pre-populated with patient regimen defaults.
+    /// </summary>
+    private async Task OpenSynthesizeModal()
+    {
+        UserProfile? profile = await ProfileRepo.GetProfileAsync(_effectiveUsername);
+        _newDnaRegimen = profile?.Regimen ?? TherapeuticRegimen.MaleToFemale;
+        _newDnaGeometry = "Hexagonal Nanotube (6HB)";
+        _newDnaTissue = _newDnaRegimen == TherapeuticRegimen.MaleToFemale
+            ? "Anterior Pituitary Gonadotrope / Estrogen Receptor α/β"
+            : "Androgen Receptor Target Tissue";
+        _newDnaTitle = $"{_newDnaGeometry} - {(_newDnaRegimen == TherapeuticRegimen.MaleToFemale ? "17β-Estradiol" : "Testosterone")} Delivery";
+        _newDnaKd = 3.5;
+        _newDnaScaffold = string.Empty;
+        _newDnaNotes = string.Empty;
+        _showSynthesizeModal = true;
+    }
+
+    /// <summary>
+    /// Synthesizes and saves a new digitized DNA blueprint and biophysical kinetics result.
+    /// </summary>
+    private async Task SaveSynthesizedBlueprint()
+    {
+        _isSubmitting = true;
+        _statusMessage = null;
+        try
+        {
+            DnaOrigamiSample sample = FabService.GetPresetSamples().FirstOrDefault(s => s.Regimen == _newDnaRegimen)
+                ?? FabService.GetPresetSamples()[0];
+            string effectiveScaffold = !string.IsNullOrWhiteSpace(_newDnaScaffold) ? _newDnaScaffold : sample.AptamerSequence;
+            var (_, _, _, _, gcPercent, mwKDa) = FabService.AnalyzeSequenceComposition(effectiveScaffold);
+
+            FabricationPackage pkg = FabService.GenerateFabricationPackage(sample.Id, _newDnaRegimen, _newDnaGeometry, _newDnaKd);
+
+            string dnaId = "dna_" + Guid.NewGuid().ToString("N");
+            PatientDigitalDnaRecord record = new()
+            {
+                Id = dnaId,
+                Username = _effectiveUsername,
+                Title = !string.IsNullOrWhiteSpace(_newDnaTitle) ? _newDnaTitle : $"{_newDnaGeometry} - {sample.ActiveLigand}",
+                Regimen = _newDnaRegimen,
+                TargetTissue = !string.IsNullOrWhiteSpace(_newDnaTissue) ? _newDnaTissue : sample.TargetTissue,
+                ActiveLigand = sample.ActiveLigand,
+                NanocarrierGeometry = _newDnaGeometry,
+                TargetAptamerKdNm = _newDnaKd,
+                ScaffoldFasta = effectiveScaffold,
+                GcPercentage = gcPercent,
+                EstimatedMwKDa = mwKDa,
+                Staples = pkg.StapleOligos,
+                AnnealingProtocol = pkg.AnnealingSchedule,
+                ProvenanceSha256 = pkg.Sha256Manifest,
+                CreatedAtUtc = DateTimeOffset.UtcNow,
+                Notes = _newDnaNotes
+            };
+
+            await DnaRepo.UpsertDnaRecordAsync(record);
+
+            PatientResultRecord resultRecord = PatientResultRecord.FromFabricationPackage(pkg, _effectiveUsername, dnaId);
+            await DnaRepo.UpsertResultAsync(resultRecord);
+
+            _showSynthesizeModal = false;
+            _statusMessage = $"Digitized DNA blueprint '{record.Title}' synthesized and registered successfully.";
+            _isStatusError = false;
+            await LoadPatientRecordsAsync();
+        }
+        catch (Exception ex)
+        {
+            _statusMessage = "Synthesis failed: " + ex.Message;
+            _isStatusError = true;
+        }
+        finally
+        {
+            _isSubmitting = false;
+        }
+    }
+
+    /// <summary>
+    /// Opens the import modal with default values.
+    /// </summary>
+    private void OpenImportModal()
+    {
+        _newImportFileName = string.Empty;
+        _newImportType = "FASTA";
+        _newImportContent = string.Empty;
+        _newImportAutoAnalyze = true;
+        _showImportModal = true;
+    }
+
+    /// <summary>
+    /// Handles reading uploaded text/FASTA files into the content textarea.
+    /// </summary>
+    private async Task HandleImportFileUpload(InputFileChangeEventArgs e)
+    {
+        try
+        {
+            var file = e.File;
+            if (file != null)
+            {
+                _newImportFileName = file.Name;
+                using var stream = file.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
+                using var reader = new StreamReader(stream, Encoding.UTF8);
+                _newImportContent = await reader.ReadToEndAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _statusMessage = "Failed to read uploaded file: " + ex.Message;
+            _isStatusError = true;
+        }
+    }
+
+    /// <summary>
+    /// Persists imported sequence data and triggers optional pharmacogenomic analysis.
+    /// </summary>
+    private async Task SaveImportedData()
+    {
+        if (string.IsNullOrWhiteSpace(_newImportFileName) || string.IsNullOrWhiteSpace(_newImportContent))
+        {
+            _statusMessage = "FileName and Sequence content are required.";
+            _isStatusError = true;
+            return;
+        }
+
+        _isSubmitting = true;
+        _statusMessage = null;
+        try
+        {
+            byte[] bytes = Encoding.UTF8.GetBytes(_newImportContent);
+            byte[] hash = SHA256.HashData(bytes);
+            string sha256Hex = Convert.ToHexStringLower(hash);
+
+            string importId = "imp_" + Guid.NewGuid().ToString("N");
+            PatientDnaImportRecord record = new()
+            {
+                Id = importId,
+                Username = _effectiveUsername,
+                FileName = _newImportFileName,
+                ImportType = _newImportType,
+                SequenceOrData = _newImportContent,
+                SizeBytes = bytes.Length,
+                Sha256Checksum = sha256Hex,
+                ImportedBy = SessionState.CurrentUser?.Username ?? "anonymous",
+                Status = "Processed",
+                MetadataJson = "{}",
+                ImportedAtUtc = DateTimeOffset.UtcNow
+            };
+
+            await DnaRepo.UpsertImportAsync(record);
+
+            if (_newImportAutoAnalyze)
+            {
+                UserProfile? profile = await ProfileRepo.GetProfileAsync(_effectiveUsername);
+                TherapeuticRegimen regimen = profile?.Regimen ?? TherapeuticRegimen.MaleToFemale;
+
+                PatientGenomicProfile genomicProfile = GenomicsService.AnalyzeSequence(_effectiveUsername, _newImportContent, regimen);
+                PatientResultRecord analysisResult = PatientResultRecord.FromGenomicProfile(genomicProfile, importId);
+                await DnaRepo.UpsertResultAsync(analysisResult);
+            }
+
+            _showImportModal = false;
+            _statusMessage = $"Sequence data '{record.FileName}' imported successfully ({FormatBytes(bytes.Length)}).";
+            _isStatusError = false;
+            await LoadPatientRecordsAsync();
+        }
+        catch (Exception ex)
+        {
+            _statusMessage = "Import failed: " + ex.Message;
+            _isStatusError = true;
+        }
+        finally
+        {
+            _isSubmitting = false;
+        }
+    }
+
+    /// <summary>
+    /// Opens the inspection modal for a DNA blueprint.
+    /// </summary>
+    private void InspectDna(PatientDigitalDnaRecord record)
+    {
+        _selectedDna = record;
+    }
+
+    /// <summary>
+    /// Opens the inspection modal for an imported sequence asset.
+    /// </summary>
+    private void InspectImport(PatientDnaImportRecord record)
+    {
+        _selectedImport = record;
+    }
+
+    /// <summary>
+    /// Opens the inspection modal for an analytical result.
+    /// </summary>
+    private void InspectResult(PatientResultRecord record)
+    {
+        _selectedResult = record;
+    }
+
+    /// <summary>
+    /// Triggers browser download of the digitized DNA blueprint package as JSON.
+    /// </summary>
+    private async Task DownloadDnaPackage(PatientDigitalDnaRecord record)
+    {
+        PatientDigitalDnaPackage package = record.ToPackage();
+        string json = JsonSerializer.Serialize(package, new JsonSerializerOptions { WriteIndented = true });
+        string fileName = $"{record.Username}_dna_{record.Id}.json";
+        await JSRuntime.InvokeVoidAsync("weaverDownloadBlob", fileName, "application/json", json);
+    }
+
+    /// <summary>
+    /// Triggers browser download of the raw imported asset content.
+    /// </summary>
+    private async Task DownloadImport(PatientDnaImportRecord record)
+    {
+        string mimeType = record.ImportType == "FASTA" ? "text/plain" : "application/json";
+        await JSRuntime.InvokeVoidAsync("weaverDownloadBlob", record.FileName, mimeType, record.SequenceOrData);
+    }
+
+    /// <summary>
+    /// Deletes a digitized DNA blueprint after confirmation.
+    /// </summary>
+    private async Task DeleteDna(PatientDigitalDnaRecord record)
+    {
+        bool confirmed = await JSRuntime.InvokeAsync<bool>("confirm", $"Permanently remove DNA blueprint '{record.Title}'?");
+        if (confirmed)
+        {
+            await DnaRepo.DeleteDnaRecordAsync(record.Id);
+            _statusMessage = $"DNA blueprint '{record.Title}' deleted.";
+            _isStatusError = false;
+            await LoadPatientRecordsAsync();
+        }
+    }
+
+    /// <summary>
+    /// Deletes an imported sequence file after confirmation.
+    /// </summary>
+    private async Task DeleteImport(PatientDnaImportRecord record)
+    {
+        bool confirmed = await JSRuntime.InvokeAsync<bool>("confirm", $"Permanently remove import record '{record.FileName}'?");
+        if (confirmed)
+        {
+            await DnaRepo.DeleteImportAsync(record.Id);
+            _statusMessage = $"Import record '{record.FileName}' deleted.";
+            _isStatusError = false;
+            await LoadPatientRecordsAsync();
+        }
+    }
+
+    /// <summary>
+    /// Deletes a clinical result after confirmation.
+    /// </summary>
+    private async Task DeleteResult(PatientResultRecord record)
+    {
+        bool confirmed = await JSRuntime.InvokeAsync<bool>("confirm", $"Permanently remove result '{record.Title}'?");
+        if (confirmed)
+        {
+            await DnaRepo.DeleteResultAsync(record.Id);
+            _statusMessage = $"Result '{record.Title}' deleted.";
+            _isStatusError = false;
+            await LoadPatientRecordsAsync();
+        }
+    }
+
+    /// <summary>
+    /// Formats a byte size into human-readable string.
+    /// </summary>
+    private static string FormatBytes(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{(bytes / 1024.0):F1} KB";
+        return $"{(bytes / (1024.0 * 1024.0)):F1} MB";
+    }
+
+    /// <summary>
+    /// Maps result status to CSS badge classes.
+    /// </summary>
+    private static string GetStatusBadgeClass(string status) => status switch
+    {
+        "Optimal" => "badge-accent",
+        "Caution" => "badge-primary",
+        "ElevatedRisk" => "badge-danger",
+        _ => "badge-outline"
+    };
+}

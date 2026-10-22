@@ -164,22 +164,22 @@ public sealed class SecurityHardeningAndMigrationsTests
         await conn.OpenAsync();
 
         using DatabaseMigrationRunner runner = new();
-        Assert.Equal(3, runner.RegisteredMigrations.Count);
+        Assert.Equal(4, runner.RegisteredMigrations.Count);
 
         // Initial state: no applied migrations
         IReadOnlyList<long> initialApplied = await runner.GetAppliedVersionsAsync(conn, "sqlite");
         Assert.Empty(initialApplied);
 
         IReadOnlyList<IDatabaseMigration> initialPending = await runner.GetPendingMigrationsAsync(conn, "sqlite");
-        Assert.Equal(3, initialPending.Count);
+        Assert.Equal(4, initialPending.Count);
 
         // Apply migrations
         int appliedCount = await runner.ApplyPendingMigrationsAsync(conn, "sqlite");
-        Assert.Equal(3, appliedCount);
+        Assert.Equal(4, appliedCount);
 
         // Post-migration verification
         IReadOnlyList<long> postApplied = await runner.GetAppliedVersionsAsync(conn, "sqlite");
-        Assert.Equal(new long[] { 1, 2, 3 }, postApplied);
+        Assert.Equal(new long[] { 1, 2, 3, 4 }, postApplied);
 
         IReadOnlyList<IDatabaseMigration> postPending = await runner.GetPendingMigrationsAsync(conn, "sqlite");
         Assert.Empty(postPending);
@@ -233,6 +233,17 @@ public sealed class SecurityHardeningAndMigrationsTests
 
         Assert.Contains("idx_weaver_users_role_active", pgSql2);
         Assert.Contains("idx_weaver_users_role_active", sqliteSql2);
+
+        Migration004_PatientDnaImportsAndResults m4 = new();
+        string pgSql4 = m4.GetSql("postgresql");
+        string sqliteSql4 = m4.GetSql("sqlite");
+        Assert.Contains("weaver_patient_dna_records", pgSql4);
+        Assert.Contains("weaver_patient_dna_imports", pgSql4);
+        Assert.Contains("weaver_patient_results", pgSql4);
+        Assert.Contains("weaver_patient_dna_records", sqliteSql4);
+        Assert.Contains("weaver_patient_dna_imports", sqliteSql4);
+        Assert.Contains("weaver_patient_results", sqliteSql4);
+        Assert.Throws<ArgumentNullException>(() => m4.GetSql(null!));
 
         // Empty SQL migration
         EmptySqlMigration emptyMig = new();

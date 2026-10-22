@@ -95,6 +95,7 @@ public class Program
         builder.Services.AddSingleton<IUserRepository, UserRepository>();
         builder.Services.AddSingleton<ProfileDataProtector>();
         builder.Services.AddSingleton<IUserProfileRepository, UserProfileRepository>();
+        builder.Services.AddSingleton<IPatientDnaRepository, PatientDnaRepository>();
         builder.Services.AddSingleton<IUserAuthenticationService, UserAuthenticationService>();
         builder.Services.AddScoped<UserSessionState>();
 
@@ -370,29 +371,45 @@ public class Program
                 return;
             }
 
-            // 8. Role Gating: Administrator-only endpoints (permits self-service user profile, addresses, and contacts access)
-            if (path.StartsWithSegments("/api/users", out PathString userSubPath))
+            // 8. Role Gating: Administrator-only endpoints (permits self-service user profile, addresses, contacts, DNA, imports, and results access)
+            PathString userSubPath = default;
+            PathString patientSubPath = default;
+            bool isUsersPath = path.StartsWithSegments("/api/users", out userSubPath);
+            bool isPatientsPath = path.StartsWithSegments("/api/patients", out patientSubPath);
+            if (isUsersPath || isPatientsPath)
             {
-                bool isSelfRoute = false;
-                if (userSubPath.HasValue)
+                PathString effectiveSubPath = isUsersPath ? userSubPath : patientSubPath;
+                bool isAuthorizedRoute = false;
+                if (effectiveSubPath.HasValue)
                 {
-                    string sub = userSubPath.Value.TrimStart('/');
+                    string sub = effectiveSubPath.Value.TrimStart('/');
                     int slashIdx = sub.IndexOf('/');
                     if (slashIdx > 0)
                     {
                         string targetUser = sub[..slashIdx];
                         string remainder = sub[(slashIdx + 1)..];
-                        if (string.Equals(user.Username, targetUser, StringComparison.OrdinalIgnoreCase) &&
+                        bool isSelf = string.Equals(user.Username, targetUser, StringComparison.OrdinalIgnoreCase);
+
+                        if (remainder.StartsWith("dna", StringComparison.OrdinalIgnoreCase) ||
+                            remainder.StartsWith("imports", StringComparison.OrdinalIgnoreCase) ||
+                            remainder.StartsWith("results", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (user.Role == UserRole.Administrator || user.Role == UserRole.Researcher || isSelf)
+                            {
+                                isAuthorizedRoute = true;
+                            }
+                        }
+                        else if (isSelf &&
                             (remainder.StartsWith("profile", StringComparison.OrdinalIgnoreCase) ||
                              remainder.StartsWith("addresses", StringComparison.OrdinalIgnoreCase) ||
                              remainder.StartsWith("contacts", StringComparison.OrdinalIgnoreCase)))
                         {
-                            isSelfRoute = true;
+                            isAuthorizedRoute = true;
                         }
                     }
                 }
 
-                if (user.Role != UserRole.Administrator && !isSelfRoute)
+                if (user.Role != UserRole.Administrator && !isAuthorizedRoute)
                 {
                     context.Response.StatusCode = StatusCodes.Status403Forbidden;
                     context.Response.ContentType = "application/json";
@@ -2228,6 +2245,579 @@ public class Program
         .WithDescription("Synthesizes staple oligos, annealing ramps, and cryptographic provenance for patient hormone delivery (Accessible by Patient, Researcher, and Administrator).")
         .Produces<PatientDigitalDnaPackage>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status401Unauthorized);
+
+        // ---------------------------------------------------------------------
+        // REST API: Patient Digitized DNA Blueprints
+        // ---------------------------------------------------------------------
+        app.MapGet("/api/patients/{username}/dna", async (
+            string username,
+            IPatientDnaRepository dnaRepo,
+            IUserRepository userRepo,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Retrieves all persistent digitized DNA blueprint records for a patient.
+            // WHY:  Allows patients, clinicians, and researchers to review nanocarrier architectures and sequences.
+            // HOW:  Validates permissions, verifies patient existence, and queries the repository.
+            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
+            if (currentUser == null || (currentUser.Role != UserRole.Administrator && currentUser.Role != UserRole.Researcher && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            {
+                return Results.Json(new { error = "Forbidden: You are not authorized to view DNA blueprints for this user." }, statusCode: StatusCodes.Status403Forbidden);
+            }
+
+            UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
+            if (targetAccount == null)
+            {
+                return Results.NotFound(new { error = $"User '{username}' does not exist." });
+            }
+
+            IReadOnlyList<PatientDigitalDnaRecord> list = await dnaRepo.GetDnaRecordsAsync(username, ct);
+            return Results.Ok(list);
+        })
+        .WithName("GetPatientDnaRecords")
+        .WithTags("Patient DNA & Imports")
+        .WithSummary("Lists all digitized DNA blueprint records for a patient.")
+        .WithDescription("Retrieves the collection of persistent DNA nanocarrier blueprints associated with the specified patient.")
+        .Produces<IReadOnlyList<PatientDigitalDnaRecord>>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status404NotFound);
+
+        app.MapGet("/api/patients/{username}/dna/{id}", async (
+            string username,
+            string id,
+            IPatientDnaRepository dnaRepo,
+            IUserRepository userRepo,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Retrieves a specific digitized DNA blueprint by id.
+            // WHY:  Supplies detailed staple routings, annealing schedule, and provenance for inspection or download.
+            // HOW:  Validates authorization, checks record existence, and verifies patient ownership.
+            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
+            if (currentUser == null || (currentUser.Role != UserRole.Administrator && currentUser.Role != UserRole.Researcher && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            {
+                return Results.Json(new { error = "Forbidden: You are not authorized to view DNA blueprints for this user." }, statusCode: StatusCodes.Status403Forbidden);
+            }
+
+            UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
+            if (targetAccount == null)
+            {
+                return Results.NotFound(new { error = $"User '{username}' does not exist." });
+            }
+
+            PatientDigitalDnaRecord? record = await dnaRepo.GetDnaRecordByIdAsync(id, ct);
+            if (record == null || !string.Equals(record.Username, username, StringComparison.OrdinalIgnoreCase))
+            {
+                return Results.NotFound(new { error = $"DNA blueprint '{id}' not found for patient '{username}'." });
+            }
+
+            return Results.Ok(record);
+        })
+        .WithName("GetPatientDnaRecordById")
+        .WithTags("Patient DNA & Imports")
+        .WithSummary("Retrieves a specific digitized DNA blueprint by ID.")
+        .WithDescription("Retrieves detailed staple sequences and annealing schedules for the designated DNA blueprint.")
+        .Produces<PatientDigitalDnaRecord>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status404NotFound);
+
+        app.MapPost("/api/patients/{username}/dna", async (
+            string username,
+            CreatePatientDnaRequest request,
+            IPatientDnaRepository dnaRepo,
+            IUserRepository userRepo,
+            IUserProfileRepository profileRepo,
+            IFabricationService fab,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Synthesizes and registers a new digitized DNA blueprint for a patient.
+            // WHY:  Allows clinicians and researchers to design and assign custom nanocarrier configurations.
+            // HOW:  Synthesizes origami components via IFabricationService, computes composition, and saves blueprint and kinetics result.
+            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
+            if (currentUser == null || (currentUser.Role != UserRole.Administrator && currentUser.Role != UserRole.Researcher && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            {
+                return Results.Json(new { error = "Forbidden: You are not authorized to create DNA blueprints for this user." }, statusCode: StatusCodes.Status403Forbidden);
+            }
+
+            UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
+            if (targetAccount == null)
+            {
+                return Results.NotFound(new { error = $"User '{username}' does not exist." });
+            }
+
+            UserProfile? profile = await profileRepo.GetProfileAsync(username, ct);
+            TherapeuticRegimen effectiveRegimen = request.Regimen ?? profile?.Regimen ?? TherapeuticRegimen.MaleToFemale;
+            string effectiveGeometry = !string.IsNullOrWhiteSpace(request.NanocarrierGeometry) ? request.NanocarrierGeometry : "Hexagonal Nanotube (6HB)";
+            double effectiveKd = request.TargetAptamerKdNm ?? 3.5;
+
+            DnaOrigamiSample sample = fab.GetPresetSamples().FirstOrDefault(s => s.Regimen == effectiveRegimen)
+                ?? fab.GetPresetSamples()[0];
+            string effectiveScaffold = !string.IsNullOrWhiteSpace(request.ScaffoldFasta) ? request.ScaffoldFasta : sample.AptamerSequence;
+            var (_, _, _, _, gcPercent, mwKDa) = fab.AnalyzeSequenceComposition(effectiveScaffold);
+
+            FabricationPackage pkg = fab.GenerateFabricationPackage(sample.Id, effectiveRegimen, effectiveGeometry, effectiveKd);
+
+            string dnaId = "dna_" + Guid.NewGuid().ToString("N");
+            string title = !string.IsNullOrWhiteSpace(request.Title) ? request.Title : $"{effectiveGeometry} - {sample.ActiveLigand}";
+
+            PatientDigitalDnaRecord dnaRecord = new()
+            {
+                Id = dnaId,
+                Username = username,
+                Title = title,
+                Regimen = effectiveRegimen,
+                TargetTissue = !string.IsNullOrWhiteSpace(request.TargetTissue) ? request.TargetTissue : sample.TargetTissue,
+                ActiveLigand = !string.IsNullOrWhiteSpace(request.ActiveLigand) ? request.ActiveLigand : sample.ActiveLigand,
+                NanocarrierGeometry = effectiveGeometry,
+                TargetAptamerKdNm = effectiveKd,
+                ScaffoldFasta = effectiveScaffold,
+                GcPercentage = gcPercent,
+                EstimatedMwKDa = mwKDa,
+                Staples = pkg.StapleOligos,
+                AnnealingProtocol = pkg.AnnealingSchedule,
+                ProvenanceSha256 = pkg.Sha256Manifest,
+                CreatedAtUtc = DateTimeOffset.UtcNow,
+                Notes = request.Notes
+            };
+
+            await dnaRepo.UpsertDnaRecordAsync(dnaRecord, ct);
+
+            // Automatically record corresponding synthesis/fabrication result
+            PatientResultRecord resultRecord = PatientResultRecord.FromFabricationPackage(pkg, username, dnaId);
+            await dnaRepo.UpsertResultAsync(resultRecord, ct);
+
+            return Results.Created($"/api/patients/{username}/dna/{dnaId}", dnaRecord);
+        })
+        .WithName("CreatePatientDnaRecord")
+        .WithTags("Patient DNA & Imports")
+        .WithSummary("Synthesizes and registers a digitized DNA blueprint for a patient.")
+        .WithDescription("Calculates folded geometry, synthetic staple routing, and annealing protocol, persisting the blueprint to the patient dossier.")
+        .Produces<PatientDigitalDnaRecord>(StatusCodes.Status201Created)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status404NotFound);
+
+        app.MapDelete("/api/patients/{username}/dna/{id}", async (
+            string username,
+            string id,
+            IPatientDnaRepository dnaRepo,
+            IUserRepository userRepo,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Removes a digitized DNA blueprint record by id.
+            // WHY:  Allows researchers and patients to retire superseded blueprints.
+            // HOW:  Validates permissions, verifies ownership, and deletes record via repository.
+            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
+            if (currentUser == null || (currentUser.Role != UserRole.Administrator && currentUser.Role != UserRole.Researcher && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            {
+                return Results.Json(new { error = "Forbidden: You are not authorized to delete DNA blueprints for this user." }, statusCode: StatusCodes.Status403Forbidden);
+            }
+
+            UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
+            if (targetAccount == null)
+            {
+                return Results.NotFound(new { error = $"User '{username}' does not exist." });
+            }
+
+            PatientDigitalDnaRecord? existing = await dnaRepo.GetDnaRecordByIdAsync(id, ct);
+            if (existing == null || !string.Equals(existing.Username, username, StringComparison.OrdinalIgnoreCase))
+            {
+                return Results.NotFound(new { error = $"DNA blueprint '{id}' not found for patient '{username}'." });
+            }
+
+            await dnaRepo.DeleteDnaRecordAsync(id, ct);
+            return Results.Ok(new { message = $"DNA blueprint '{id}' successfully removed." });
+        })
+        .WithName("DeletePatientDnaRecord")
+        .WithTags("Patient DNA & Imports")
+        .WithSummary("Deletes a digitized DNA blueprint.")
+        .WithDescription("Permanently removes the specified DNA blueprint record from the patient dossier.")
+        .Produces(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status404NotFound);
+
+        // ---------------------------------------------------------------------
+        // REST API: Patient DNA & Sequence Imports
+        // ---------------------------------------------------------------------
+        app.MapGet("/api/patients/{username}/imports", async (
+            string username,
+            IPatientDnaRepository dnaRepo,
+            IUserRepository userRepo,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Retrieves all imported sequence files and datasets for a patient.
+            // WHY:  Supplies imported file assets to the DNA management interface.
+            // HOW:  Validates authorization, checks user existence, and queries repository.
+            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
+            if (currentUser == null || (currentUser.Role != UserRole.Administrator && currentUser.Role != UserRole.Researcher && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            {
+                return Results.Json(new { error = "Forbidden: You are not authorized to view imports for this user." }, statusCode: StatusCodes.Status403Forbidden);
+            }
+
+            UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
+            if (targetAccount == null)
+            {
+                return Results.NotFound(new { error = $"User '{username}' does not exist." });
+            }
+
+            IReadOnlyList<PatientDnaImportRecord> list = await dnaRepo.GetImportsAsync(username, ct);
+            return Results.Ok(list);
+        })
+        .WithName("GetPatientImports")
+        .WithTags("Patient DNA & Imports")
+        .WithSummary("Lists all imported sequence and dataset files for a patient.")
+        .WithDescription("Retrieves the collection of imported external files and variant panels associated with the specified patient.")
+        .Produces<IReadOnlyList<PatientDnaImportRecord>>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status404NotFound);
+
+        app.MapGet("/api/patients/{username}/imports/{id}", async (
+            string username,
+            string id,
+            IPatientDnaRepository dnaRepo,
+            IUserRepository userRepo,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Retrieves an imported sequence or dataset record by ID.
+            // WHY:  Allows reviewing the raw sequence text, checksums, and metadata of an import.
+            // HOW:  Validates caller permissions and queries import by ID.
+            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
+            if (currentUser == null || (currentUser.Role != UserRole.Administrator && currentUser.Role != UserRole.Researcher && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            {
+                return Results.Json(new { error = "Forbidden: You are not authorized to view imports for this user." }, statusCode: StatusCodes.Status403Forbidden);
+            }
+
+            UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
+            if (targetAccount == null)
+            {
+                return Results.NotFound(new { error = $"User '{username}' does not exist." });
+            }
+
+            PatientDnaImportRecord? record = await dnaRepo.GetImportByIdAsync(id, ct);
+            if (record == null || !string.Equals(record.Username, username, StringComparison.OrdinalIgnoreCase))
+            {
+                return Results.NotFound(new { error = $"Import '{id}' not found for patient '{username}'." });
+            }
+
+            return Results.Ok(record);
+        })
+        .WithName("GetPatientImportById")
+        .WithTags("Patient DNA & Imports")
+        .WithSummary("Retrieves an imported sequence record by ID.")
+        .WithDescription("Retrieves raw sequence data and checksum verification for the specified import record.")
+        .Produces<PatientDnaImportRecord>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status404NotFound);
+
+        app.MapPost("/api/patients/{username}/imports", async (
+            string username,
+            CreatePatientImportRequest request,
+            IPatientDnaRepository dnaRepo,
+            IUserRepository userRepo,
+            IUserProfileRepository profileRepo,
+            IPharmacogenomicsService genomicsService,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Imports raw DNA sequence data, variant panels, or trajectory archives for a patient.
+            // WHY:  Integrates external patient genetic sequences into the decentralized sovereign platform.
+            // HOW:  Calculates SHA-256 checksum, persists import record, and optionally triggers automated pharmacogenomics analysis.
+            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
+            if (currentUser == null || (currentUser.Role != UserRole.Administrator && currentUser.Role != UserRole.Researcher && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            {
+                return Results.Json(new { error = "Forbidden: You are not authorized to import DNA data for this user." }, statusCode: StatusCodes.Status403Forbidden);
+            }
+
+            if (string.IsNullOrWhiteSpace(request.FileName))
+            {
+                return Results.BadRequest(new { error = "FileName is required for DNA data import." });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.SequenceOrData))
+            {
+                return Results.BadRequest(new { error = "SequenceOrData content is required for DNA data import." });
+            }
+
+            UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
+            if (targetAccount == null)
+            {
+                return Results.NotFound(new { error = $"User '{username}' does not exist." });
+            }
+
+            byte[] dataBytes = System.Text.Encoding.UTF8.GetBytes(request.SequenceOrData);
+            byte[] hash = SHA256.HashData(dataBytes);
+            string sha256Hex = Convert.ToHexStringLower(hash);
+
+            string importId = "imp_" + Guid.NewGuid().ToString("N");
+            PatientDnaImportRecord importRecord = new()
+            {
+                Id = importId,
+                Username = username,
+                FileName = request.FileName,
+                ImportType = !string.IsNullOrWhiteSpace(request.ImportType) ? request.ImportType : "FASTA",
+                SequenceOrData = request.SequenceOrData,
+                SizeBytes = dataBytes.Length,
+                Sha256Checksum = sha256Hex,
+                ImportedBy = currentUser.Username,
+                Status = !string.IsNullOrWhiteSpace(request.Status) ? request.Status : "Processed",
+                MetadataJson = request.MetadataJson ?? "{}",
+                ImportedAtUtc = DateTimeOffset.UtcNow
+            };
+
+            await dnaRepo.UpsertImportAsync(importRecord, ct);
+
+            // Automated analysis upon import if requested
+            if (request.AutoAnalyze)
+            {
+                UserProfile? profile = await profileRepo.GetProfileAsync(username, ct);
+                TherapeuticRegimen regimen = profile?.Regimen ?? TherapeuticRegimen.MaleToFemale;
+
+                PatientGenomicProfile genomicProfile = genomicsService.AnalyzeSequence(username, request.SequenceOrData, regimen);
+                PatientResultRecord analysisResult = PatientResultRecord.FromGenomicProfile(genomicProfile, importId);
+                await dnaRepo.UpsertResultAsync(analysisResult, ct);
+            }
+
+            return Results.Created($"/api/patients/{username}/imports/{importId}", importRecord);
+        })
+        .WithName("CreatePatientImport")
+        .WithTags("Patient DNA & Imports")
+        .WithSummary("Imports DNA sequence data or variant panels for a patient.")
+        .WithDescription("Persists raw sequence payload with SHA-256 integrity hash, optionally executing automated sequence analysis.")
+        .Produces<PatientDnaImportRecord>(StatusCodes.Status201Created)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status404NotFound);
+
+        app.MapDelete("/api/patients/{username}/imports/{id}", async (
+            string username,
+            string id,
+            IPatientDnaRepository dnaRepo,
+            IUserRepository userRepo,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Deletes an imported sequence or dataset record by ID.
+            // WHY:  Allows cleaning up superseded or corrupted import files.
+            // HOW:  Validates caller permissions and deletes entry from repository.
+            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
+            if (currentUser == null || (currentUser.Role != UserRole.Administrator && currentUser.Role != UserRole.Researcher && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            {
+                return Results.Json(new { error = "Forbidden: You are not authorized to delete imports for this user." }, statusCode: StatusCodes.Status403Forbidden);
+            }
+
+            UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
+            if (targetAccount == null)
+            {
+                return Results.NotFound(new { error = $"User '{username}' does not exist." });
+            }
+
+            PatientDnaImportRecord? existing = await dnaRepo.GetImportByIdAsync(id, ct);
+            if (existing == null || !string.Equals(existing.Username, username, StringComparison.OrdinalIgnoreCase))
+            {
+                return Results.NotFound(new { error = $"Import '{id}' not found for patient '{username}'." });
+            }
+
+            await dnaRepo.DeleteImportAsync(id, ct);
+            return Results.Ok(new { message = $"Import '{id}' successfully removed." });
+        })
+        .WithName("DeletePatientImport")
+        .WithTags("Patient DNA & Imports")
+        .WithSummary("Deletes an imported sequence record.")
+        .WithDescription("Permanently removes the specified import record from the patient profile.")
+        .Produces(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status404NotFound);
+
+        // ---------------------------------------------------------------------
+        // REST API: Patient Simulation, Endocrine & Clinical Results
+        // ---------------------------------------------------------------------
+        app.MapGet("/api/patients/{username}/results", async (
+            string username,
+            string? resultType,
+            IPatientDnaRepository dnaRepo,
+            IUserRepository userRepo,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Retrieves all clinical, simulation, and pharmacogenomic results for a patient.
+            // WHY:  Allows patients and clinicians to review physiological responses and nanocarrier metrics.
+            // HOW:  Validates permissions, queries results, and applies optional resultType filtering.
+            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
+            if (currentUser == null || (currentUser.Role != UserRole.Administrator && currentUser.Role != UserRole.Researcher && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            {
+                return Results.Json(new { error = "Forbidden: You are not authorized to view results for this user." }, statusCode: StatusCodes.Status403Forbidden);
+            }
+
+            UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
+            if (targetAccount == null)
+            {
+                return Results.NotFound(new { error = $"User '{username}' does not exist." });
+            }
+
+            IReadOnlyList<PatientResultRecord> list = await dnaRepo.GetResultsAsync(username, ct);
+            if (!string.IsNullOrWhiteSpace(resultType))
+            {
+                list = list.Where(r => string.Equals(r.ResultType, resultType, StringComparison.OrdinalIgnoreCase)).ToList();
+            }
+
+            return Results.Ok(list);
+        })
+        .WithName("GetPatientResults")
+        .WithTags("Patient DNA & Imports")
+        .WithSummary("Lists all simulation and clinical results for a patient.")
+        .WithDescription("Retrieves the collection of analytical findings, binding affinities, and kinetic models associated with the patient.")
+        .Produces<IReadOnlyList<PatientResultRecord>>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status404NotFound);
+
+        app.MapGet("/api/patients/{username}/results/{id}", async (
+            string username,
+            string id,
+            IPatientDnaRepository dnaRepo,
+            IUserRepository userRepo,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Retrieves a specific simulation or clinical result record by ID.
+            // WHY:  Provides fine-grained access to individual metric reports and findings.
+            // HOW:  Validates caller permissions and queries result by ID.
+            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
+            if (currentUser == null || (currentUser.Role != UserRole.Administrator && currentUser.Role != UserRole.Researcher && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            {
+                return Results.Json(new { error = "Forbidden: You are not authorized to view results for this user." }, statusCode: StatusCodes.Status403Forbidden);
+            }
+
+            UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
+            if (targetAccount == null)
+            {
+                return Results.NotFound(new { error = $"User '{username}' does not exist." });
+            }
+
+            PatientResultRecord? record = await dnaRepo.GetResultByIdAsync(id, ct);
+            if (record == null || !string.Equals(record.Username, username, StringComparison.OrdinalIgnoreCase))
+            {
+                return Results.NotFound(new { error = $"Result '{id}' not found for patient '{username}'." });
+            }
+
+            return Results.Ok(record);
+        })
+        .WithName("GetPatientResultById")
+        .WithTags("Patient DNA & Imports")
+        .WithSummary("Retrieves a specific result record by ID.")
+        .WithDescription("Retrieves detailed quantitative metrics and findings for the specified result record.")
+        .Produces<PatientResultRecord>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status404NotFound);
+
+        app.MapPost("/api/patients/{username}/results", async (
+            string username,
+            CreatePatientResultRequest request,
+            IPatientDnaRepository dnaRepo,
+            IUserRepository userRepo,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Manually creates or registers a simulation/clinical result record for a patient.
+            // WHY:  Allows laboratory tools and simulation runners to record outcomes against the patient.
+            // HOW:  Validates input fields, verifies target patient existence, and persists result record.
+            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
+            if (currentUser == null || (currentUser.Role != UserRole.Administrator && currentUser.Role != UserRole.Researcher && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            {
+                return Results.Json(new { error = "Forbidden: You are not authorized to record results for this user." }, statusCode: StatusCodes.Status403Forbidden);
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Title) || string.IsNullOrWhiteSpace(request.ResultType) || string.IsNullOrWhiteSpace(request.Summary))
+            {
+                return Results.BadRequest(new { error = "Title, ResultType, and Summary are required fields." });
+            }
+
+            UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
+            if (targetAccount == null)
+            {
+                return Results.NotFound(new { error = $"User '{username}' does not exist." });
+            }
+
+            string resultId = "res_" + Guid.NewGuid().ToString("N");
+            PatientResultRecord resultRecord = new()
+            {
+                Id = resultId,
+                Username = username,
+                DnaRecordId = request.DnaRecordId,
+                ImportId = request.ImportId,
+                ResultType = request.ResultType,
+                Title = request.Title,
+                Status = !string.IsNullOrWhiteSpace(request.Status) ? request.Status : "Complete",
+                MetricsJson = request.MetricsJson ?? "{}",
+                Summary = request.Summary,
+                CreatedAtUtc = DateTimeOffset.UtcNow
+            };
+
+            await dnaRepo.UpsertResultAsync(resultRecord, ct);
+            return Results.Created($"/api/patients/{username}/results/{resultId}", resultRecord);
+        })
+        .WithName("CreatePatientResult")
+        .WithTags("Patient DNA & Imports")
+        .WithSummary("Registers a new simulation or clinical result record.")
+        .WithDescription("Persists analytical findings, binding kinetics, or simulation outcome metrics for a patient.")
+        .Produces<PatientResultRecord>(StatusCodes.Status201Created)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status404NotFound);
+
+        app.MapDelete("/api/patients/{username}/results/{id}", async (
+            string username,
+            string id,
+            IPatientDnaRepository dnaRepo,
+            IUserRepository userRepo,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Deletes a simulation or clinical result record by ID.
+            // WHY:  Allows cleaning up test or superseded result snapshots.
+            // HOW:  Validates caller permissions and deletes entry from repository.
+            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
+            if (currentUser == null || (currentUser.Role != UserRole.Administrator && currentUser.Role != UserRole.Researcher && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            {
+                return Results.Json(new { error = "Forbidden: You are not authorized to delete results for this user." }, statusCode: StatusCodes.Status403Forbidden);
+            }
+
+            UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
+            if (targetAccount == null)
+            {
+                return Results.NotFound(new { error = $"User '{username}' does not exist." });
+            }
+
+            PatientResultRecord? existing = await dnaRepo.GetResultByIdAsync(id, ct);
+            if (existing == null || !string.Equals(existing.Username, username, StringComparison.OrdinalIgnoreCase))
+            {
+                return Results.NotFound(new { error = $"Result '{id}' not found for patient '{username}'." });
+            }
+
+            await dnaRepo.DeleteResultAsync(id, ct);
+            return Results.Ok(new { message = $"Result '{id}' successfully removed." });
+        })
+        .WithName("DeletePatientResult")
+        .WithTags("Patient DNA & Imports")
+        .WithSummary("Deletes a result record.")
+        .WithDescription("Permanently removes the specified result record from the patient profile.")
+        .Produces(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status404NotFound);
 
         app.Run();
     }

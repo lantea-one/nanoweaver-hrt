@@ -37,7 +37,8 @@ public sealed class DatabaseMigrationRunner : IDisposable
             {
                 new Migration001_InitialSchema(),
                 new Migration002_UserAuditAndIndexes(),
-                new Migration003_UserProfileAddressesAndContacts()
+                new Migration003_UserProfileAddressesAndContacts(),
+                new Migration004_PatientDnaImportsAndResults()
             }.OrderBy(m => m.Version).ToList();
         }
     }
