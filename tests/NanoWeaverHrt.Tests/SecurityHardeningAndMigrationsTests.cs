@@ -331,6 +331,17 @@ public sealed class SecurityHardeningAndMigrationsTests
         Assert.DoesNotContain("super_secret_pw", sanitizedConn);
         Assert.Contains("[REDACTED]", sanitizedConn);
 
+        string dbIdentityMsg = "Failed: Server=db1;User Id=admin1;Database=weaver_hrt;Username=weaver;superuser=keepme;Persist Security Info=True";
+        string sanitizedIdentity = SecureExceptionSanitizer.SanitizeDetail(dbIdentityMsg, 400, "TR-DB");
+        Assert.DoesNotContain("weaver_hrt", sanitizedIdentity);
+        Assert.DoesNotContain("weaver;", sanitizedIdentity);
+        Assert.DoesNotContain("admin1", sanitizedIdentity);
+        Assert.DoesNotContain(" id=", sanitizedIdentity);
+        Assert.Contains("Database=[REDACTED]", sanitizedIdentity);
+        Assert.Contains("Username=[REDACTED]", sanitizedIdentity);
+        Assert.Contains("User Id=[REDACTED]", sanitizedIdentity);
+        Assert.Contains("superuser=keepme", sanitizedIdentity);
+
         // 4. Redaction of PEM cryptographic keys
         string pemMsg = "Invalid key: -----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIKey\n-----END PRIVATE KEY----- provided.";
         string sanitizedPem = SecureExceptionSanitizer.SanitizeDetail(pemMsg, 400, "TR-PEM");

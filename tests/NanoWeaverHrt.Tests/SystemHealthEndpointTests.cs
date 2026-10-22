@@ -26,8 +26,44 @@ namespace NanoWeaverHrt.Tests;
 /// Comprehensive integration and unit test suite verifying the multi-purpose health check endpoints
 /// (/api/system/health, /healthz, /health), model contracts, authentication gating, and granular diagnostics.
 /// </summary>
-public sealed class SystemHealthEndpointTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class SystemHealthEndpointTests : IClassFixture<WebApplicationFactory<Program>>, IDisposable
 {
+    /// <summary>
+    /// Root temp directory created by this instance's constructor; deleted in <see cref="Dispose"/>.
+    /// </summary>
+    private readonly string _testRoot;
+
+    /// <summary>
+    /// Deletes the temporary directories this test instance created.
+    /// </summary>
+    /// <remarks>
+    /// xUnit builds one instance per test method, so without this every test would leave a directory behind.
+    /// <see cref="IOException"/> and <see cref="UnauthorizedAccessException"/> are swallowed because a file
+    /// still held open by a disposing host is realistic and cleanup must never fail a test. The shared
+    /// <c>WebApplicationFactory</c> is owned by xUnit's class fixture and is deliberately not disposed here.
+    /// </remarks>
+    public void Dispose()
+    {
+        // WHAT: Removes this instance's temporary directories.
+        // WHY:  Prevents leaking weaver_* directories under the OS temp path on every test.
+        // HOW:  Guards with Directory.Exists, deletes recursively, and ignores IO/permission failures.
+        try
+        {
+            if (Directory.Exists(_testRoot))
+            {
+                Directory.Delete(_testRoot, recursive: true);
+            }
+        }
+        catch (IOException)
+        {
+            // Best-effort cleanup: a file still held open must not fail the test run.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Best-effort cleanup: a locked or read-only entry must not fail the test run.
+        }
+    }
+
     /// <summary>
     /// Test server web application factory.
     /// </summary>
@@ -54,15 +90,20 @@ public sealed class SystemHealthEndpointTests : IClassFixture<WebApplicationFact
     /// <param name="factory">The test web application factory fixture.</param>
     public SystemHealthEndpointTests(WebApplicationFactory<Program> factory)
     {
-        string? current = AppContext.BaseDirectory;
-        while (!string.IsNullOrEmpty(current) && !File.Exists(Path.Combine(current, "NanoWeaverHrt.slnx")))
-        {
-            current = Directory.GetParent(current)?.FullName;
-        }
-        string solutionRoot = current ?? Directory.GetCurrentDirectory();
-        string dataDir = Path.Combine(solutionRoot, "simulations", "shared-data");
-        string exportDir = Path.Combine(solutionRoot, "simulations", "exports");
-        string parquetDir = Path.Combine(solutionRoot, "simulations", "parquet");
+        // WHAT: Allocates a private, writable data/export/parquet root for this test class instance.
+        // WHY:  SystemConfigurationStore places weaver_config.db inside TRAJECTORY_INCOMING_DIR. Pointing
+        //       that at the repository's live simulations/shared-data made EnsureTestAdminAndGetTokenAsync
+        //       reuse the operator's pre-existing Administrator account instead of provisioning "testadmin",
+        //       so the granular diagnostics assertions compared against a real identity.
+        // HOW:   Derives a GUID-suffixed directory under the OS temp path and seeds trajectory fixtures there.
+        string testRoot = Path.Combine(Path.GetTempPath(), "weaver_health_" + Guid.NewGuid().ToString("N"));
+        _testRoot = testRoot;
+        string dataDir = Path.Combine(testRoot, "shared-data");
+        string exportDir = Path.Combine(testRoot, "exports");
+        string parquetDir = Path.Combine(testRoot, "parquet");
+        Directory.CreateDirectory(dataDir);
+        Directory.CreateDirectory(exportDir);
+        Directory.CreateDirectory(parquetDir);
 
         TestFixturesHelper.EnsureTestFixtures(dataDir);
 

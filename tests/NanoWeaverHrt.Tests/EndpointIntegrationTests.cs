@@ -13,8 +13,44 @@ namespace NanoWeaverHrt.Tests;
 /// <summary>
 /// Integration test suite verifying HTTP endpoints exposed by the minimal API service in <see cref="Program"/>.
 /// </summary>
-public sealed class EndpointIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class EndpointIntegrationTests : IClassFixture<WebApplicationFactory<Program>>, IDisposable
 {
+    /// <summary>
+    /// Root temp directory created by this instance's constructor; deleted in <see cref="Dispose"/>.
+    /// </summary>
+    private readonly string _testRoot;
+
+    /// <summary>
+    /// Deletes the temporary directories this test instance created.
+    /// </summary>
+    /// <remarks>
+    /// xUnit builds one instance per test method, so without this every test would leave a directory behind.
+    /// <see cref="IOException"/> and <see cref="UnauthorizedAccessException"/> are swallowed because a file
+    /// still held open by a disposing host is realistic and cleanup must never fail a test. The shared
+    /// <c>WebApplicationFactory</c> is owned by xUnit's class fixture and is deliberately not disposed here.
+    /// </remarks>
+    public void Dispose()
+    {
+        // WHAT: Removes this instance's temporary directories.
+        // WHY:  Prevents leaking weaver_* directories under the OS temp path on every test.
+        // HOW:  Guards with Directory.Exists, deletes recursively, and ignores IO/permission failures.
+        try
+        {
+            if (Directory.Exists(_testRoot))
+            {
+                Directory.Delete(_testRoot, recursive: true);
+            }
+        }
+        catch (IOException)
+        {
+            // Best-effort cleanup: a file still held open must not fail the test run.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Best-effort cleanup: a locked or read-only entry must not fail the test run.
+        }
+    }
+
     /// <summary>
     /// Test server web application factory.
     /// </summary>
@@ -26,20 +62,35 @@ public sealed class EndpointIntegrationTests : IClassFixture<WebApplicationFacto
     private readonly HttpClient _client;
 
     /// <summary>
+    /// Absolute path to this instance's isolated export directory, which is also the directory bound to
+    /// the test host's TRAJECTORY_EXPORT_DIR setting.
+    /// </summary>
+    /// <remarks>
+    /// Tests that stage an export file on disk and then read it back through an HTTP endpoint must write
+    /// into this exact directory, otherwise the host would be looking somewhere else entirely.
+    /// </remarks>
+    private readonly string _exportDir;
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="EndpointIntegrationTests"/> class.
     /// </summary>
     /// <param name="factory">The test web application factory fixture.</param>
     public EndpointIntegrationTests(WebApplicationFactory<Program> factory)
     {
-        string? current = AppContext.BaseDirectory;
-        while (!string.IsNullOrEmpty(current) && !File.Exists(Path.Combine(current, "NanoWeaverHrt.slnx")))
-        {
-            current = Directory.GetParent(current)?.FullName;
-        }
-        string solutionRoot = current ?? Directory.GetCurrentDirectory();
-        string dataDir = Path.Combine(solutionRoot, "simulations", "shared-data");
-        string exportDir = Path.Combine(solutionRoot, "simulations", "exports");
-        string parquetDir = Path.Combine(solutionRoot, "simulations", "parquet");
+        // WHAT: Allocates a private, writable data root for this test class instance.
+        // WHY:  SystemConfigurationStore places weaver_config.db inside TRAJECTORY_INCOMING_DIR, so binding
+        //       that to the live simulations/shared-data made this class read the operator's real user
+        //       database and depend on an Administrator account it did not create.
+        // HOW:   Derives a GUID-suffixed directory under the OS temp path and seeds trajectory fixtures there.
+        string testRoot = Path.Combine(Path.GetTempPath(), "weaver_endpoint_" + Guid.NewGuid().ToString("N"));
+        _testRoot = testRoot;
+        string dataDir = Path.Combine(testRoot, "shared-data");
+        string exportDir = Path.Combine(testRoot, "exports");
+        string parquetDir = Path.Combine(testRoot, "parquet");
+        Directory.CreateDirectory(dataDir);
+        Directory.CreateDirectory(exportDir);
+        Directory.CreateDirectory(parquetDir);
+        _exportDir = exportDir;
 
         TestFixturesHelper.EnsureTestFixtures(dataDir);
 
@@ -128,9 +179,7 @@ public sealed class EndpointIntegrationTests : IClassFixture<WebApplicationFacto
         // WHY:  Ensures full CRUD lifecycle management of export packages over HTTP.
         // HOW:  Creates a temporary export file, verifies its presence in GET /api/datasets/exports,
         //       deletes it via DELETE /api/datasets/exports/{fileName}, and asserts 404 on subsequent deletion.
-        string solutionRoot = TestFixturesHelper.GetSolutionRoot();
-        string exportDir = Path.Combine(solutionRoot, "simulations", "exports");
-        Directory.CreateDirectory(exportDir);
+        string exportDir = _exportDir;
 
         string testFileName = $"integration_export_{Guid.NewGuid():N}.tar.gz";
         string fullPath = Path.Combine(exportDir, testFileName);
@@ -302,14 +351,7 @@ public sealed class EndpointIntegrationTests : IClassFixture<WebApplicationFacto
         // WHAT: Creates a test file in the export directory and verifies successful download.
         // WHY:  Ensures researchers can download cryptographically signed bundles over HTTP.
         // HOW:  Writes a temporary export file and requests it via the download endpoint.
-        string? current = AppContext.BaseDirectory;
-        while (!string.IsNullOrEmpty(current) && !File.Exists(Path.Combine(current, "NanoWeaverHrt.slnx")))
-        {
-            current = Directory.GetParent(current)?.FullName;
-        }
-        string solutionRoot = current ?? Directory.GetCurrentDirectory();
-        string exportDir = Path.Combine(solutionRoot, "simulations", "exports");
-        Directory.CreateDirectory(exportDir);
+        string exportDir = _exportDir;
         string testFile = Path.Combine(exportDir, "test_download.tar.gz");
         await File.WriteAllTextAsync(testFile, "MOCK_TAR_GZ_CONTENT");
 

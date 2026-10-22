@@ -18,8 +18,60 @@ namespace NanoWeaverHrt.Tests;
 /// ("Whatever is in the database wins, stack environment variables do nothing if configuration exists in the database"),
 /// single-use collaborative share key lifecycles, and DNA origami fabrication synthesis.
 /// </summary>
-public sealed class WebUiAndConfigurationTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class WebUiAndConfigurationTests : IClassFixture<WebApplicationFactory<Program>>, IDisposable
 {
+    /// <summary>
+    /// Root temp directory created by this instance's constructor; deleted in <see cref="Dispose"/>.
+    /// </summary>
+    private readonly string _testRoot;
+
+    /// <summary>
+    /// Deletes the temporary directories this test instance created.
+    /// </summary>
+    /// <remarks>
+    /// xUnit builds one instance per test method, so without this every test would leave a directory behind.
+    /// <see cref="IOException"/> and <see cref="UnauthorizedAccessException"/> are swallowed because a file
+    /// still held open by a disposing host is realistic and cleanup must never fail a test. The shared
+    /// <c>WebApplicationFactory</c> is owned by xUnit's class fixture and is deliberately not disposed here.
+    /// </remarks>
+    public void Dispose()
+    {
+        // WHAT: Removes this instance's temporary directories.
+        // WHY:  Prevents leaking weaver_* directories under the OS temp path on every test.
+        // HOW:  Guards with Directory.Exists, deletes recursively, and ignores IO/permission failures.
+        try
+        {
+            if (Directory.Exists(_testRoot))
+            {
+                Directory.Delete(_testRoot, recursive: true);
+            }
+        }
+        catch (IOException)
+        {
+            // Best-effort cleanup: a file still held open must not fail the test run.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Best-effort cleanup: a locked or read-only entry must not fail the test run.
+        }
+
+        try
+        {
+            if (Directory.Exists(_testTempDir))
+            {
+                Directory.Delete(_testTempDir, recursive: true);
+            }
+        }
+        catch (IOException)
+        {
+            // Best-effort cleanup: a file still held open must not fail the test run.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Best-effort cleanup: a locked or read-only entry must not fail the test run.
+        }
+    }
+
     /// <summary>
     /// Web application factory fixture.
     /// </summary>
@@ -41,15 +93,20 @@ public sealed class WebUiAndConfigurationTests : IClassFixture<WebApplicationFac
     /// <param name="factory">Test web application factory fixture.</param>
     public WebUiAndConfigurationTests(WebApplicationFactory<Program> factory)
     {
-        string? current = AppContext.BaseDirectory;
-        while (!string.IsNullOrEmpty(current) && !File.Exists(Path.Combine(current, "NanoWeaverHrt.slnx")))
-        {
-            current = Directory.GetParent(current)?.FullName;
-        }
-        string solutionRoot = current ?? Directory.GetCurrentDirectory();
-        string dataDir = Path.Combine(solutionRoot, "simulations", "shared-data");
-        string exportDir = Path.Combine(solutionRoot, "simulations", "exports");
-        string parquetDir = Path.Combine(solutionRoot, "simulations", "parquet");
+        // WHAT: Allocates a private, writable data/export/parquet root for this test class instance.
+        // WHY:  SystemConfigurationStore places weaver_config.db inside TRAJECTORY_INCOMING_DIR. Pointing
+        //       that at the repository's live simulations/shared-data made the suite read and write the
+        //       operator's real configuration and user database, which both leaked production identities
+        //       into assertions and failed outright whenever that file was owned by another user.
+        // HOW:   Derives a GUID-suffixed directory under the OS temp path and seeds trajectory fixtures there.
+        string testRoot = Path.Combine(Path.GetTempPath(), "weaver_ui_" + Guid.NewGuid().ToString("N"));
+        _testRoot = testRoot;
+        string dataDir = Path.Combine(testRoot, "shared-data");
+        string exportDir = Path.Combine(testRoot, "exports");
+        string parquetDir = Path.Combine(testRoot, "parquet");
+        Directory.CreateDirectory(dataDir);
+        Directory.CreateDirectory(exportDir);
+        Directory.CreateDirectory(parquetDir);
 
         TestFixturesHelper.EnsureTestFixtures(dataDir);
 
@@ -247,7 +304,18 @@ public sealed class WebUiAndConfigurationTests : IClassFixture<WebApplicationFac
         using SystemConfigurationStore store = new(config);
         await store.InitializeAsync();
 
-        StackServiceManager mgr = new(store, config);
+        // WHAT: Supplies a probe client whose every request fails.
+        // WHY:  Without an injected client StackServiceManager builds a real HttpClient, and its
+        //       simulation probe falls back from the unresolvable "simulation-node" host to
+        //       http://localhost:8080. The Docker stack publishes the simulation daemon on exactly
+        //       that host port, so whenever the stack happened to be running this test observed a
+        //       live daemon and read "Online & Connected" instead of the offline "Local Mode Active"
+        //       path it is asserting. That made the result depend on ambient machine state.
+        // HOW:   Forces both the primary and localhost-fallback probes to throw so the offline
+        //        branch is exercised deterministically, per the zero-flakiness standard.
+        using HttpClient offlineProbeClient = new(new TestMockHttpMessageHandler(
+            _ => throw new HttpRequestException("simulation probe unavailable in unit test")));
+        StackServiceManager mgr = new(store, config, offlineProbeClient);
         IReadOnlyList<StackServiceInfo> services = await mgr.GetStackServicesAsync();
 
         Assert.Equal(4, services.Count);

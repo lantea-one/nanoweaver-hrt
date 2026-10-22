@@ -20,8 +20,44 @@ namespace NanoWeaverHrt.Tests;
 /// Unit and integration test suite verifying Post-Quantum Cryptography (NIST FIPS 203 &amp; 204),
 /// HIPAA Safe Harbor de-identification, GDPR Article 17 crypto-shredding, and FDA 21 CFR Part 11 audit trails.
 /// </summary>
-public sealed class PostQuantumComplianceTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class PostQuantumComplianceTests : IClassFixture<WebApplicationFactory<Program>>, IDisposable
 {
+    /// <summary>
+    /// Root temp directory created by this instance's constructor; deleted in <see cref="Dispose"/>.
+    /// </summary>
+    private readonly string _testRoot;
+
+    /// <summary>
+    /// Deletes the temporary directories this test instance created.
+    /// </summary>
+    /// <remarks>
+    /// xUnit builds one instance per test method, so without this every test would leave a directory behind.
+    /// <see cref="IOException"/> and <see cref="UnauthorizedAccessException"/> are swallowed because a file
+    /// still held open by a disposing host is realistic and cleanup must never fail a test. The shared
+    /// <c>WebApplicationFactory</c> is owned by xUnit's class fixture and is deliberately not disposed here.
+    /// </remarks>
+    public void Dispose()
+    {
+        // WHAT: Removes this instance's temporary directories.
+        // WHY:  Prevents leaking weaver_* directories under the OS temp path on every test.
+        // HOW:  Guards with Directory.Exists, deletes recursively, and ignores IO/permission failures.
+        try
+        {
+            if (Directory.Exists(_testRoot))
+            {
+                Directory.Delete(_testRoot, recursive: true);
+            }
+        }
+        catch (IOException)
+        {
+            // Best-effort cleanup: a file still held open must not fail the test run.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Best-effort cleanup: a locked or read-only entry must not fail the test run.
+        }
+    }
+
     private readonly WebApplicationFactory<Program> _factory;
     private readonly HttpClient _client;
     private readonly string _sharedDataDir;
@@ -33,14 +69,16 @@ public sealed class PostQuantumComplianceTests : IClassFixture<WebApplicationFac
     /// <param name="factory">The test web application factory fixture.</param>
     public PostQuantumComplianceTests(WebApplicationFactory<Program> factory)
     {
-        string? current = AppContext.BaseDirectory;
-        while (!string.IsNullOrEmpty(current) && !File.Exists(Path.Combine(current, "NanoWeaverHrt.slnx")))
-        {
-            current = Directory.GetParent(current)?.FullName;
-        }
-        string solutionRoot = current ?? Directory.GetCurrentDirectory();
-        _sharedDataDir = Path.Combine(solutionRoot, "simulations", "shared-data");
-        _exportDir = Path.Combine(solutionRoot, "simulations", "exports");
+        // WHAT: Allocates a private, writable data root for this test class instance.
+        // WHY:  SystemConfigurationStore places weaver_config.db inside TRAJECTORY_INCOMING_DIR, so binding
+        //       that to the live simulations/shared-data made the suite share one database across test
+        //       classes and write into the repository working tree.
+        // HOW:   Derives a GUID-suffixed directory under the OS temp path.
+        string testRoot = Path.Combine(Path.GetTempPath(), "weaver_pqc_" + Guid.NewGuid().ToString("N"));
+        _testRoot = testRoot;
+        _sharedDataDir = Path.Combine(testRoot, "shared-data");
+        _exportDir = Path.Combine(testRoot, "exports");
+        Directory.CreateDirectory(_sharedDataDir);
 
         TestFixturesHelper.EnsureTestFixtures(_sharedDataDir);
         Directory.CreateDirectory(_exportDir);

@@ -334,7 +334,7 @@ public sealed class SecurityPenetrationTests : IClassFixture<WebApplicationFacto
         // WHAT: Tests SecureExceptionSanitizer against strings containing paths, credentials, and PEM keys.
         // WHY:  Prevents internal server exceptions from leaking infrastructure topology to attackers.
         // HOW:  Passes hostile exception messages and validates redaction patterns.
-        string rawLeakMessage = "Failed to connect to host=10.0.0.5;Password=SuperSecretDbPassword123!;Database=weaver at /home/fabigail/code/server.cs:line 42 with key -----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg\n-----END PRIVATE KEY-----";
+        string rawLeakMessage = "Failed to connect to host=10.0.0.5;Password=SuperSecretDbPassword123!;Database=weaver; at /home/fabigail/code/server.cs:line 42 with key -----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg\n-----END PRIVATE KEY-----";
 
         // 1. Sanitize for 400 Bad Request
         string sanitized400 = SecureExceptionSanitizer.SanitizeDetail(rawLeakMessage, 400, "trace-abc");
@@ -344,6 +344,15 @@ public sealed class SecurityPenetrationTests : IClassFixture<WebApplicationFacto
         Assert.Contains("Password=[REDACTED]", sanitized400);
         Assert.Contains("[REDACTED_PATH]", sanitized400);
         Assert.Contains("[REDACTED_KEY]", sanitized400);
+
+        // WHAT: Verifies database identity keys (Database, Username) are masked, not only Password and Host.
+        // WHY:  Database name and login name help an attacker target the data store.
+        // HOW:  Sanitizes the project's default Npgsql-style connection string and checks keys kept, values masked.
+        string sanitizedDbIdentity = SecureExceptionSanitizer.SanitizeDetail("Host=localhost;Port=5432;Database=weaver_hrt;Username=weaver;Password=secret;Timeout=3", 400, "trace-db");
+        Assert.DoesNotContain("weaver_hrt", sanitizedDbIdentity);
+        Assert.DoesNotContain("=weaver;", sanitizedDbIdentity);
+        Assert.Contains("Database=[REDACTED]", sanitizedDbIdentity);
+        Assert.Contains("Username=[REDACTED]", sanitizedDbIdentity);
 
         // 2. Sanitize for 500 Internal Server Error (Opaque trace mask)
         string sanitized500 = SecureExceptionSanitizer.SanitizeDetail(rawLeakMessage, 500, "trace-xyz-987");
