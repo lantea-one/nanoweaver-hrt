@@ -992,3 +992,7 @@ id_rsa*
 keys/
 .keys/
 secrets/
+
+# Agent worktrees: isolated checkouts created for concurrent sub-agent work.
+# These are full copies of the repository and must never be committed.
+.claude/worktrees/

@@ -3,5 +3,13 @@
     <MSBuildEnableWorkloadResolver>false</MSBuildEnableWorkloadResolver>
     <NuGetAudit>false</NuGetAudit>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <!-- AGENTS.md Prime Directive #6 requires the solution to build with zero warnings
+         (/warnaserror). WarningsNotAsErrors was already declared in NanoWeaverHrt.csproj,
+         but TreatWarningsAsErrors was never actually enabled, so a newly introduced warning
+         would not have failed the build or CI. Enabled here so the directive is enforced
+         rather than merely observed. NU1900 (transient NuGet audit-feed connectivity) stays
+         demoted to a warning because it reports infrastructure, not a code defect. -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1900</WarningsNotAsErrors>
   </PropertyGroup>
 </Project>
