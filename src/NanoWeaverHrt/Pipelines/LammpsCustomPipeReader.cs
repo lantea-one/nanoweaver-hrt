@@ -83,7 +83,7 @@ public sealed class LammpsCustomPipeReader : ITrajectoryParser
         int boxBoundsLinesToSkip = 0;
 
         AtomCoordinate[] atomBuffer = Array.Empty<AtomCoordinate>();
-        byte[] lineByteBuffer = ArrayPool<byte>.Shared.Rent(512);
+        byte[] lineByteBuffer = ArrayPool<byte>.Shared.Rent(TrajectoryLineBuffer.InitialLineCapacity);
 
         try
         {
@@ -99,8 +99,28 @@ public sealed class LammpsCustomPipeReader : ITrajectoryParser
                         continue;
                     }
 
-                    int lineLength = (int)Math.Min(lineSequence.Length, lineByteBuffer.Length);
-                    lineSequence.Slice(0, lineLength).CopyTo(lineByteBuffer);
+                    // WHAT: Copies the whole line into the rented byte buffer, growing it when the line is wider.
+                    // WHY:  A LAMMPS dump row legitimately carries many columns (id type x y z vx vy vz fx fy fz q
+                    //       ...), so lines past 512 bytes are routine rather than exotic. The Math.Min clamp this
+                    //       replaced cut them short and parsed the remainder as if complete, which could yield a
+                    //       wrong coordinate with nothing logged and nothing thrown (finding L5).
+                    // HOW:  TrajectoryLineBuffer.TryCopyLine grows the ArrayPool rental to fit, or returns false for
+                    //       a line beyond the documented ceiling.
+                    if (!TrajectoryLineBuffer.TryCopyLine(lineSequence, ref lineByteBuffer, out int lineLength))
+                    {
+                        // WHAT: Abandons the snapshot currently being accumulated and resynchronises.
+                        // WHY:  Skipping just the corrupt line would leave a gap that the next snapshot's atom rows
+                        //       would quietly fill, emitting a frame blended from two timesteps and presenting it as
+                        //       complete. Discarding the partial snapshot makes that impossible, and matches how this
+                        //       reader already treats a malformed count: non-fatal, state reset, keep scanning.
+                        // HOW:  Clears every section flag so only a fresh "ITEM:" header can start the next snapshot.
+                        inAtomsSection = false;
+                        expectAtomCountLine = false;
+                        boxBoundsLinesToSkip = 0;
+                        expectedAtomCount = -1;
+                        currentAtomIndex = 0;
+                        continue;
+                    }
 
                     int effectiveLength = lineLength;
                     if (effectiveLength > 0 && lineByteBuffer[effectiveLength - 1] == CarriageReturnByte)
@@ -156,18 +176,17 @@ public sealed class LammpsCustomPipeReader : ITrajectoryParser
                     // ---------------------------------------------------------
                     if (expectAtomCountLine)
                     {
+                        // WHAT: Reads the integer that follows "ITEM: NUMBER OF ATOMS" and bounds it before any
+                        //       memory is reserved.
+                        // WHY:  The value comes from an untrusted dump file, so it must never size an allocation by
+                        //       itself (AGENTS.md Prime Directive 1 / finding H4). Zero, negative and over-ceiling
+                        //       counts are all treated as a malformed section, exactly as a non-numeric line was.
+                        // HOW:  Utf8Parser.TryParse decodes in-place and IsPlausibleAtomCount gates the result. The
+                        //       coordinate buffer is not rented here; it grows on demand as real atom lines arrive.
                         expectAtomCountLine = false;
-                        if (Utf8Parser.TryParse(lineSpan, out int count, out _) && count > 0)
+                        if (Utf8Parser.TryParse(lineSpan, out int count, out _) && TrajectoryFrameBuffer.IsPlausibleAtomCount(count))
                         {
                             expectedAtomCount = count;
-                            if (atomBuffer.Length < expectedAtomCount)
-                            {
-                                if (atomBuffer.Length > 0)
-                                {
-                                    ArrayPool<AtomCoordinate>.Shared.Return(atomBuffer);
-                                }
-                                atomBuffer = ArrayPool<AtomCoordinate>.Shared.Rent(expectedAtomCount);
-                            }
                         }
                         continue;
                     }
@@ -191,6 +210,16 @@ public sealed class LammpsCustomPipeReader : ITrajectoryParser
                         // HOW:  Skips the first two integer columns (id, type) then parses floating-point X, Y, Z.
                         if (TryParseLammpsAtomLine(lineSpan, out AtomCoordinate coordinate))
                         {
+                            // WHAT: Expands the rented coordinate buffer only once the atoms to fill it have arrived.
+                            // WHY:  Keeps reserved memory proportional to the coordinates the dump really contains
+                            //       rather than to the count its header declared (finding H4).
+                            // HOW:  TrajectoryFrameBuffer.Grow rents the larger buffer, copies the live prefix and
+                            //       returns the old rental, leaving one live rental for the finally block to release.
+                            if (currentAtomIndex == atomBuffer.Length)
+                            {
+                                atomBuffer = TrajectoryFrameBuffer.Grow(atomBuffer, expectedAtomCount, currentAtomIndex);
+                            }
+
                             atomBuffer[currentAtomIndex++] = coordinate;
 
                             if (currentAtomIndex == expectedAtomCount)

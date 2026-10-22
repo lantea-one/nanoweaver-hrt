@@ -60,7 +60,7 @@ public sealed class XyzPipeReader : ITrajectoryParser
         bool commentLineRead = false;
         int currentAtomIndex = 0;
         AtomCoordinate[] atomBuffer = Array.Empty<AtomCoordinate>();
-        byte[] lineByteBuffer = ArrayPool<byte>.Shared.Rent(512);
+        byte[] lineByteBuffer = ArrayPool<byte>.Shared.Rent(TrajectoryLineBuffer.InitialLineCapacity);
 
         try
         {
@@ -79,11 +79,27 @@ public sealed class XyzPipeReader : ITrajectoryParser
                         continue;
                     }
 
-                    // WHAT: Copies line bytes into rented byte buffer and trims carriage return if needed.
-                    // WHY:  Avoids stackalloc Span across async/await yield boundaries.
-                    // HOW:  Uses ArrayPool-rented array and slices via ReadOnlySpan without heap allocations.
-                    int lineLength = (int)Math.Min(lineSequence.Length, lineByteBuffer.Length);
-                    lineSequence.Slice(0, lineLength).CopyTo(lineByteBuffer);
+                    // WHAT: Copies the whole line into the rented byte buffer, growing it when the line is wider.
+                    // WHY:  Avoids stackalloc Span across async/await yield boundaries, and - unlike the Math.Min
+                    //       clamp this replaced - can never hand a truncated line to the coordinate parser. A line
+                    //       cut short mid-number used to parse as a different, wrong coordinate with no error at all
+                    //       (finding L5).
+                    // HOW:  TrajectoryLineBuffer.TryCopyLine grows the ArrayPool rental to fit, or returns false for
+                    //       a line beyond the documented ceiling.
+                    if (!TrajectoryLineBuffer.TryCopyLine(lineSequence, ref lineByteBuffer, out int lineLength))
+                    {
+                        // WHAT: Abandons the frame currently being accumulated and resynchronises.
+                        // WHY:  Merely skipping the corrupt line would leave a hole that the next frame's coordinate
+                        //       lines would quietly fill, emitting one frame stitched together from two different
+                        //       simulation timesteps - a wrong result presented as a complete one. Discarding the
+                        //       partial frame makes that impossible, and matches how these readers already treat a
+                        //       malformed header: non-fatal, state reset, keep scanning.
+                        // HOW:  Resets to STATE 1 so the next atom-count header starts a clean frame.
+                        expectedAtomCount = -1;
+                        commentLineRead = false;
+                        currentAtomIndex = 0;
+                        continue;
+                    }
 
                     int effectiveLength = lineLength;
                     if (effectiveLength > 0 && lineByteBuffer[effectiveLength - 1] == CarriageReturnByte)
@@ -107,23 +123,19 @@ public sealed class XyzPipeReader : ITrajectoryParser
                     // -------------------------------------------------------------
                     if (expectedAtomCount == -1)
                     {
-                        // WHAT: Parses the integer count of atoms in this snapshot directly from UTF-8 bytes.
-                        // WHY:  Avoids converting the count to a C# string before calling int.Parse.
-                        // HOW:  Utf8Parser.TryParse decodes the numeric value in-place.
-                        if (Utf8Parser.TryParse(lineSpan, out int count, out _) && count > 0)
+                        // WHAT: Parses the integer count of atoms in this snapshot directly from UTF-8 bytes and
+                        //       checks it against the documented per-frame ceiling before any memory is reserved.
+                        // WHY:  This count comes from an untrusted file, so it must never size an allocation on its
+                        //       own (AGENTS.md Prime Directive 1 / finding H4). A count that is zero, negative or
+                        //       above TrajectoryFrameBuffer.MaxAtomsPerFrame is treated exactly like a non-numeric
+                        //       header line: the reader stays in STATE 1 and waits for a plausible count.
+                        // HOW:  Utf8Parser.TryParse decodes the numeric value in-place; IsPlausibleAtomCount gates it.
+                        //       No buffer is rented here at all - the coordinate buffer grows on demand in STATE 3 as
+                        //       real atoms arrive, so a tiny hostile file cannot induce a large rental.
+                        if (Utf8Parser.TryParse(lineSpan, out int count, out _) && TrajectoryFrameBuffer.IsPlausibleAtomCount(count))
                         {
                             expectedAtomCount = count;
                             commentLineRead = false;
-
-                            // Ensure our rented coordinate buffer is large enough for this frame
-                            if (atomBuffer.Length < expectedAtomCount)
-                            {
-                                if (atomBuffer.Length > 0)
-                                {
-                                    ArrayPool<AtomCoordinate>.Shared.Return(atomBuffer);
-                                }
-                                atomBuffer = ArrayPool<AtomCoordinate>.Shared.Rent(expectedAtomCount);
-                            }
                             currentAtomIndex = 0;
                         }
                         continue;
@@ -147,6 +159,16 @@ public sealed class XyzPipeReader : ITrajectoryParser
                     bool isAtomLine = ParseAtomLine(lineSpan, out AtomCoordinate coordinate);
                     if (isAtomLine)
                     {
+                        // WHAT: Expands the rented coordinate buffer only once the atoms to fill it have arrived.
+                        // WHY:  Keeps the reserved memory proportional to the coordinates the file really contains
+                        //       rather than to the width its header declared (finding H4).
+                        // HOW:  TrajectoryFrameBuffer.Grow rents the larger buffer, copies the live prefix and returns
+                        //       the previous rental, leaving exactly one live rental for the finally block to release.
+                        if (currentAtomIndex == atomBuffer.Length)
+                        {
+                            atomBuffer = TrajectoryFrameBuffer.Grow(atomBuffer, expectedAtomCount, currentAtomIndex);
+                        }
+
                         atomBuffer[currentAtomIndex++] = coordinate;
 
                         // WHAT: Emits the completed frame once all expected atoms for this step are accumulated.

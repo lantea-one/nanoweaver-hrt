@@ -88,12 +88,6 @@ public sealed class DcdPipeReader : ITrajectoryParser
 
                     buffer = buffer.Slice(seqReader.Position);
                     headerParsed = true;
-
-                    // Pre-allocate rented coordinate buffers
-                    rentedX = ArrayPool<float>.Shared.Rent(numberOfAtoms);
-                    rentedY = ArrayPool<float>.Shared.Rent(numberOfAtoms);
-                    rentedZ = ArrayPool<float>.Shared.Rent(numberOfAtoms);
-                    atomBuffer = ArrayPool<AtomCoordinate>.Shared.Rent(numberOfAtoms);
                 }
 
                 // -------------------------------------------------------------
@@ -106,12 +100,33 @@ public sealed class DcdPipeReader : ITrajectoryParser
                     // X Block: 4 marker + (N * 4) + 4 marker = 8 + (N * 4)
                     // Y Block: 8 + (N * 4)
                     // Z Block: 8 + (N * 4)
-                    int framePayloadBytes = (hasUnitCell ? 56 : 0) + (3 * (8 + (numberOfAtoms * 4)));
+                    // WHAT: Sizes the frame in 64-bit arithmetic rather than 32-bit.
+                    // WHY:  A header-declared atom count multiplied by 12 bytes plus record markers can overflow an
+                    //       int and wrap negative, after which buffer.Slice(0, negative) throws instead of rejecting
+                    //       the file (finding H4). TryParseHeader already caps the count, so this is belt and braces
+                    //       that costs nothing.
+                    // HOW:  Every term is widened to long, matching ReadOnlySequence<byte>.Length and Slice overloads.
+                    long framePayloadBytes = (hasUnitCell ? 56L : 0L) + (3L * (8L + ((long)numberOfAtoms * 4L)));
 
                     if (buffer.Length < framePayloadBytes)
                     {
                         // Buffer does not yet contain a complete binary frame
                         break;
+                    }
+
+                    // WHAT: Rents the three dimension arrays and the interleaved coordinate buffer on first use.
+                    // WHY:  Renting at header-parse time let a twenty-byte file with a large declared atom count
+                    //       dictate a multi-gigabyte allocation (finding H4). Deferring until a whole frame is
+                    //       actually buffered means the file must genuinely supply numberOfAtoms * 12 bytes of
+                    //       coordinates before that much memory is reserved.
+                    // HOW:  The DCD header fixes the atom count for the entire stream, so this rents exactly once;
+                    //       the guard is false for every frame after the first. The finally block returns all four.
+                    if (atomBuffer.Length < numberOfAtoms)
+                    {
+                        rentedX = ArrayPool<float>.Shared.Rent(numberOfAtoms);
+                        rentedY = ArrayPool<float>.Shared.Rent(numberOfAtoms);
+                        rentedZ = ArrayPool<float>.Shared.Rent(numberOfAtoms);
+                        atomBuffer = ArrayPool<AtomCoordinate>.Shared.Rent(numberOfAtoms);
                     }
 
                     SequenceReader<byte> frameSeq = new(buffer.Slice(0, framePayloadBytes));
@@ -203,9 +218,13 @@ public sealed class DcdPipeReader : ITrajectoryParser
         reader.Advance(titleLength);
         if (!reader.TryReadLittleEndian(out int _)) return false;
 
-        // Atom count record
+        // WHAT: Reads the atom count record and rejects any count outside the plausible per-frame range.
+        // WHY:  This integer is the only thing that sizes the four coordinate buffers, and it comes from an
+        //       untrusted file (finding H4). Treating an implausible count as an invalid header means the reader
+        //       reserves nothing and emits no frames, which is the existing behaviour for a count of zero or less.
+        // HOW:  TrajectoryFrameBuffer.IsPlausibleAtomCount applies the documented MaxAtomsPerFrame ceiling.
         if (!reader.TryReadLittleEndian(out int natomRecordLength) || natomRecordLength != 4) return false;
-        if (!reader.TryReadLittleEndian(out atomCount) || atomCount <= 0) return false;
+        if (!reader.TryReadLittleEndian(out atomCount) || !TrajectoryFrameBuffer.IsPlausibleAtomCount(atomCount)) return false;
         if (!reader.TryReadLittleEndian(out int _)) return false;
 
         return true;

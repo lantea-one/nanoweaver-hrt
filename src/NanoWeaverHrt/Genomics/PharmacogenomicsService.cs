@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Text.RegularExpressions;
 using NanoWeaverHrt.Endocrine;
 
 namespace NanoWeaverHrt.Genomics;
@@ -394,48 +393,38 @@ public sealed class PharmacogenomicsService : IPharmacogenomicsService
             return AnalyzeProfile(patientId, Array.Empty<string>(), regimen);
         }
 
-        // WHAT: Strips FASTA header lines and whitespace, converting sequence to uppercase.
-        // WHY:  Standardizes sequence processing across multi-line FASTA files.
-        // HOW:  Regex removes header line starting with > and all non-alphabetic characters.
-        string cleanSeq = Regex.Replace(fastaOrDnaSequence, @"^>.*$", "", RegexOptions.Multiline);
-        cleanSeq = Regex.Replace(cleanSeq, @"[^A-Za-z]", "").ToUpperInvariant();
+        // WHAT: Discards FASTA label lines, keeps only ASCII letters folded to upper case, and measures the retained
+        //       base count, the number of CpG dinucleotides and the longest tandem CAG repeat run in one pass.
+        // WHY:  AGENTS.md Prime Directive 1 forbids Regex inside parsers. The previous three-regex pipeline
+        //       materialised a full copy of the submitted sequence per stage, so a large FASTA upload cost several
+        //       hundred megabytes of Large Object Heap traffic per request.
+        // HOW:  FastaSequenceScanner transcodes the text into an ArrayPool-rented UTF-8 buffer and walks it as a
+        //       ReadOnlySpan<byte>, holding only a few integer counters. See FastaSequenceScanner for the plain-English
+        //       explanation of what CpG motifs and CAG repeats mean clinically.
+        FastaSequenceScanner.ScanUtf16(
+            fastaOrDnaSequence.AsSpan(),
+            out int nucleotideCount,
+            out int cpgCount,
+            out int maxCagRepeats);
 
         List<string> detectedMarkerIds = new();
 
         // 1. Check CpG Dinucleotide Density (TLR9 Immunogenicity Trigger)
-        // WHAT: Counts CG dinucleotides and calculates density percentage.
-        // WHY:  High unmethylated CpG density (> 3.0%) in viral/bacterial scaffolds triggers TLR9 immune rejection.
-        // HOW:  Iterates characters looking for 'C' followed immediately by 'G'.
-        int cpgCount = 0;
-        for (int i = 0; i < cleanSeq.Length - 1; i++)
-        {
-            if (cleanSeq[i] == 'C' && cleanSeq[i + 1] == 'G')
-            {
-                cpgCount++;
-            }
-        }
-
-        double cpgDensityPercent = cleanSeq.Length > 1 ? (double)(cpgCount * 2) / cleanSeq.Length * 100.0 : 0.0;
+        // WHAT: Converts the raw CG dinucleotide tally into a percentage of the bases involved in a CpG motif.
+        // WHY:  High unmethylated CpG density (>= 3.0%) in viral/bacterial scaffolds triggers TLR9 immune rejection.
+        // HOW:  Each motif covers two bases, hence (cpgCount * 2) / totalBases; a sequence of 0 or 1 bases cannot
+        //       contain a dinucleotide at all, so its density is defined as zero rather than dividing by a tiny total.
+        double cpgDensityPercent = nucleotideCount > 1 ? (double)(cpgCount * 2) / nucleotideCount * 100.0 : 0.0;
         if (cpgDensityPercent >= 3.0)
         {
             detectedMarkerIds.Add("TLR9_HIGH_SENSITIVITY");
         }
 
         // 2. Check for Tandem CAG Repeat Stretches (Androgen Receptor Exon 1 Mimic)
-        // WHAT: Scans for contiguous (CAG)n trinucleotide repeats.
+        // WHAT: Classifies the longest contiguous (CAG)n trinucleotide run reported by the scanner.
         // WHY:  Detects sequences containing extended polyglutamine codons affecting receptor sensitivity.
-        // HOW:  Finds matches of repeating CAG triplets.
-        MatchCollection cagMatches = Regex.Matches(cleanSeq, @"(CAG){4,}");
-        int maxCagRepeats = 0;
-        foreach (Match m in cagMatches)
-        {
-            int repeats = m.Length / 3;
-            if (repeats > maxCagRepeats)
-            {
-                maxCagRepeats = repeats;
-            }
-        }
-
+        // HOW:  Applies the clinical banding thresholds; the scanner already reports zero for any run shorter than
+        //       four triplets, which is statistical noise rather than a genuine tract.
         if (maxCagRepeats >= 26)
         {
             detectedMarkerIds.Add("AR_CAG_LONG");
