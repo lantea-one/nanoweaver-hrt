@@ -99,6 +99,7 @@ public sealed record DnaOrigamiSample : IExamplesProvider<DnaOrigamiSample>
     /// <summary>
     /// Returns the built-in library of verified sovereign DNA nanocarrier sample designs.
     /// </summary>
+    /// <returns>The read-only list of shipped nanocarrier designs, one per supported therapy.</returns>
     public static IReadOnlyList<DnaOrigamiSample> GetPresetLibrary() =>
     [
         new DnaOrigamiSample

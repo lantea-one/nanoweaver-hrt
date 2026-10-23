@@ -392,6 +392,14 @@ public sealed class ComplianceAuditService : IComplianceAuditService
     /// <summary>
     /// Helper method computing the deterministic SHA-384 hash of an audit record's fields.
     /// </summary>
+    /// <param name="sequenceNumber">The position of this record in the append-only ledger, counted from one.</param>
+    /// <param name="timestamp">The moment the audited action happened, in UTC.</param>
+    /// <param name="previousHash">The digest of the record immediately before this one, which chains the ledger together.</param>
+    /// <param name="operatorId">The user account or background service that performed the action.</param>
+    /// <param name="action">A short machine-readable name for what was done, for example IngestScaffold.</param>
+    /// <param name="resource">The thing the action was performed on, such as a patient record or a configuration key.</param>
+    /// <param name="detailsJson">Any extra context about the action, serialized as JSON.</param>
+    /// <returns>The SHA-384 digest of all supplied fields, formatted as a lowercase hexadecimal string.</returns>
     private static string ComputeHash(
         long sequenceNumber,
         DateTimeOffset timestamp,

@@ -224,6 +224,8 @@ public sealed class OpenApiMultiFormatExampleFilter : ISchemaFilter, IOperationF
                 return arr;
 
             case JsonValueKind.String:
+                // WHY `!`: GetString() returns null only when the value kind is Null. This case label
+                //          guarantees the kind is String, so the decoded text is always present.
                 return new OpenApiString(element.GetString()!);
 
             case JsonValueKind.Number:

@@ -367,6 +367,10 @@ public sealed class FabricationService : IFabricationService
     /// <summary>
     /// Generates staple oligonucleotides tailored for the specified geometry and therapeutic target.
     /// </summary>
+    /// <param name="regimen">The therapy the carrier is being built for, either male-to-female or female-to-male.</param>
+    /// <param name="geometry">The shape the folded DNA carrier takes, such as a six-helix bundle nanotube.</param>
+    /// <param name="targetKd">How tightly the carrier should hold onto its target, in nanomolar; smaller numbers mean a tighter grip.</param>
+    /// <returns>The list of short synthetic DNA strands, called staples, that fold the long scaffold strand into the requested shape.</returns>
     private static List<StapleOligoRecord> GenerateStapleEnsemble(TherapeuticRegimen regimen, string geometry, double targetKd)
     {
         List<StapleOligoRecord> staples = [];

@@ -57,7 +57,7 @@
       ```bash
       ./scripts/verify-all.sh
       ```
-    - Never push or finalize if any of the 5 verification steps fail.
+    - Never push or finalize if any of the 6 verification steps fail.
 
 11. **Sovereign Forgejo Git Remote Enforcement**:
     - Never commit, push, or mirror to GitHub.
@@ -128,7 +128,7 @@
 
 ## 3. Developer Workflows & Quality Verification
 
-### Run Full Verification Gate (All 5 Checks)
+### Run Full Verification Gate (All 6 Checks)
 ```bash
 ./scripts/verify-all.sh
 ```
@@ -138,6 +138,7 @@ This runs:
 3. `dotnet test ...` (100% C# unit test pass rate)
 4. Cobertura coverage gate (100.00% line and branch coverage threshold)
 5. Markdown scan (0 unescaped single-dollar LaTeX interpolation tokens)
+6. Docblock scan (`scripts/check-docblocks.py`: every documented member has one `<param>` per parameter and a `<returns>`)
 
 ### How to Build & Run Locally
 ```bash

@@ -65,7 +65,16 @@ public sealed class UserProfileRepository : IUserProfileRepository, IDisposable
         _migrationRunner = migrationRunner ?? new DatabaseMigrationRunner();
 
         string? envPostgres = configuration["POSTGRES_CONNECTION_STRING"] ?? Environment.GetEnvironmentVariable("POSTGRES_CONNECTION_STRING");
-        _postgresConnString = envPostgres ?? "Host=localhost;Port=5432;Database=weaver_hrt;Username=weaver;Password=weaver_secret_change_me;Timeout=3";
+        // WHAT: Uses the configured PostgreSQL connection string, or no connection string at all.
+        // WHY:  Shipping a built-in default that embeds a password means every deployment which
+        //       forgets to set POSTGRES_CONNECTION_STRING shares one publicly known credential,
+        //       and that credential also leaks through any surface that echoes configuration.
+        //       PostgreSQL is therefore opt-in: with nothing configured the stack uses its
+        //       embedded SQLite database, exactly as it already does when PostgreSQL is
+        //       unreachable. An empty string fails the connection attempt immediately and that
+        //       existing fallback path takes over.
+        // HOW:  Falls back to the empty string instead of a hardcoded credential.
+        _postgresConnString = envPostgres ?? string.Empty;
 
         string incomingDir = configuration["TRAJECTORY_INCOMING_DIR"] ?? Path.Combine(Directory.GetCurrentDirectory(), "simulations", "shared-data");
         Directory.CreateDirectory(incomingDir);
@@ -510,6 +519,9 @@ public sealed class UserProfileRepository : IUserProfileRepository, IDisposable
     /// <summary>
     /// Helper creating and attaching a command parameter.
     /// </summary>
+    /// <param name="cmd">The command the parameter is attached to.</param>
+    /// <param name="name">The placeholder name used in the SQL text, including its leading marker.</param>
+    /// <param name="value">The value bound to that placeholder.</param>
     private static void AddParam(DbCommand cmd, string name, object value)
     {
         DbParameter p = cmd.CreateParameter();
@@ -521,6 +533,9 @@ public sealed class UserProfileRepository : IUserProfileRepository, IDisposable
     /// <summary>
     /// Maps a database reader row to a strongly-typed <see cref="UserProfile"/>.
     /// </summary>
+    /// <param name="reader">A reader positioned on the profile row to read.</param>
+    /// <param name="protector">The service that decrypts the personal fields held encrypted at rest.</param>
+    /// <returns>The fully populated patient profile for the current row.</returns>
     internal static UserProfile MapProfileFromReader(DbDataReader reader, ProfileDataProtector protector)
     {
         string username = reader.GetString(0);
@@ -585,6 +600,8 @@ public sealed class UserProfileRepository : IUserProfileRepository, IDisposable
     /// <summary>
     /// Maps a database reader row to a strongly-typed <see cref="PatientAddress"/>.
     /// </summary>
+    /// <param name="reader">A reader positioned on the address row to read.</param>
+    /// <returns>The postal address described by the current row.</returns>
     internal static PatientAddress MapAddressFromReader(DbDataReader reader)
     {
         string id = reader.GetString(0);
@@ -620,6 +637,8 @@ public sealed class UserProfileRepository : IUserProfileRepository, IDisposable
     /// <summary>
     /// Maps a database reader row to a strongly-typed <see cref="PatientContact"/>.
     /// </summary>
+    /// <param name="reader">A reader positioned on the contact row to read.</param>
+    /// <returns>The emergency or next-of-kin contact described by the current row.</returns>
     internal static PatientContact MapContactFromReader(DbDataReader reader)
     {
         string id = reader.GetString(0);
@@ -653,6 +672,9 @@ public sealed class UserProfileRepository : IUserProfileRepository, IDisposable
     /// <summary>
     /// Parses a DateTimeOffset safely from varying database engine column types.
     /// </summary>
+    /// <param name="reader">A reader positioned on the row to read.</param>
+    /// <param name="ordinal">The zero-based index of the column holding the timestamp.</param>
+    /// <returns>The column value as a timestamp anchored to UTC.</returns>
     private static DateTimeOffset ParseDateTimeOffset(DbDataReader reader, int ordinal)
     {
         if (reader.GetFieldType(ordinal) == typeof(DateTime))

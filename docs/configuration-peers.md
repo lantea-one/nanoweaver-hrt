@@ -99,7 +99,14 @@ Researchers connect remote nodes using the **Sovereign Peer Connect Dialog**:
 ### Connection Workflow
 1. Navigate to **Configuration & Peers** in the sidebar.
 2. Click **Connect Remote Peer** to open the modal.
-3. Enter the remote node's URL (e.g., `https://node-beta.hrt-lab.local:5000` or an Onion / Tailscale address).
+3. Enter the remote node's URL (e.g., `https://node-beta.hrt-lab.local` or an Onion / Tailscale address).
+
+   > ⚠️ **Never point a peer at port `5000` across a network.** Kestrel's port `5000` is bound for
+   > loopback and container-internal traffic only. A reachable peer must sit behind one of the
+   > hardened reverse proxy overlays (`compose/docker-compose.public-caddy.yml`,
+   > `compose/docker-compose.public-nginx.yml`, or `compose/docker-compose.public-cloudflare.yml`),
+   > which terminate TLS on `443`. See [**Secure Public Access**](secure-public-access.md).
+
 4. Paste the single-use share key (`nanoweaver_hrt_...`).
 5. Click **Verify & Link Peer**.
 

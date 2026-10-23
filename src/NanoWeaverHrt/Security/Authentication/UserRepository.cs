@@ -57,7 +57,16 @@ public sealed class UserRepository : IUserRepository, IDisposable
         _migrationRunner = migrationRunner ?? new DatabaseMigrationRunner();
 
         string? envPostgres = configuration["POSTGRES_CONNECTION_STRING"] ?? Environment.GetEnvironmentVariable("POSTGRES_CONNECTION_STRING");
-        _postgresConnString = envPostgres ?? "Host=localhost;Port=5432;Database=weaver_hrt;Username=weaver;Password=weaver_secret_change_me;Timeout=3";
+        // WHAT: Uses the configured PostgreSQL connection string, or no connection string at all.
+        // WHY:  Shipping a built-in default that embeds a password means every deployment which
+        //       forgets to set POSTGRES_CONNECTION_STRING shares one publicly known credential,
+        //       and that credential also leaks through any surface that echoes configuration.
+        //       PostgreSQL is therefore opt-in: with nothing configured the stack uses its
+        //       embedded SQLite database, exactly as it already does when PostgreSQL is
+        //       unreachable. An empty string fails the connection attempt immediately and that
+        //       existing fallback path takes over.
+        // HOW:  Falls back to the empty string instead of a hardcoded credential.
+        _postgresConnString = envPostgres ?? string.Empty;
 
         string incomingDir = configuration["TRAJECTORY_INCOMING_DIR"] ?? Path.Combine(Directory.GetCurrentDirectory(), "simulations", "shared-data");
         Directory.CreateDirectory(incomingDir);
@@ -410,6 +419,9 @@ public sealed class UserRepository : IUserRepository, IDisposable
     /// <summary>
     /// Applies database migrations to PostgreSQL.
     /// </summary>
+    /// <param name="conn">An already-open PostgreSQL connection.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task that completes once every pending migration has been applied.</returns>
     private async Task CreateTablesPostgresAsync(NpgsqlConnection conn, CancellationToken ct)
     {
         await _migrationRunner.ApplyPendingMigrationsAsync(conn, "postgresql", ct);
@@ -418,6 +430,9 @@ public sealed class UserRepository : IUserRepository, IDisposable
     /// <summary>
     /// Applies database migrations to SQLite.
     /// </summary>
+    /// <param name="conn">An already-open SQLite connection.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task that completes once every pending migration has been applied.</returns>
     private async Task CreateTablesSqliteAsync(SqliteConnection conn, CancellationToken ct)
     {
         await _migrationRunner.ApplyPendingMigrationsAsync(conn, "sqlite", ct);
@@ -426,6 +441,8 @@ public sealed class UserRepository : IUserRepository, IDisposable
     /// <summary>
     /// Maps a database reader record into a strongly-typed <see cref="UserAccount"/>.
     /// </summary>
+    /// <param name="reader">A reader positioned on the user row to read.</param>
+    /// <returns>The user account described by the current row.</returns>
     internal static UserAccount MapUserFromReader(DbDataReader reader)
     {
         string username = reader.GetString(0);

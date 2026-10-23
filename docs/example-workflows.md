@@ -139,7 +139,7 @@ sequenceDiagram
 ```
 
 ### Step 1: Generate Peering Key on Lab A
-1. Log into Lab A's dashboard (`https://lab-a.hrt-lab.local:5000`).
+1. Log into Lab A's dashboard (`https://lab-a.hrt-lab.local`).
 2. Navigate to **Configuration & Peers**.
 3. Under **Single-Use Peering Keys**, select an expiration window:
    * Choose **`24h`** for a one-day collaboration session.
@@ -150,10 +150,10 @@ sequenceDiagram
    ```
 
 ### Step 2: Connect from Lab B
-1. Log into Lab B's dashboard (`https://lab-b.hrt-lab.local:5000`).
+1. Log into Lab B's dashboard (`https://lab-b.hrt-lab.local`).
 2. Navigate to **Configuration & Peers** and click **Connect Remote Peer**.
 3. In the modal:
-   * **Remote Node URL**: `https://lab-a.hrt-lab.local:5000`
+   * **Remote Node URL**: `https://lab-a.hrt-lab.local`
    * **Single-Use Key**: Paste `nanoweaver_hrt_9e8b7c...`
 4. Click **Verify & Link Peer**.
 

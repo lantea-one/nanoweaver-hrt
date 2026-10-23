@@ -244,11 +244,21 @@
     /// <summary>
     /// Active endocrine target profile.
     /// </summary>
+    /// <remarks>
+    /// WHY `null!`: Blazor constructs the component before it can inject services, so this field
+    /// cannot be given a real value in a field initializer. OnInitialized assigns it from the
+    /// engine before the first render, and every use sits in markup that only runs after that,
+    /// so no code path observes the null.
+    /// </remarks>
     private EndocrineTargetProfile _activeProfile = null!;
 
     /// <summary>
     /// Evaluated pharmacogenomic profile for the patient.
     /// </summary>
+    /// <remarks>
+    /// WHY `null!`: As above, this is assigned during OnInitialized (via SelectPreset) before the
+    /// component renders for the first time, which is the earliest point any reader can see it.
+    /// </remarks>
     private PatientGenomicProfile _genomicProfile = null!;
 
     /// <summary>

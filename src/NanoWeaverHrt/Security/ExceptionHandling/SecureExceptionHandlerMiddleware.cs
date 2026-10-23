@@ -112,6 +112,7 @@ public sealed class SecureExceptionHandlerMiddleware
     /// </summary>
     /// <param name="context">Active HTTP context.</param>
     /// <param name="ex">The intercepted exception.</param>
+    /// <returns>A task that completes once the sanitized response body has been written.</returns>
     private async Task HandleApiExceptionAsync(HttpContext context, Exception ex)
     {
         if (context.Response.HasStarted)

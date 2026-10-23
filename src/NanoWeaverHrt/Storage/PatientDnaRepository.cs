@@ -62,7 +62,16 @@ public sealed class PatientDnaRepository : IPatientDnaRepository, IDisposable
         _migrationRunner = migrationRunner ?? new DatabaseMigrationRunner();
 
         string? envPostgres = configuration["POSTGRES_CONNECTION_STRING"] ?? Environment.GetEnvironmentVariable("POSTGRES_CONNECTION_STRING");
-        _postgresConnString = envPostgres ?? "Host=localhost;Port=5432;Database=weaver_hrt;Username=weaver;Password=weaver_secret_change_me;Timeout=3";
+        // WHAT: Uses the configured PostgreSQL connection string, or no connection string at all.
+        // WHY:  Shipping a built-in default that embeds a password means every deployment which
+        //       forgets to set POSTGRES_CONNECTION_STRING shares one publicly known credential,
+        //       and that credential also leaks through any surface that echoes configuration.
+        //       PostgreSQL is therefore opt-in: with nothing configured the stack uses its
+        //       embedded SQLite database, exactly as it already does when PostgreSQL is
+        //       unreachable. An empty string fails the connection attempt immediately and that
+        //       existing fallback path takes over.
+        // HOW:  Falls back to the empty string instead of a hardcoded credential.
+        _postgresConnString = envPostgres ?? string.Empty;
 
         string incomingDir = configuration["TRAJECTORY_INCOMING_DIR"] ?? Path.Combine(Directory.GetCurrentDirectory(), "simulations", "shared-data");
         Directory.CreateDirectory(incomingDir);
@@ -621,6 +630,9 @@ public sealed class PatientDnaRepository : IPatientDnaRepository, IDisposable
     /// <summary>
     /// Helper to attach a parameter to a database command.
     /// </summary>
+    /// <param name="cmd">The command the parameter is attached to.</param>
+    /// <param name="name">The placeholder name used in the SQL text, including its leading marker.</param>
+    /// <param name="value">The value bound to that placeholder.</param>
     private static void AddParam(DbCommand cmd, string name, object value)
     {
         DbParameter param = cmd.CreateParameter();
@@ -632,6 +644,8 @@ public sealed class PatientDnaRepository : IPatientDnaRepository, IDisposable
     /// <summary>
     /// Maps a database reader row to a strongly-typed <see cref="PatientDigitalDnaRecord"/>.
     /// </summary>
+    /// <param name="reader">A reader positioned on the digital DNA row to read.</param>
+    /// <returns>The stored nanocarrier design described by the current row.</returns>
     internal static PatientDigitalDnaRecord MapDnaRecordFromReader(DbDataReader reader)
     {
         string id = reader.GetString(0);
@@ -697,6 +711,8 @@ public sealed class PatientDnaRepository : IPatientDnaRepository, IDisposable
     /// <summary>
     /// Maps a database reader row to a strongly-typed <see cref="PatientDnaImportRecord"/>.
     /// </summary>
+    /// <param name="reader">A reader positioned on the import row to read.</param>
+    /// <returns>The record of an uploaded sequence or dataset described by the current row.</returns>
     internal static PatientDnaImportRecord MapImportRecordFromReader(DbDataReader reader)
     {
         string id = reader.GetString(0);
@@ -730,6 +746,8 @@ public sealed class PatientDnaRepository : IPatientDnaRepository, IDisposable
     /// <summary>
     /// Maps a database reader row to a strongly-typed <see cref="PatientResultRecord"/>.
     /// </summary>
+    /// <param name="reader">A reader positioned on the result row to read.</param>
+    /// <returns>The simulation or analysis result described by the current row.</returns>
     internal static PatientResultRecord MapResultRecordFromReader(DbDataReader reader)
     {
         string id = reader.GetString(0);

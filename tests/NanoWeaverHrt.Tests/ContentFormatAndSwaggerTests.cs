@@ -727,6 +727,55 @@ public sealed class ContentFormatAndSwaggerTests
     }
 
     /// <summary>
+    /// Verifies that the YAML key normalizer rejects a mapping key that cannot be rendered as text
+    /// instead of failing with an opaque <see cref="NullReferenceException"/>.
+    /// </summary>
+    [Fact]
+    public void NormalizeYamlObjectKeys_WithUnrenderableKey_ShouldThrowInvalidOperationException()
+    {
+        // WHAT: Feeds a dictionary whose only key renders as null through the YAML key normalizer.
+        // WHY:  object.ToString() is permitted to return null, so the previous `entry.Key.ToString()!`
+        //       suppression hid a latent NullReferenceException thrown from inside KebabToCamelCase.
+        //       A JSON object member must have a name, so the correct behaviour is to fail loudly.
+        // HOW:  Uses a key type that deliberately overrides ToString() to return null and asserts the
+        //       descriptive InvalidOperationException surfaces instead.
+        System.Collections.Hashtable mapping = new()
+        {
+            [new NullTextKey()] = "value"
+        };
+
+        InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
+            () => ContentFormatSerializer.NormalizeYamlObjectKeys(mapping));
+
+        Assert.Contains("could not be rendered as text", ex.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Verifies that the YAML key normalizer still accepts ordinary string keys and nested graphs.
+    /// </summary>
+    [Fact]
+    public void NormalizeYamlObjectKeys_WithRenderableKeys_ShouldNormalizeToCamelCase()
+    {
+        // WHAT: Normalizes a nested dictionary whose keys are ordinary hyphenated strings.
+        // WHY:  Confirms the added null guard did not change the behaviour of the normal path.
+        // HOW:  Normalizes a two-level graph and asserts the camelCase keys exist at both levels.
+        System.Collections.Hashtable inner = new()
+        {
+            ["is-admin"] = true
+        };
+        System.Collections.Hashtable outer = new()
+        {
+            ["user-record"] = inner
+        };
+
+        object? normalized = ContentFormatSerializer.NormalizeYamlObjectKeys(outer);
+
+        Dictionary<string, object?> outerResult = Assert.IsType<Dictionary<string, object?>>(normalized);
+        Dictionary<string, object?> innerResult = Assert.IsType<Dictionary<string, object?>>(outerResult["userRecord"]);
+        Assert.Equal(true, innerResult["isAdmin"]);
+    }
+
+    /// <summary>
     /// Verifies that <see cref="FormatNegotiationMiddlewareExtensions.UseFormatNegotiation"/> registers middleware on <see cref="IApplicationBuilder"/>.
     /// </summary>
     [Fact]
@@ -781,4 +830,22 @@ public sealed class NullExampleProvider : IExamplesProvider<NullExampleProvider>
     /// </summary>
     /// <returns>Null reference.</returns>
     public NullExampleProvider GetExamples() => null!;
+}
+
+/// <summary>
+/// Dictionary key whose textual form is deliberately null, used to prove that the YAML key
+/// normalizer refuses a key it cannot turn into a JSON object member name.
+/// </summary>
+/// <remarks>
+/// Overriding ToString() to return null is legal: the method's return type is nullable. Real
+/// YamlDotNet documents only ever produce string keys, so this situation is unreachable through
+/// the public API and must be constructed directly to be tested.
+/// </remarks>
+public sealed class NullTextKey
+{
+    /// <summary>
+    /// Returns null instead of a textual representation.
+    /// </summary>
+    /// <returns>Always null.</returns>
+    public override string? ToString() => null;
 }

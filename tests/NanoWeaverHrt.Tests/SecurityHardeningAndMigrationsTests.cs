@@ -320,9 +320,9 @@ public sealed class SecurityHardeningAndMigrationsTests
         Assert.DoesNotContain("/var/data", sanitized500);
 
         // 2. Redaction of file paths in 400 errors
-        string pathMsg = "Could not locate dataset at /home/fabigail/secret_simulations/test.xyz";
+        string pathMsg = "Could not locate dataset at /home/operator/secret_simulations/test.xyz";
         string sanitizedPath = SecureExceptionSanitizer.SanitizeDetail(pathMsg, 400, "TR-400");
-        Assert.DoesNotContain("/home/fabigail", sanitizedPath);
+        Assert.DoesNotContain("/home/operator", sanitizedPath);
         Assert.Contains("[REDACTED_PATH]", sanitizedPath);
 
         // 3. Redaction of connection strings

@@ -54,7 +54,7 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
         new("Simulation:AcceleratorBackend", "Intel iGPU / OpenCL (Default)", "ACCELERATOR_BACKEND", "Simulation Engine", "Active hardware accelerator backend (e.g., Arc A770, NVIDIA CUDA, AMD ROCm, or CPU)."),
         new("Simulation:DefaultTimeStep", "0.002", "SIMULATION_TIMESTEP", "Simulation Engine", "Integration time step in picoseconds for molecular dynamics solvers."),
         new("Storage:DatabaseProvider", "AutoDetect", "DATABASE_PROVIDER", "Storage & Database", "Database engine used for metadata ('PostgreSQL', 'SQLite', or 'AutoDetect')."),
-        new("Storage:PostgresConnectionString", "Host=localhost;Port=5432;Database=weaver_hrt;Username=weaver;Password=weaver_secret_change_me", "POSTGRES_CONNECTION_STRING", "Storage & Database", "Connection string for the PostgreSQL / pg-duckdb storage node.", IsSecret: true),
+        new("Storage:PostgresConnectionString", "", "POSTGRES_CONNECTION_STRING", "Storage & Database", "Connection string for the PostgreSQL / pg-duckdb storage node. Deliberately empty by default: there is no shipped credential, so leaving it unset makes the stack use its embedded SQLite database instead.", IsSecret: true),
         new("Storage:TrajectoryIncomingDir", "./simulations/shared-data", "TRAJECTORY_INCOMING_DIR", "Storage & Database", "Directory containing raw incoming molecular trajectory files (.xyz, .dcd)."),
         new("Storage:TrajectoryExportDir", "./simulations/exports", "TRAJECTORY_EXPORT_DIR", "Storage & Database", "Directory where signed dataset tarballs and SHA-256 manifests are saved."),
         new("Storage:TrajectoryParquetDir", "./simulations/parquet", "TRAJECTORY_PARQUET_DIR", "Storage & Database", "Directory where columnar Apache Parquet files are stored for DuckDB queries."),
@@ -107,7 +107,16 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
     {
         _migrationRunner = migrationRunner ?? new DatabaseMigrationRunner();
         string? envPostgres = configuration["POSTGRES_CONNECTION_STRING"] ?? Environment.GetEnvironmentVariable("POSTGRES_CONNECTION_STRING");
-        _postgresConnString = envPostgres ?? "Host=localhost;Port=5432;Database=weaver_hrt;Username=weaver;Password=weaver_secret_change_me;Timeout=3";
+        // WHAT: Uses the configured PostgreSQL connection string, or no connection string at all.
+        // WHY:  Shipping a built-in default that embeds a password means every deployment which
+        //       forgets to set POSTGRES_CONNECTION_STRING shares one publicly known credential,
+        //       and that credential also leaks through any surface that echoes configuration.
+        //       PostgreSQL is therefore opt-in: with nothing configured the stack uses its
+        //       embedded SQLite database, exactly as it already does when PostgreSQL is
+        //       unreachable. An empty string fails the connection attempt immediately and that
+        //       existing fallback path takes over.
+        // HOW:  Falls back to the empty string instead of a hardcoded credential.
+        _postgresConnString = envPostgres ?? string.Empty;
 
         string incomingDir = configuration["TRAJECTORY_INCOMING_DIR"] ?? Path.Combine(Directory.GetCurrentDirectory(), "simulations", "shared-data");
         Directory.CreateDirectory(incomingDir);
@@ -165,6 +174,9 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
     /// <summary>
     /// Applies database migrations to PostgreSQL.
     /// </summary>
+    /// <param name="conn">An already-open PostgreSQL connection.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task that completes once every pending migration has been applied.</returns>
     private async Task CreateTablesPostgresAsync(NpgsqlConnection conn, CancellationToken ct)
     {
         await _migrationRunner.ApplyPendingMigrationsAsync(conn, "postgresql", ct);
@@ -173,6 +185,9 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
     /// <summary>
     /// Applies database migrations to SQLite.
     /// </summary>
+    /// <param name="conn">An already-open SQLite connection.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task that completes once every pending migration has been applied.</returns>
     private async Task CreateTablesSqliteAsync(SqliteConnection conn, CancellationToken ct)
     {
         await _migrationRunner.ApplyPendingMigrationsAsync(conn, "sqlite", ct);
@@ -743,6 +758,9 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
     /// <summary>
     /// Reads a single database override for the specified key.
     /// </summary>
+    /// <param name="key">The canonical setting name to look up.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The stored override value, or null when the database holds no row for the key.</returns>
     private async Task<string?> ReadSingleDbOverrideAsync(string key, CancellationToken ct)
     {
         if (_activeBackend.StartsWith("PostgreSQL", StringComparison.OrdinalIgnoreCase))
@@ -768,6 +786,9 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
     /// <summary>
     /// Finds a share key record by its token string.
     /// </summary>
+    /// <param name="token">The single-use share token presented by a collaborating peer.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The matching share key record, or null when no key carries that token.</returns>
     private async Task<ShareKeyRecord?> FindKeyByTokenAsync(string token, CancellationToken ct)
     {
         if (_activeBackend.StartsWith("PostgreSQL", StringComparison.OrdinalIgnoreCase))

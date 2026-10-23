@@ -14,21 +14,21 @@
 set -euo pipefail
 
 echo "=============================================================================="
-echo ">> Step 1/5: Verifying .NET Code Formatting..."
+echo ">> Step 1/6: Verifying .NET Code Formatting..."
 echo "=============================================================================="
 XDG_RUNTIME_DIR=/tmp dotnet format NanoWeaverHrt.slnx --no-restore --verify-no-changes --verbosity normal
 echo "✓ .NET code formatting verified cleanly."
 
 echo ""
 echo "=============================================================================="
-echo ">> Step 2/5: Verifying JavaScript Code & Coverage Gate (100% Threshold)..."
+echo ">> Step 2/6: Verifying JavaScript Code & Coverage Gate (100% Threshold)..."
 echo "=============================================================================="
 npm test
 echo "✓ JavaScript test suite passed with 100% line, branch, and function coverage."
 
 echo ""
 echo "=============================================================================="
-echo ">> Step 3/5: Running .NET Test Suite with Coverage Collection..."
+echo ">> Step 3/6: Running .NET Test Suite with Coverage Collection..."
 echo "=============================================================================="
 XDG_RUNTIME_DIR=/tmp dotnet test NanoWeaverHrt.slnx \
     --configuration Release \
@@ -39,7 +39,7 @@ echo "✓ All .NET unit and integration tests passed."
 
 echo ""
 echo "=============================================================================="
-echo ">> Step 4/5: Enforcing 100.00% Line & Branch Coverage Threshold..."
+echo ">> Step 4/6: Enforcing 100.00% Line & Branch Coverage Threshold..."
 echo "=============================================================================="
 python3 -c "
 import xml.etree.ElementTree as ET
@@ -92,7 +92,7 @@ print('✓ Line and branch code coverage verified at 100.00%.')
 
 echo ""
 echo "=============================================================================="
-echo ">> Step 5/5: Verifying Documentation Markdown Math Delimiters..."
+echo ">> Step 5/6: Verifying Documentation Markdown Math Delimiters..."
 echo "=============================================================================="
 python3 - << 'EOF'
 import glob, re, sys
@@ -134,6 +134,17 @@ if violations or inline_display_violations:
 
 print(f'✓ Scanned {len(files)} markdown files: Zero broken LaTeX interpolation tokens found.')
 EOF
+
+echo ""
+echo "=============================================================================="
+echo ">> Step 6/6: Verifying XML Docblock Completeness (<param> / <returns>)..."
+echo "=============================================================================="
+# WHY: The C# compiler cannot enforce Prime Directive 2. CS1591 fires only when a doc
+#      comment is missing entirely, and only for publicly visible members; CS1573 fires
+#      only when a comment already carries SOME <param> tags. A doc comment holding just
+#      a <summary> produces no diagnostic at all, so only this scanner closes the gap.
+python3 -I scripts/check-docblocks.py src
+echo "✓ Every documented member has a <param> per parameter and a <returns>."
 
 echo ""
 echo "=============================================================================="

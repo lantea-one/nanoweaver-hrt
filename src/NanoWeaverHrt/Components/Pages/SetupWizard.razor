@@ -341,9 +341,26 @@
         _errorMessage = null;
         try
         {
-            string pubKey = _keyOption == 0
-                ? _generatedBundle!.PublicKeyBase64
-                : ExtractCleanPublicKeyBase64(_customPublicKeyText);
+            // WHAT: Resolves the public key to register, re-checking the generated bundle.
+            // WHY:  Replaces a `!` suppression. ProceedToStep3 already blocks an empty bundle, but
+            //       re-validating here means a future navigation change cannot turn this into a
+            //       NullReferenceException; the operator gets the same actionable message instead.
+            // HOW:  Explicit null test before reading the bundle, rather than a suppressed access.
+            string pubKey;
+            if (_keyOption == 0)
+            {
+                if (_generatedBundle == null)
+                {
+                    _errorMessage = "Please click 'Generate High-Security Keypair' first.";
+                    return;
+                }
+
+                pubKey = _generatedBundle.PublicKeyBase64;
+            }
+            else
+            {
+                pubKey = ExtractCleanPublicKeyBase64(_customPublicKeyText);
+            }
 
             UserAccount admin = await AuthService.CompleteInitialSetupAsync(
                 _adminUsername,

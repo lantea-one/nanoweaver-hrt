@@ -72,6 +72,11 @@ public sealed class DuckDbParquetWriter : IParquetTrajectoryWriter
         // WHAT: Initializes an in-memory DuckDB session.
         // WHY:  DuckDB provides native, zero-dependency C-level Parquet encoding with dictionary compression.
         // HOW:  Opens an in-memory connection and prepares a staging table.
+        // NOTE: The CREATE TABLE below is NOT schema evolution and is deliberately outside the
+        //       IDatabaseMigration pipeline required by AGENTS.md Prime Directive 13. It builds a
+        //       throwaway staging table inside a private ":memory:" DuckDB session that exists only
+        //       for the duration of this one export and is discarded when the connection closes.
+        //       Nothing persists, so there is no schema version to record and no migration to run.
         using DuckDBConnection connection = new("DataSource=:memory:");
         await connection.OpenAsync(cancellationToken);
 

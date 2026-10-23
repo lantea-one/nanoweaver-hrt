@@ -499,6 +499,7 @@ public sealed class SimulationCampaignService : ISimulationCampaignService
     /// <summary>
     /// Compiles the static catalog of pre-configured simulation campaigns.
     /// </summary>
+    /// <returns>The list of pre-configured simulation campaigns the platform offers.</returns>
     private static List<SimulationCampaignInfo> InitializeCampaignCatalog()
     {
         return

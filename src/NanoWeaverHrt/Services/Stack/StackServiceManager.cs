@@ -123,6 +123,8 @@ public sealed class StackServiceManager : IStackServiceManager
     /// <summary>
     /// Inspects the oxDNA / LAMMPS simulation container or external compute cluster.
     /// </summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A snapshot describing whether the simulation engine is reachable and how it is configured.</returns>
     private async Task<StackServiceInfo> InspectSimulationNodeAsync(CancellationToken ct)
     {
         string endpoint = await _configRepo.GetValueAsync("Simulation:EndpointUrl", "http://simulation-node:8080", ct);
@@ -254,6 +256,8 @@ public sealed class StackServiceManager : IStackServiceManager
     /// <summary>
     /// Inspects the storage and columnar analytics node (PostgreSQL / pg-duckdb or SQLite fallback).
     /// </summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A snapshot describing the active database backend and its analytics directories.</returns>
     private async Task<StackServiceInfo> InspectStorageNodeAsync(CancellationToken ct)
     {
         string backend = _configRepo.ActiveBackendName;
@@ -325,6 +329,7 @@ public sealed class StackServiceManager : IStackServiceManager
     /// <summary>
     /// Inspects the in-process .NET 10 trajectory streaming parser node.
     /// </summary>
+    /// <returns>A snapshot describing the parser's uptime, memory use, and detected vector instruction set.</returns>
     private StackServiceInfo InspectParserNode()
     {
         Process process = Process.GetCurrentProcess();
@@ -357,6 +362,8 @@ public sealed class StackServiceManager : IStackServiceManager
     /// <summary>
     /// Inspects the collaborative peer mesh network and active single-use share keys.
     /// </summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A snapshot describing how many collaborative share links are active and how many were already used.</returns>
     private async Task<StackServiceInfo> InspectPeerMeshAsync(CancellationToken ct)
     {
         IReadOnlyList<ShareKeyRecord> keys = await _configRepo.ListShareKeysAsync(ct);

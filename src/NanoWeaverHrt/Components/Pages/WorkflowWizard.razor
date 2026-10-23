@@ -1235,8 +1235,16 @@
     /// <summary>
     /// Executes the in-silico simulation solver or simulated relaxation.
     /// </summary>
-    private async Task RunSimulationAsync()
+    /// <returns>A completed task, because no work is awaited.</returns>
+    private Task RunSimulationAsync()
     {
+        // WHAT: Builds the simulation log and drives the progress bar straight to 100%.
+        // WHY:  This used to await Task.Delay between progress steps purely to pace the animation.
+        //       An artificial server-side delay holds the render loop, slows the test suite and
+        //       makes behaviour timing-dependent; the smooth fill is presentation, so it belongs
+        //       to the stylesheet. The .progress-bar-fill rule animates the width change instead.
+        // HOW:  Appends every progress line in one pass, then returns an already-completed task so
+        //       the markup's @onclick handler and the method signature stay unchanged.
         _isSimulating = true;
         _simProgress = 0;
         _simLog = $"[SIMULATION] Launching {SelectedSimEngine} engine...\n"
@@ -1246,27 +1254,28 @@
 
         for (int p = 20; p <= 100; p += 20)
         {
-            await Task.Delay(150);
             _simProgress = p;
             _simLog += $"  - Simulation progress: {p}% (Thermal energy: 0.98 kBT)\n";
-            StateHasChanged();
         }
 
         _simLog += $"[COMPLETED] Trajectory coordinates saved to /workspace/data/{SelectedTrajectoryFile}\n"
             + $"  - RMSD Convergence: 1.42 Å (Equilibrium reached)\n"
             + $"  - Pocket Structural Integrity: 99.1%\n";
         _isSimulating = false;
+        return Task.CompletedTask;
     }
 
     /// <summary>
     /// Triggers the zero-allocation System.IO.Pipelines streaming reader over the selected trajectory file.
     /// </summary>
-    private async Task RunStreamParseAsync()
+    /// <returns>A completed task, because no work is awaited.</returns>
+    private Task RunStreamParseAsync()
     {
+        // WHY: The Task.Delay that used to sit here only paced the spinner. Showing and hiding the
+        //      busy state is a presentation concern handled by CSS, so the delay is gone.
         _isParsing = true;
         _parseOutputLog = $"[PIPELINE] Initializing zero-allocation PipeReader for {SelectedTrajectoryFile}...\n";
 
-        await Task.Delay(100);
         _parsedFramesCount = 500;
         _parsedAtomsCount = 120000;
         _parseElapsedMs = 12;
@@ -1278,18 +1287,21 @@
             + $"  - Processing Throughput: {(_parsedFramesCount / (_parseElapsedMs / 1000.0)):F0} frames/sec\n"
             + $"  - Heap Garbage Allocated: 0 Bytes (Strict ArrayPool<T>.Shared rental)\n";
         _isParsing = false;
+        return Task.CompletedTask;
     }
 
     /// <summary>
     /// Serializes trajectory coordinates to columnar Apache Parquet.
     /// </summary>
-    private async Task RunParquetExportAsync()
+    /// <returns>A completed task, because no work is awaited.</returns>
+    private Task RunParquetExportAsync()
     {
+        // WHY: As above, the removed Task.Delay was pure animation pacing, now left to CSS.
         _isExportingParquet = true;
         _parseOutputLog += $"[PARQUET] Serializing columnar DuckDB Parquet file...\n";
-        await Task.Delay(150);
         _parseOutputLog += $"[PARQUET] Created {Path.GetFileNameWithoutExtension(SelectedTrajectoryFile)}.parquet with SIMD acceleration.\n";
         _isExportingParquet = false;
+        return Task.CompletedTask;
     }
 
     /// <summary>

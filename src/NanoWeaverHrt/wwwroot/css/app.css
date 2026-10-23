@@ -1096,10 +1096,12 @@ textarea.form-control {
     overflow: hidden;
 }
 
+/* The fill width is set once from C#; this transition, not a server-side Task.Delay,
+   is what paces the bar so it sweeps smoothly rather than snapping to its new value. */
 .progress-bar-fill {
     height: 100%;
     background: linear-gradient(90deg, var(--accent-blue), var(--accent-cyan));
-    transition: width 0.2s ease;
+    transition: width 0.75s ease-in-out;
 }
 
 /* SVG Chart */

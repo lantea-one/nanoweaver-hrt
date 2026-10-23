@@ -128,6 +128,9 @@ public static class ContentFormatSerializer
         // WHAT: Serializes an object to YAML.
         // WHY:  Supports HPC simulation pipelines with lower snake-case with hyphens.
         // HOW:  Uses YamlDotNet with HyphenatedNamingConvention.
+        // WHY `!`: YamlDotNet declares Serialize(object graph) without nullable annotations, but it
+        //          handles a null graph correctly by emitting the YAML literal "null". The
+        //          suppression only silences the missing annotation; no dereference happens here.
         return YamlSerializerInstance.Serialize(value!);
     }
 
@@ -196,6 +199,9 @@ public static class ContentFormatSerializer
         // HOW:  Parses JSON document into a native dictionary hierarchy with hyphenated keys, then serializes via YamlDotNet.
         using var doc = JsonDocument.Parse(json);
         object? nativeObj = JsonElementToNativeObject(doc.RootElement);
+        // WHY `!`: As above, YamlDotNet's Serialize parameter lacks a nullable annotation while
+        //          accepting null at run time (a JSON document of literal null yields null here and
+        //          serializes to "null"). Nothing is dereferenced by this call.
         return YamlSerializerInstance.Serialize(nativeObj!);
     }
 
@@ -270,7 +276,11 @@ public static class ContentFormatSerializer
     /// </summary>
     /// <param name="obj">The deserialized YAML object graph.</param>
     /// <returns>An object graph with lower camelCase dictionary keys.</returns>
-    private static object? NormalizeYamlObjectKeys(object? obj)
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when a mapping key cannot be rendered as text, because a JSON object member
+    /// must always have a name and there is no safe substitute for a missing one.
+    /// </exception>
+    internal static object? NormalizeYamlObjectKeys(object? obj)
     {
         // WHAT: Traverses deserialized YAML object graph and normalizes keys.
         // WHY:  Ensures inbound YAML transcodes to valid lower camelCase JSON.
@@ -280,7 +290,19 @@ public static class ContentFormatSerializer
             var result = new Dictionary<string, object?>();
             foreach (System.Collections.DictionaryEntry entry in dict)
             {
-                string key = KebabToCamelCase(entry.Key.ToString()!);
+                // WHAT: Converts the mapping key to text before renaming it, rejecting a null result.
+                // WHY:  ToString() is permitted to return null, so suppressing that with `!` would
+                //       hand a null reference to KebabToCamelCase and throw an opaque
+                //       NullReferenceException deep inside the transcoder instead of a clear error.
+                // HOW:  Captures the nullable result and fails fast with a descriptive exception.
+                string? rawKey = entry.Key.ToString();
+                if (rawKey is null)
+                {
+                    throw new InvalidOperationException(
+                        "A YAML mapping key could not be rendered as text and cannot be transcoded to a JSON object member name.");
+                }
+
+                string key = KebabToCamelCase(rawKey);
                 result[key] = NormalizeYamlObjectKeys(entry.Value);
             }
             return result;
@@ -353,6 +375,8 @@ public static class ContentFormatSerializer
         }
         else if (targetType.IsArray)
         {
+            // WHY `!`: GetElementType() returns null only for types that are not arrays, pointers or
+            //          by-ref types. This branch is guarded by IsArray, so an element type always exists.
             targetType = targetType.GetElementType()!;
             isCollection = true;
         }
@@ -385,6 +409,9 @@ public static class ContentFormatSerializer
                 if (isCollection)
                 {
                     var listType = typeof(List<>).MakeGenericType(targetType);
+                    // WHY `!`: Activator.CreateInstance returns null only for a Nullable<T> value type.
+                    //          listType is always a constructed List<T>, a reference type, so the
+                    //          returned instance can never be null.
                     var list = (System.Collections.IList)Activator.CreateInstance(listType)!;
                     list.Add(example);
                     return list;
@@ -424,6 +451,8 @@ public static class ContentFormatSerializer
                 }
                 break;
             case JsonValueKind.String:
+                // WHY `!`: GetString() returns null only when the value kind is Null. This case label
+                //          guarantees the kind is String, so the decoded text is always present.
                 xElem.Value = element.GetString()!;
                 break;
             case JsonValueKind.Number:

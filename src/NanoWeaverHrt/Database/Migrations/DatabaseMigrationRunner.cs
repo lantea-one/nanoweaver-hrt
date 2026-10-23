@@ -54,6 +54,7 @@ public sealed class DatabaseMigrationRunner : IDisposable
     /// <param name="conn">Open database connection.</param>
     /// <param name="dialect">Database engine dialect ("postgresql" or "sqlite").</param>
     /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task that completes once the tracking table is guaranteed to exist.</returns>
     public async Task EnsureTrackingTableAsync(DbConnection conn, string dialect, CancellationToken ct = default)
     {
         // WHAT: Creates weaver_schema_migrations tracking table if it does not already exist.

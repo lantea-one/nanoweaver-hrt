@@ -140,6 +140,16 @@ jobs:
           print(f'SUCCESS: Scanned {len(files)} markdown files: Zero broken LaTeX interpolation tokens found.')
           EOF
 
+      - name: Verify XML Docblock Completeness
+        # WHAT: Asserts every documented member carries one <param> per parameter and a <returns>.
+        # WHY:  Enforces AGENTS.md Prime Directive 2, which the compiler cannot check. CS1591 fires
+        #       only on a wholly missing doc comment and only for publicly visible members, and
+        #       CS1573 fires only when a comment already has SOME <param> tags. A comment holding
+        #       just a <summary> produces no diagnostic at all, so without this step the directive
+        #       is unenforceable even with warnings treated as errors.
+        # HOW:  Runs the committed scanner, which exits non-zero on any incomplete member.
+        run: python3 -I scripts/check-docblocks.py src
+
       - name: Set Lowercase Image Name for Forgejo Container Registry
         # WHAT: Format the container repository destination in all-lowercase.
         # WHY:  The Open Container Initiative (OCI) and Forgejo Container Registry enforce

@@ -334,12 +334,12 @@ public sealed class SecurityPenetrationTests : IClassFixture<WebApplicationFacto
         // WHAT: Tests SecureExceptionSanitizer against strings containing paths, credentials, and PEM keys.
         // WHY:  Prevents internal server exceptions from leaking infrastructure topology to attackers.
         // HOW:  Passes hostile exception messages and validates redaction patterns.
-        string rawLeakMessage = "Failed to connect to host=10.0.0.5;Password=SuperSecretDbPassword123!;Database=weaver; at /home/fabigail/code/server.cs:line 42 with key -----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg\n-----END PRIVATE KEY-----";
+        string rawLeakMessage = "Failed to connect to host=10.0.0.5;Password=SuperSecretDbPassword123!;Database=weaver; at /home/operator/code/server.cs:line 42 with key -----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg\n-----END PRIVATE KEY-----";
 
         // 1. Sanitize for 400 Bad Request
         string sanitized400 = SecureExceptionSanitizer.SanitizeDetail(rawLeakMessage, 400, "trace-abc");
         Assert.DoesNotContain("SuperSecretDbPassword123!", sanitized400);
-        Assert.DoesNotContain("/home/fabigail/code", sanitized400);
+        Assert.DoesNotContain("/home/operator/code", sanitized400);
         Assert.DoesNotContain("BEGIN PRIVATE KEY", sanitized400);
         Assert.Contains("Password=[REDACTED]", sanitized400);
         Assert.Contains("[REDACTED_PATH]", sanitized400);
