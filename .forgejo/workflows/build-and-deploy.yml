@@ -12,14 +12,15 @@ env:
 
 jobs:
   build-test-and-publish:
-    # WHAT: Run on the archlinux runners that carry qemu-user-static and
-    #       qemu-user-static-binfmt, rather than the plain `archlinux` pool.
-    # WHY:  The published images are pinned to linux/amd64 (see the build steps), but the
-    #       `archlinux` label also resolves to aarch64 machines. Without registered binfmt
-    #       handlers a non-native platform cannot be built at all, so the job's success would
-    #       depend on which machine happened to claim it. This label guarantees the emulation
-    #       is present, which is also the prerequisite for publishing arm64 images later.
-    # HOW:  Select the runner label whose hosts have the binfmt handlers installed.
+    # WHAT: Run on the archlinux-multi-platform pool, not the plain `archlinux` pool.
+    # WHY:  `archlinux` also resolves to aesir, the one aarch64 runner, and whichever machine
+    #       claimed the job decided the images' architecture. That is how run 18 came to build
+    #       arm64 and die inside apt on the amd64-only Intel GPU repo. Every host behind
+    #       archlinux-multi-platform is amd64, so the pinned linux/amd64 images build natively
+    #       here with no emulation cost. Those hosts additionally carry qemu-user-static and
+    #       qemu-user-static-binfmt, which is what will let this job cross-build arm64 images
+    #       later without needing aesir.
+    # HOW:  Select the amd64-only runner label.
     runs-on: archlinux-multi-platform
     permissions:
       contents: read
@@ -228,10 +229,10 @@ jobs:
         # WHAT: Build this image for linux/amd64 only, never the runner's native architecture.
         # WHY:  The simulation image installs the Intel GPU runtime (intel-opencl-icd,
         #       intel-level-zero-gpu, libze1), and repositories.intel.com publishes those
-        #       packages for amd64 alone - its binary-arm64 index returns 403. Built natively on
-        #       an aarch64 runner this image dies deep inside apt with "unable to locate
-        #       package"; pinning the platform builds it under binfmt emulation instead, so the
-        #       result does not depend on which machine claimed the job.
+        #       packages for amd64 alone - its binary-arm64 index returns 403, so on an aarch64
+        #       host this image dies inside apt with "unable to locate package". The pin states
+        #       that dependency explicitly instead of inheriting the runner's architecture, so
+        #       the image stays amd64 even if this job is ever moved to another pool.
         # HOW:  Pass an explicit single-platform list to docker/build-push-action.
         uses: docker/build-push-action@v5
         with:
