@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using NanoWeaverHrt.Database.Access;
 using NanoWeaverHrt.Configuration;
 using NanoWeaverHrt.Database.Migrations;
 using NanoWeaverHrt.Security.Authentication;
@@ -73,7 +74,7 @@ public sealed class SecurityHardeningAndMigrationsTests
             using SystemConfigurationStore configStore = new(config);
             await configStore.InitializeAsync();
 
-            using UserRepository userRepo = new(config, configStore);
+            using UserRepository userRepo = new(new WeaverDbConnectionFactory(config, configStore, new DatabaseMigrationRunner()));
             await userRepo.InitializeAsync();
 
             bool hasAdmin = await userRepo.HasAnyAdministratorAsync();

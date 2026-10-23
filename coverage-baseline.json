@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
-  "seeded_from_commit": "c5bdbfc117a63c8dcfb958b06bc1b7cbfbfca93c",
+  "seeded_from_commit": "c2b118c58216b6368483218435cb5f70207bb8ec",
   "seeded_on_utc": "2026-10-23",
   "measurement": {
     "runsettings": "coverage-full.runsettings",
     "weaver_test_postgres": "unset"
   },
-  "line_rate": 96.75,
-  "branch_rate": 89.57,
-  "uncovered_lines_total": 345,
+  "line_rate": 97.71,
+  "branch_rate": 91.19,
+  "uncovered_lines_total": 239,
   "classes": {
     "NanoWeaverHrt.Bridges.ValkeyEventBridge/<<RegisterInboundClusterListenersAsync>b__21_1>d": 1,
     "NanoWeaverHrt.Bridges.ValkeyEventBridge/<<RegisterInboundClusterListenersAsync>b__21_2>d": 1,
@@ -68,26 +68,7 @@
     "NanoWeaverHrt.Security.Authentication.UserProfileRepository/<GetAddressesAsync>d__6": 1,
     "NanoWeaverHrt.Security.Authentication.UserProfileRepository/<GetContactsAsync>d__9": 1,
     "NanoWeaverHrt.Security.Authentication.UserProfileRepository/<GetProfileAsync>d__4": 1,
-    "NanoWeaverHrt.Security.Authentication.UserRepository/<CreateTablesPostgresAsync>d__15": 2,
-    "NanoWeaverHrt.Security.Authentication.UserRepository/<CreateUserAsync>d__11": 15,
-    "NanoWeaverHrt.Security.Authentication.UserRepository/<DeleteUserAsync>d__14": 8,
-    "NanoWeaverHrt.Security.Authentication.UserRepository/<GetUserAsync>d__9": 10,
-    "NanoWeaverHrt.Security.Authentication.UserRepository/<HasAnyAdministratorAsync>d__8": 7,
-    "NanoWeaverHrt.Security.Authentication.UserRepository/<InitializeAsync>d__7": 12,
-    "NanoWeaverHrt.Security.Authentication.UserRepository/<ListUsersAsync>d__10": 9,
-    "NanoWeaverHrt.Security.Authentication.UserRepository/<TryCreateUserAsync>d__12": 14,
-    "NanoWeaverHrt.Security.Authentication.UserRepository/<UpdateLastLoginAsync>d__13": 9,
     "NanoWeaverHrt.Services.Stack.StackServiceManager/<ExtractAcceleratorAsync>d__11": 1,
-    "NanoWeaverHrt.Services.Stack.StackServiceManager/<GetServiceByIdAsync>d__6": 4,
-    "NanoWeaverHrt.Storage.PatientDnaRepository/<DeleteDnaRecordAsync>d__10": 2,
-    "NanoWeaverHrt.Storage.PatientDnaRepository/<DeleteImportAsync>d__14": 2,
-    "NanoWeaverHrt.Storage.PatientDnaRepository/<DeleteResultAsync>d__18": 2,
-    "NanoWeaverHrt.Storage.PatientDnaRepository/<GetDnaRecordByIdAsync>d__8": 2,
-    "NanoWeaverHrt.Storage.PatientDnaRepository/<GetDnaRecordsAsync>d__7": 2,
-    "NanoWeaverHrt.Storage.PatientDnaRepository/<GetImportByIdAsync>d__12": 2,
-    "NanoWeaverHrt.Storage.PatientDnaRepository/<GetImportsAsync>d__11": 2,
-    "NanoWeaverHrt.Storage.PatientDnaRepository/<GetResultByIdAsync>d__16": 2,
-    "NanoWeaverHrt.Storage.PatientDnaRepository/<GetResultsAsync>d__15": 2,
-    "NanoWeaverHrt.Storage.PatientDnaRepository/<OpenConnectionAsync>d__6": 2
+    "NanoWeaverHrt.Services.Stack.StackServiceManager/<GetServiceByIdAsync>d__6": 4
   }
 }

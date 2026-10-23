@@ -144,7 +144,7 @@ public sealed class NodeSecretIsolationAndPhiMigrationTests : IDisposable
         KeyManagementService keyManagement = new(pqc);
         ComplianceAuditService audit = new(keyManagement, pqc);
 
-        using UserRepository userRepository = new(configuration, configStore);
+        using UserRepository userRepository = new(new WeaverDbConnectionFactory(configuration, configStore, new DatabaseMigrationRunner()));
         await userRepository.InitializeAsync();
 
         UserAuthenticationService nodeA = new(userRepository, pqc, audit, CreateStore("keys-node-a"));
@@ -257,7 +257,7 @@ public sealed class NodeSecretIsolationAndPhiMigrationTests : IDisposable
         SystemConfigurationStore configStore = new(configuration);
         await configStore.InitializeAsync();
 
-        using UserRepository userRepository = new(configuration, configStore);
+        using UserRepository userRepository = new(new WeaverDbConnectionFactory(configuration, configStore, new DatabaseMigrationRunner()));
         await userRepository.InitializeAsync();
 
         foreach (string username in new[] { "legacy_patient", "current_patient", "profileless_patient" })

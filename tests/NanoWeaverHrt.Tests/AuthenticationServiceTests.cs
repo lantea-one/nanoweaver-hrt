@@ -5,6 +5,8 @@ using Microsoft.Extensions.Configuration;
 using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Crypto.Signers;
 using Org.BouncyCastle.Security;
+using NanoWeaverHrt.Database.Migrations;
+using NanoWeaverHrt.Database.Access;
 using NanoWeaverHrt.Compliance;
 using NanoWeaverHrt.Configuration;
 using NanoWeaverHrt.Security.Authentication;
@@ -80,7 +82,7 @@ public sealed class AuthenticationServiceTests : IDisposable
         _keyManagement = new KeyManagementService(_pqcProvider);
         _auditService = new ComplianceAuditService(_keyManagement, _pqcProvider);
 
-        _userRepository = new UserRepository(configuration, configStore);
+        _userRepository = new UserRepository(new WeaverDbConnectionFactory(configuration, configStore, new DatabaseMigrationRunner()));
         _userRepository.InitializeAsync().GetAwaiter().GetResult();
 
         // WHAT: Provisions this test instance's own token signing key inside its isolated temp directory.
@@ -287,11 +289,7 @@ public sealed class AuthenticationServiceTests : IDisposable
         // WHAT: Tests constructor preconditions for null parameter safety.
         // WHY:  Ensures fail-fast semantics when required dependencies are missing.
         // HOW:  Invokes constructors with null values and asserts ArgumentNullException.
-        IConfiguration configuration = new ConfigurationBuilder().Build();
-        SystemConfigurationStore configStore = new(configuration);
-
-        Assert.Throws<ArgumentNullException>(() => new UserRepository(null!, configStore));
-        Assert.Throws<ArgumentNullException>(() => new UserRepository(configuration, null!));
+        Assert.Throws<ArgumentNullException>(() => new UserRepository(null!));
 
         Assert.Throws<ArgumentNullException>(() => new UserAuthenticationService(null!, _pqcProvider, _auditService, _secretStore));
         Assert.Throws<ArgumentNullException>(() => new UserAuthenticationService(_userRepository, null!, _auditService, _secretStore));
@@ -910,7 +908,7 @@ public sealed class AuthenticationServiceTests : IDisposable
         // 6. Default directory when TRAJECTORY_INCOMING_DIR is not configured
         IConfiguration emptyConfig = new ConfigurationBuilder().Build();
         SystemConfigurationStore configStore = new(emptyConfig);
-        using UserRepository defaultRepo = new(emptyConfig, configStore);
+        using UserRepository defaultRepo = new(new WeaverDbConnectionFactory(emptyConfig, configStore, new DatabaseMigrationRunner()));
         Assert.NotNull(defaultRepo);
     }
 }

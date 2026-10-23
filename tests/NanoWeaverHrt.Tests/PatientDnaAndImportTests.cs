@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using NanoWeaverHrt.Database.Access;
 using NanoWeaverHrt.Abstractions;
 using NanoWeaverHrt.Configuration;
 using NanoWeaverHrt.Database.Migrations;
@@ -324,7 +325,7 @@ public sealed class PatientDnaAndImportTests : IClassFixture<WebApplicationFacto
 
             SystemConfigurationStore configStore = new(config);
             DatabaseMigrationRunner migrationRunner = new();
-            UserRepository userRepo = new(config, configStore, migrationRunner);
+            UserRepository userRepo = new(new WeaverDbConnectionFactory(config, configStore, migrationRunner));
             await userRepo.InitializeAsync();
 
             string username = "patient_charlie";
@@ -337,7 +338,7 @@ public sealed class PatientDnaAndImportTests : IClassFixture<WebApplicationFacto
                 PublicKeyBase64 = "MCowBQYDK2VwAyEA1111111111111111111111111111111111111111111="
             });
 
-            using PatientDnaRepository repo = new(config, configStore, migrationRunner);
+            using PatientDnaRepository repo = new(new WeaverDbConnectionFactory(config, configStore, migrationRunner));
 
             // 1. DNA Records CRUD
             var initialDna = await repo.GetDnaRecordsAsync(username);
@@ -510,7 +511,7 @@ public sealed class PatientDnaAndImportTests : IClassFixture<WebApplicationFacto
 
             SystemConfigurationStore configStore = new(config);
             DatabaseMigrationRunner migrationRunner = new();
-            UserRepository userRepo = new(config, configStore, migrationRunner);
+            UserRepository userRepo = new(new WeaverDbConnectionFactory(config, configStore, migrationRunner));
             await userRepo.InitializeAsync();
 
             string username = "patient_corrupt";
@@ -523,7 +524,7 @@ public sealed class PatientDnaAndImportTests : IClassFixture<WebApplicationFacto
                 PublicKeyBase64 = "MCowBQYDK2VwAyEA2222222222222222222222222222222222222222222="
             });
 
-            using PatientDnaRepository repo = new(config, configStore, migrationRunner);
+            using PatientDnaRepository repo = new(new WeaverDbConnectionFactory(config, configStore, migrationRunner));
 
             PatientDigitalDnaRecord dna = new()
             {
@@ -578,7 +579,7 @@ public sealed class PatientDnaAndImportTests : IClassFixture<WebApplicationFacto
     }
 
     /// <summary>
-    /// Custom test DbDataReader to exercise ParseDateTimeOffset branches.
+    /// Custom test DbDataReader to exercise WeaverDbValues.ReadTimestamp branches.
     /// </summary>
     private sealed class MockDateTimeDataReader : DbDataReader
     {
@@ -618,10 +619,10 @@ public sealed class PatientDnaAndImportTests : IClassFixture<WebApplicationFacto
     }
 
     /// <summary>
-    /// Exercises all branches of ParseDateTimeOffset with various data reader types.
+    /// Exercises all branches of WeaverDbValues.ReadTimestamp with various data reader types.
     /// </summary>
     [Fact]
-    public void ParseDateTimeOffset_AllBranches_EvaluatedCorrectly()
+    public void ReadTimestamp_AllBranches_EvaluatedCorrectly()
     {
         // WHAT: Tests DateTimeOffset parser helper against native DateTime (Postgres) and ISO string (SQLite).
         // WHY:  Guarantees 100% branch coverage across all database reader types.
@@ -635,11 +636,11 @@ public sealed class PatientDnaAndImportTests : IClassFixture<WebApplicationFacto
         );
 
         // Index 0: DateTime (PostgreSQL)
-        DateTimeOffset resDt = PatientDnaRepository.ParseDateTimeOffset(reader, 0);
+        DateTimeOffset resDt = WeaverDbValues.ReadTimestamp(reader, 0);
         Assert.Equal(nowDt, resDt.UtcDateTime);
 
         // Index 1: ISO string (SQLite)
-        DateTimeOffset resStr = PatientDnaRepository.ParseDateTimeOffset(reader, 1);
+        DateTimeOffset resStr = WeaverDbValues.ReadTimestamp(reader, 1);
         Assert.Equal(nowDto, resStr);
     }
 
@@ -652,10 +653,28 @@ public sealed class PatientDnaAndImportTests : IClassFixture<WebApplicationFacto
         // WHAT: Asserts ArgumentNullException and ArgumentException on invalid null/empty arguments.
         // WHY:  Maintains API robustness and prevents unexpected SQL errors.
         // HOW:  Invokes repository methods with null arguments.
-        var config = new ConfigurationBuilder().Build();
-        SystemConfigurationStore store = new(config);
-        using PatientDnaRepository repo = new(config, store);
+        string tempDir = Path.Combine(Path.GetTempPath(), "weaver_dna_args_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var config = new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?> { ["TRAJECTORY_INCOMING_DIR"] = tempDir })
+                .Build();
+            using PatientDnaRepository repo = new(new WeaverDbConnectionFactory(config, new SystemConfigurationStore(config), new DatabaseMigrationRunner()));
+            await AssertInvalidArgumentsRejectedAsync(repo);
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, recursive: true); } catch { }
+        }
+    }
 
+    /// <summary>
+    /// Asserts every repository method rejects null or blank arguments before touching the database.
+    /// </summary>
+    /// <param name="repo">The repository under test.</param>
+    /// <returns>A task that completes once every assertion has run.</returns>
+    private static async Task AssertInvalidArgumentsRejectedAsync(PatientDnaRepository repo)
+    {
         await Assert.ThrowsAsync<ArgumentException>(() => repo.GetDnaRecordsAsync(""));
         await Assert.ThrowsAsync<ArgumentException>(() => repo.GetDnaRecordByIdAsync(""));
         await Assert.ThrowsAsync<ArgumentNullException>(() => repo.UpsertDnaRecordAsync(null!));
@@ -673,33 +692,27 @@ public sealed class PatientDnaAndImportTests : IClassFixture<WebApplicationFacto
     }
 
     /// <summary>
-    /// Verifies constructor branches, null checks, disposal, and PostgreSQL fallback paths in <see cref="PatientDnaRepository"/>.
+    /// Verifies the constructor rejects a missing connection factory.
     /// </summary>
     [Fact]
-    public async Task PatientDnaRepository_PostgresFallback_AndConstructorBranches()
+    public void PatientDnaRepository_NullConnectionFactory_Throws()
     {
-        // WHAT: Tests constructor parameter validation, disposal, and PostgreSQL fallback on failure.
-        // WHY:  Ensures full branch coverage for connection setup and resilience across environments.
-        // HOW:  Validates ArgumentNullException on nulls and uses MockPostgresConfigRepo to trigger fallback.
-        var config = new ConfigurationBuilder().Build();
-        SystemConfigurationStore configStore = new(config);
+        // WHAT: Tests the constructor precondition.
+        // WHY:  Fail fast when the connection seam is missing.
+        // HOW:  Passes null and asserts ArgumentNullException.
+        Assert.Throws<ArgumentNullException>(() => new PatientDnaRepository(null!));
+    }
 
-        Assert.Throws<ArgumentNullException>(() => new PatientDnaRepository(null!, configStore));
-        Assert.Throws<ArgumentNullException>(() => new PatientDnaRepository(config, null!));
-
-        // Constructor with explicit runner and dispose
-        using DatabaseMigrationRunner explicitRunner = new();
-        PatientDnaRepository repoWithRunner = new(config, configStore, explicitRunner);
-        Assert.NotNull(repoWithRunner);
-        repoWithRunner.Dispose();
-
-        // Constructor with empty configuration
-        var emptyConfig = new ConfigurationBuilder().AddInMemoryCollection().Build();
-        using PatientDnaRepository repoEmptyConfig = new(emptyConfig, configStore);
-        Assert.NotNull(repoEmptyConfig);
-
-        // Test fallback when Postgres backend is reported
-        MockPostgresConfigRepo mockPgRepo = new();
+    /// <summary>
+    /// Verifies a selected-but-unreachable PostgreSQL makes the repository throw and never creates a SQLite file.
+    /// </summary>
+    [Fact]
+    public async Task PatientDnaRepository_PostgresSelectedButUnreachable_ThrowsAndCreatesNoSqliteFile()
+    {
+        // WHAT: Proves there is no silent PostgreSQL to SQLite fallback.
+        // WHY:  The old bare catch let a dead PostgreSQL split data into a local file while the gate stayed green.
+        // HOW:  Selects PostgreSQL via MockPostgresConfigRepo with an unreachable endpoint, calls a read, expects
+        //       WeaverDatabaseUnavailableException, and asserts weaver_config.db was never created.
         string tempDir = Path.Combine(Path.GetTempPath(), "weaver_dna_pg_fb_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
         try
@@ -712,9 +725,9 @@ public sealed class PatientDnaAndImportTests : IClassFixture<WebApplicationFacto
                 })
                 .Build();
 
-            using PatientDnaRepository pgFallbackRepo = new(pgConfig, mockPgRepo);
-            var list = await pgFallbackRepo.GetDnaRecordsAsync("some_user");
-            Assert.Empty(list);
+            using PatientDnaRepository repo = new(new WeaverDbConnectionFactory(pgConfig, new MockPostgresConfigRepo(), new DatabaseMigrationRunner()));
+            await Assert.ThrowsAsync<WeaverDatabaseUnavailableException>(() => repo.GetDnaRecordsAsync("some_user"));
+            Assert.False(File.Exists(Path.Combine(tempDir, "weaver_config.db")));
         }
         finally
         {

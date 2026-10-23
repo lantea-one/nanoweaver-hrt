@@ -3,6 +3,8 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Moq;
+using NanoWeaverHrt.Database.Migrations;
+using NanoWeaverHrt.Database.Access;
 using NanoWeaverHrt.Compliance;
 using NanoWeaverHrt.Configuration;
 using NanoWeaverHrt.Security.Authentication;
@@ -87,7 +89,7 @@ public sealed class SessionIdleEnforcementTests : IDisposable
         KeyManagementService keyManagement = new(pqcProvider);
         ComplianceAuditService auditService = new(keyManagement, pqcProvider);
 
-        _userRepository = new UserRepository(configuration, configStore);
+        _userRepository = new UserRepository(new WeaverDbConnectionFactory(configuration, configStore, new DatabaseMigrationRunner()));
         _userRepository.InitializeAsync().GetAwaiter().GetResult();
 
         // WHAT: Provisions this test instance's own bearer-token signing key inside its temp directory.

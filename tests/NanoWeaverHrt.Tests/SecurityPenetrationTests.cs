@@ -11,6 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Crypto.Signers;
 using Org.BouncyCastle.Security;
+using NanoWeaverHrt.Database.Access;
 using NanoWeaverHrt.Configuration;
 using NanoWeaverHrt.Database.Migrations;
 using NanoWeaverHrt.Models;
@@ -383,7 +384,7 @@ public sealed class SecurityPenetrationTests : IClassFixture<WebApplicationFacto
         using SystemConfigurationStore configStore = new(config);
         await configStore.InitializeAsync();
 
-        using UserRepository userRepo = new(config, configStore);
+        using UserRepository userRepo = new(new WeaverDbConnectionFactory(config, configStore, new DatabaseMigrationRunner()));
         await userRepo.InitializeAsync();
 
         foreach (string sqli in injectionPayloads)

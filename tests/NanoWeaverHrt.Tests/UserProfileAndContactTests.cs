@@ -273,7 +273,7 @@ public sealed class UserProfileAndContactTests : IClassFixture<WebApplicationFac
 
             SystemConfigurationStore configStore = new(config);
             DatabaseMigrationRunner migrationRunner = new();
-            UserRepository userRepo = new(config, configStore, migrationRunner);
+            UserRepository userRepo = new(new WeaverDbConnectionFactory(config, configStore, migrationRunner));
             await userRepo.InitializeAsync();
 
             string username = "null-user";
@@ -618,7 +618,7 @@ public sealed class UserProfileAndContactTests : IClassFixture<WebApplicationFac
 
             SystemConfigurationStore configStore = new(config);
             DatabaseMigrationRunner migrationRunner = new();
-            UserRepository userRepo = new(config, configStore, migrationRunner);
+            UserRepository userRepo = new(new WeaverDbConnectionFactory(config, configStore, migrationRunner));
             await userRepo.InitializeAsync();
 
             string username = "patient-test-01";

@@ -13,6 +13,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.JSInterop;
 using NanoWeaverHrt.Abstractions;
 using NanoWeaverHrt.Compliance;
+using NanoWeaverHrt.Database.Access;
+using NanoWeaverHrt.Database.Migrations;
 using NanoWeaverHrt.Components.Layout;
 using NanoWeaverHrt.Components.Pages;
 using NanoWeaverHrt.Configuration;
@@ -105,6 +107,8 @@ public sealed class RazorComponentLifecycleTests : IDisposable
         sc.AddSingleton<IPostQuantumCryptoProvider, PostQuantumCryptoProvider>();
         sc.AddSingleton<IKeyManagementService, KeyManagementService>();
         sc.AddSingleton<IComplianceAuditService, ComplianceAuditService>();
+        sc.AddSingleton<DatabaseMigrationRunner>();
+        sc.AddSingleton<IWeaverDbConnectionFactory, WeaverDbConnectionFactory>();
         sc.AddSingleton<IUserRepository, UserRepository>();
         sc.AddSingleton<IUserAuthenticationService, UserAuthenticationService>();
         sc.AddSingleton<IServerSessionActivityTracker>(_ => new ServerSessionActivityTracker());
