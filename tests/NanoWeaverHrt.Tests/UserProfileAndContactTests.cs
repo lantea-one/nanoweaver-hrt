@@ -20,6 +20,7 @@ using NanoWeaverHrt.Configuration;
 using NanoWeaverHrt.Database.Migrations;
 using NanoWeaverHrt.Endocrine;
 using NanoWeaverHrt.Security.Authentication;
+using NanoWeaverHrt.Security.Secrets;
 using Xunit;
 
 namespace NanoWeaverHrt.Tests;
@@ -91,6 +92,29 @@ public sealed class UserProfileAndContactTests : IClassFixture<WebApplicationFac
     }
 
     /// <summary>
+    /// Creates a <see cref="ProfileDataProtector"/> whose PHI master key is provisioned inside this test
+    /// instance's isolated temporary directory.
+    /// </summary>
+    /// <returns>A protector backed by a freshly generated, test-local 256-bit key.</returns>
+    /// <remarks>
+    /// The protector no longer accepts configuration directly: its key comes from
+    /// <see cref="INodeSecretStore"/>, because the previous implementation fell back to the SHA-256 of a
+    /// constant published in this repository. Pointing the store at the per-test directory keeps the generated
+    /// key files out of the repository working tree and out of every other test class's way.
+    /// </remarks>
+    private ProfileDataProtector CreateIsolatedProtector()
+    {
+        IConfiguration keyConfiguration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["WEAVER_NODE_KEYS_DIR"] = Path.Combine(_tempDataDir, "node-keys")
+            })
+            .Build();
+
+        return new ProfileDataProtector(new NodeSecretStore(keyConfiguration));
+    }
+
+    /// <summary>
     /// Verifies that <see cref="ProfileDataProtector"/> encrypts and decrypts sensitive picture payloads with AES-256-GCM.
     /// </summary>
     [Fact]
@@ -99,14 +123,7 @@ public sealed class UserProfileAndContactTests : IClassFixture<WebApplicationFac
         // WHAT: Tests cryptographic envelope encryption on data-URIs.
         // WHY:  Ensures patient avatars and sensitive PHI are encrypted at rest using AES-256-GCM.
         // HOW:  Encrypts a sample image data-URI, checks the prefix, and decrypts back to identical plaintext.
-        var config = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Security:ProfilePepper"] = "sovereign_test_pepper_key_material_123"
-            })
-            .Build();
-
-        ProfileDataProtector protector = new(config);
+        ProfileDataProtector protector = CreateIsolatedProtector();
         string original = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
         string encrypted = protector.EncryptDataUri(original);
@@ -133,20 +150,22 @@ public sealed class UserProfileAndContactTests : IClassFixture<WebApplicationFac
     [Fact]
     public void ProfileDataProtector_EdgeCases_CoverAllBranches()
     {
-        // WHAT: Verifies handling of pre-encrypted strings and short base64 buffers.
-        // WHY:  Guarantees complete branch coverage without unexpected exceptions.
-        // HOW:  Passes prefixed string and short buffer to EncryptDataUri and DecryptDataUri.
-        var config = new ConfigurationBuilder().Build();
-        ProfileDataProtector protector = new(config);
+        // WHAT: Verifies handling of pre-encrypted strings and structurally impossible envelopes.
+        // WHY:  Guarantees complete branch coverage, and pins the contract that a value claiming to be a
+        //       protected envelope is never handed back to the caller as if it were plaintext.
+        // HOW:  Passes a prefixed string to EncryptDataUri and a too-short buffer to DecryptDataUri.
+        ProfileDataProtector protector = CreateIsolatedProtector();
 
         // Already encrypted payload returns as-is
         string alreadyEnc = "data:application/encrypted;base64,alreadyencryptedpayload";
         Assert.Equal(alreadyEnc, protector.EncryptDataUri(alreadyEnc));
 
-        // Short payload (shorter than nonce + tag: 12 + 16 = 28 bytes) returns as-is
+        // Short payload (shorter than nonce + tag: 12 + 16 = 28 bytes) is a malformed envelope, which is now
+        // reported rather than returned unchanged: returning it would dress ciphertext up as plaintext.
         byte[] tiny = new byte[10];
         string shortEnc = "data:application/encrypted;base64," + Convert.ToBase64String(tiny);
-        Assert.Equal(shortEnc, protector.DecryptDataUri(shortEnc));
+        CryptographicException shortEx = Assert.Throws<CryptographicException>(() => protector.DecryptDataUri(shortEnc));
+        Assert.Contains("malformed", shortEx.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -159,7 +178,7 @@ public sealed class UserProfileAndContactTests : IClassFixture<WebApplicationFac
         // WHY:  Ensures full branch coverage for connection setup and resilience.
         // HOW:  Validates ArgumentNullException on nulls and uses MockPostgresConfigRepo to trigger fallback.
         var config = new ConfigurationBuilder().Build();
-        ProfileDataProtector protector = new(config);
+        ProfileDataProtector protector = CreateIsolatedProtector();
         SystemConfigurationStore configStore = new(config);
 
         // Null checks
@@ -237,7 +256,7 @@ public sealed class UserProfileAndContactTests : IClassFixture<WebApplicationFac
                 PublicKeyBase64 = "MCowBQYDK2VwAyEA123456789012345678901234567890123456789012="
             });
 
-            ProfileDataProtector protector = new(config);
+            ProfileDataProtector protector = CreateIsolatedProtector();
             using UserProfileRepository repo = new(config, configStore, protector, migrationRunner);
 
             // Upsert a profile where all optional nullable fields are null, and pronouns are empty
@@ -444,16 +463,19 @@ public sealed class UserProfileAndContactTests : IClassFixture<WebApplicationFac
     }
 
     /// <summary>
-    /// Verifies that <see cref="ProfileDataProtector"/> rejects tampered ciphertext or bad tags gracefully.
+    /// Verifies that <see cref="ProfileDataProtector"/> reports tampered ciphertext and bad envelopes instead of
+    /// returning the ciphertext as if it were plaintext.
     /// </summary>
     [Fact]
-    public void ProfileDataProtector_TamperedPayload_ReturnsInputGracefully()
+    public void ProfileDataProtector_TamperedPayload_ReportsCryptographicFailure()
     {
         // WHAT: Tests tampering detection with AES-256-GCM authentication tags.
-        // WHY:  Guarantees zero cryptographic disclosure when data is corrupted or forged.
-        // HOW:  Mangles the ciphertext bytes and asserts that DecryptDataUri safely returns input string.
-        var config = new ConfigurationBuilder().Build();
-        ProfileDataProtector protector = new(config);
+        // WHY:  A flipped tag byte means the value is forged or corrupt. The previous behaviour returned the
+        //       ciphertext unchanged, which the caller could not distinguish from a value that was never
+        //       encrypted, so a wrong key looked exactly like plaintext. The failure is now observable.
+        // HOW:  Mangles the authentication tag and asserts DecryptDataUri raises CryptographicException with a
+        //       message that leaks no key material, path or SQL.
+        ProfileDataProtector protector = CreateIsolatedProtector();
 
         string original = "data:image/png;base64,VGhpcyBpcyBhIHRlc3Q=";
         string encrypted = protector.EncryptDataUri(original);
@@ -464,12 +486,15 @@ public sealed class UserProfileAndContactTests : IClassFixture<WebApplicationFac
         bytes[^1] ^= 0xFF; // Flip bits in authentication tag
         string tampered = "data:application/encrypted;base64," + Convert.ToBase64String(bytes);
 
-        string? decrypted = protector.DecryptDataUri(tampered);
-        Assert.Equal(tampered, decrypted);
+        CryptographicException tamperEx = Assert.Throws<CryptographicException>(() => protector.DecryptDataUri(tampered));
+        Assert.Contains("could not be decrypted", tamperEx.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("/", tamperEx.Message);
+        Assert.DoesNotContain("SELECT", tamperEx.Message, StringComparison.OrdinalIgnoreCase);
 
-        // Invalid base64 returns input as-is
+        // Invalid base64 is a malformed envelope and is likewise reported.
         string invalidPayload = "data:application/encrypted;base64,invalid!base64";
-        Assert.Equal(invalidPayload, protector.DecryptDataUri(invalidPayload));
+        CryptographicException formatEx = Assert.Throws<CryptographicException>(() => protector.DecryptDataUri(invalidPayload));
+        Assert.IsType<FormatException>(formatEx.InnerException);
     }
 
     /// <summary>
@@ -552,7 +577,7 @@ public sealed class UserProfileAndContactTests : IClassFixture<WebApplicationFac
                 PublicKeyBase64 = "MCowBQYDK2VwAyEA123456789012345678901234567890123456789012="
             });
 
-            ProfileDataProtector protector = new(config);
+            ProfileDataProtector protector = CreateIsolatedProtector();
             UserProfileRepository repo = new(config, configStore, protector, migrationRunner);
 
             // 1. Profile CRUD

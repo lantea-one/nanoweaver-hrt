@@ -11,8 +11,8 @@ using Org.BouncyCastle.Security;
 using Org.BouncyCastle.X509;
 using NanoWeaverHrt.Compliance;
 using NanoWeaverHrt.Security.Cryptography;
-using NanoWeaverHrt.Security.KeyManagement;
 using NanoWeaverHrt.Security.Models;
+using NanoWeaverHrt.Security.Secrets;
 
 namespace NanoWeaverHrt.Security.Authentication;
 
@@ -45,7 +45,12 @@ public sealed class UserAuthenticationService : IUserAuthenticationService
     /// <summary>
     /// Secret key bytes used to seal and verify tamper-evident bearer tokens.
     /// </summary>
-    private readonly byte[] _tokenHmacKey;
+    /// <remarks>
+    /// Provisioned by <see cref="INodeSecretStore"/>: 256 random bits that exist only on this node and only in
+    /// its owner-only key file. Held as <see cref="ReadOnlyMemory{T}"/> because this class has <c>async</c>
+    /// methods, which cannot hold a <c>ReadOnlySpan&lt;byte&gt;</c> in a field.
+    /// </remarks>
+    private readonly ReadOnlyMemory<byte> _tokenHmacKey;
 
     /// <summary>
     /// Thread-safe in-memory cache of pending authentication challenges.
@@ -68,22 +73,26 @@ public sealed class UserAuthenticationService : IUserAuthenticationService
     /// <param name="userRepository">User persistence repository.</param>
     /// <param name="pqcProvider">Post-quantum crypto provider.</param>
     /// <param name="auditService">Compliance audit ledger service.</param>
-    /// <param name="keyManagement">Key management service for node identity.</param>
+    /// <param name="secretStore">Provider of this node's persisted bearer-token signing key.</param>
     public UserAuthenticationService(
         IUserRepository userRepository,
         IPostQuantumCryptoProvider pqcProvider,
         IComplianceAuditService auditService,
-        IKeyManagementService keyManagement)
+        INodeSecretStore secretStore)
     {
         _userRepository = userRepository ?? throw new ArgumentNullException(nameof(userRepository));
         _pqcProvider = pqcProvider ?? throw new ArgumentNullException(nameof(pqcProvider));
         _auditService = auditService ?? throw new ArgumentNullException(nameof(auditService));
 
-        ArgumentNullException.ThrowIfNull(keyManagement);
+        ArgumentNullException.ThrowIfNull(secretStore);
 
-        // Derive deterministic, high-entropy 256-bit token signing key from node signing key identity
-        string nodeKeyId = keyManagement.GetNodeSigningKey().KeyId;
-        _tokenHmacKey = SHA256.HashData(Encoding.UTF8.GetBytes($"{nodeKeyId}:WEAVER_BEARER_TOKEN_SECRET_V1"));
+        // WHAT: Adopts the node's persisted 256-bit token signing key.
+        // WHY:  The previous derivation hashed the literal key identifier "node_signing_master" together with
+        //       a constant suffix published in this repository, so the HMAC key was identical on every
+        //       deployment on earth and anyone could mint a valid token for any username and any role.
+        // HOW:  INodeSecretStore hands over key material that RandomNumberGenerator produced on first launch
+        //       and that persists in an owner-only file, so tokens also survive a service restart.
+        _tokenHmacKey = secretStore.TokenSigningKey;
     }
 
     /// <summary>
@@ -399,7 +408,7 @@ public sealed class UserAuthenticationService : IUserAuthenticationService
 
         // Verify HMAC-SHA256 signature
         byte[] payloadBytes = Convert.FromBase64String(Base64UrlDecode(payloadBase64));
-        byte[] expectedSig = HMACSHA256.HashData(_tokenHmacKey, payloadBytes);
+        byte[] expectedSig = HMACSHA256.HashData(_tokenHmacKey.Span, payloadBytes);
         byte[] actualSig = Convert.FromBase64String(Base64UrlDecode(signatureBase64));
 
         if (!CryptographicOperations.FixedTimeEquals(expectedSig, actualSig))
@@ -516,6 +525,17 @@ public sealed class UserAuthenticationService : IUserAuthenticationService
     /// <summary>
     /// Verifies cryptographic signature for a user using either Ed25519 or ML-DSA-65.
     /// </summary>
+    /// <param name="user">The account whose stored public key is used for verification.</param>
+    /// <param name="data">The exact bytes that were supposed to have been signed, normally a challenge nonce.</param>
+    /// <param name="signatureBase64">The Base64-encoded signature presented by the caller.</param>
+    /// <returns><c>true</c> when the signature was produced by the holder of the matching private key; otherwise <c>false</c>.</returns>
+    /// <remarks>
+    /// In plain English: the account record stores only the public half of the user's key pair, which can check
+    /// a signature but cannot create one. If this method returns <c>true</c>, the caller must have had the
+    /// private half, which is the whole basis of password-free sign-in here. Any malformed key, malformed
+    /// signature or algorithm mismatch is treated as a plain verification failure rather than an error, so a
+    /// hostile caller learns nothing from the difference.
+    /// </remarks>
     private bool VerifySignatureInternal(UserAccount user, byte[] data, string signatureBase64)
     {
         try
@@ -544,6 +564,15 @@ public sealed class UserAuthenticationService : IUserAuthenticationService
     /// <summary>
     /// Signs an ephemeral nonce with a private key DER payload.
     /// </summary>
+    /// <param name="algorithm">Which signature scheme the key belongs to, Ed25519 or ML-DSA-65.</param>
+    /// <param name="data">The short-lived random bytes to sign.</param>
+    /// <param name="privateKeyDer">The private key in raw DER form, already decrypted.</param>
+    /// <returns>The Base64-encoded signature over <paramref name="data"/>.</returns>
+    /// <remarks>
+    /// In plain English: this is the server doing, on the user's behalf, what a browser would normally do with
+    /// the user's own key file during direct private-key sign-in. "Ephemeral" means the signed value is random
+    /// and used exactly once, so the resulting signature cannot be replayed later.
+    /// </remarks>
     private string SignEphemeralNonce(KeyAlgorithm algorithm, byte[] data, byte[] privateKeyDer)
     {
         if (algorithm == KeyAlgorithm.Ed25519)
@@ -578,7 +607,7 @@ public sealed class UserAuthenticationService : IUserAuthenticationService
         };
 
         byte[] payloadBytes = JsonSerializer.SerializeToUtf8Bytes(claims);
-        byte[] sigBytes = HMACSHA256.HashData(_tokenHmacKey, payloadBytes);
+        byte[] sigBytes = HMACSHA256.HashData(_tokenHmacKey.Span, payloadBytes);
 
         return $"{Base64UrlEncode(Convert.ToBase64String(payloadBytes))}.{Base64UrlEncode(Convert.ToBase64String(sigBytes))}";
     }
@@ -586,11 +615,29 @@ public sealed class UserAuthenticationService : IUserAuthenticationService
     /// <summary>
     /// Mints a signed bearer token for an authenticated user.
     /// </summary>
+    /// <param name="user">The account that has just proven its identity.</param>
+    /// <returns>A tamper-evident bearer token carrying the account's username, role and access gate.</returns>
+    /// <remarks>
+    /// A thin internal alias for <c>GenerateBearerToken</c>, kept so the authentication flows read as
+    /// "mint a token" at the point of use. The token is sealed with this node's own 256-bit signing key, so a
+    /// token minted on another node, or forged with a key taken from the public source history, fails
+    /// verification and is answered with HTTP 401.
+    /// </remarks>
     private string MintBearerToken(UserAccount user) => GenerateBearerToken(user);
 
     /// <summary>
     /// Encrypts raw private key DER bytes using PBKDF2 (SHA-256) and AES-256-GCM.
     /// </summary>
+    /// <param name="privateKeyDer">The private key bytes to protect.</param>
+    /// <param name="password">The passphrase chosen by the user who will store the key file.</param>
+    /// <returns>A self-contained envelope laid out as salt (16 bytes), nonce (12), tag (16), ciphertext.</returns>
+    /// <remarks>
+    /// In plain English: a passphrase on its own is a poor encryption key, so it is stretched into a strong
+    /// 256-bit key by hashing it 100,000 times together with 16 random bytes (the "salt"). The salt is stored
+    /// alongside the result, which is why two identical passphrases never produce identical files. The
+    /// authentication tag lets the decrypting side notice if even one byte was altered. The derived key is
+    /// wiped from memory before returning.
+    /// </remarks>
     internal static byte[] EncryptPrivateKeyBytes(byte[] privateKeyDer, string password)
     {
         byte[] salt = new byte[16];
@@ -627,6 +674,15 @@ public sealed class UserAuthenticationService : IUserAuthenticationService
     /// <summary>
     /// Decrypts private key bytes from encrypted envelope structure.
     /// </summary>
+    /// <param name="encryptedBytes">The envelope produced by <c>EncryptPrivateKeyBytes</c>.</param>
+    /// <param name="password">The passphrase that was used to protect it.</param>
+    /// <returns>The original private key bytes, or <c>null</c> when the envelope is too short, corrupt, or the passphrase is wrong.</returns>
+    /// <remarks>
+    /// In plain English: the salt and nonce are read back out of the front of the envelope, the passphrase is
+    /// stretched the same way it was during encryption, and the authentication tag is checked. A wrong
+    /// passphrase and a tampered file are deliberately indistinguishable from the outside: both simply return
+    /// <c>null</c>, with no detail that would help someone guess. The derived key is always wiped.
+    /// </remarks>
     internal static byte[]? DecryptPrivateKeyBytes(byte[] encryptedBytes, string password)
     {
         if (encryptedBytes.Length < 44) return null;
@@ -669,6 +725,17 @@ public sealed class UserAuthenticationService : IUserAuthenticationService
     /// <summary>
     /// Extracts DER private key bytes from standard plain or encrypted PEM text.
     /// </summary>
+    /// <param name="pem">The PEM text pasted or uploaded by the user.</param>
+    /// <param name="password">The passphrase, required only when the PEM is an encrypted private key.</param>
+    /// <returns>The raw private key bytes, or <c>null</c> when the text is not usable key material.</returns>
+    /// <remarks>
+    /// In plain English: PEM is just key bytes rendered as Base64 text between two
+    /// <c>-----BEGIN ...-----</c> and <c>-----END ...-----</c> marker lines, which makes a key safe to paste
+    /// into a text box. This strips the marker lines, joins the Base64 back together and converts it to bytes.
+    /// If the header says the key is encrypted, the passphrase is then required and the bytes are passed on to
+    /// be decrypted. Anything unreadable yields <c>null</c> rather than an exception, because the input comes
+    /// straight from a sign-in form.
+    /// </remarks>
     internal static byte[]? ExtractPrivateKeyDerFromPem(string pem, string? password)
     {
         string clean = pem.Trim();
@@ -710,6 +777,14 @@ public sealed class UserAuthenticationService : IUserAuthenticationService
     /// <summary>
     /// Formats DER bytes into standard PEM text.
     /// </summary>
+    /// <param name="type">The label that goes in the marker lines, for example <c>PUBLIC KEY</c> or <c>ENCRYPTED PRIVATE KEY</c>.</param>
+    /// <param name="derBytes">The raw key bytes to render.</param>
+    /// <returns>PEM text with marker lines and Base64 wrapped at 64 characters per line.</returns>
+    /// <remarks>
+    /// In plain English: the inverse of the extraction above. Key bytes are turned into Base64, broken into
+    /// 64-character lines (the convention every tool expects) and wrapped in the two marker lines, producing a
+    /// file the user can save, print or paste anywhere.
+    /// </remarks>
     internal static string FormatPem(string type, byte[] derBytes)
     {
         string base64 = Convert.ToBase64String(derBytes);
@@ -727,12 +802,26 @@ public sealed class UserAuthenticationService : IUserAuthenticationService
     /// <summary>
     /// Base64Url encodes standard Base64 text.
     /// </summary>
+    /// <param name="base64">Standard Base64 text.</param>
+    /// <returns>The same data in the URL-safe Base64 alphabet, without trailing padding.</returns>
+    /// <remarks>
+    /// In plain English: ordinary Base64 uses <c>+</c>, <c>/</c> and trailing <c>=</c>, all of which have
+    /// special meaning inside a URL or an HTTP header. Swapping them for <c>-</c> and <c>_</c> and dropping the
+    /// padding makes the token safe to put in a header, a query string or a cookie without further escaping.
+    /// </remarks>
     private static string Base64UrlEncode(string base64) =>
         base64.Replace('+', '-').Replace('/', '_').TrimEnd('=');
 
     /// <summary>
     /// Base64Url decodes into standard Base64 text.
     /// </summary>
+    /// <param name="base64Url">URL-safe Base64 text, with or without padding.</param>
+    /// <returns>Standard Base64 text that the runtime's decoder accepts.</returns>
+    /// <remarks>
+    /// In plain English: the exact reverse of the encoding above. The two substituted characters are put back
+    /// and the dropped <c>=</c> padding is restored, because Base64 is only decodable in whole four-character
+    /// groups.
+    /// </remarks>
     private static string Base64UrlDecode(string base64Url)
     {
         string s = base64Url.Replace('-', '+').Replace('_', '/');

@@ -23,6 +23,7 @@ using NanoWeaverHrt.Pipelines;
 using NanoWeaverHrt.Security.Authentication;
 using NanoWeaverHrt.Security.Cryptography;
 using NanoWeaverHrt.Security.KeyManagement;
+using NanoWeaverHrt.Security.Secrets;
 using NanoWeaverHrt.Services;
 using NanoWeaverHrt.Services.Stack;
 using NanoWeaverHrt.Simulations;
@@ -96,6 +97,11 @@ public sealed class RazorComponentLifecycleTests : IDisposable
         sc.AddSingleton<EndocrineStateEngine>();
         sc.AddSingleton<IPharmacogenomicsService, PharmacogenomicsService>();
         sc.AddSingleton<ISimulationCampaignService, SimulationCampaignService>();
+        // The authentication service now takes its bearer-token signing key from INodeSecretStore instead of
+        // deriving it from a published constant, so the component host must provide one. It resolves its key
+        // directory from the TRAJECTORY_INCOMING_DIR above, which keeps the generated files in this test
+        // instance's temporary directory.
+        sc.AddSingleton<INodeSecretStore, NodeSecretStore>();
         sc.AddSingleton<IPostQuantumCryptoProvider, PostQuantumCryptoProvider>();
         sc.AddSingleton<IKeyManagementService, KeyManagementService>();
         sc.AddSingleton<IComplianceAuditService, ComplianceAuditService>();

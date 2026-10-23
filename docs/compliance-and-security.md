@@ -203,6 +203,22 @@ User identities are anchored to asymmetric cryptographic keypairs:
 * **Challenge-Response Handshake**: The client submits their username to receive a cryptographically random 256-bit challenge. The client signs the challenge with their local private key (optionally unlocked with a passphrase) and submits the signature. Upon verification, a cryptographically signed session token is issued.
 * **Zero Passwords Stored**: Passwords and private keys are never stored on the server. If a passphrase is used, it only encrypts the private key locally on the user's workstation.
 
+### Per-Node Symmetric Key Material (Generated on First Launch)
+
+Two symmetric secrets belong to the node itself rather than to a user, and **no default value for either ships with the source code**:
+
+| Secret | Purpose | Algorithm | Provisioning |
+| :--- | :--- | :--- | :--- |
+| Token signing key | Seals and verifies session bearer tokens | HMAC-SHA256, 256-bit key | 32 bytes from `RandomNumberGenerator` on first launch |
+| PHI master key | Protects patient profile fields at rest (avatars, demographics, clinical notes) | AES-256-GCM, 256-bit key, 96-bit nonce per value, 128-bit tag | 32 bytes from `RandomNumberGenerator` on first launch |
+
+Both are persisted as mode `0600` files in a dedicated `node-keys` directory that is deliberately **outside** the database they protect and outside every directory reachable by an HTTP route, and both are read back on each start so that sessions and encrypted data survive a restart. Key files are published atomically, so a half-written key is never observable and two nodes starting simultaneously on shared storage converge on the same key. A key file that is unreadable or not exactly 32 bytes long aborts startup: there is no derived fallback and no silent regeneration, because regenerating would make stored patient ciphertext permanently unreadable.
+
+Consequences worth stating plainly:
+* Each node's keys are unique to that node, so a session token minted by one node is rejected by any other node, and one node cannot decrypt another node's patient data.
+* A node's key material is as sensitive as the patient database itself and must be backed up with it, with permissions preserved.
+* Patient data written by a release that predated per-node provisioning is re-encrypted under the node's own key automatically on the first start after the upgrade; it is read once with the superseded key, rewritten with the new one, and no operator ever handles a secret.
+
 ### Role-Based Access Control (RBAC) & Transport Boundaries
 
 | Role | Cluster Privileges | Data Visibility | Operational Actions |

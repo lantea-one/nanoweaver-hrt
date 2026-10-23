@@ -652,7 +652,10 @@ public sealed class ApiRoleGatingAndDisclosureTests : IClassFixture<WebApplicati
     [InlineData("GET", "/api/compliance/status", Program.RouteRoleRequirement.AdministratorOnly)]
     [InlineData("GET", "/api/compliance/audit-ledger", Program.RouteRoleRequirement.AdministratorOnly)]
     [InlineData("POST", "/api/services/ping/postgres", Program.RouteRoleRequirement.AdministratorOnly)]
-    [InlineData("GET", "/api/services", Program.RouteRoleRequirement.None)]
+    // Reading the stack telemetry is now gated too: it reports which backing services are reachable and how
+    // fast they answer, which is infrastructure diagnostics rather than anything a Patient needs. The probe
+    // verb above stays Administrator-only, because the resolver returns the stricter of the two matches.
+    [InlineData("GET", "/api/services", Program.RouteRoleRequirement.AdministratorOrResearcher)]
     [InlineData("POST", "/api/parser/process/sample.xyz", Program.RouteRoleRequirement.AdministratorOrResearcher)]
     [InlineData("POST", "/api/parser/export-parquet/sample.xyz", Program.RouteRoleRequirement.AdministratorOrResearcher)]
     [InlineData("POST", "/api/simulations/run/serum-stability", Program.RouteRoleRequirement.AdministratorOrResearcher)]

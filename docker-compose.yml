@@ -13,6 +13,15 @@
 #   the host account that launched the stack. Copy example.env to .env and set
 #   WEAVER_UID, WEAVER_GID, WEAVER_VIDEO_GID and WEAVER_RENDER_GID (see example.env).
 #
+# NODE KEY MATERIAL (generated on first launch, nothing to configure):
+#   On its first start the parser generates two 256-bit secrets and stores them in
+#   ./simulations/shared-data/node-keys/ as mode 0600 files owned by the compose user:
+#     token_signing.key  signs login tokens, so they cannot be forged
+#     phi_master.key     encrypts patient profile data at rest
+#   Both are git-ignored and must never be committed or shared. Include that directory
+#   in your backups: losing token_signing.key signs everybody out, while losing
+#   phi_master.key makes already-encrypted patient data unrecoverable.
+#
 # HARDWARE OVERRIDES:
 #   - Intel Arc A770:  docker compose -f docker-compose.yml -f compose/docker-compose.arc.yml up -d
 #   - NVIDIA CUDA:     docker compose -f docker-compose.yml -f compose/docker-compose.nvidia.yml up -d
@@ -111,11 +120,24 @@ services:
       - TRAJECTORY_PARQUET_DIR=/workspace/parquet
       - SIMULATION_CONFIGS_DIR=/workspace/configs
       - SIMULATION_ENDPOINT_URL=http://simulation-node:8080
+      # WHAT: Directory holding this node's generated token signing key and patient data key.
+      # WHY:  The keys must outlive the container, so they live on a bind mount, and they must sit in a
+      #       subdirectory: the trajectory listing, export, import and download routes all operate on the
+      #       top level of /workspace/data only, so nothing here is reachable over HTTP.
+      # HOW:  The service creates the directory on first launch and writes both files with mode 0600.
+      - WEAVER_NODE_KEYS_DIR=/workspace/data/node-keys
     volumes:
       - ./simulations/configs:/workspace/configs:ro
       - ./simulations/shared-data:/workspace/data:rw
       - ./simulations/exports:/workspace/exports:rw
       - ./simulations/parquet:/workspace/parquet:rw
+      # HARDENING (optional, one manual step): to keep key material on a mount of its own, so that
+      # neither the simulation container nor the pg-duckdb container can read it, run
+      #   mkdir -p ./simulations/node-keys && chmod 700 ./simulations/node-keys
+      # then set WEAVER_NODE_KEYS_DIR=/workspace/node-keys above and uncomment the line below. The
+      # directory has to be created by hand first: Docker creates a missing bind-mount source as
+      # root:root, which this non-root container could not write to.
+      # - ./simulations/node-keys:/workspace/node-keys:rw
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:5000/healthz || exit 1"]
       interval: 30s

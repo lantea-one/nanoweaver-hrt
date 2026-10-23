@@ -10,6 +10,7 @@ using NanoWeaverHrt.Configuration;
 using NanoWeaverHrt.Security.Authentication;
 using NanoWeaverHrt.Security.Cryptography;
 using NanoWeaverHrt.Security.KeyManagement;
+using NanoWeaverHrt.Security.Secrets;
 using Xunit;
 
 namespace NanoWeaverHrt.Tests;
@@ -47,6 +48,11 @@ public sealed class AuthenticationServiceTests : IDisposable
     private readonly ComplianceAuditService _auditService;
 
     /// <summary>
+    /// Node secret store supplying this test instance's persisted bearer-token signing key.
+    /// </summary>
+    private readonly NodeSecretStore _secretStore;
+
+    /// <summary>
     /// Authoritative user authentication service under test.
     /// </summary>
     private readonly UserAuthenticationService _authService;
@@ -77,11 +83,17 @@ public sealed class AuthenticationServiceTests : IDisposable
         _userRepository = new UserRepository(configuration, configStore);
         _userRepository.InitializeAsync().GetAwaiter().GetResult();
 
+        // WHAT: Provisions this test instance's own token signing key inside its isolated temp directory.
+        // WHY:  The signing key is no longer derived from a constant, so the service needs a real key store;
+        //       keeping it under _tempDir keeps every test class cryptographically and filesystem independent.
+        // HOW:  NodeSecretStore derives its directory from the TRAJECTORY_INCOMING_DIR already configured above.
+        _secretStore = new NodeSecretStore(configuration);
+
         _authService = new UserAuthenticationService(
             _userRepository,
             _pqcProvider,
             _auditService,
-            _keyManagement);
+            _secretStore);
     }
 
     /// <inheritdoc/>
@@ -199,9 +211,9 @@ public sealed class AuthenticationServiceTests : IDisposable
         Assert.Throws<ArgumentNullException>(() => new UserRepository(null!, configStore));
         Assert.Throws<ArgumentNullException>(() => new UserRepository(configuration, null!));
 
-        Assert.Throws<ArgumentNullException>(() => new UserAuthenticationService(null!, _pqcProvider, _auditService, _keyManagement));
-        Assert.Throws<ArgumentNullException>(() => new UserAuthenticationService(_userRepository, null!, _auditService, _keyManagement));
-        Assert.Throws<ArgumentNullException>(() => new UserAuthenticationService(_userRepository, _pqcProvider, null!, _keyManagement));
+        Assert.Throws<ArgumentNullException>(() => new UserAuthenticationService(null!, _pqcProvider, _auditService, _secretStore));
+        Assert.Throws<ArgumentNullException>(() => new UserAuthenticationService(_userRepository, null!, _auditService, _secretStore));
+        Assert.Throws<ArgumentNullException>(() => new UserAuthenticationService(_userRepository, _pqcProvider, null!, _secretStore));
         Assert.Throws<ArgumentNullException>(() => new UserAuthenticationService(_userRepository, _pqcProvider, _auditService, null!));
     }
 

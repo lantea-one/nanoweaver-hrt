@@ -8,6 +8,20 @@
 #
 # USAGE:
 #   docker compose -f docker-compose.yml -f docker-compose.infra.yml up -d
+#
+# CREDENTIALS:
+#   The password below is a placeholder that is published in this public repository, so it
+#   grants nothing on a correctly deployed node: the database port is bound to loopback only
+#   and the parser reaches it over the private compose network. Set WEAVER_POSTGRES_PASSWORD
+#   in your .env (or shell) before the first `up` to use a real one; both the server and the
+#   parser read the same variable, so they can never drift apart.
+#
+# NOTE ON THE SILENT SQLITE FALLBACK:
+#   Without POSTGRES_CONNECTION_STRING the parser used the built-in default Host=localhost,
+#   which inside its own container is the container itself. The connection was refused, the
+#   store caught the failure and quietly switched to SQLite, so this overlay's PostgreSQL
+#   database was never actually used. The service entry below points the parser at the
+#   pg-duckdb service and waits for its healthcheck, which closes that gap.
 # ==============================================================================
 
 name: nanoweaver-hrt
@@ -34,7 +48,7 @@ services:
     environment:
       POSTGRES_DB: weaver_hrt
       POSTGRES_USER: weaver
-      POSTGRES_PASSWORD: weaver_secret_change_me
+      POSTGRES_PASSWORD: ${WEAVER_POSTGRES_PASSWORD:-weaver_secret_change_me}
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       # Persistent PostgreSQL catalog and metadata volume
@@ -55,8 +69,22 @@ services:
     image: git.lantea.one/lantea-one/nanoweaver-hrt-web:latest
     environment:
       - TRAJECTORY_PARQUET_DIR=/workspace/parquet
+      # WHAT: Points the parser at this overlay's PostgreSQL service.
+      # WHY:  Without it the parser resolved the built-in default host (localhost) to its own
+      #       container, failed to connect and silently fell back to SQLite, so the database this
+      #       overlay exists to provide went unused.
+      # HOW:  "pg-duckdb" is the compose service name and therefore its network alias; the
+      #       container's own hostname, storage-node, resolves to the same address.
+      - POSTGRES_CONNECTION_STRING=Host=pg-duckdb;Port=5432;Database=weaver_hrt;Username=weaver;Password=${WEAVER_POSTGRES_PASSWORD:-weaver_secret_change_me};Timeout=5
     volumes:
       - ./simulations/parquet:/workspace/parquet:rw
+    # WHAT: Waits for the database to pass its healthcheck before the parser starts.
+    # WHY:  The fallback to SQLite is silent, so a parser that starts one second too early would
+    #       quietly run on the wrong database for the rest of its life.
+    # HOW:  depends_on with condition: service_healthy, merged with the base stack's dependency.
+    depends_on:
+      pg-duckdb:
+        condition: service_healthy
 
 volumes:
   postgres_metadata:

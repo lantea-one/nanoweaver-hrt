@@ -21,6 +21,7 @@ using NanoWeaverHrt.Pipelines;
 using NanoWeaverHrt.Security.Cryptography;
 using NanoWeaverHrt.Security.KeyManagement;
 using NanoWeaverHrt.Security.Models;
+using NanoWeaverHrt.Security.Secrets;
 using NanoWeaverHrt.Security.Storage;
 using NanoWeaverHrt.Services;
 using NanoWeaverHrt.Services.Stack;
@@ -64,6 +65,15 @@ public class Program
     /// Main entry point for the microservice.
     /// </summary>
     /// <param name="args">Command-line arguments.</param>
+    /// <returns>
+    /// A task that completes when the web host has shut down, which under normal operation is when the
+    /// container or the operator stops the service.
+    /// </returns>
+    /// <remarks>
+    /// Startup order matters here: node key material is provisioned before anything can sign a token or
+    /// encrypt patient data, then the databases are initialized, then any patient profile still protected by
+    /// the historic published key is re-encrypted, and only afterwards is the request pipeline built.
+    /// </remarks>
     public static async Task Main(string[] args)
     {
         WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
@@ -87,6 +97,13 @@ public class Program
         builder.Services.AddSingleton<LammpsCustomPipeReader>();
         builder.Services.AddSingleton<IParquetTrajectoryWriter, DuckDbParquetWriter>();
         builder.Services.AddSingleton<EndocrineStateEngine>();
+
+        // WHAT: Registers the node secret store ahead of every other security service.
+        // WHY:  The bearer-token signing key and the patient-data encryption key are generated on first launch
+        //       and persisted on this node; nothing that signs a token or encrypts PHI may be constructed
+        //       before that key material exists.
+        // HOW:  A singleton whose constructor performs the whole generate-or-load sequence.
+        builder.Services.AddSingleton<INodeSecretStore, NodeSecretStore>();
         builder.Services.AddSingleton<IPostQuantumCryptoProvider, PostQuantumCryptoProvider>();
         builder.Services.AddSingleton<IKeyManagementService, KeyManagementService>();
         builder.Services.AddSingleton<IComplianceAuditService, ComplianceAuditService>();
@@ -188,6 +205,18 @@ public class Program
         // HOW:  SecureExceptionHandlerMiddleware catches downstream exceptions for /api routes and produces SecureProblemDetails.
         app.UseMiddleware<SecureExceptionHandlerMiddleware>();
 
+        // WHAT: Forces the node's key material to be provisioned now, before the first request.
+        // WHY:  Provisioning must either succeed or stop the service. If the store were resolved lazily, a
+        //       damaged or unreadable key file would surface as a failed login hours later instead of as a
+        //       failed start, and the container healthcheck would never notice.
+        // HOW:  Resolve the singleton eagerly; NodeSecretStore's constructor generates or loads both keys and
+        //       throws NodeSecretProvisioningException if it cannot.
+        INodeSecretStore nodeSecrets = app.Services.GetRequiredService<INodeSecretStore>();
+        app.Logger.LogInformation(
+            "Node secret provisioning complete. Token signing key: {TokenKeyOrigin}. PHI master key: {PhiKeyOrigin}.",
+            nodeSecrets.TokenSigningKeyOrigin,
+            nodeSecrets.PhiMasterKeyOrigin);
+
         // WHAT: Initializes authoritative database tables for configuration and single-use share keys.
         // WHY:  Guarantees that database-first precedence is active before requests arrive.
         // HOW:  Executes table verification via IConfigurationRepository.
@@ -199,6 +228,19 @@ public class Program
         // HOW:  Executes schema verification and index creation via IUserRepository.
         IUserRepository userRepo = app.Services.GetRequiredService<IUserRepository>();
         await userRepo.InitializeAsync();
+
+        // WHAT: Upgrades any patient profile field still encrypted with the historic published key.
+        // WHY:  Those values were never really protected (the key was in the public source), and leaving them
+        //       behind would mean the node kept depending on a world-known key to read live patient data.
+        //       Doing it here means no operator ever handles a secret and no patient record is lost.
+        // HOW:  ReEncryptLegacyProfilePhiAsync reads each profile and writes back only the rows whose
+        //       ciphertext needed the legacy key, which re-encrypts them with this node's own key.
+        ProfileDataProtector profileProtector = app.Services.GetRequiredService<ProfileDataProtector>();
+        IUserProfileRepository profileRepo = app.Services.GetRequiredService<IUserProfileRepository>();
+        int reEncryptedProfiles = await ReEncryptLegacyProfilePhiAsync(userRepo, profileRepo, profileProtector);
+        app.Logger.LogInformation(
+            "Legacy patient profile re-encryption pass complete. Profiles upgraded to the node PHI master key: {UpgradedProfileCount}.",
+            reEncryptedProfiles);
 
         // WHAT: Enables content negotiation and multi-format transcoding (JSON, XML, YAML).
         // WHY:  Allows callers to request or submit XML or YAML payloads transparently.
@@ -1095,8 +1137,9 @@ public class Program
         .WithName("GetStackServices")
         .WithTags("Stack Services")
         .WithSummary("Returns real-time status and telemetry for each service in the stack.")
-        .WithDescription("Checks connectivity and latency to PostgreSQL, DuckDB, oxDNA, LAMMPS, and Redis.")
-        .Produces<IReadOnlyList<StackServiceInfo>>(StatusCodes.Status200OK);
+        .WithDescription("Checks connectivity and latency to PostgreSQL, DuckDB, oxDNA, LAMMPS, and Valkey (Administrator or Researcher role required).")
+        .Produces<IReadOnlyList<StackServiceInfo>>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status403Forbidden);
 
         app.MapPost("/api/services/ping/{serviceId}", async (string serviceId, IStackServiceManager stackMgr, CancellationToken ct) =>
         {
@@ -1106,8 +1149,9 @@ public class Program
         .WithName("PingStackService")
         .WithTags("Stack Services")
         .WithSummary("Tests connectivity and returns fresh telemetry for a specific stack service.")
-        .WithDescription("Performs a low-latency socket ping or query to a single dependency.")
-        .Produces<StackServiceInfo>(StatusCodes.Status200OK);
+        .WithDescription("Performs a low-latency socket ping or query to a single dependency (Administrator or Researcher role required).")
+        .Produces<StackServiceInfo>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status403Forbidden);
 
         // ---------------------------------------------------------------------
         // REST API: DNA Origami Fabrication Specifications
@@ -2828,6 +2872,66 @@ public class Program
     }
 
     /// <summary>
+    /// Re-encrypts patient profile fields that are still protected by the historic published key.
+    /// </summary>
+    /// <param name="userRepository">Repository enumerating the node's user accounts.</param>
+    /// <param name="profileRepository">Repository reading and writing patient profiles.</param>
+    /// <param name="protector">Profile protector reporting legacy decryptions through its counter.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The number of profiles that were re-encrypted under the node's current PHI master key.</returns>
+    /// <remarks>
+    /// <para>
+    /// <strong>What this is:</strong> a one-time upgrade pass. Before the node generated its own PHI master
+    /// key, patient avatars and profile fields were encrypted with the SHA-256 of a constant published in this
+    /// repository. Those values are still readable (the protector keeps that key as a decrypt-only fallback),
+    /// but they are not actually protected from anyone who has read the source, so they are rewritten with the
+    /// node's own key.
+    /// </para>
+    /// <para>
+    /// <strong>Why it is not an <c>IDatabaseMigration</c>:</strong> Prime Directive 13 governs schema
+    /// evolution, and this pass adds no table, column, index or seed row — it rewrites the value of an existing
+    /// column through the ordinary repository API, which already applies every pending schema migration when it
+    /// opens its connection. There is no DDL here to put in a migration class, and none is executed ad hoc.
+    /// </para>
+    /// <para>
+    /// <strong>How it works:</strong> for each account, the profile is read (which decrypts) and the
+    /// protector's legacy-decryption counter is sampled either side of the read. If the counter moved, that row
+    /// carried pre-upgrade ciphertext, so the profile is written straight back; the write encrypts with the
+    /// current key. Rows already using the current key are left completely untouched, so a steady-state
+    /// restart performs no writes at all.
+    /// </para>
+    /// </remarks>
+    internal static async Task<int> ReEncryptLegacyProfilePhiAsync(
+        IUserRepository userRepository,
+        IUserProfileRepository profileRepository,
+        ProfileDataProtector protector,
+        CancellationToken ct = default)
+    {
+        int upgraded = 0;
+        IReadOnlyList<UserAccount> accounts = await userRepository.ListUsersAsync(ct);
+
+        foreach (UserAccount account in accounts)
+        {
+            long legacyBefore = protector.LegacyDecryptionCount;
+            UserProfile? profile = await profileRepository.GetProfileAsync(account.Username, ct);
+            if (profile is null)
+            {
+                continue;
+            }
+
+            if (protector.LegacyDecryptionCount == legacyBefore)
+            {
+                continue;
+            }
+
+            await profileRepository.UpsertProfileAsync(profile, ct);
+            upgraded++;
+        }
+
+        return upgraded;
+    }
+
+    /// <summary>
     /// Parses an expiration window string or falls back to lifetime hours.
     /// Supports standard duration windows: '1h', '4h', '24h', '7d', '1m', '1y', and 'never'.
     /// </summary>
@@ -2962,6 +3066,13 @@ public class Program
     /// <summary>
     /// Routes whose state-changing verbs are reserved exclusively for the Administrator role.
     /// </summary>
+    /// <remarks>
+    /// '/api/services' appears here and in <see cref="ResearchRoutes"/> on purpose, and the two entries do not
+    /// contradict each other: <see cref="ResolveRouteRoleRequirement(string, PathString)"/> tests the
+    /// Administrator tables first and therefore returns the stricter answer. Actively probing a dependency
+    /// (<c>POST /api/services/ping/{serviceId}</c>) stays Administrator-only, while merely reading the stack
+    /// telemetry is also available to a Researcher.
+    /// </remarks>
     private static readonly RoleGatedRoute[] AdministratorMutationRoutes =
     [
         new("/api/services", MatchDescendants: true)
@@ -2970,8 +3081,17 @@ public class Program
     /// <summary>
     /// Routes reserved for the Administrator and Researcher roles regardless of HTTP verb.
     /// </summary>
+    /// <remarks>
+    /// '/api/services' is here because reading the stack telemetry — which of PostgreSQL, Valkey, oxDNA and
+    /// LAMMPS are reachable, and how quickly they answer — is cluster infrastructure diagnostics. Prime
+    /// Directive 12 gives cluster oversight to the Administrator and computational work to the Researcher who
+    /// depends on those services; a Patient's mandate is its own results and DNA payloads, so a Patient token
+    /// must not be able to map the node's backing services. The stricter mutation entry above still reserves
+    /// the on-demand probe verb for the Administrator.
+    /// </remarks>
     private static readonly RoleGatedRoute[] ResearchRoutes =
     [
+        new("/api/services", MatchDescendants: true),
         new("/api/parser/process", MatchDescendants: true),
         new("/api/parser/export-parquet", MatchDescendants: true),
         new("/api/simulations", MatchDescendants: true),
@@ -3194,7 +3314,7 @@ public class Program
     private static string DescribeRoleRequirement(RouteRoleRequirement requirement) => requirement switch
     {
         RouteRoleRequirement.AdministratorOnly => "Forbidden: Administrator role required for this administrative resource.",
-        _ => "Forbidden: Administrator or Researcher role required to execute simulations, analyses, and dataset transfers."
+        _ => "Forbidden: Administrator or Researcher role required to execute simulations, analyses, dataset transfers, and infrastructure telemetry."
     };
 
     /// <summary>

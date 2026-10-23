@@ -133,6 +133,30 @@ Add those four `export` lines to your shell profile to make the behaviour perman
 
 > **Rootless Docker / Podman:** in rootless mode container UID 0 maps to your own host user. Set `WEAVER_UID=0` and `WEAVER_GID=0` in `.env`; any other value maps to a sub-UID and produces files your host account cannot write.
 
+### Node key material (generated on first launch)
+
+Nothing to configure. The first time the parser starts it generates two 256-bit secrets of its own and stores them in `./simulations/shared-data/node-keys/`:
+
+| File | Protects | If you lose it |
+| :--- | :--- | :--- |
+| `token_signing.key` | Seals login tokens so they cannot be forged | Everybody is signed out and signs in again |
+| `phi_master.key` | Encrypts patient profile data at rest | Patient data already encrypted with it is unrecoverable |
+
+Both files are written with mode `0600` (readable by the account that runs the container and nobody else), are 32 bytes long, and are git-ignored twice over, so they can never be committed. They are generated with the operating system's cryptographic random number generator, which means **every node's keys are unique to that node** — no key ships in the source code.
+
+> **Back these up.** `./simulations/shared-data/node-keys` must be part of your backup set, with permissions preserved (`cp -a`). A backup of the database without the key file cannot be decrypted, by design.
+
+> **Do not delete them to "reset" something.** Removing `token_signing.key` only invalidates existing sessions, but removing `phi_master.key` permanently destroys the ability to read patient data that was encrypted with it. A truncated, over-long or unreadable key file is treated as a hard error: the service refuses to start rather than quietly generating a replacement that could not decrypt anything.
+
+> **Upgrading from an earlier release.** Tokens issued before the upgrade stop being accepted and the browser simply returns to the sign-in page — the API answers such a token with a plain `401 Unauthorized`. Patient profile data encrypted by an earlier release is migrated automatically on the first start after the upgrade: it is read with the old key one last time and rewritten with this node's own key. No operator ever handles a secret and nothing is lost.
+
+> **Running more than one replica.** A token signed by one node is rejected by every other node, because each node has its own key. If you run several `trajectory-parser` replicas behind a load balancer, either point `./simulations/shared-data/node-keys` at shared storage on every replica (the first node to start creates the files, the others read them, and a simultaneous cold start is safe), or set `WEAVER_TOKEN_SIGNING_KEY` to the same Base64-encoded 32 bytes everywhere (`openssl rand -base64 32`), sourced from your orchestrator's secret store. `phi_master.key` must be shared the same way if more than one node writes patient profile data, otherwise node B cannot read what node A encrypted.
+
+To keep the keys on a mount that the simulation and database containers cannot see at all, create the directory yourself first and switch the parser over — `docker-compose.yml` carries the two commented lines and the reason the manual step is required:
+```bash
+mkdir -p ./simulations/node-keys && chmod 700 ./simulations/node-keys
+```
+
 ### Scenario A: Default Deployment (Intel iGPU or CPU Fallback)
 This configuration passes through `/dev/dri` for Intel integrated graphics or falls back cleanly to multi-threaded CPU execution:
 ```bash
@@ -173,6 +197,21 @@ export TUNNEL_TOKEN="your-token"
 docker compose -f docker-compose.yml -f compose/docker-compose.public-cloudflare.yml up -d
 ```
 > For complete instructions on DNS setup, firewall rules, and reverse proxy architectures, consult the [**Secure Public Access & Reverse Proxies Guide**](secure-public-access.md).
+
+### Scenario F: PostgreSQL with pg_duckdb Columnar Analytics
+
+By default the node stores its data in a local SQLite file inside `./simulations/shared-data`, which needs no configuration at all. The infrastructure overlay replaces that with a PostgreSQL container carrying the `pg_duckdb` extension, for vectorized SQL over large Parquet trajectory sets:
+```bash
+# Optional but recommended: choose your own database password before the first launch
+export WEAVER_POSTGRES_PASSWORD="$(openssl rand -base64 24)"
+docker compose -f docker-compose.yml -f docker-compose.infra.yml up -d
+```
+`WEAVER_POSTGRES_PASSWORD` is read by both the database and the parser, so the two can never drift apart. If you do not set it, the published placeholder `weaver_secret_change_me` is used; that is safe only because the database port is published on the loopback interface only (`127.0.0.1:5432`) and the parser reaches the database over the private Compose network. Set a real password before exposing that port anywhere else.
+
+The parser is pointed at the database with `POSTGRES_CONNECTION_STRING=Host=pg-duckdb;...`, which the overlay sets for you, and it waits for the database healthcheck before starting. Both details matter: if the connection fails for any reason the service **quietly** falls back to local SQLite and carries on, so a missing connection string or an early start looks like success while the PostgreSQL database sits unused. Confirm which backend is actually live after launch — the authenticated health report names it under `subsystems.database.provider`, as either `PostgreSQL (pg-duckdb)` or `Local SQLite Fallback`:
+```bash
+curl -s -H "Authorization: Bearer <your-token>" http://localhost:5000/api/system/health
+```
 
 ### Verifying Container Health
 Check the status of running containers:

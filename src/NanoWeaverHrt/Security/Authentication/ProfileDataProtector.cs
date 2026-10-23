@@ -1,6 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
-using Microsoft.Extensions.Configuration;
+using NanoWeaverHrt.Security.Secrets;
 
 namespace NanoWeaverHrt.Security.Authentication;
 
@@ -8,6 +8,27 @@ namespace NanoWeaverHrt.Security.Authentication;
 /// Cryptographic envelope protector for sensitive patient profile assets (such as avatar pictures and PHI fields),
 /// applying authenticated AES-256-GCM encryption at rest.
 /// </summary>
+/// <remarks>
+/// <para>
+/// <strong>What is this:</strong> A small two-way door for patient data. Values go in as plain text and come out
+/// as an opaque <c>data:application/encrypted;base64,…</c> string that is useless without this node's key.
+/// </para>
+/// <para>
+/// <strong>Why it exists:</strong> Avatars, preferred names and clinical notes are protected health information.
+/// They must be unreadable to anyone who obtains a copy of the database file or a backup.
+/// </para>
+/// <para>
+/// <strong>How it works:</strong> AES-256-GCM with a fresh random 96-bit nonce per value and a 128-bit
+/// authentication tag, keyed by the node's PHI master key from <see cref="INodeSecretStore"/>.
+/// </para>
+/// <para>
+/// <strong>Upgrade path:</strong> deployments created before the node key existed encrypted their data with the
+/// SHA-256 of a constant that was published in this repository. That historic key is retained here as a
+/// <strong>decrypt-only</strong> fallback so that no patient data is lost on upgrade, and every successful
+/// legacy decryption is counted in <see cref="LegacyDecryptionCount"/> so the host can re-encrypt the affected
+/// rows under the new key at startup. Nothing encrypts with the legacy key, ever.
+/// </para>
+/// </remarks>
 public sealed class ProfileDataProtector
 {
     /// <summary>
@@ -31,31 +52,78 @@ public sealed class ProfileDataProtector
     private const string EncryptedPrefix = "data:application/encrypted;base64,";
 
     /// <summary>
-    /// Cryptographic key material derived from node pepper.
+    /// Error text used when an envelope claims to be protected but is structurally unusable.
     /// </summary>
-    private readonly byte[] _encryptionKey;
+    /// <remarks>
+    /// Deliberately free of file paths, key bytes, SQL and connection strings, so that it stays safe even if it
+    /// ever reached an API client through the RFC 7807 handler (Prime Directive 14).
+    /// </remarks>
+    private const string MalformedEnvelopeMessage = "Protected profile field envelope is malformed.";
+
+    /// <summary>
+    /// Error text used when an envelope cannot be authenticated with either the active or the legacy key.
+    /// </summary>
+    private const string UndecryptableMessage =
+        "Protected profile field could not be decrypted with the active or legacy node key.";
+
+    /// <summary>
+    /// Hex encoding of the historic PHI key: the SHA-256 digest of the profile-protection pepper that earlier
+    /// releases hard-coded in this public repository.
+    /// </summary>
+    /// <remarks>
+    /// The digest is embedded rather than the original pepper text so that the historic secret is not reprinted
+    /// in the source tree. It exists for one purpose only: decrypting data written before this node generated
+    /// its own key, so that upgrading loses no patient record.
+    /// </remarks>
+    private const string LegacyPhiMasterKeyHex = "FEA47E93A869FF0D5965AB61A3E7476FE15632CE387DBFBC49CB84A3E45A2FE6";
+
+    /// <summary>
+    /// Decrypt-only key material for data written before per-node key provisioning existed.
+    /// </summary>
+    private static readonly byte[] LegacyPhiMasterKey = Convert.FromHexString(LegacyPhiMasterKeyHex);
+
+    /// <summary>
+    /// AES-256-GCM key material provisioned for this node, used for all encryption and for decryption first.
+    /// </summary>
+    private readonly ReadOnlyMemory<byte> _encryptionKey;
+
+    /// <summary>
+    /// Running count of values that could only be decrypted with the legacy key.
+    /// </summary>
+    private long _legacyDecryptionCount;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ProfileDataProtector"/> class.
     /// </summary>
-    /// <param name="configuration">Application configuration containing security pepper settings.</param>
-    public ProfileDataProtector(IConfiguration configuration)
+    /// <param name="secretStore">Provider of this node's persisted 256-bit PHI master key.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="secretStore"/> is <c>null</c>.</exception>
+    public ProfileDataProtector(INodeSecretStore secretStore)
     {
-        // WHAT: Derives a 256-bit symmetric key from system configuration or fallback secret.
-        // WHY:  Ensures data-at-rest encryption for sensitive visual and biometric health assets.
-        // HOW:  Hashes the configured secret pepper using SHA-256 to produce an exact 32-byte key.
-        string pepper = configuration["Security:ProfilePepper"]
-            ?? configuration["SECURITY_PEPPER"]
-            ?? "nanoweaver_hrt_default_profile_protection_master_key_v1";
-
-        _encryptionKey = SHA256.HashData(Encoding.UTF8.GetBytes(pepper));
+        // WHAT: Adopts the node's persisted 256-bit PHI master key.
+        // WHY:  The previous implementation fell back to the SHA-256 of a literal published in this
+        //       repository, so every default deployment protected patient avatars and PHI with a key that
+        //       every reader of the source code already knew.
+        // HOW:  INodeSecretStore provisions a random key on first launch into an owner-only file that lives
+        //       outside the database it protects.
+        ArgumentNullException.ThrowIfNull(secretStore);
+        _encryptionKey = secretStore.PhiMasterKey;
     }
+
+    /// <summary>
+    /// Gets the number of values decrypted with the legacy key since this instance was created.
+    /// </summary>
+    /// <value>Zero on a deployment that has no pre-upgrade data.</value>
+    /// <remarks>
+    /// The host samples this counter around a read to decide whether a stored row still carries pre-upgrade
+    /// ciphertext and must be written back under the current key.
+    /// </remarks>
+    public long LegacyDecryptionCount => Interlocked.Read(ref _legacyDecryptionCount);
 
     /// <summary>
     /// Encrypts a raw data-URI or plaintext string into an authenticated AES-256-GCM encrypted envelope.
     /// </summary>
     /// <param name="plainDataUri">The raw data-URI or image string to protect.</param>
-    /// <returns>An encrypted data-URI string.</returns>
+    /// <returns>An encrypted data-URI string, or an empty string when there was nothing to protect.</returns>
     public string EncryptDataUri(string? plainDataUri)
     {
         // WHAT: Encrypts the provided string using AES-256-GCM and formats as an encrypted data URI.
@@ -78,7 +146,7 @@ public sealed class ProfileDataProtector
         byte[] cipherBytes = new byte[plainBytes.Length];
         byte[] tag = new byte[TagSizeBytes];
 
-        using (AesGcm aes = new(_encryptionKey, TagSizeBytes))
+        using (AesGcm aes = new(_encryptionKey.Span, TagSizeBytes))
         {
             aes.Encrypt(nonce, plainBytes, cipherBytes, tag);
         }
@@ -95,13 +163,30 @@ public sealed class ProfileDataProtector
     /// <summary>
     /// Decrypts an authenticated AES-256-GCM encrypted data-URI envelope back into its raw string.
     /// </summary>
-    /// <param name="encryptedDataUri">The encrypted data-URI string.</param>
-    /// <returns>The decrypted plaintext string, or the input if not encrypted or invalid.</returns>
+    /// <param name="encryptedDataUri">The encrypted data-URI string, a plaintext value, or <c>null</c>.</param>
+    /// <returns>
+    /// The decrypted plaintext for a protected value, an empty string for a blank input, or the input itself
+    /// when it is ordinary plaintext that was never protected.
+    /// </returns>
+    /// <exception cref="CryptographicException">
+    /// The value carries the protected-envelope prefix but is not valid Base64, is shorter than a nonce plus a
+    /// tag, or fails authentication under both the active and the legacy node key.
+    /// </exception>
+    /// <remarks>
+    /// <para>
+    /// Earlier releases swallowed every failure here and returned the ciphertext unchanged, which handed the
+    /// caller an opaque <c>data:application/encrypted;base64,…</c> string dressed up as plaintext: a silent
+    /// failure that is indistinguishable from a value that was never encrypted. Genuine failures now throw, so
+    /// a wrong key, a truncated column or a tampered row is visible instead of being rendered as garbage.
+    /// Ordinary plaintext never throws, because it does not carry the prefix.
+    /// </para>
+    /// </remarks>
     public string DecryptDataUri(string? encryptedDataUri)
     {
         // WHAT: Decrypts an encrypted data URI back into the original plaintext data URI.
         // WHY:  Allows authorized clients with verified session claims to render decrypted images.
-        // HOW:  Extracts nonce, tag, and ciphertext from Base64 envelope and decrypts using AesGcm.
+        // HOW:  Extracts nonce, tag, and ciphertext from the Base64 envelope, tries the node key, then the
+        //       decrypt-only legacy key, and otherwise reports a cryptographic failure.
         if (string.IsNullOrWhiteSpace(encryptedDataUri))
         {
             return string.Empty;
@@ -112,37 +197,74 @@ public sealed class ProfileDataProtector
             return encryptedDataUri;
         }
 
+        byte[] payload;
         try
         {
-            string base64Payload = encryptedDataUri[EncryptedPrefix.Length..];
-            byte[] payload = Convert.FromBase64String(base64Payload);
+            payload = Convert.FromBase64String(encryptedDataUri[EncryptedPrefix.Length..]);
+        }
+        catch (FormatException ex)
+        {
+            throw new CryptographicException(MalformedEnvelopeMessage, ex);
+        }
 
-            if (payload.Length < NonceSizeBytes + TagSizeBytes)
-            {
-                return encryptedDataUri;
-            }
+        if (payload.Length < NonceSizeBytes + TagSizeBytes)
+        {
+            throw new CryptographicException(MalformedEnvelopeMessage);
+        }
 
-            byte[] nonce = new byte[NonceSizeBytes];
-            byte[] tag = new byte[TagSizeBytes];
-            int cipherLen = payload.Length - NonceSizeBytes - TagSizeBytes;
-            byte[] cipherBytes = new byte[cipherLen];
-            byte[] plainBytes = new byte[cipherLen];
+        ReadOnlySpan<byte> nonce = payload.AsSpan(0, NonceSizeBytes);
+        ReadOnlySpan<byte> tag = payload.AsSpan(NonceSizeBytes, TagSizeBytes);
+        ReadOnlySpan<byte> cipherBytes = payload.AsSpan(NonceSizeBytes + TagSizeBytes);
+        byte[] plainBytes = new byte[cipherBytes.Length];
 
-            Buffer.BlockCopy(payload, 0, nonce, 0, NonceSizeBytes);
-            Buffer.BlockCopy(payload, NonceSizeBytes, tag, 0, TagSizeBytes);
-            Buffer.BlockCopy(payload, NonceSizeBytes + TagSizeBytes, cipherBytes, 0, cipherLen);
-
-            using (AesGcm aes = new(_encryptionKey, TagSizeBytes))
-            {
-                aes.Decrypt(nonce, cipherBytes, tag, plainBytes);
-            }
-
+        if (TryDecrypt(_encryptionKey.Span, nonce, cipherBytes, tag, plainBytes))
+        {
             return Encoding.UTF8.GetString(plainBytes);
         }
-        catch (Exception ex) when (ex is CryptographicException or FormatException)
+
+        // WHAT: Second attempt with the historic published key.
+        // WHY:  Data written before this node generated its own key must remain readable, otherwise upgrading
+        //       the service would silently destroy patient avatars and PHI.
+        // HOW:  Decrypt with the legacy key and record the event so the host can re-encrypt the row.
+        if (TryDecrypt(LegacyPhiMasterKey, nonce, cipherBytes, tag, plainBytes))
         {
-            // Tampered or invalid ciphertext
-            return encryptedDataUri;
+            Interlocked.Increment(ref _legacyDecryptionCount);
+            return Encoding.UTF8.GetString(plainBytes);
+        }
+
+        throw new CryptographicException(UndecryptableMessage);
+    }
+
+    /// <summary>
+    /// Attempts an AES-256-GCM open operation with the supplied key.
+    /// </summary>
+    /// <param name="key">The 32-byte key to try.</param>
+    /// <param name="nonce">The 12-byte nonce taken from the envelope.</param>
+    /// <param name="cipherBytes">The ciphertext taken from the envelope.</param>
+    /// <param name="tag">The 16-byte authentication tag taken from the envelope.</param>
+    /// <param name="plainBytes">Destination buffer, exactly as long as <paramref name="cipherBytes"/>.</param>
+    /// <returns><c>true</c> when the tag authenticated and <paramref name="plainBytes"/> holds the plaintext; otherwise <c>false</c>.</returns>
+    /// <remarks>
+    /// A failed tag check is an expected, non-exceptional outcome here: it is how a value encrypted under the
+    /// legacy key is told apart from a value encrypted under the current key. The authenticated mode makes this
+    /// trial decryption safe, because a wrong key cannot produce a plaintext that passes authentication.
+    /// </remarks>
+    private static bool TryDecrypt(
+        ReadOnlySpan<byte> key,
+        ReadOnlySpan<byte> nonce,
+        ReadOnlySpan<byte> cipherBytes,
+        ReadOnlySpan<byte> tag,
+        Span<byte> plainBytes)
+    {
+        try
+        {
+            using AesGcm aes = new(key, TagSizeBytes);
+            aes.Decrypt(nonce, cipherBytes, tag, plainBytes);
+            return true;
+        }
+        catch (CryptographicException)
+        {
+            return false;
         }
     }
 }
