@@ -179,6 +179,98 @@ public sealed class SecurityPenetrationTests : IClassFixture<WebApplicationFacto
     }
 
     /// <summary>
+    /// Mints a user with the given gate and returns its generated key bundle.
+    /// </summary>
+    /// <param name="username">Account name to provision.</param>
+    /// <param name="gate">Transport gate for the account.</param>
+    /// <returns>The generated key bundle holding the private key PEM.</returns>
+    private async Task<GeneratedKeyBundle> ProvisionGatedUserAsync(string username, AccessGate gate)
+    {
+        using HttpRequestMessage req = new(HttpMethod.Post, "/api/users/generate-keypair");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _adminToken);
+        req.Content = JsonContent.Create(new GenerateKeyRequest
+        {
+            Username = username,
+            Role = UserRole.Researcher,
+            AccessGate = gate,
+            Algorithm = KeyAlgorithm.Ed25519
+        });
+        HttpResponseMessage res = await _client.SendAsync(req);
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        GeneratedKeyBundle? bundle = await res.Content.ReadFromJsonAsync<GeneratedKeyBundle>();
+        Assert.NotNull(bundle);
+        return bundle;
+    }
+
+    /// <summary>
+    /// Runs the challenge/response exchange against /api/auth/token for the given account.
+    /// </summary>
+    /// <param name="username">Account name.</param>
+    /// <param name="privateKeyPem">Ed25519 private key PEM used to sign the nonce.</param>
+    /// <returns>The raw token endpoint response.</returns>
+    private async Task<HttpResponseMessage> ExchangeTokenAsync(string username, string privateKeyPem)
+    {
+        HttpResponseMessage chalRes = await _client.PostAsJsonAsync("/api/auth/challenge", new ChallengeRequest { Username = username });
+        Assert.Equal(HttpStatusCode.OK, chalRes.StatusCode);
+        AuthChallenge? challenge = await chalRes.Content.ReadFromJsonAsync<AuthChallenge>();
+        Assert.NotNull(challenge);
+
+        string clean = privateKeyPem
+            .Replace("-----BEGIN PRIVATE KEY-----", "")
+            .Replace("-----END PRIVATE KEY-----", "")
+            .Replace("\r", "")
+            .Replace("\n", "")
+            .Trim();
+        var privKey = (Ed25519PrivateKeyParameters)PrivateKeyFactory.CreateKey(Convert.FromBase64String(clean));
+        byte[] nonce = Convert.FromBase64String(challenge.NonceBase64);
+        Ed25519Signer signer = new();
+        signer.Init(true, privKey);
+        signer.BlockUpdate(nonce, 0, nonce.Length);
+        string signature = Convert.ToBase64String(signer.GenerateSignature());
+
+        return await _client.PostAsJsonAsync("/api/auth/token", new TokenExchangeRequest
+        {
+            Username = username,
+            ChallengeId = challenge.ChallengeId,
+            SignatureBase64 = signature
+        });
+    }
+
+    /// <summary>
+    /// Pins the transport boundary by endpoint identity in all four directions.
+    /// </summary>
+    [Fact]
+    public async Task TransportBoundary_IsDecidedByEndpoint_InAllFourDirections()
+    {
+        // WHAT: Proves cookie-granting login-key is Web-only and token is Api-only.
+        // WHY:  The transport must come from endpoint identity, never a client-supplied field (Directive 12).
+        // HOW:  Provisions a Web and an Api account, then exercises both endpoints with each.
+        GeneratedKeyBundle web = await ProvisionGatedUserAsync("gate_web_user", AccessGate.Web);
+        GeneratedKeyBundle api = await ProvisionGatedUserAsync("gate_api_user", AccessGate.Api);
+
+        // 1. Web account via the cookie-granting endpoint: accepted and receives the cookie
+        HttpResponseMessage webLogin = await _client.PostAsJsonAsync("/api/auth/login-key", new KeyLoginRequest { Username = "gate_web_user", PrivateKeyPem = web.PrivateKeyPem });
+        Assert.Equal(HttpStatusCode.OK, webLogin.StatusCode);
+        Assert.Contains(webLogin.Headers.GetValues("Set-Cookie"), c => c.StartsWith("weaver_session=", StringComparison.Ordinal));
+
+        // 2. Api account via the cookie-granting endpoint: refused, no cookie, opaque fixed message
+        HttpResponseMessage apiLogin = await _client.PostAsJsonAsync("/api/auth/login-key", new KeyLoginRequest { Username = "gate_api_user", PrivateKeyPem = api.PrivateKeyPem });
+        Assert.Equal(HttpStatusCode.Unauthorized, apiLogin.StatusCode);
+        Assert.False(apiLogin.Headers.Contains("Set-Cookie"));
+        Assert.Contains("API access only", await apiLogin.Content.ReadAsStringAsync());
+
+        // 3. Api account via /api/auth/token: accepted and NO cookie
+        HttpResponseMessage apiToken = await ExchangeTokenAsync("gate_api_user", api.PrivateKeyPem);
+        Assert.Equal(HttpStatusCode.OK, apiToken.StatusCode);
+        Assert.False(apiToken.Headers.Contains("Set-Cookie"));
+
+        // 4. Web account via /api/auth/token: refused
+        HttpResponseMessage webToken = await ExchangeTokenAsync("gate_web_user", web.PrivateKeyPem);
+        Assert.Equal(HttpStatusCode.Unauthorized, webToken.StatusCode);
+        Assert.Contains("Web UI access only", await webToken.Content.ReadAsStringAsync());
+    }
+
+    /// <summary>
     /// Penetration Probe: Verifies that access gating boundaries (Web vs API) cannot be crossed.
     /// </summary>
     [Fact]
@@ -201,29 +293,19 @@ public sealed class SecurityPenetrationTests : IClassFixture<WebApplicationFacto
         GeneratedKeyBundle? bundle = await keyRes.Content.ReadFromJsonAsync<GeneratedKeyBundle>();
         Assert.NotNull(bundle);
 
-        // 1. Direct login via /api/auth/login-key should be rejected because user is gated to Web UI only
+        // 1. Direct login via /api/auth/login-key is the cookie-granting web transport, so a Web-gated user is accepted
         KeyLoginRequest loginReq = new()
         {
             Username = "browser_only_user",
             PrivateKeyPem = bundle.PrivateKeyPem
         };
         HttpResponseMessage loginRes = await _client.PostAsJsonAsync("/api/auth/login-key", loginReq);
-        Assert.Equal(HttpStatusCode.Unauthorized, loginRes.StatusCode);
-        string loginBody = await loginRes.Content.ReadAsStringAsync();
-        Assert.Contains("Web UI access only", loginBody);
+        Assert.Equal(HttpStatusCode.OK, loginRes.StatusCode);
+        AuthTokenResponse? loginAuth = await loginRes.Content.ReadFromJsonAsync<AuthTokenResponse>();
+        Assert.NotNull(loginAuth);
+        string webToken = loginAuth.Token;
 
-        // 2. Even if an interactive Web UI session token is minted, REST API middleware rejects with 403 Forbidden
-        using var scope = _factory.Services.CreateScope();
-        IUserAuthenticationService authService = scope.ServiceProvider.GetRequiredService<IUserAuthenticationService>();
-        var (success, _, webToken, _) = await authService.AuthenticateWithPrivateKeyAsync(
-            "browser_only_user",
-            bundle.PrivateKeyPem,
-            password: null,
-            isWebRequest: true,
-            CancellationToken.None);
-        Assert.True(success);
-        Assert.NotNull(webToken);
-
+        // 2. Even though a Web UI session token was minted, REST API middleware rejects with 403 Forbidden
         // Attempt REST API endpoint with Web-gated token -> 403 Forbidden
         using HttpRequestMessage apiReq = new(HttpMethod.Get, "/api/datasets");
         apiReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", webToken);

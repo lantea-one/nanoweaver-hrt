@@ -1735,13 +1735,17 @@ public class Program
         .Produces(StatusCodes.Status401Unauthorized);
 
         // ---------------------------------------------------------------------
-        // REST API: Direct Private Key Login (Web & API)
+        // REST API: Direct Private Key Login (Web UI only - grants a browser session cookie)
         // ---------------------------------------------------------------------
         app.MapPost("/api/auth/login-key", async (KeyLoginRequest request, IUserAuthenticationService auth, HttpContext context, CancellationToken ct) =>
         {
             // WHAT: Authenticates user directly using their private key PEM and optional password.
-            // WHY:  Provides streamlined sign-in for Web UI and REST API scripts holding private key files.
+            // WHY:  Provides streamlined sign-in for the browser UI. This endpoint grants a browser session cookie,
+            //       so it IS the web transport; API-only accounts must use /api/auth/token instead.
             // HOW:  Decrypts private key in-memory, signs an ephemeral nonce, validates against public key, and sets session cookie.
+            //       The transport is fixed by endpoint identity (isWebRequest: true), never derived from a header,
+            //       Origin, Accept or body field, because every one of those is client-controlled and would let a
+            //       caller certify their own transport and void the Api/Web access gate.
             if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.PrivateKeyPem))
             {
                 return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Username and privateKeyPem are required.");
@@ -1751,7 +1755,7 @@ public class Program
                 request.Username,
                 request.PrivateKeyPem,
                 request.Password,
-                isWebRequest: false,
+                isWebRequest: true,
                 ct);
 
             if (!success || token == null || user == null)
@@ -1777,8 +1781,8 @@ public class Program
         })
         .WithName("LoginWithPrivateKey")
         .WithTags("Authentication & Setup")
-        .WithSummary("Authenticates directly using private key PEM and optional password.")
-        .WithDescription("Directly verifies private key ownership, signs an ephemeral nonce, and returns a Bearer token.")
+        .WithSummary("Authenticates a browser session directly using private key PEM and optional password.")
+        .WithDescription("Web-transport endpoint: refuses Api-gated accounts, verifies private key ownership, sets the session cookie and returns a Bearer token.")
         .Accepts<KeyLoginRequest>("application/json", "application/xml", "application/x-yaml")
         .Produces<AuthTokenResponse>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status400BadRequest)

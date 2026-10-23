@@ -283,9 +283,10 @@ public sealed class AuthEndpointsIntegrationTests : IClassFixture<WebApplication
             PrivateKeyPem = webBundle.PrivateKeyPem
         };
 
-        // Note: isWebRequest=false for /api/auth/login-key will reject Web-only users
+        // Note: /api/auth/login-key grants a browser session cookie, so it is the web transport (isWebRequest=true)
+        // and ACCEPTS Web-only users. The API transport (/api/auth/token) is what refuses them.
         HttpResponseMessage webApiLoginRes = await _client.PostAsJsonAsync("/api/auth/login-key", webLoginReq);
-        Assert.Equal(HttpStatusCode.Unauthorized, webApiLoginRes.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, webApiLoginRes.StatusCode);
 
         // ---------------------------------------------------------------------
         // STEP 9: Role Gating Restrictions
