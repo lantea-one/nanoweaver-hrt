@@ -608,6 +608,37 @@ public sealed class EventBusAndValkeyTests : IClassFixture<WebApplicationFactory
     }
 
     /// <summary>
+    /// Verifies the bridge's monitoring loop is skipped, deterministically, when it starts already cancelled.
+    /// </summary>
+    [Fact]
+    public async Task ValkeyEventBridge_StartedAlreadyCancelled_SkipsMonitoringLoopDeterministically()
+    {
+        // WHAT: Runs the bridge's protected worker body directly with a token that is already cancelled.
+        // WHY:  Whether the loop-exit path runs otherwise depends on whether a stop signal wins a race
+        //       against the first loop iteration (StartAsync itself rejects an already-cancelled token, so
+        //       it cannot be used), which made coverage of that path vary between runs. Directive 6
+        //       requires deterministic tests, so this path gets its own test with no timing at all.
+        // HOW:  Invokes ExecuteAsync by reflection with a cancelled token; the loop condition is false on
+        //       entry, so the task completes synchronously and successfully.
+        await using ChannelEventBus bus = new();
+        Mock<IValkeyConnectionFactory> mockFactory = new();
+        mockFactory.SetupGet(f => f.IsConnected).Returns(false);
+        ValkeyEventBridge bridge = new(bus, mockFactory.Object);
+
+        using CancellationTokenSource cts = new();
+        await cts.CancelAsync();
+        System.Reflection.MethodInfo execute = typeof(ValkeyEventBridge).GetMethod(
+            "ExecuteAsync",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!; // protected member of this very type; it exists.
+        Task worker = (Task)execute.Invoke(bridge, [cts.Token])!; // returns a Task, never null.
+
+        await worker;
+        Assert.True(worker.IsCompletedSuccessfully);
+        Assert.False(bridge.IsActive);
+        bridge.Dispose();
+    }
+
+    /// <summary>
     /// Verifies integration between UserSessionState, IInternalEventBus, and IValkeyCacheService.
     /// </summary>
     [Fact]

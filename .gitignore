@@ -591,6 +591,9 @@ coverage*.json
 coverage*.xml
 coverage*.info
 
+# The step-7 ratchet baseline is deliberately tracked: the rule above would otherwise hide it.
+!/coverage-baseline.json
+
 # Visual Studio code coverage results
 
 # NCrunch

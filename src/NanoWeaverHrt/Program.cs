@@ -13,6 +13,7 @@ using NanoWeaverHrt.Abstractions;
 using NanoWeaverHrt.Compliance;
 using NanoWeaverHrt.Components;
 using NanoWeaverHrt.Configuration;
+using NanoWeaverHrt.Database.Access;
 using NanoWeaverHrt.Endocrine;
 using NanoWeaverHrt.Fabrication;
 using NanoWeaverHrt.Genomics;
@@ -110,6 +111,7 @@ public class Program
         builder.Services.AddSingleton<IEncryptedStorageService, EncryptedStorageService>();
         builder.Services.AddSingleton<ISimulationCampaignService, SimulationCampaignService>();
         builder.Services.AddSingleton<DatabaseMigrationRunner>();
+        builder.Services.AddSingleton<IWeaverDbConnectionFactory, WeaverDbConnectionFactory>();
         builder.Services.AddSingleton<IUserRepository, UserRepository>();
         builder.Services.AddSingleton<ProfileDataProtector>();
         builder.Services.AddSingleton<IUserProfileRepository, UserProfileRepository>();

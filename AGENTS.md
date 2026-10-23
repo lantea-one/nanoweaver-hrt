@@ -128,7 +128,7 @@
 
 ## 3. Developer Workflows & Quality Verification
 
-### Run Full Verification Gate (All 6 Checks)
+### Run Full Verification Gate (All 7 Checks)
 ```bash
 ./scripts/verify-all.sh
 ```
@@ -139,6 +139,7 @@ This runs:
 4. Cobertura coverage gate (100.00% line and branch coverage threshold)
 5. Markdown scan (0 unescaped single-dollar LaTeX interpolation tokens)
 6. Docblock scan (`scripts/check-docblocks.py`: every documented member has one `<param>` per parameter and a `<returns>`)
+7. Un-excluded coverage ratchet (`scripts/check-coverage-ratchet.py`: re-measures with compiler-generated code included and compares against the committed `coverage-baseline.json`; no rate may fall and no class's uncovered-line count may rise)
 
 ### How to Build & Run Locally
 ```bash

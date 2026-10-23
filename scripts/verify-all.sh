@@ -14,21 +14,29 @@
 set -euo pipefail
 
 echo "=============================================================================="
-echo ">> Step 1/6: Verifying .NET Code Formatting..."
+echo ">> Step 1/7: Verifying .NET Code Formatting..."
 echo "=============================================================================="
 XDG_RUNTIME_DIR=/tmp dotnet format NanoWeaverHrt.slnx --no-restore --verify-no-changes --verbosity normal
 echo "✓ .NET code formatting verified cleanly."
 
 echo ""
 echo "=============================================================================="
-echo ">> Step 2/6: Verifying JavaScript Code & Coverage Gate (100% Threshold)..."
+echo ">> Step 2/7: Verifying JavaScript Code & Coverage Gate (100% Threshold)..."
 echo "=============================================================================="
 npm test
 echo "✓ JavaScript test suite passed with 100% line, branch, and function coverage."
 
+# WHY: A human reading the gate output must be able to tell whether the PostgreSQL assertions ran.
+#      The variable holds a connection string with a password, so only its presence is reported,
+#      never its value (the ${VAR:-default} form would echo the value back).
+if [ -n "${WEAVER_TEST_POSTGRES:-}" ]; then
+    echo "WEAVER_TEST_POSTGRES: set (PostgreSQL-backed tests WILL run)"
+else
+    echo "WEAVER_TEST_POSTGRES: unset (PostgreSQL-backed tests will be skipped)"
+fi
 echo ""
 echo "=============================================================================="
-echo ">> Step 3/6: Running .NET Test Suite with Coverage Collection..."
+echo ">> Step 3/7: Running .NET Test Suite with Coverage Collection..."
 echo "=============================================================================="
 XDG_RUNTIME_DIR=/tmp dotnet test NanoWeaverHrt.slnx \
     --configuration Release \
@@ -39,7 +47,7 @@ echo "✓ All .NET unit and integration tests passed."
 
 echo ""
 echo "=============================================================================="
-echo ">> Step 4/6: Enforcing 100.00% Line & Branch Coverage Threshold..."
+echo ">> Step 4/7: Enforcing 100.00% Line & Branch Coverage Threshold..."
 echo "=============================================================================="
 python3 -c "
 import xml.etree.ElementTree as ET
@@ -47,7 +55,8 @@ import glob
 import os
 import sys
 
-files = glob.glob('**/coverage.cobertura.xml', recursive=True)
+# WHY: Step 7 writes a second, un-excluded report under artifacts/; it must never be evaluated here.
+files = [f for f in glob.glob('**/coverage.cobertura.xml', recursive=True) if 'artifacts/' not in f.replace(os.sep, '/')]
 if not files:
     print('::error::No coverage.cobertura.xml report found!')
     sys.exit(1)
@@ -92,7 +101,7 @@ print('✓ Line and branch code coverage verified at 100.00%.')
 
 echo ""
 echo "=============================================================================="
-echo ">> Step 5/6: Verifying Documentation Markdown Math Delimiters..."
+echo ">> Step 5/7: Verifying Documentation Markdown Math Delimiters..."
 echo "=============================================================================="
 python3 - << 'EOF'
 import glob, re, sys
@@ -137,7 +146,7 @@ EOF
 
 echo ""
 echo "=============================================================================="
-echo ">> Step 6/6: Verifying XML Docblock Completeness (<param> / <returns>)..."
+echo ">> Step 6/7: Verifying XML Docblock Completeness (<param> / <returns>)..."
 echo "=============================================================================="
 # WHY: The C# compiler cannot enforce Prime Directive 2. CS1591 fires only when a doc
 #      comment is missing entirely, and only for publicly visible members; CS1573 fires
@@ -145,6 +154,24 @@ echo "==========================================================================
 #      a <summary> produces no diagnostic at all, so only this scanner closes the gap.
 python3 -I scripts/check-docblocks.py src
 echo "✓ Every documented member has a <param> per parameter and a <returns>."
+
+echo ""
+echo "=============================================================================="
+echo ">> Step 7/7: Enforcing the un-excluded coverage ratchet..."
+echo "=============================================================================="
+rm -rf artifacts/coverage-full
+# WHY: the ratchet must be a machine-independent number. With WEAVER_TEST_POSTGRES set, the
+#      Postgres-only paths become covered and the measurement improves; with it unset they do
+#      not. Comparing a baseline across both configurations would make step 7 flap. Step 7
+#      therefore always measures the Postgres-absent configuration.
+env -u WEAVER_TEST_POSTGRES XDG_RUNTIME_DIR=/tmp dotnet test NanoWeaverHrt.slnx \
+    --configuration Release --no-build \
+    --settings coverage-full.runsettings \
+    --collect:"XPlat Code Coverage" \
+    --results-directory artifacts/coverage-full \
+    --verbosity minimal
+python3 -I scripts/check-coverage-ratchet.py artifacts/coverage-full coverage-baseline.json
+echo "✓ Un-excluded coverage matches the committed ratchet baseline."
 
 echo ""
 echo "=============================================================================="

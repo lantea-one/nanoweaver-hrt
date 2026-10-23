@@ -3,6 +3,8 @@ using System.Text;
 using Microsoft.Extensions.Configuration;
 using NanoWeaverHrt.Compliance;
 using NanoWeaverHrt.Configuration;
+using NanoWeaverHrt.Database.Access;
+using NanoWeaverHrt.Database.Migrations;
 using NanoWeaverHrt.Endocrine;
 using NanoWeaverHrt.Security.Authentication;
 using NanoWeaverHrt.Security.Cryptography;
@@ -271,14 +273,14 @@ public sealed class NodeSecretIsolationAndPhiMigrationTests : IDisposable
         }
 
         ProfileDataProtector historicProtector = new(CreateHistoricPhiStore("phi-migration-historic"));
-        using (UserProfileRepository historicRepo = new(configuration, configStore, historicProtector))
+        using (UserProfileRepository historicRepo = new(new WeaverDbConnectionFactory(configuration, configStore, new DatabaseMigrationRunner()), historicProtector))
         {
             await historicRepo.UpsertProfileAsync(BuildProfile("legacy_patient"));
         }
 
         NodeSecretStore nodeStore = CreateStore("phi-migration-node");
         ProfileDataProtector nodeProtector = new(nodeStore);
-        using UserProfileRepository nodeRepo = new(configuration, configStore, nodeProtector);
+        using UserProfileRepository nodeRepo = new(new WeaverDbConnectionFactory(configuration, configStore, new DatabaseMigrationRunner()), nodeProtector);
         await nodeRepo.UpsertProfileAsync(BuildProfile("current_patient"));
 
         int upgraded = await Program.ReEncryptLegacyProfilePhiAsync(userRepository, nodeRepo, nodeProtector);
@@ -289,7 +291,7 @@ public sealed class NodeSecretIsolationAndPhiMigrationTests : IDisposable
         // A second pass, with a protector holding the same persisted key, must find nothing left to do and must
         // never touch the legacy key again: the stored ciphertext now belongs to this node.
         ProfileDataProtector verifyProtector = new(CreateStore("phi-migration-node"));
-        using UserProfileRepository verifyRepo = new(configuration, configStore, verifyProtector);
+        using UserProfileRepository verifyRepo = new(new WeaverDbConnectionFactory(configuration, configStore, new DatabaseMigrationRunner()), verifyProtector);
         int secondPass = await Program.ReEncryptLegacyProfilePhiAsync(userRepository, verifyRepo, verifyProtector);
 
         Assert.Equal(0, secondPass);

@@ -1,4 +1,5 @@
 using System.Data.Common;
+using NanoWeaverHrt.Database.Access;
 
 namespace NanoWeaverHrt.Database.Migrations;
 
@@ -162,7 +163,8 @@ public sealed class DatabaseMigrationRunner : IDisposable
 
                     using DbCommand recordCmd = conn.CreateCommand();
                     recordCmd.Transaction = tx;
-                    recordCmd.CommandText = dialect.StartsWith("postgres", StringComparison.OrdinalIgnoreCase)
+                    bool isPostgres = dialect.StartsWith("postgres", StringComparison.OrdinalIgnoreCase);
+                    recordCmd.CommandText = isPostgres
                         ? "INSERT INTO weaver_schema_migrations (version, name, applied_at_utc) VALUES (@v, @n, @t) ON CONFLICT (version) DO NOTHING"
                         : "INSERT OR REPLACE INTO weaver_schema_migrations (version, name, applied_at_utc) VALUES (@v, @n, @t)";
 
@@ -178,7 +180,12 @@ public sealed class DatabaseMigrationRunner : IDisposable
 
                     DbParameter pTime = recordCmd.CreateParameter();
                     pTime.ParameterName = "@t";
-                    pTime.Value = DateTimeOffset.UtcNow.ToString("O");
+                    // WHAT: Binds the applied-at timestamp in the form each engine's column expects.
+                    // WHY:  PostgreSQL declares applied_at_utc as TIMESTAMPTZ and rejects text for it (42804),
+                    //       which made every migration fail on PostgreSQL; SQLite declares TEXT and its existing
+                    //       rows hold ISO-8601 round-trip strings, so it must keep receiving that format.
+                    // HOW:  Asks the engine's dialect to coerce the timestamp instead of formatting it here.
+                    pTime.Value = (isPostgres ? PostgreSqlDialect.Instance : SqliteDialect.Instance).TimestampValue(DateTimeOffset.UtcNow);
                     recordCmd.Parameters.Add(pTime);
 
                     await recordCmd.ExecuteNonQueryAsync(ct);
