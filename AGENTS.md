@@ -28,7 +28,14 @@
    - Explain domain concepts in plain English. Assume the reader is a talented junior software engineer with zero chemistry background, or a molecular biologist with basic scripting skills.
 
 5. **Mandatory 100.00% Line & Branch Code Coverage Threshold**:
-   - Zero uncovered lines and zero uncovered branches are allowed across the entire solution.
+   - Gate step 4 enforces zero uncovered lines and zero uncovered branches across the measured scope
+     defined by `coverlet.runsettings`, which excludes compiler-generated code (minimal-API endpoint
+     lambdas and async state machines), `.razor` components and generated code.
+   - Gate step 7 measures the same solution with compiler-generated code included and enforces the
+     committed `coverage-baseline.json`: no rate may fall, no class's uncovered-line count may rise,
+     and the baseline may only ever be revised downward — until it reaches 100.00%, at which point
+     the exclusion, the second runsettings file and the baseline are deleted and step 4 alone
+     enforces the real number.
    - Any new method, logic branch (`if`, `switch`, `catch`, ternary operators), or boundary condition MUST have comprehensive unit tests in `tests/NanoWeaverHrt.Tests`.
    - Never use `[ExcludeFromCodeCoverage]` as a shortcut to avoid writing tests.
    - Client-side JavaScript (`weaver-visualizer.js`) MUST maintain 100% line, branch, and function coverage via `npm test`.
@@ -57,7 +64,7 @@
       ```bash
       ./scripts/verify-all.sh
       ```
-    - Never push or finalize if any of the 6 verification steps fail.
+    - Never push or finalize if any of the 7 verification steps fail.
 
 11. **Sovereign Forgejo Git Remote Enforcement**:
     - Never commit, push, or mirror to GitHub.
