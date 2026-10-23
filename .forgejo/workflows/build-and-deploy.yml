@@ -189,10 +189,18 @@ jobs:
             type=semver,pattern={{version}}
 
       - name: Build and Push Web & Parser Container Image
+        # WHAT: Build this image for linux/amd64 only, never the runner's native architecture.
+        # WHY:  The .NET base images are multi-arch, so without a pin this image silently
+        #       follows whatever architecture the runner happens to be. Its companion
+        #       simulation image is amd64-only (see that step), and a stack whose two
+        #       containers disagree on architecture cannot run together. Pinning both to the
+        #       single architecture the project supports keeps the compose stack coherent.
+        # HOW:  Pass an explicit single-platform list to docker/build-push-action.
         uses: docker/build-push-action@v5
         with:
           context: .
           file: docker/web/Dockerfile.web
+          platforms: linux/amd64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta-web.outputs.tags }}
           labels: ${{ steps.meta-web.outputs.labels }}
@@ -209,10 +217,19 @@ jobs:
             type=semver,pattern={{version}}
 
       - name: Build and Push Simulation Container Image
+        # WHAT: Build this image for linux/amd64 only, never the runner's native architecture.
+        # WHY:  The simulation image installs the Intel GPU runtime (intel-opencl-icd,
+        #       intel-level-zero-gpu, libze1), and repositories.intel.com publishes those
+        #       packages for amd64 alone - its binary-arm64 index returns 403. An arm64 runner
+        #       therefore fails deep inside apt with a confusing "unable to locate package"
+        #       rather than at the point the architecture was actually chosen. Pinning keeps
+        #       both published images on one architecture so the compose stack stays coherent.
+        # HOW:  Pass an explicit single-platform list to docker/build-push-action.
         uses: docker/build-push-action@v5
         with:
           context: .
           file: docker/simulation/Dockerfile.simulation
+          platforms: linux/amd64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta-simulation.outputs.tags }}
           labels: ${{ steps.meta-simulation.outputs.labels }}
