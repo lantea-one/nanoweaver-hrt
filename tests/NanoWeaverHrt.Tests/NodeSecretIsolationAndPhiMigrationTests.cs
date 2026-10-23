@@ -87,7 +87,7 @@ public sealed class NodeSecretIsolationAndPhiMigrationTests : IDisposable
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["TRAJECTORY_INCOMING_DIR"] = dataDir,
-                ["POSTGRES_CONNECTION_STRING"] = "Host=127.0.0.1;Port=54399;Database=nonexistent;Timeout=1"
+                ["POSTGRES_CONNECTION_STRING"] = string.Empty
             })
             .Build();
     }
@@ -137,14 +137,14 @@ public sealed class NodeSecretIsolationAndPhiMigrationTests : IDisposable
         //       signature message, which the middleware answers with HTTP 401 and no server detail.
         // HOW:  Two UserAuthenticationService instances share one repository but hold two different key stores.
         IConfiguration configuration = BuildDataConfiguration("tokens");
-        SystemConfigurationStore configStore = new(configuration);
+        SystemConfigurationStore configStore = new(WeaverTestDb.CreateFactory(configuration));
         await configStore.InitializeAsync();
 
         PostQuantumCryptoProvider pqc = new();
         KeyManagementService keyManagement = new(pqc);
         ComplianceAuditService audit = new(keyManagement, pqc);
 
-        using UserRepository userRepository = new(new WeaverDbConnectionFactory(configuration, configStore, new DatabaseMigrationRunner()));
+        using UserRepository userRepository = new(WeaverTestDb.CreateFactory(configuration, new DatabaseMigrationRunner()));
         await userRepository.InitializeAsync();
 
         UserAuthenticationService nodeA = new(userRepository, pqc, audit, CreateStore("keys-node-a"));
@@ -254,10 +254,10 @@ public sealed class NodeSecretIsolationAndPhiMigrationTests : IDisposable
         // HOW:  Two repositories over one SQLite database, one holding the historic protector and one the
         //       node protector, then Program.ReEncryptLegacyProfilePhiAsync.
         IConfiguration configuration = BuildDataConfiguration("phi-migration");
-        SystemConfigurationStore configStore = new(configuration);
+        SystemConfigurationStore configStore = new(WeaverTestDb.CreateFactory(configuration));
         await configStore.InitializeAsync();
 
-        using UserRepository userRepository = new(new WeaverDbConnectionFactory(configuration, configStore, new DatabaseMigrationRunner()));
+        using UserRepository userRepository = new(WeaverTestDb.CreateFactory(configuration, new DatabaseMigrationRunner()));
         await userRepository.InitializeAsync();
 
         foreach (string username in new[] { "legacy_patient", "current_patient", "profileless_patient" })
@@ -273,14 +273,14 @@ public sealed class NodeSecretIsolationAndPhiMigrationTests : IDisposable
         }
 
         ProfileDataProtector historicProtector = new(CreateHistoricPhiStore("phi-migration-historic"));
-        using (UserProfileRepository historicRepo = new(new WeaverDbConnectionFactory(configuration, configStore, new DatabaseMigrationRunner()), historicProtector))
+        using (UserProfileRepository historicRepo = new(WeaverTestDb.CreateFactory(configuration, new DatabaseMigrationRunner()), historicProtector))
         {
             await historicRepo.UpsertProfileAsync(BuildProfile("legacy_patient"));
         }
 
         NodeSecretStore nodeStore = CreateStore("phi-migration-node");
         ProfileDataProtector nodeProtector = new(nodeStore);
-        using UserProfileRepository nodeRepo = new(new WeaverDbConnectionFactory(configuration, configStore, new DatabaseMigrationRunner()), nodeProtector);
+        using UserProfileRepository nodeRepo = new(WeaverTestDb.CreateFactory(configuration, new DatabaseMigrationRunner()), nodeProtector);
         await nodeRepo.UpsertProfileAsync(BuildProfile("current_patient"));
 
         int upgraded = await Program.ReEncryptLegacyProfilePhiAsync(userRepository, nodeRepo, nodeProtector);
@@ -293,7 +293,7 @@ public sealed class NodeSecretIsolationAndPhiMigrationTests : IDisposable
         // A second pass, with a protector holding the same persisted key, must find nothing left to do and must
         // never touch the legacy key again: the stored ciphertext now belongs to this node.
         ProfileDataProtector verifyProtector = new(CreateStore("phi-migration-node"));
-        using UserProfileRepository verifyRepo = new(new WeaverDbConnectionFactory(configuration, configStore, new DatabaseMigrationRunner()), verifyProtector);
+        using UserProfileRepository verifyRepo = new(WeaverTestDb.CreateFactory(configuration, new DatabaseMigrationRunner()), verifyProtector);
         int secondPass = await Program.ReEncryptLegacyProfilePhiAsync(userRepository, verifyRepo, verifyProtector);
 
         Assert.Equal(0, secondPass);

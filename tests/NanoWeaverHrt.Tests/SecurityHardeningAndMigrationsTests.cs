@@ -67,14 +67,14 @@ public sealed class SecurityHardeningAndMigrationsTests
                 .AddInMemoryCollection(new Dictionary<string, string?>
                 {
                     ["TRAJECTORY_INCOMING_DIR"] = tempDir,
-                    ["POSTGRES_CONNECTION_STRING"] = "Host=127.0.0.1;Port=54399;Database=nonexistent;Timeout=1"
+                    ["POSTGRES_CONNECTION_STRING"] = string.Empty
                 })
                 .Build();
 
-            using SystemConfigurationStore configStore = new(config);
+            using SystemConfigurationStore configStore = new(WeaverTestDb.CreateFactory(config));
             await configStore.InitializeAsync();
 
-            using UserRepository userRepo = new(new WeaverDbConnectionFactory(config, configStore, new DatabaseMigrationRunner()));
+            using UserRepository userRepo = new(WeaverTestDb.CreateFactory(config, new DatabaseMigrationRunner()));
             await userRepo.InitializeAsync();
 
             bool hasAdmin = await userRepo.HasAnyAdministratorAsync();

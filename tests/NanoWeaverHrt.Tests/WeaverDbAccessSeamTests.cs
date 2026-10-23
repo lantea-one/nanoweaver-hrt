@@ -12,6 +12,7 @@ using NanoWeaverHrt.Security.Authentication;
 using NanoWeaverHrt.Security.ExceptionHandling;
 using NanoWeaverHrt.Security.Secrets;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace NanoWeaverHrt.Tests;
 
@@ -20,8 +21,19 @@ namespace NanoWeaverHrt.Tests;
 /// session disposal, the connection factory against real SQLite, and the unavailable-backend exception.
 /// No database server is required.
 /// </summary>
+[Collection(PostgresTestEnvironment.CollectionName)]
 public sealed class WeaverDbAccessSeamTests : IDisposable
 {
+    /// <summary>
+    /// Shared PostgreSQL fixture.
+    /// </summary>
+    private readonly PostgresTestEnvironment _postgres;
+
+    /// <summary>
+    /// Test output sink used to report why a test did not run.
+    /// </summary>
+    private readonly ITestOutputHelper _output;
+
     /// <summary>
     /// Per-test directory under the system temp path; removed on dispose.
     /// </summary>
@@ -30,8 +42,12 @@ public sealed class WeaverDbAccessSeamTests : IDisposable
     /// <summary>
     /// Initializes a new instance of the <see cref="WeaverDbAccessSeamTests"/> class.
     /// </summary>
-    public WeaverDbAccessSeamTests()
+    /// <param name="postgres">Shared PostgreSQL fixture.</param>
+    /// <param name="output">Test output sink.</param>
+    public WeaverDbAccessSeamTests(PostgresTestEnvironment postgres, ITestOutputHelper output)
     {
+        _postgres = postgres;
+        _output = output;
         Directory.CreateDirectory(_tempDir);
     }
 
@@ -124,25 +140,6 @@ public sealed class WeaverDbAccessSeamTests : IDisposable
     }
 
     /// <summary>
-    /// Verifies backend resolution for every name shape.
-    /// </summary>
-    /// <param name="name">Recorded backend name.</param>
-    /// <param name="expected">Expected backend.</param>
-    [Theory]
-    [InlineData("PostgreSQL (pg-duckdb)", WeaverDatabaseBackend.PostgreSql)]
-    [InlineData("postgresql", WeaverDatabaseBackend.PostgreSql)]
-    [InlineData("Local SQLite Fallback", WeaverDatabaseBackend.Sqlite)]
-    [InlineData("", WeaverDatabaseBackend.Sqlite)]
-    [InlineData(null, WeaverDatabaseBackend.Sqlite)]
-    public void ResolveBackend_MapsNames(string? name, WeaverDatabaseBackend expected)
-    {
-        // WHAT: Resolves a recorded backend name to a backend value.
-        // WHY:  This single pure decision selects the database engine for every call.
-        // HOW:  Table-driven over PostgreSQL, SQLite, empty and null names.
-        Assert.Equal(expected, WeaverDbConnectionFactory.ResolveBackend(name));
-    }
-
-    /// <summary>
     /// Verifies the boolean reader coercion on both the native and integer branch.
     /// </summary>
     [Fact]
@@ -228,7 +225,7 @@ public sealed class WeaverDbAccessSeamTests : IDisposable
         // WHY:  Callers rely on blank SQL being rejected and on double disposal being harmless.
         // HOW:  Obtains the session from the real factory over an isolated temp directory.
         using DatabaseMigrationRunner runner = new();
-        WeaverDbConnectionFactory factory = new(BuildConfiguration(), new SystemConfigurationStore(BuildConfiguration()), runner);
+        WeaverDbConnectionFactory factory = WeaverTestDb.CreateFactory(BuildConfiguration(), runner);
 
         WeaverDbSession session = await factory.OpenAsync();
         Assert.Same(SqliteDialect.Instance, session.Dialect);
@@ -258,7 +255,7 @@ public sealed class WeaverDbAccessSeamTests : IDisposable
         // HOW:  Replaces weaver_config.db with a directory so SQLite cannot open it.
         using DatabaseMigrationRunner runner = new();
         IConfiguration configuration = BuildConfiguration();
-        WeaverDbConnectionFactory factory = new(configuration, new SystemConfigurationStore(configuration), runner);
+        WeaverDbConnectionFactory factory = WeaverTestDb.CreateFactory(configuration, runner);
         Assert.Equal(WeaverDatabaseBackend.Sqlite, factory.ActiveBackend);
 
         await using (WeaverDbSession ok = await factory.OpenAsync())
@@ -300,18 +297,26 @@ public sealed class WeaverDbAccessSeamTests : IDisposable
     }
 
     /// <summary>
-    /// Verifies an unreachable selected PostgreSQL backend yields an opaque RFC 7807 response.
+    /// Verifies a PostgreSQL backend lost after selection yields an opaque RFC 7807 response.
     /// </summary>
+    /// <returns>A task that completes when the test finishes.</returns>
     [Fact]
     public async Task UnavailableBackend_ThroughApiPipeline_ReturnsSanitizedProblemDetails()
     {
-        // WHAT: Drives a real repository call at an unreachable PostgreSQL through the exception middleware.
+        // WHAT: Drives a real repository call at a dropped PostgreSQL database through the exception middleware.
         // WHY:  The driver exception, host, password, paths and SQL must never reach an API client.
-        // HOW:  Runs SecureExceptionHandlerMiddleware over a delegate that calls the repository, then reads
-        //       the response body.
-        IConfiguration configuration = BuildConfiguration("Host=127.0.0.1;Port=54399;Username=u;Password=secretpw;Database=d;Timeout=1");
-        using DatabaseMigrationRunner runner = new();
-        WeaverDbConnectionFactory factory = new(configuration, new MockPostgresConfigRepo(), runner);
+        // HOW:  Resolves a real factory against PostgreSQL, drops the database, runs SecureExceptionHandlerMiddleware
+        //       over a delegate that calls the repository, then reads the response body.
+        if (!_postgres.IsAvailable)
+        {
+            // WHAT: Leaves the test body unexecuted when no PostgreSQL server was supplied.
+            // WHY:  Directive 6 forbids depending on ambient network state; a set-but-dead variable fails elsewhere.
+            // HOW:  Reports the reason through ITestOutputHelper and returns before touching the network.
+            _output.WriteLine("SKIPPED: WEAVER_TEST_POSTGRES is not set.");
+            return;
+        }
+
+        (WeaverDbConnectionFactory factory, string deadConnectionString) = await _postgres.CreateUnavailableAfterResolutionAsync(_tempDir);
         using UserProfileRepository repository = new(factory, CreateProtector());
 
         SecureExceptionHandlerMiddleware middleware = new(
@@ -330,9 +335,12 @@ public sealed class WeaverDbAccessSeamTests : IDisposable
         body.Seek(0, SeekOrigin.Begin);
         string text = await new StreamReader(body).ReadToEndAsync();
         Assert.Contains("urn:weaver:error:", text);
-        foreach (string forbidden in new[] { "Host=", "Password", "secretpw", "127.0.0.1", "/home/", "/tmp/", "SELECT", "INSERT", "weaver_user_profiles" })
+        Npgsql.NpgsqlConnectionStringBuilder dead = new(deadConnectionString);
+        foreach (string forbidden in new[] { "Host=", "Password", dead.Database!, dead.Host!, "/home/", "/tmp/", "SELECT", "INSERT", "weaver_user_profiles" }) // Both are always present in a string that connected.
         {
             Assert.DoesNotContain(forbidden, text, StringComparison.OrdinalIgnoreCase);
         }
+
+        Assert.False(File.Exists(Path.Combine(_tempDir, "weaver_config.db")));
     }
 }

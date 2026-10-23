@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.JSInterop;
 using NanoWeaverHrt.Components.Pages;
 using NanoWeaverHrt.Configuration;
@@ -65,7 +66,7 @@ public sealed class UserProfileAndContactTests : IClassFixture<WebApplicationFac
             builder.UseSetting("TRAJECTORY_INCOMING_DIR", _tempDataDir);
             builder.UseSetting("TRAJECTORY_EXPORT_DIR", Path.Combine(_tempDataDir, "exports"));
             builder.UseSetting("TRAJECTORY_PARQUET_DIR", Path.Combine(_tempDataDir, "parquet"));
-            builder.UseSetting("POSTGRES_CONNECTION_STRING", "Host=127.0.0.1;Port=54399;Database=nonexistent;Timeout=1");
+            builder.UseSetting("POSTGRES_CONNECTION_STRING", string.Empty);
         });
 
         _client = _factory.CreateClient();
@@ -178,9 +179,7 @@ public sealed class UserProfileAndContactTests : IClassFixture<WebApplicationFac
         // WHAT: Verifies constructor argument validation on the repository and the factory.
         // WHY:  Ensures a missing dependency fails at construction rather than on first use.
         // HOW:  Passes null for each dependency in turn and asserts ArgumentNullException.
-        var config = new ConfigurationBuilder().Build();
         ProfileDataProtector protector = CreateIsolatedProtector();
-        SystemConfigurationStore configStore = new(config);
         using DatabaseMigrationRunner runner = new();
         string tempDir = Path.Combine(Path.GetTempPath(), "weaver_ctor_" + Guid.NewGuid().ToString("N"));
         var isolated = new ConfigurationBuilder()
@@ -188,11 +187,12 @@ public sealed class UserProfileAndContactTests : IClassFixture<WebApplicationFac
             .Build();
         try
         {
-            Assert.Throws<ArgumentNullException>(() => new WeaverDbConnectionFactory(null!, configStore, runner));
-            Assert.Throws<ArgumentNullException>(() => new WeaverDbConnectionFactory(isolated, null!, runner));
-            Assert.Throws<ArgumentNullException>(() => new WeaverDbConnectionFactory(isolated, configStore, null!));
+            Assert.Throws<ArgumentNullException>(() => new WeaverDbConnectionFactory(null!, runner, NullLogger<WeaverDbConnectionFactory>.Instance));
+            Assert.Throws<ArgumentNullException>(() => new WeaverDbConnectionFactory(isolated, null!, NullLogger<WeaverDbConnectionFactory>.Instance));
+            Assert.Throws<ArgumentNullException>(() => new WeaverDbConnectionFactory(isolated, runner, null!));
+            Assert.Throws<ArgumentNullException>(() => new SystemConfigurationStore(null!));
 
-            WeaverDbConnectionFactory factory = new(isolated, configStore, runner);
+            WeaverDbConnectionFactory factory = WeaverTestDb.CreateFactory(isolated, runner);
             Assert.Throws<ArgumentNullException>(() => new UserProfileRepository(null!, protector));
             Assert.Throws<ArgumentNullException>(() => new UserProfileRepository(factory, null!));
 
@@ -205,49 +205,6 @@ public sealed class UserProfileAndContactTests : IClassFixture<WebApplicationFac
             {
                 Directory.Delete(tempDir, true);
             }
-        }
-    }
-
-    /// <summary>
-    /// Verifies a selected-but-unreachable PostgreSQL backend is an error and never a silent SQLite write.
-    /// </summary>
-    [Fact]
-    public async Task UserProfileRepository_PostgresUnreachable_ThrowsInsteadOfWritingToSqlite()
-    {
-        // WHAT: Selects PostgreSQL against a port nothing listens on and calls the repository.
-        // WHY:  The former per-call catch redirected such failures to the local SQLite file, splitting the
-        //       data across two databases. The failure must now propagate and nothing may be written locally.
-        // HOW:  Asserts WeaverDatabaseUnavailableException, a message free of connection details, and that
-        //       no weaver_config.db was created in the isolated temp directory.
-        ProfileDataProtector protector = CreateIsolatedProtector();
-        MockPostgresConfigRepo mockPgRepo = new();
-        string tempDir = Path.Combine(Path.GetTempPath(), "weaver_pg_fb_" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(tempDir);
-        try
-        {
-            var pgConfig = new ConfigurationBuilder()
-                .AddInMemoryCollection(new Dictionary<string, string?>
-                {
-                    ["TRAJECTORY_INCOMING_DIR"] = tempDir,
-                    ["POSTGRES_CONNECTION_STRING"] = "Host=127.0.0.1;Port=54399;Database=nonexistent;Timeout=1"
-                })
-                .Build();
-
-            using DatabaseMigrationRunner runner = new();
-            WeaverDbConnectionFactory factory = new(pgConfig, mockPgRepo, runner);
-            Assert.Equal(WeaverDatabaseBackend.PostgreSql, factory.ActiveBackend);
-            using UserProfileRepository repo = new(factory, protector);
-
-            WeaverDatabaseUnavailableException ex = await Assert.ThrowsAsync<WeaverDatabaseUnavailableException>(() => repo.GetProfileAsync("anyone"));
-            Assert.Equal(WeaverDatabaseBackend.PostgreSql, ex.Backend);
-            Assert.DoesNotContain("Host=", ex.Message);
-            Assert.DoesNotContain("Password", ex.Message);
-            Assert.DoesNotContain(tempDir, ex.Message);
-            Assert.False(File.Exists(Path.Combine(tempDir, "weaver_config.db")));
-        }
-        finally
-        {
-            try { Directory.Delete(tempDir, true); } catch { }
         }
     }
 
@@ -271,9 +228,9 @@ public sealed class UserProfileAndContactTests : IClassFixture<WebApplicationFac
                 })
                 .Build();
 
-            SystemConfigurationStore configStore = new(config);
+            SystemConfigurationStore configStore = new(WeaverTestDb.CreateFactory(config));
             DatabaseMigrationRunner migrationRunner = new();
-            UserRepository userRepo = new(new WeaverDbConnectionFactory(config, configStore, migrationRunner));
+            UserRepository userRepo = new(WeaverTestDb.CreateFactory(config, migrationRunner));
             await userRepo.InitializeAsync();
 
             string username = "null-user";
@@ -287,7 +244,7 @@ public sealed class UserProfileAndContactTests : IClassFixture<WebApplicationFac
             });
 
             ProfileDataProtector protector = CreateIsolatedProtector();
-            using UserProfileRepository repo = new(new WeaverDbConnectionFactory(config, configStore, migrationRunner), protector);
+            using UserProfileRepository repo = new(WeaverTestDb.CreateFactory(config, migrationRunner), protector);
 
             // Upsert a profile where all optional nullable fields are null, and pronouns are empty
             UserProfile minimalProfile = new()
@@ -612,13 +569,13 @@ public sealed class UserProfileAndContactTests : IClassFixture<WebApplicationFac
                 .AddInMemoryCollection(new Dictionary<string, string?>
                 {
                     ["TRAJECTORY_INCOMING_DIR"] = dbDir,
-                    ["POSTGRES_CONNECTION_STRING"] = "Host=127.0.0.1;Port=54399;Database=nonexistent;Timeout=1"
+                    ["POSTGRES_CONNECTION_STRING"] = string.Empty
                 })
                 .Build();
 
-            SystemConfigurationStore configStore = new(config);
+            SystemConfigurationStore configStore = new(WeaverTestDb.CreateFactory(config));
             DatabaseMigrationRunner migrationRunner = new();
-            UserRepository userRepo = new(new WeaverDbConnectionFactory(config, configStore, migrationRunner));
+            UserRepository userRepo = new(WeaverTestDb.CreateFactory(config, migrationRunner));
             await userRepo.InitializeAsync();
 
             string username = "patient-test-01";
@@ -632,7 +589,7 @@ public sealed class UserProfileAndContactTests : IClassFixture<WebApplicationFac
             });
 
             ProfileDataProtector protector = CreateIsolatedProtector();
-            UserProfileRepository repo = new(new WeaverDbConnectionFactory(config, configStore, migrationRunner), protector);
+            UserProfileRepository repo = new(WeaverTestDb.CreateFactory(config, migrationRunner), protector);
 
             // 1. Profile CRUD
             UserProfile? initialProfile = await repo.GetProfileAsync(username);

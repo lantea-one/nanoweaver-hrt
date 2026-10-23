@@ -1,4 +1,6 @@
+using Microsoft.Extensions.Configuration;
 using Npgsql;
+using NanoWeaverHrt.Database.Access;
 using Xunit;
 
 namespace NanoWeaverHrt.Tests;
@@ -89,6 +91,39 @@ public sealed class PostgresTestEnvironment : IAsyncLifetime
         _createdDatabases.Add(name);
         NpgsqlConnectionStringBuilder builder = new(_maintenanceConnectionString) { Database = name };
         return builder.ConnectionString;
+    }
+
+    /// <summary>
+    /// Builds a real factory that resolved to PostgreSQL and whose database is then dropped, so every later open fails.
+    /// </summary>
+    /// <param name="dataDir">Temp directory the factory would place a SQLite file in; the caller asserts none appears.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The factory and the (now dead) connection string it was built from.</returns>
+    public async Task<(WeaverDbConnectionFactory Factory, string ConnectionString)> CreateUnavailableAfterResolutionAsync(string dataDir, CancellationToken ct = default)
+    {
+        // WHAT: Produces a "PostgreSQL was selected, then became unreachable" situation with a real server.
+        // WHY:  Resolution falls back to SQLite when PostgreSQL is down at startup, so the only way to reach the
+        //       no-fallback-after-selection rule is to resolve successfully and THEN lose the database.
+        // HOW:  Creates an isolated database, resolves the factory against it (pooling off so no live socket
+        //       survives), then drops the database with FORCE from the maintenance connection.
+        NpgsqlConnectionStringBuilder builder = new(await CreateIsolatedDatabaseAsync(ct)) { Pooling = false, Timeout = 5 };
+        IConfiguration configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["TRAJECTORY_INCOMING_DIR"] = dataDir,
+                ["POSTGRES_CONNECTION_STRING"] = builder.ConnectionString
+            })
+            .Build();
+        WeaverDbConnectionFactory factory = WeaverTestDb.CreateFactory(configuration);
+        WeaverDatabaseBackend resolved = await factory.EnsureBackendResolvedAsync(ct);
+        Assert.Equal(WeaverDatabaseBackend.PostgreSql, resolved);
+
+        await using NpgsqlConnection maintenance = new(_maintenanceConnectionString);
+        await maintenance.OpenAsync(ct);
+        await using NpgsqlCommand drop = maintenance.CreateCommand();
+        drop.CommandText = $"DROP DATABASE \"{builder.Database}\" WITH (FORCE)";
+        await drop.ExecuteNonQueryAsync(ct);
+        return (factory, builder.ConnectionString);
     }
 
     /// <summary>

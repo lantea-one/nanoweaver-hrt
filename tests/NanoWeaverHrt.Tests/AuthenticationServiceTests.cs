@@ -71,18 +71,18 @@ public sealed class AuthenticationServiceTests : IDisposable
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["TRAJECTORY_INCOMING_DIR"] = _tempDir,
-                ["POSTGRES_CONNECTION_STRING"] = "Host=127.0.0.1;Port=54399;Database=nonexistent;Timeout=1"
+                ["POSTGRES_CONNECTION_STRING"] = string.Empty
             })
             .Build();
 
-        SystemConfigurationStore configStore = new(configuration);
+        SystemConfigurationStore configStore = new(WeaverTestDb.CreateFactory(configuration));
         configStore.InitializeAsync().GetAwaiter().GetResult();
 
         _pqcProvider = new PostQuantumCryptoProvider();
         _keyManagement = new KeyManagementService(_pqcProvider);
         _auditService = new ComplianceAuditService(_keyManagement, _pqcProvider);
 
-        _userRepository = new UserRepository(new WeaverDbConnectionFactory(configuration, configStore, new DatabaseMigrationRunner()));
+        _userRepository = new UserRepository(WeaverTestDb.CreateFactory(configuration, new DatabaseMigrationRunner()));
         _userRepository.InitializeAsync().GetAwaiter().GetResult();
 
         // WHAT: Provisions this test instance's own token signing key inside its isolated temp directory.
@@ -907,8 +907,8 @@ public sealed class AuthenticationServiceTests : IDisposable
 
         // 6. Default directory when TRAJECTORY_INCOMING_DIR is not configured
         IConfiguration emptyConfig = new ConfigurationBuilder().Build();
-        SystemConfigurationStore configStore = new(emptyConfig);
-        using UserRepository defaultRepo = new(new WeaverDbConnectionFactory(emptyConfig, configStore, new DatabaseMigrationRunner()));
+        SystemConfigurationStore configStore = new(WeaverTestDb.CreateFactory(emptyConfig));
+        using UserRepository defaultRepo = new(WeaverTestDb.CreateFactory(emptyConfig, new DatabaseMigrationRunner()));
         Assert.NotNull(defaultRepo);
     }
 }

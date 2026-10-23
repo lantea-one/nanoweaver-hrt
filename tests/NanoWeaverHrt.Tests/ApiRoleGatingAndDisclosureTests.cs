@@ -85,7 +85,7 @@ public sealed class ApiRoleGatingAndDisclosureTests : IClassFixture<WebApplicati
             builder.UseSetting("TRAJECTORY_INCOMING_DIR", _tempDataDir);
             builder.UseSetting("TRAJECTORY_EXPORT_DIR", Path.Combine(_tempDataDir, "exports"));
             builder.UseSetting("TRAJECTORY_PARQUET_DIR", Path.Combine(_tempDataDir, "parquet"));
-            builder.UseSetting("POSTGRES_CONNECTION_STRING", "Host=127.0.0.1;Port=54399;Database=nonexistent;Username=weaver;Password=role_gate_probe_password;Timeout=1");
+            builder.UseSetting("POSTGRES_CONNECTION_STRING", string.Empty);
         });
     }
 
@@ -461,7 +461,7 @@ public sealed class ApiRoleGatingAndDisclosureTests : IClassFixture<WebApplicati
                 builder.UseSetting("TRAJECTORY_INCOMING_DIR", developmentDir);
                 builder.UseSetting("TRAJECTORY_EXPORT_DIR", Path.Combine(developmentDir, "exports"));
                 builder.UseSetting("TRAJECTORY_PARQUET_DIR", Path.Combine(developmentDir, "parquet"));
-                builder.UseSetting("POSTGRES_CONNECTION_STRING", "Host=127.0.0.1;Port=54399;Database=nonexistent;Timeout=1");
+                builder.UseSetting("POSTGRES_CONNECTION_STRING", string.Empty);
             });
 
             using HttpClient developmentClient = developmentFactory.CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = false });
@@ -597,7 +597,7 @@ public sealed class ApiRoleGatingAndDisclosureTests : IClassFixture<WebApplicati
                 builder.UseSetting("TRAJECTORY_INCOMING_DIR", lockoutDir);
                 builder.UseSetting("TRAJECTORY_EXPORT_DIR", Path.Combine(lockoutDir, "exports"));
                 builder.UseSetting("TRAJECTORY_PARQUET_DIR", Path.Combine(lockoutDir, "parquet"));
-                builder.UseSetting("POSTGRES_CONNECTION_STRING", "Host=127.0.0.1;Port=54399;Database=nonexistent;Timeout=1");
+                builder.UseSetting("POSTGRES_CONNECTION_STRING", string.Empty);
             });
 
             using HttpClient lockoutClient = lockoutFactory.CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = false });

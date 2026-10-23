@@ -51,7 +51,7 @@ public sealed class SystemIntegrationPipelineTests : IClassFixture<WebApplicatio
             builder.UseSetting("TRAJECTORY_INCOMING_DIR", _tempDataDir);
             builder.UseSetting("TRAJECTORY_EXPORT_DIR", Path.Combine(_tempDataDir, "exports"));
             builder.UseSetting("TRAJECTORY_PARQUET_DIR", Path.Combine(_tempDataDir, "parquet"));
-            builder.UseSetting("POSTGRES_CONNECTION_STRING", "Host=127.0.0.1;Port=54399;Database=nonexistent;Timeout=1");
+            builder.UseSetting("POSTGRES_CONNECTION_STRING", string.Empty);
         });
 
         _client = _factory.CreateClient();

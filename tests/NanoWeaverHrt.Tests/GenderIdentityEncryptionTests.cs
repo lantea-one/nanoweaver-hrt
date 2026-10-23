@@ -87,15 +87,14 @@ public sealed class GenderIdentityEncryptionTests : IDisposable
     /// One database backend prepared for a scenario.
     /// </summary>
     /// <param name="Configuration">Configuration pointing at this backend's isolated database.</param>
-    /// <param name="ConfigRepository">Configuration repository that selects this backend.</param>
-    private sealed record Backend(IConfiguration Configuration, IConfigurationRepository ConfigRepository)
+    private sealed record Backend(IConfiguration Configuration)
     {
         /// <summary>
         /// Builds a connection factory for this backend over the supplied migration runner.
         /// </summary>
         /// <param name="runner">Runner that decides which migrations apply.</param>
         /// <returns>A factory bound to this backend.</returns>
-        public WeaverDbConnectionFactory CreateFactory(DatabaseMigrationRunner runner) => new(Configuration, ConfigRepository, runner);
+        public WeaverDbConnectionFactory CreateFactory(DatabaseMigrationRunner runner) => WeaverTestDb.CreateFactory(Configuration, runner);
     }
 
     /// <summary>
@@ -119,7 +118,7 @@ public sealed class GenderIdentityEncryptionTests : IDisposable
         if (!postgres)
         {
             IConfiguration sqliteConfiguration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
-            return new Backend(sqliteConfiguration, new SystemConfigurationStore(sqliteConfiguration));
+            return new Backend(sqliteConfiguration);
         }
 
         if (!_postgres.IsAvailable)
@@ -133,7 +132,7 @@ public sealed class GenderIdentityEncryptionTests : IDisposable
 
         settings["POSTGRES_CONNECTION_STRING"] = await _postgres.CreateIsolatedDatabaseAsync();
         IConfiguration pgConfiguration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
-        return new Backend(pgConfiguration, new MockPostgresConfigRepo());
+        return new Backend(pgConfiguration);
     }
 
     /// <summary>

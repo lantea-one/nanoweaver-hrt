@@ -78,18 +78,18 @@ public sealed class SessionIdleEnforcementTests : IDisposable
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["TRAJECTORY_INCOMING_DIR"] = _tempDir,
-                ["POSTGRES_CONNECTION_STRING"] = "Host=127.0.0.1;Port=54399;Database=nonexistent;Timeout=1"
+                ["POSTGRES_CONNECTION_STRING"] = string.Empty
             })
             .Build();
 
-        SystemConfigurationStore configStore = new(configuration);
+        SystemConfigurationStore configStore = new(WeaverTestDb.CreateFactory(configuration));
         configStore.InitializeAsync().GetAwaiter().GetResult();
 
         PostQuantumCryptoProvider pqcProvider = new();
         KeyManagementService keyManagement = new(pqcProvider);
         ComplianceAuditService auditService = new(keyManagement, pqcProvider);
 
-        _userRepository = new UserRepository(new WeaverDbConnectionFactory(configuration, configStore, new DatabaseMigrationRunner()));
+        _userRepository = new UserRepository(WeaverTestDb.CreateFactory(configuration, new DatabaseMigrationRunner()));
         _userRepository.InitializeAsync().GetAwaiter().GetResult();
 
         // WHAT: Provisions this test instance's own bearer-token signing key inside its temp directory.

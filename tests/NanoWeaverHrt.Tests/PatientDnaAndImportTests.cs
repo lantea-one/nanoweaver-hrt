@@ -323,9 +323,9 @@ public sealed class PatientDnaAndImportTests : IClassFixture<WebApplicationFacto
                 })
                 .Build();
 
-            SystemConfigurationStore configStore = new(config);
+            SystemConfigurationStore configStore = new(WeaverTestDb.CreateFactory(config));
             DatabaseMigrationRunner migrationRunner = new();
-            UserRepository userRepo = new(new WeaverDbConnectionFactory(config, configStore, migrationRunner));
+            UserRepository userRepo = new(WeaverTestDb.CreateFactory(config, migrationRunner));
             await userRepo.InitializeAsync();
 
             string username = "patient_charlie";
@@ -338,7 +338,7 @@ public sealed class PatientDnaAndImportTests : IClassFixture<WebApplicationFacto
                 PublicKeyBase64 = "MCowBQYDK2VwAyEA1111111111111111111111111111111111111111111="
             });
 
-            using PatientDnaRepository repo = new(new WeaverDbConnectionFactory(config, configStore, migrationRunner));
+            using PatientDnaRepository repo = new(WeaverTestDb.CreateFactory(config, migrationRunner));
 
             // 1. DNA Records CRUD
             var initialDna = await repo.GetDnaRecordsAsync(username);
@@ -509,9 +509,9 @@ public sealed class PatientDnaAndImportTests : IClassFixture<WebApplicationFacto
                 })
                 .Build();
 
-            SystemConfigurationStore configStore = new(config);
+            SystemConfigurationStore configStore = new(WeaverTestDb.CreateFactory(config));
             DatabaseMigrationRunner migrationRunner = new();
-            UserRepository userRepo = new(new WeaverDbConnectionFactory(config, configStore, migrationRunner));
+            UserRepository userRepo = new(WeaverTestDb.CreateFactory(config, migrationRunner));
             await userRepo.InitializeAsync();
 
             string username = "patient_corrupt";
@@ -524,7 +524,7 @@ public sealed class PatientDnaAndImportTests : IClassFixture<WebApplicationFacto
                 PublicKeyBase64 = "MCowBQYDK2VwAyEA2222222222222222222222222222222222222222222="
             });
 
-            using PatientDnaRepository repo = new(new WeaverDbConnectionFactory(config, configStore, migrationRunner));
+            using PatientDnaRepository repo = new(WeaverTestDb.CreateFactory(config, migrationRunner));
 
             PatientDigitalDnaRecord dna = new()
             {
@@ -659,7 +659,7 @@ public sealed class PatientDnaAndImportTests : IClassFixture<WebApplicationFacto
             var config = new ConfigurationBuilder()
                 .AddInMemoryCollection(new Dictionary<string, string?> { ["TRAJECTORY_INCOMING_DIR"] = tempDir })
                 .Build();
-            using PatientDnaRepository repo = new(new WeaverDbConnectionFactory(config, new SystemConfigurationStore(config), new DatabaseMigrationRunner()));
+            using PatientDnaRepository repo = new(WeaverTestDb.CreateFactory(config, new DatabaseMigrationRunner()));
             await AssertInvalidArgumentsRejectedAsync(repo);
         }
         finally
@@ -701,38 +701,6 @@ public sealed class PatientDnaAndImportTests : IClassFixture<WebApplicationFacto
         // WHY:  Fail fast when the connection seam is missing.
         // HOW:  Passes null and asserts ArgumentNullException.
         Assert.Throws<ArgumentNullException>(() => new PatientDnaRepository(null!));
-    }
-
-    /// <summary>
-    /// Verifies a selected-but-unreachable PostgreSQL makes the repository throw and never creates a SQLite file.
-    /// </summary>
-    [Fact]
-    public async Task PatientDnaRepository_PostgresSelectedButUnreachable_ThrowsAndCreatesNoSqliteFile()
-    {
-        // WHAT: Proves there is no silent PostgreSQL to SQLite fallback.
-        // WHY:  The old bare catch let a dead PostgreSQL split data into a local file while the gate stayed green.
-        // HOW:  Selects PostgreSQL via MockPostgresConfigRepo with an unreachable endpoint, calls a read, expects
-        //       WeaverDatabaseUnavailableException, and asserts weaver_config.db was never created.
-        string tempDir = Path.Combine(Path.GetTempPath(), "weaver_dna_pg_fb_" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(tempDir);
-        try
-        {
-            var pgConfig = new ConfigurationBuilder()
-                .AddInMemoryCollection(new Dictionary<string, string?>
-                {
-                    ["TRAJECTORY_INCOMING_DIR"] = tempDir,
-                    ["POSTGRES_CONNECTION_STRING"] = "Host=127.0.0.1;Port=54398;Database=nonexistent;Timeout=1"
-                })
-                .Build();
-
-            using PatientDnaRepository repo = new(new WeaverDbConnectionFactory(pgConfig, new MockPostgresConfigRepo(), new DatabaseMigrationRunner()));
-            await Assert.ThrowsAsync<WeaverDatabaseUnavailableException>(() => repo.GetDnaRecordsAsync("some_user"));
-            Assert.False(File.Exists(Path.Combine(tempDir, "weaver_config.db")));
-        }
-        finally
-        {
-            try { Directory.Delete(tempDir, recursive: true); } catch { }
-        }
     }
 
     /// <summary>

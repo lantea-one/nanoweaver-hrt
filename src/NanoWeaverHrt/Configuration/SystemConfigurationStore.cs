@@ -1,15 +1,13 @@
 using System.Data.Common;
 using System.Security.Cryptography;
-using Microsoft.Data.Sqlite;
-using Npgsql;
-using NanoWeaverHrt.Database.Migrations;
+using NanoWeaverHrt.Database.Access;
 
 namespace NanoWeaverHrt.Configuration;
 
 /// <summary>
 /// Authoritative configuration and single-use share key store implementing database-first precedence.
-/// Tries connecting to PostgreSQL (pg-duckdb) if available, and gracefully falls back to an embedded
-/// local SQLite database so the stack operates seamlessly with or without Docker containers running.
+/// Every connection comes from <see cref="IWeaverDbConnectionFactory"/>, which decides once per process
+/// between PostgreSQL (pg-duckdb) and the embedded local SQLite database.
 /// </summary>
 public sealed class SystemConfigurationStore : IConfigurationRepository, IDisposable
 {
@@ -64,133 +62,46 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
     ];
 
     /// <summary>
-    /// Underlying active database connection provider ('postgres' or 'sqlite').
-    /// </summary>
-    private string _activeBackend = "Local SQLite Fallback";
-
-    /// <summary>
-    /// Thread synchronization lock for database queries in fallback SQLite mode.
+    /// Thread synchronization lock serializing configuration and share-key writes.
     /// </summary>
     private readonly SemaphoreSlim _lock = new(1, 1);
 
     /// <summary>
-    /// Path to the local fallback SQLite database file.
+    /// The single seam that decides the backend and opens every connection.
     /// </summary>
-    private readonly string _sqlitePath;
+    private readonly IWeaverDbConnectionFactory _connectionFactory;
 
     /// <summary>
-    /// Connection string used if PostgreSQL is selected or reachable.
+    /// Column list shared by every share-key SELECT so the positional reader in <see cref="MapShareKey"/> cannot drift.
     /// </summary>
-    private readonly string _postgresConnString;
-
-    /// <summary>
-    /// Migration runner used to execute versioned database schema migrations.
-    /// </summary>
-    private readonly DatabaseMigrationRunner _migrationRunner;
-
-    /// <summary>
-    /// Path of the currently initialized database file.
-    /// </summary>
-    private string? _initializedPath;
+    private const string ShareKeyColumns = "token_id, key_token, label, created_at_utc, expires_at_utc, is_consumed, consumed_at_utc, remote_peer_info, permissions";
 
     /// <summary>
     /// Gets the human-readable name of the active database backend.
     /// </summary>
-    public string ActiveBackendName => _activeBackend;
+    public string ActiveBackendName => _connectionFactory.ActiveBackendDisplayName;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SystemConfigurationStore"/> class.
     /// </summary>
-    /// <param name="configuration">Host application configuration.</param>
-    /// <param name="migrationRunner">Optional explicit database migration runner.</param>
-    public SystemConfigurationStore(IConfiguration configuration, DatabaseMigrationRunner? migrationRunner = null)
+    /// <param name="connectionFactory">The connection seam that owns the backend decision and every connection.</param>
+    public SystemConfigurationStore(IWeaverDbConnectionFactory connectionFactory)
     {
-        _migrationRunner = migrationRunner ?? new DatabaseMigrationRunner();
-        string? envPostgres = configuration["POSTGRES_CONNECTION_STRING"] ?? Environment.GetEnvironmentVariable("POSTGRES_CONNECTION_STRING");
-        // WHAT: Uses the configured PostgreSQL connection string, or no connection string at all.
-        // WHY:  Shipping a built-in default that embeds a password means every deployment which
-        //       forgets to set POSTGRES_CONNECTION_STRING shares one publicly known credential,
-        //       and that credential also leaks through any surface that echoes configuration.
-        //       PostgreSQL is therefore opt-in: with nothing configured the stack uses its
-        //       embedded SQLite database, exactly as it already does when PostgreSQL is
-        //       unreachable. An empty string fails the connection attempt immediately and that
-        //       existing fallback path takes over.
-        // HOW:  Falls back to the empty string instead of a hardcoded credential.
-        _postgresConnString = envPostgres ?? string.Empty;
-
-        string incomingDir = configuration["TRAJECTORY_INCOMING_DIR"] ?? Path.Combine(Directory.GetCurrentDirectory(), "simulations", "shared-data");
-        Directory.CreateDirectory(incomingDir);
-        _sqlitePath = Path.Combine(incomingDir, "weaver_config.db");
+        _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
     }
 
     /// <summary>
-    /// Initializes database tables and schemas if they do not already exist.
+    /// Resolves the database backend and makes sure its schema exists.
     /// </summary>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>A task representing the initialization operation.</returns>
+    /// <remarks>
+    /// The PostgreSQL probe, the SQLite fallback and the "re-create a deleted SQLite file" behaviour all live in
+    /// <see cref="IWeaverDbConnectionFactory.EnsureBackendResolvedAsync"/>. A failure there propagates; nothing is swallowed here.
+    /// </remarks>
     public async Task InitializeAsync(CancellationToken ct = default)
     {
-        if (_initializedPath == _sqlitePath && File.Exists(_sqlitePath)) return;
-
-        await _lock.WaitAsync(ct);
-        try
-        {
-            if (_initializedPath == _sqlitePath && File.Exists(_sqlitePath)) return;
-
-            // WHAT: Attempts to connect to PostgreSQL (pg-duckdb); on failure, smoothly falls back to SQLite.
-            // WHY:  Ensures that the microservice starts seamlessly in standalone mode or Docker Compose.
-            // HOW:  Tries opening an NpgsqlConnection; if it throws a SocketException, marks SQLite as active.
-            bool postgresOk = false;
-            try
-            {
-                using NpgsqlConnection pgConn = new(_postgresConnString);
-                await pgConn.OpenAsync(ct);
-                postgresOk = true;
-                _activeBackend = "PostgreSQL (pg-duckdb)";
-
-                await CreateTablesPostgresAsync(pgConn, ct);
-                _initializedPath = "postgres";
-            }
-            catch
-            {
-                postgresOk = false;
-            }
-
-            if (!postgresOk)
-            {
-                _activeBackend = "Local SQLite Fallback";
-                using SqliteConnection sqliteConn = new($"Data Source={_sqlitePath}");
-                await sqliteConn.OpenAsync(ct);
-                await CreateTablesSqliteAsync(sqliteConn, ct);
-                _initializedPath = _sqlitePath;
-            }
-        }
-        finally
-        {
-            _lock.Release();
-        }
-    }
-
-    /// <summary>
-    /// Applies database migrations to PostgreSQL.
-    /// </summary>
-    /// <param name="conn">An already-open PostgreSQL connection.</param>
-    /// <param name="ct">Cancellation token.</param>
-    /// <returns>A task that completes once every pending migration has been applied.</returns>
-    private async Task CreateTablesPostgresAsync(NpgsqlConnection conn, CancellationToken ct)
-    {
-        await _migrationRunner.ApplyPendingMigrationsAsync(conn, "postgresql", ct);
-    }
-
-    /// <summary>
-    /// Applies database migrations to SQLite.
-    /// </summary>
-    /// <param name="conn">An already-open SQLite connection.</param>
-    /// <param name="ct">Cancellation token.</param>
-    /// <returns>A task that completes once every pending migration has been applied.</returns>
-    private async Task CreateTablesSqliteAsync(SqliteConnection conn, CancellationToken ct)
-    {
-        await _migrationRunner.ApplyPendingMigrationsAsync(conn, "sqlite", ct);
+        await _connectionFactory.EnsureBackendResolvedAsync(ct);
     }
 
     /// <summary>
@@ -345,46 +256,23 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
 
         try
         {
-            DateTime now = DateTime.UtcNow;
-
-            if (_activeBackend.StartsWith("PostgreSQL", StringComparison.OrdinalIgnoreCase))
-            {
-                using NpgsqlConnection conn = new(_postgresConnString);
-                await conn.OpenAsync(ct);
-                const string sql = @"
-                    INSERT INTO weaver_configuration (key, value, description, updated_at_utc)
-                    VALUES (@key, @value, @desc, @updated)
-                    ON CONFLICT (key) DO UPDATE
-                    SET value = EXCLUDED.value,
-                        description = EXCLUDED.description,
-                        updated_at_utc = EXCLUDED.updated_at_utc;
-                ";
-                using NpgsqlCommand cmd = new(sql, conn);
-                cmd.Parameters.AddWithValue("@key", key);
-                cmd.Parameters.AddWithValue("@value", value);
-                cmd.Parameters.AddWithValue("@desc", description);
-                cmd.Parameters.AddWithValue("@updated", now);
-                await cmd.ExecuteNonQueryAsync(ct);
-            }
-            else
-            {
-                using SqliteConnection conn = new($"Data Source={_sqlitePath}");
-                await conn.OpenAsync(ct);
-                const string sql = @"
-                    INSERT INTO weaver_configuration (key, value, description, updated_at_utc)
-                    VALUES (@key, @value, @desc, @updated)
-                    ON CONFLICT(key) DO UPDATE
-                    SET value = excluded.value,
-                        description = excluded.description,
-                        updated_at_utc = excluded.updated_at_utc;
-                ";
-                using SqliteCommand cmd = new(sql, conn);
-                cmd.Parameters.AddWithValue("@key", key);
-                cmd.Parameters.AddWithValue("@value", value);
-                cmd.Parameters.AddWithValue("@desc", description);
-                cmd.Parameters.AddWithValue("@updated", now.ToString("o"));
-                await cmd.ExecuteNonQueryAsync(ct);
-            }
+            // WHAT: Upserts one configuration row.
+            // WHY:  The two engines accept the same ON CONFLICT upsert, so one SQL text serves both.
+            // HOW:  The dialect only converts the timestamp parameter (UTC DateTime vs round-trip string).
+            await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+            await using DbCommand cmd = session.CreateCommand(@"
+                INSERT INTO weaver_configuration (key, value, description, updated_at_utc)
+                VALUES (@key, @value, @desc, @updated)
+                ON CONFLICT (key) DO UPDATE
+                SET value = EXCLUDED.value,
+                    description = EXCLUDED.description,
+                    updated_at_utc = EXCLUDED.updated_at_utc;
+            ");
+            WeaverDbParameters.Add(cmd, "@key", key);
+            WeaverDbParameters.Add(cmd, "@value", value);
+            WeaverDbParameters.Add(cmd, "@desc", description);
+            WeaverDbParameters.Add(cmd, "@updated", session.Dialect.TimestampValue(DateTimeOffset.UtcNow));
+            await cmd.ExecuteNonQueryAsync(ct);
         }
         finally
         {
@@ -405,22 +293,10 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
 
         try
         {
-            if (_activeBackend.StartsWith("PostgreSQL", StringComparison.OrdinalIgnoreCase))
-            {
-                using NpgsqlConnection conn = new(_postgresConnString);
-                await conn.OpenAsync(ct);
-                using NpgsqlCommand cmd = new("DELETE FROM weaver_configuration WHERE key = @key", conn);
-                cmd.Parameters.AddWithValue("@key", key);
-                await cmd.ExecuteNonQueryAsync(ct);
-            }
-            else
-            {
-                using SqliteConnection conn = new($"Data Source={_sqlitePath}");
-                await conn.OpenAsync(ct);
-                using SqliteCommand cmd = new("DELETE FROM weaver_configuration WHERE key = @key", conn);
-                cmd.Parameters.AddWithValue("@key", key);
-                await cmd.ExecuteNonQueryAsync(ct);
-            }
+            await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+            await using DbCommand cmd = session.CreateCommand("DELETE FROM weaver_configuration WHERE key = @key");
+            WeaverDbParameters.Add(cmd, "@key", key);
+            await cmd.ExecuteNonQueryAsync(ct);
         }
         finally
         {
@@ -467,40 +343,21 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
         await _lock.WaitAsync(ct);
         try
         {
-            if (_activeBackend.StartsWith("PostgreSQL", StringComparison.OrdinalIgnoreCase))
-            {
-                using NpgsqlConnection conn = new(_postgresConnString);
-                await conn.OpenAsync(ct);
-                const string sql = @"
-                    INSERT INTO weaver_share_keys (token_id, key_token, label, created_at_utc, expires_at_utc, is_consumed, permissions)
-                    VALUES (@id, @tok, @lbl, @created, @expires, FALSE, @perm);
-                ";
-                using NpgsqlCommand cmd = new(sql, conn);
-                cmd.Parameters.AddWithValue("@id", record.TokenId);
-                cmd.Parameters.AddWithValue("@tok", record.KeyToken);
-                cmd.Parameters.AddWithValue("@lbl", record.Label);
-                cmd.Parameters.AddWithValue("@created", record.CreatedAtUtc);
-                cmd.Parameters.AddWithValue("@expires", record.ExpiresAtUtc);
-                cmd.Parameters.AddWithValue("@perm", record.Permissions);
-                await cmd.ExecuteNonQueryAsync(ct);
-            }
-            else
-            {
-                using SqliteConnection conn = new($"Data Source={_sqlitePath}");
-                await conn.OpenAsync(ct);
-                const string sql = @"
-                    INSERT INTO weaver_share_keys (token_id, key_token, label, created_at_utc, expires_at_utc, is_consumed, permissions)
-                    VALUES (@id, @tok, @lbl, @created, @expires, 0, @perm);
-                ";
-                using SqliteCommand cmd = new(sql, conn);
-                cmd.Parameters.AddWithValue("@id", record.TokenId);
-                cmd.Parameters.AddWithValue("@tok", record.KeyToken);
-                cmd.Parameters.AddWithValue("@lbl", record.Label);
-                cmd.Parameters.AddWithValue("@created", record.CreatedAtUtc.ToString("o"));
-                cmd.Parameters.AddWithValue("@expires", record.ExpiresAtUtc.ToString("o"));
-                cmd.Parameters.AddWithValue("@perm", record.Permissions);
-                await cmd.ExecuteNonQueryAsync(ct);
-            }
+            // WHAT: Inserts the new, unconsumed key.
+            // WHY:  One INSERT text serves both engines; only the false literal and timestamp encoding differ.
+            // HOW:  FalseLiteral is spliced from the dialect (a constant, never user input); values are parameters.
+            await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+            await using DbCommand cmd = session.CreateCommand($@"
+                INSERT INTO weaver_share_keys (token_id, key_token, label, created_at_utc, expires_at_utc, is_consumed, permissions)
+                VALUES (@id, @tok, @lbl, @created, @expires, {session.Dialect.FalseLiteral}, @perm);
+            ");
+            WeaverDbParameters.Add(cmd, "@id", record.TokenId);
+            WeaverDbParameters.Add(cmd, "@tok", record.KeyToken);
+            WeaverDbParameters.Add(cmd, "@lbl", record.Label);
+            WeaverDbParameters.Add(cmd, "@created", session.Dialect.TimestampValue(ToUtcOffset(record.CreatedAtUtc)));
+            WeaverDbParameters.Add(cmd, "@expires", session.Dialect.TimestampValue(ToUtcOffset(record.ExpiresAtUtc)));
+            WeaverDbParameters.Add(cmd, "@perm", record.Permissions);
+            await cmd.ExecuteNonQueryAsync(ct);
         }
         finally
         {
@@ -522,104 +379,97 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
         await InitializeAsync(ct);
         await _lock.WaitAsync(ct);
 
+        ShareKeyConsumeResult result;
         try
         {
             ShareKeyRecord? existing = await FindKeyByTokenAsync(keyToken, ct);
             if (existing == null)
             {
-                return new ShareKeyConsumeResult
+                result = new ShareKeyConsumeResult
                 {
                     Success = false,
                     Message = "Share key token not recognized or does not exist."
                 };
             }
-
-            if (existing.IsConsumed)
+            else if (existing.IsConsumed)
             {
-                return new ShareKeyConsumeResult
+                result = new ShareKeyConsumeResult
                 {
                     Success = false,
                     Message = $"Single-use share key was already consumed at {existing.ConsumedAtUtc:u} by {existing.RemotePeerInfo}."
                 };
             }
-
-            if (!existing.IsNeverExpires && DateTime.UtcNow > existing.ExpiresAtUtc)
+            else if (!existing.IsNeverExpires && DateTime.UtcNow > existing.ExpiresAtUtc)
             {
-                return new ShareKeyConsumeResult
+                result = new ShareKeyConsumeResult
                 {
                     Success = false,
                     Message = $"Share key expired at {existing.ExpiresAtUtc:u}."
                 };
             }
-
-            // WHAT: Marks the single-use key as consumed atomically in the database.
-            // WHY:  Guarantees each share link can only be used once, preventing replay attacks.
-            // HOW:  Updates is_consumed = true and records peer metadata.
-            DateTime now = DateTime.UtcNow;
-            string sessionToken = "peer_sess_" + Guid.NewGuid().ToString("N");
-
-            if (_activeBackend.StartsWith("PostgreSQL", StringComparison.OrdinalIgnoreCase))
-            {
-                using NpgsqlConnection conn = new(_postgresConnString);
-                await conn.OpenAsync(ct);
-                const string sql = @"
-                    UPDATE weaver_share_keys
-                    SET is_consumed = TRUE,
-                        consumed_at_utc = @now,
-                        remote_peer_info = @peer
-                    WHERE token_id = @id AND is_consumed = FALSE;
-                ";
-                using NpgsqlCommand cmd = new(sql, conn);
-                cmd.Parameters.AddWithValue("@now", now);
-                cmd.Parameters.AddWithValue("@peer", remotePeerInfo);
-                cmd.Parameters.AddWithValue("@id", existing.TokenId);
-                int rows = await cmd.ExecuteNonQueryAsync(ct);
-                if (rows == 0)
-                {
-                    return new ShareKeyConsumeResult { Success = false, Message = "Concurrent consumption detected." };
-                }
-            }
             else
             {
-                using SqliteConnection conn = new($"Data Source={_sqlitePath}");
-                await conn.OpenAsync(ct);
-                const string sql = @"
-                    UPDATE weaver_share_keys
-                    SET is_consumed = 1,
-                        consumed_at_utc = @now,
-                        remote_peer_info = @peer
-                    WHERE token_id = @id AND is_consumed = 0;
-                ";
-                using SqliteCommand cmd = new(sql, conn);
-                cmd.Parameters.AddWithValue("@now", now.ToString("o"));
-                cmd.Parameters.AddWithValue("@peer", remotePeerInfo);
-                cmd.Parameters.AddWithValue("@id", existing.TokenId);
-                int rows = await cmd.ExecuteNonQueryAsync(ct);
-                if (rows == 0)
-                {
-                    return new ShareKeyConsumeResult { Success = false, Message = "Concurrent consumption detected." };
-                }
+                result = await RedeemShareKeyAsync(existing, remotePeerInfo, ct);
             }
-
-            ShareKeyRecord updatedRecord = existing with
-            {
-                IsConsumed = true,
-                ConsumedAtUtc = now,
-                RemotePeerInfo = remotePeerInfo
-            };
-
-            return new ShareKeyConsumeResult
-            {
-                Success = true,
-                Message = "Single-use share key successfully validated and consumed. Collaborative session established.",
-                Record = updatedRecord,
-                PeerSessionToken = sessionToken
-            };
         }
         finally
         {
             _lock.Release();
         }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Atomically flips an unconsumed, unexpired share key to consumed and builds the redemption result.
+    /// </summary>
+    /// <param name="existing">The key as just read; it must be unconsumed and unexpired.</param>
+    /// <param name="remotePeerInfo">Network address or client metadata of the connecting instance.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Success with a peer session token, or a "concurrent consumption" failure when another caller won the race.</returns>
+    private async Task<ShareKeyConsumeResult> RedeemShareKeyAsync(ShareKeyRecord existing, string remotePeerInfo, CancellationToken ct)
+    {
+        // WHAT: Marks the single-use key as consumed atomically in the database.
+        // WHY:  Guarantees each share link can only be used once, preventing replay attacks.
+        // HOW:  UPDATE ... WHERE is_consumed = false: the database itself decides the race, and a zero
+        //       row count means another caller consumed the key first.
+        DateTime now = DateTime.UtcNow;
+        string sessionToken = "peer_sess_" + Guid.NewGuid().ToString("N");
+        int rows;
+
+        await using (WeaverDbSession session = await _connectionFactory.OpenAsync(ct))
+        {
+            await using DbCommand cmd = session.CreateCommand($@"
+                UPDATE weaver_share_keys
+                SET is_consumed = {session.Dialect.TrueLiteral},
+                    consumed_at_utc = @now,
+                    remote_peer_info = @peer
+                WHERE token_id = @id AND is_consumed = {session.Dialect.FalseLiteral};
+            ");
+            WeaverDbParameters.Add(cmd, "@now", session.Dialect.TimestampValue(ToUtcOffset(now)));
+            WeaverDbParameters.Add(cmd, "@peer", remotePeerInfo);
+            WeaverDbParameters.Add(cmd, "@id", existing.TokenId);
+            rows = await cmd.ExecuteNonQueryAsync(ct);
+        }
+
+        ShareKeyConsumeResult result = new() { Success = false, Message = "Concurrent consumption detected." };
+        if (rows > 0)
+        {
+            result = new ShareKeyConsumeResult
+            {
+                Success = true,
+                Message = "Single-use share key successfully validated and consumed. Collaborative session established.",
+                Record = existing with
+                {
+                    IsConsumed = true,
+                    ConsumedAtUtc = now,
+                    RemotePeerInfo = remotePeerInfo
+                },
+                PeerSessionToken = sessionToken
+            };
+        }
+
+        return result;
     }
 
     /// <summary>
@@ -632,51 +482,12 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
         await InitializeAsync(ct);
         List<ShareKeyRecord> records = [];
 
-        if (_activeBackend.StartsWith("PostgreSQL", StringComparison.OrdinalIgnoreCase))
+        await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+        await using DbCommand cmd = session.CreateCommand($"SELECT {ShareKeyColumns} FROM weaver_share_keys ORDER BY created_at_utc DESC;");
+        await using DbDataReader rdr = await cmd.ExecuteReaderAsync(ct);
+        while (await rdr.ReadAsync(ct))
         {
-            using NpgsqlConnection conn = new(_postgresConnString);
-            await conn.OpenAsync(ct);
-            const string sql = "SELECT token_id, key_token, label, created_at_utc, expires_at_utc, is_consumed, consumed_at_utc, remote_peer_info, permissions FROM weaver_share_keys ORDER BY created_at_utc DESC;";
-            using NpgsqlCommand cmd = new(sql, conn);
-            using NpgsqlDataReader rdr = await cmd.ExecuteReaderAsync(ct);
-            while (await rdr.ReadAsync(ct))
-            {
-                records.Add(new ShareKeyRecord
-                {
-                    TokenId = rdr.GetString(0),
-                    KeyToken = rdr.GetString(1),
-                    Label = rdr.GetString(2),
-                    CreatedAtUtc = rdr.GetDateTime(3),
-                    ExpiresAtUtc = rdr.GetDateTime(4),
-                    IsConsumed = rdr.GetBoolean(5),
-                    ConsumedAtUtc = rdr.IsDBNull(6) ? null : rdr.GetDateTime(6),
-                    RemotePeerInfo = rdr.IsDBNull(7) ? null : rdr.GetString(7),
-                    Permissions = rdr.GetString(8)
-                });
-            }
-        }
-        else
-        {
-            using SqliteConnection conn = new($"Data Source={_sqlitePath}");
-            await conn.OpenAsync(ct);
-            const string sql = "SELECT token_id, key_token, label, created_at_utc, expires_at_utc, is_consumed, consumed_at_utc, remote_peer_info, permissions FROM weaver_share_keys ORDER BY created_at_utc DESC;";
-            using SqliteCommand cmd = new(sql, conn);
-            using SqliteDataReader rdr = await cmd.ExecuteReaderAsync(ct);
-            while (await rdr.ReadAsync(ct))
-            {
-                records.Add(new ShareKeyRecord
-                {
-                    TokenId = rdr.GetString(0),
-                    KeyToken = rdr.GetString(1),
-                    Label = rdr.GetString(2),
-                    CreatedAtUtc = DateTime.Parse(rdr.GetString(3), null, System.Globalization.DateTimeStyles.RoundtripKind),
-                    ExpiresAtUtc = DateTime.Parse(rdr.GetString(4), null, System.Globalization.DateTimeStyles.RoundtripKind),
-                    IsConsumed = rdr.GetInt32(5) != 0,
-                    ConsumedAtUtc = rdr.IsDBNull(6) ? null : DateTime.Parse(rdr.GetString(6), null, System.Globalization.DateTimeStyles.RoundtripKind),
-                    RemotePeerInfo = rdr.IsDBNull(7) ? null : rdr.GetString(7),
-                    Permissions = rdr.GetString(8)
-                });
-            }
+            records.Add(MapShareKey(rdr));
         }
 
         return records;
@@ -693,63 +504,42 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
         await InitializeAsync(ct);
         await _lock.WaitAsync(ct);
 
+        bool revoked;
         try
         {
-            DateTime past = DateTime.UtcNow.AddMinutes(-1);
-            if (_activeBackend.StartsWith("PostgreSQL", StringComparison.OrdinalIgnoreCase))
-            {
-                using NpgsqlConnection conn = new(_postgresConnString);
-                await conn.OpenAsync(ct);
-                using NpgsqlCommand cmd = new("UPDATE weaver_share_keys SET is_consumed = TRUE, remote_peer_info = 'REVOKED_MANUALLY' WHERE token_id = @id;", conn);
-                cmd.Parameters.AddWithValue("@id", tokenId);
-                int rows = await cmd.ExecuteNonQueryAsync(ct);
-                return rows > 0;
-            }
-            else
-            {
-                using SqliteConnection conn = new($"Data Source={_sqlitePath}");
-                await conn.OpenAsync(ct);
-                using SqliteCommand cmd = new("UPDATE weaver_share_keys SET is_consumed = 1, remote_peer_info = 'REVOKED_MANUALLY' WHERE token_id = @id;", conn);
-                cmd.Parameters.AddWithValue("@id", tokenId);
-                int rows = await cmd.ExecuteNonQueryAsync(ct);
-                return rows > 0;
-            }
+            await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+            await using DbCommand cmd = session.CreateCommand(
+                $"UPDATE weaver_share_keys SET is_consumed = {session.Dialect.TrueLiteral}, remote_peer_info = 'REVOKED_MANUALLY' WHERE token_id = @id;");
+            WeaverDbParameters.Add(cmd, "@id", tokenId);
+            int rows = await cmd.ExecuteNonQueryAsync(ct);
+            revoked = rows > 0;
         }
         finally
         {
             _lock.Release();
         }
+
+        return revoked;
     }
 
     /// <summary>
     /// Reads all database overrides into an in-memory dictionary.
     /// </summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Every stored override keyed by setting name, with its last-updated time when recorded.</returns>
     private async Task<Dictionary<string, (string Value, DateTime? UpdatedAt)>> ReadAllDbOverridesAsync(CancellationToken ct)
     {
         Dictionary<string, (string Value, DateTime? UpdatedAt)> map = new(StringComparer.OrdinalIgnoreCase);
 
-        if (_activeBackend.StartsWith("PostgreSQL", StringComparison.OrdinalIgnoreCase))
+        await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+        await using DbCommand cmd = session.CreateCommand("SELECT key, value, updated_at_utc FROM weaver_configuration;");
+        await using DbDataReader rdr = await cmd.ExecuteReaderAsync(ct);
+        while (await rdr.ReadAsync(ct))
         {
-            using NpgsqlConnection conn = new(_postgresConnString);
-            await conn.OpenAsync(ct);
-            using NpgsqlCommand cmd = new("SELECT key, value, updated_at_utc FROM weaver_configuration;", conn);
-            using NpgsqlDataReader rdr = await cmd.ExecuteReaderAsync(ct);
-            while (await rdr.ReadAsync(ct))
-            {
-                map[rdr.GetString(0)] = (rdr.GetString(1), rdr.IsDBNull(2) ? null : rdr.GetDateTime(2));
-            }
-        }
-        else
-        {
-            using SqliteConnection conn = new($"Data Source={_sqlitePath}");
-            await conn.OpenAsync(ct);
-            using SqliteCommand cmd = new("SELECT key, value, updated_at_utc FROM weaver_configuration;", conn);
-            using SqliteDataReader rdr = await cmd.ExecuteReaderAsync(ct);
-            while (await rdr.ReadAsync(ct))
-            {
-                DateTime? dt = rdr.IsDBNull(2) ? null : DateTime.Parse(rdr.GetString(2), null, System.Globalization.DateTimeStyles.RoundtripKind);
-                map[rdr.GetString(0)] = (rdr.GetString(1), dt);
-            }
+            // WHAT: Converts the engine-specific timestamp column to the DateTime the public item exposes.
+            // WHY:  PostgreSQL returns a DateTime and SQLite returns text; callers must not care which.
+            // HOW:  WeaverDbValues.ReadNullableTimestamp handles both, then the boundary conversion drops the offset.
+            map[rdr.GetString(0)] = (rdr.GetString(1), WeaverDbValues.ReadNullableTimestamp(rdr, 2)?.UtcDateTime);
         }
 
         return map;
@@ -763,24 +553,11 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
     /// <returns>The stored override value, or null when the database holds no row for the key.</returns>
     private async Task<string?> ReadSingleDbOverrideAsync(string key, CancellationToken ct)
     {
-        if (_activeBackend.StartsWith("PostgreSQL", StringComparison.OrdinalIgnoreCase))
-        {
-            using NpgsqlConnection conn = new(_postgresConnString);
-            await conn.OpenAsync(ct);
-            using NpgsqlCommand cmd = new("SELECT value FROM weaver_configuration WHERE key = @key;", conn);
-            cmd.Parameters.AddWithValue("@key", key);
-            object? val = await cmd.ExecuteScalarAsync(ct);
-            return val?.ToString();
-        }
-        else
-        {
-            using SqliteConnection conn = new($"Data Source={_sqlitePath}");
-            await conn.OpenAsync(ct);
-            using SqliteCommand cmd = new("SELECT value FROM weaver_configuration WHERE key = @key;", conn);
-            cmd.Parameters.AddWithValue("@key", key);
-            object? val = await cmd.ExecuteScalarAsync(ct);
-            return val?.ToString();
-        }
+        await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+        await using DbCommand cmd = session.CreateCommand("SELECT value FROM weaver_configuration WHERE key = @key;");
+        WeaverDbParameters.Add(cmd, "@key", key);
+        object? val = await cmd.ExecuteScalarAsync(ct);
+        return val?.ToString();
     }
 
     /// <summary>
@@ -791,64 +568,47 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
     /// <returns>The matching share key record, or null when no key carries that token.</returns>
     private async Task<ShareKeyRecord?> FindKeyByTokenAsync(string token, CancellationToken ct)
     {
-        if (_activeBackend.StartsWith("PostgreSQL", StringComparison.OrdinalIgnoreCase))
-        {
-            using NpgsqlConnection conn = new(_postgresConnString);
-            await conn.OpenAsync(ct);
-            const string sql = "SELECT token_id, key_token, label, created_at_utc, expires_at_utc, is_consumed, consumed_at_utc, remote_peer_info, permissions FROM weaver_share_keys WHERE key_token = @tok LIMIT 1;";
-            using NpgsqlCommand cmd = new(sql, conn);
-            cmd.Parameters.AddWithValue("@tok", token);
-            using NpgsqlDataReader rdr = await cmd.ExecuteReaderAsync(ct);
-            if (await rdr.ReadAsync(ct))
-            {
-                return new ShareKeyRecord
-                {
-                    TokenId = rdr.GetString(0),
-                    KeyToken = rdr.GetString(1),
-                    Label = rdr.GetString(2),
-                    CreatedAtUtc = rdr.GetDateTime(3),
-                    ExpiresAtUtc = rdr.GetDateTime(4),
-                    IsConsumed = rdr.GetBoolean(5),
-                    ConsumedAtUtc = rdr.IsDBNull(6) ? null : rdr.GetDateTime(6),
-                    RemotePeerInfo = rdr.IsDBNull(7) ? null : rdr.GetString(7),
-                    Permissions = rdr.GetString(8)
-                };
-            }
-        }
-        else
-        {
-            using SqliteConnection conn = new($"Data Source={_sqlitePath}");
-            await conn.OpenAsync(ct);
-            const string sql = "SELECT token_id, key_token, label, created_at_utc, expires_at_utc, is_consumed, consumed_at_utc, remote_peer_info, permissions FROM weaver_share_keys WHERE key_token = @tok LIMIT 1;";
-            using SqliteCommand cmd = new(sql, conn);
-            cmd.Parameters.AddWithValue("@tok", token);
-            using SqliteDataReader rdr = await cmd.ExecuteReaderAsync(ct);
-            if (await rdr.ReadAsync(ct))
-            {
-                return new ShareKeyRecord
-                {
-                    TokenId = rdr.GetString(0),
-                    KeyToken = rdr.GetString(1),
-                    Label = rdr.GetString(2),
-                    CreatedAtUtc = DateTime.Parse(rdr.GetString(3), null, System.Globalization.DateTimeStyles.RoundtripKind),
-                    ExpiresAtUtc = DateTime.Parse(rdr.GetString(4), null, System.Globalization.DateTimeStyles.RoundtripKind),
-                    IsConsumed = rdr.GetInt32(5) != 0,
-                    ConsumedAtUtc = rdr.IsDBNull(6) ? null : DateTime.Parse(rdr.GetString(6), null, System.Globalization.DateTimeStyles.RoundtripKind),
-                    RemotePeerInfo = rdr.IsDBNull(7) ? null : rdr.GetString(7),
-                    Permissions = rdr.GetString(8)
-                };
-            }
-        }
-
-        return null;
+        await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+        await using DbCommand cmd = session.CreateCommand($"SELECT {ShareKeyColumns} FROM weaver_share_keys WHERE key_token = @tok LIMIT 1;");
+        WeaverDbParameters.Add(cmd, "@tok", token);
+        await using DbDataReader rdr = await cmd.ExecuteReaderAsync(ct);
+        return await rdr.ReadAsync(ct) ? MapShareKey(rdr) : null;
     }
 
     /// <summary>
-    /// Releases disposable resources.
+    /// Maps the current row of a <c>ShareKeyColumns</c> query to a <see cref="ShareKeyRecord"/>.
+    /// </summary>
+    /// <param name="rdr">A reader positioned on a row selected with <c>ShareKeyColumns</c>.</param>
+    /// <returns>The record, with timestamps expressed as UTC <see cref="DateTime"/> values.</returns>
+    private static ShareKeyRecord MapShareKey(DbDataReader rdr) => new()
+    {
+        TokenId = rdr.GetString(0),
+        KeyToken = rdr.GetString(1),
+        Label = rdr.GetString(2),
+        CreatedAtUtc = WeaverDbValues.ReadTimestamp(rdr, 3).UtcDateTime,
+        ExpiresAtUtc = WeaverDbValues.ReadTimestamp(rdr, 4).UtcDateTime,
+        IsConsumed = WeaverDbValues.ReadBoolean(rdr, 5),
+        ConsumedAtUtc = WeaverDbValues.ReadNullableTimestamp(rdr, 6)?.UtcDateTime,
+        RemotePeerInfo = rdr.IsDBNull(7) ? null : rdr.GetString(7),
+        Permissions = rdr.GetString(8)
+    };
+
+    /// <summary>
+    /// Anchors a UTC <see cref="DateTime"/> as a <see cref="DateTimeOffset"/> without applying a local-time shift.
+    /// </summary>
+    /// <param name="value">A timestamp known to be UTC, whatever its <see cref="DateTime.Kind"/> says.</param>
+    /// <returns>The same instant with a zero offset.</returns>
+    private static DateTimeOffset ToUtcOffset(DateTime value)
+    {
+        DateTime utc = DateTime.SpecifyKind(value, DateTimeKind.Utc);
+        return new DateTimeOffset(utc);
+    }
+
+    /// <summary>
+    /// Releases disposable resources. The connection factory and migration runner are shared singletons and are not disposed here.
     /// </summary>
     public void Dispose()
     {
         _lock.Dispose();
-        _migrationRunner.Dispose();
     }
 }

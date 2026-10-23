@@ -69,7 +69,7 @@ public sealed class SecurityPenetrationTests : IClassFixture<WebApplicationFacto
             builder.UseSetting("TRAJECTORY_INCOMING_DIR", _tempDataDir);
             builder.UseSetting("TRAJECTORY_EXPORT_DIR", Path.Combine(_tempDataDir, "exports"));
             builder.UseSetting("TRAJECTORY_PARQUET_DIR", Path.Combine(_tempDataDir, "parquet"));
-            builder.UseSetting("POSTGRES_CONNECTION_STRING", "Host=127.0.0.1;Port=54399;Database=nonexistent;Timeout=1");
+            builder.UseSetting("POSTGRES_CONNECTION_STRING", string.Empty);
         });
 
         _client = _factory.CreateClient();
@@ -377,14 +377,14 @@ public sealed class SecurityPenetrationTests : IClassFixture<WebApplicationFacto
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["TRAJECTORY_INCOMING_DIR"] = _tempDataDir,
-                ["POSTGRES_CONNECTION_STRING"] = "Host=127.0.0.1;Port=54399;Database=nonexistent;Timeout=1"
+                ["POSTGRES_CONNECTION_STRING"] = string.Empty
             })
             .Build();
 
-        using SystemConfigurationStore configStore = new(config);
+        using SystemConfigurationStore configStore = new(WeaverTestDb.CreateFactory(config));
         await configStore.InitializeAsync();
 
-        using UserRepository userRepo = new(new WeaverDbConnectionFactory(config, configStore, new DatabaseMigrationRunner()));
+        using UserRepository userRepo = new(WeaverTestDb.CreateFactory(config, new DatabaseMigrationRunner()));
         await userRepo.InitializeAsync();
 
         foreach (string sqli in injectionPayloads)

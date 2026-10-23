@@ -71,7 +71,7 @@ public sealed class PostgresBackedProfileRepositoryTests : IDisposable
             })
             .Build();
 
-        WeaverDbConnectionFactory factory = new(configuration, new MockPostgresConfigRepo(), new DatabaseMigrationRunner());
+        WeaverDbConnectionFactory factory = WeaverTestDb.CreateFactory(configuration);
         await using (WeaverDbSession session = await factory.OpenAsync())
         {
             await using DbCommand insert = session.CreateCommand(
@@ -197,7 +197,7 @@ public sealed class PostgresBackedProfileRepositoryTests : IDisposable
                 ["POSTGRES_CONNECTION_STRING"] = connectionString
             })
             .Build();
-        WeaverDbConnectionFactory factory = new(configuration, new MockPostgresConfigRepo(), new DatabaseMigrationRunner());
+        WeaverDbConnectionFactory factory = WeaverTestDb.CreateFactory(configuration);
 
         await using WeaverDbSession session = await factory.OpenAsync();
         await using DbCommand read = session.CreateCommand("SELECT version, applied_at_utc FROM weaver_schema_migrations ORDER BY version;");

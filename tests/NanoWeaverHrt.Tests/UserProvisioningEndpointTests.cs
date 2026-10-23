@@ -162,7 +162,7 @@ public sealed class UserProvisioningEndpointTests : IClassFixture<WebApplication
             builder.UseSetting("TRAJECTORY_PARQUET_DIR", Path.Combine(dataDir, "parquet"));
             // WHY: Port 54399 is closed, so the host takes its SQLite path deterministically rather than
             //      depending on whether a PostgreSQL server happens to be running on the build machine.
-            builder.UseSetting("POSTGRES_CONNECTION_STRING", "Host=127.0.0.1;Port=54399;Database=nonexistent;Timeout=1");
+            builder.UseSetting("POSTGRES_CONNECTION_STRING", string.Empty);
         });
     }
 

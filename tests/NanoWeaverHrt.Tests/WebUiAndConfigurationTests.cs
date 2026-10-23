@@ -143,11 +143,11 @@ public sealed class WebUiAndConfigurationTests : IClassFixture<WebApplicationFac
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["TRAJECTORY_INCOMING_DIR"] = _testTempDir,
-                ["POSTGRES_CONNECTION_STRING"] = "Host=nonexistent_test_host;Timeout=1"
+                ["POSTGRES_CONNECTION_STRING"] = string.Empty
             })
             .Build();
 
-        using SystemConfigurationStore store = new(config);
+        using SystemConfigurationStore store = new(WeaverTestDb.CreateFactory(config));
         await store.InitializeAsync();
 
         try
@@ -173,6 +173,12 @@ public sealed class WebUiAndConfigurationTests : IClassFixture<WebApplicationFac
             await store.RevertToDefaultAsync(testKey);
             string restoredVal = await store.GetValueAsync(testKey);
             Assert.Equal(envVal, restoredVal);
+
+            // Step 5: With no override, the full listing reports the environment variable as the source
+            IReadOnlyList<ConfigurationItem> afterRevert = await store.GetAllConfigurationsAsync();
+            ConfigurationItem envItem = Assert.Single(afterRevert, c => c.Key == testKey);
+            Assert.Equal(ConfigurationSource.EnvironmentVariable, envItem.Source);
+            Assert.Equal(envVal, envItem.Value);
         }
         finally
         {
@@ -191,11 +197,11 @@ public sealed class WebUiAndConfigurationTests : IClassFixture<WebApplicationFac
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["TRAJECTORY_INCOMING_DIR"] = _testTempDir,
-                ["POSTGRES_CONNECTION_STRING"] = "Host=nonexistent_test_host;Timeout=1"
+                ["POSTGRES_CONNECTION_STRING"] = string.Empty
             })
             .Build();
 
-        using SystemConfigurationStore store = new(config);
+        using SystemConfigurationStore store = new(WeaverTestDb.CreateFactory(config));
         await store.InitializeAsync();
 
         // 1. Generate single-use key
@@ -297,11 +303,11 @@ public sealed class WebUiAndConfigurationTests : IClassFixture<WebApplicationFac
             {
                 ["SIMULATION_CONFIGS_DIR"] = configsDir,
                 ["TRAJECTORY_INCOMING_DIR"] = _testTempDir,
-                ["POSTGRES_CONNECTION_STRING"] = "Host=nonexistent_test_host;Timeout=1"
+                ["POSTGRES_CONNECTION_STRING"] = string.Empty
             })
             .Build();
 
-        using SystemConfigurationStore store = new(config);
+        using SystemConfigurationStore store = new(WeaverTestDb.CreateFactory(config));
         await store.InitializeAsync();
 
         // WHAT: Supplies a probe client whose every request fails.
@@ -382,11 +388,11 @@ public sealed class WebUiAndConfigurationTests : IClassFixture<WebApplicationFac
             {
                 ["SIMULATION_CONFIGS_DIR"] = configsDir,
                 ["TRAJECTORY_INCOMING_DIR"] = _testTempDir,
-                ["POSTGRES_CONNECTION_STRING"] = "Host=nonexistent_test_host;Timeout=1"
+                ["POSTGRES_CONNECTION_STRING"] = string.Empty
             })
             .Build();
 
-        using SystemConfigurationStore store = new(config);
+        using SystemConfigurationStore store = new(WeaverTestDb.CreateFactory(config));
         await store.InitializeAsync();
 
         IConfiguration emptyConfig = new ConfigurationBuilder()
@@ -679,11 +685,11 @@ public sealed class WebUiAndConfigurationTests : IClassFixture<WebApplicationFac
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["TRAJECTORY_INCOMING_DIR"] = _testTempDir,
-                ["POSTGRES_CONNECTION_STRING"] = "Host=nonexistent_test_host;Timeout=1"
+                ["POSTGRES_CONNECTION_STRING"] = string.Empty
             })
             .Build();
 
-        using SystemConfigurationStore store = new(config);
+        using SystemConfigurationStore store = new(WeaverTestDb.CreateFactory(config));
         await store.InitializeAsync();
 
         ShareKeyRecord key = await store.CreateShareKeyAsync("Concurrent Race Key", TimeSpan.FromMinutes(30), "FullCollaborator");
@@ -788,11 +794,11 @@ public sealed class WebUiAndConfigurationTests : IClassFixture<WebApplicationFac
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["TRAJECTORY_INCOMING_DIR"] = _testTempDir,
-                ["POSTGRES_CONNECTION_STRING"] = "Host=nonexistent_test_host;Timeout=1"
+                ["POSTGRES_CONNECTION_STRING"] = string.Empty
             })
             .Build();
 
-        using SystemConfigurationStore store = new(config);
+        using SystemConfigurationStore store = new(WeaverTestDb.CreateFactory(config));
         await store.InitializeAsync();
 
         // 1. Consume unknown key
@@ -820,7 +826,7 @@ public sealed class WebUiAndConfigurationTests : IClassFixture<WebApplicationFac
         // WHY:  Covers the null coalescing fallback branches for incoming directory and postgres connection string.
         // HOW:  Passes empty IConfiguration and asserts non-null instance.
         IConfiguration emptyConfig = new ConfigurationBuilder().Build();
-        using SystemConfigurationStore store = new(emptyConfig);
+        using SystemConfigurationStore store = new(WeaverTestDb.CreateFactory(emptyConfig));
         Assert.NotNull(store);
     }
 }
