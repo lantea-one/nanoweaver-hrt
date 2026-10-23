@@ -1368,11 +1368,16 @@ public class Program
         .WithDescription("Performs full mathematical recalculation of SHA-384 digests and verifies all digital signatures.")
         .Produces<AuditLedgerVerificationResult>(StatusCodes.Status200OK);
 
-        app.MapPost("/api/compliance/de-identify", (DeIdentifyRequest req, IComplianceAuditService compliance) =>
+        app.MapPost("/api/compliance/de-identify", (DeIdentifyRequest req, IComplianceAuditService compliance, HttpContext context) =>
         {
             if (string.IsNullOrWhiteSpace(req.RawSubjectIdentifier))
             {
-                return Results.BadRequest(new { error = "RawSubjectIdentifier cannot be empty." });
+                // WHY: This endpoint's rejections now all use SecureProblemDetails, so a caller does not
+                //      have to parse one schema for a validation failure and another for a fault.
+                return SecureProblemResult(
+                    context,
+                    StatusCodes.Status400BadRequest,
+                    "RawSubjectIdentifier cannot be empty.");
             }
 
             try
@@ -1386,7 +1391,19 @@ public class Program
             }
             catch (Exception ex)
             {
-                return Results.BadRequest(new { error = ex.Message });
+                // WHAT: Publishes a sanitized RFC 7807 rejection instead of the raw exception sentence.
+                // WHY:  Directive 14 forbids exposing filesystem paths, connection strings, credentials,
+                //       PEM material or SQL fragments to API clients. A hand-rolled
+                //       '{ error = ex.Message }' RETURNS NORMALLY, so SecureExceptionHandlerMiddleware
+                //       never sees it and SecureExceptionSanitizer never runs. The exception text reached
+                //       the client verbatim, and an exception thrown inside a repository can carry any of
+                //       those secrets in its Message.
+                // HOW:  Routes the sentence through the sanitizer, then publishes SecureProblemDetails,
+                //       the one rejection schema the middleware and the auth endpoints already use.
+                return SecureProblemResult(
+                    context,
+                    StatusCodes.Status400BadRequest,
+                    SecureExceptionSanitizer.SanitizeDetail(ex.Message, StatusCodes.Status400BadRequest, context.TraceIdentifier));
             }
         })
         .WithName("DeIdentifySubject")
@@ -1426,11 +1443,16 @@ public class Program
         .Produces(StatusCodes.Status400BadRequest)
         .Produces(StatusCodes.Status404NotFound);
 
-        app.MapPost("/api/compliance/encrypt-record", (EncryptRecordRequest req, IEncryptedStorageService storage) =>
+        app.MapPost("/api/compliance/encrypt-record", (EncryptRecordRequest req, IEncryptedStorageService storage, HttpContext context) =>
         {
             if (string.IsNullOrWhiteSpace(req.SubjectId) || req.Payload == null)
             {
-                return Results.BadRequest(new { error = "SubjectId and Payload cannot be empty." });
+                // WHY: This endpoint's rejections now all use SecureProblemDetails, so a caller does not
+                //      have to parse one schema for a validation failure and another for a fault.
+                return SecureProblemResult(
+                    context,
+                    StatusCodes.Status400BadRequest,
+                    "SubjectId and Payload cannot be empty.");
             }
 
             try
@@ -1440,7 +1462,12 @@ public class Program
             }
             catch (CryptographicException ex)
             {
-                return Results.BadRequest(new { error = ex.Message });
+                // WHY: As above -- a hand-rolled '{ error = ex.Message }' returns normally and so never
+                //      reaches the middleware's sanitizer, publishing raw exception text to the client.
+                return SecureProblemResult(
+                    context,
+                    StatusCodes.Status400BadRequest,
+                    SecureExceptionSanitizer.SanitizeDetail(ex.Message, StatusCodes.Status400BadRequest, context.TraceIdentifier));
             }
         })
         .WithName("EncryptSubjectRecord")
@@ -1450,11 +1477,16 @@ public class Program
         .Produces<EncryptedEnvelope>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status400BadRequest);
 
-        app.MapPost("/api/compliance/decrypt-record", (DecryptRecordRequest req, IEncryptedStorageService storage) =>
+        app.MapPost("/api/compliance/decrypt-record", (DecryptRecordRequest req, IEncryptedStorageService storage, HttpContext context) =>
         {
             if (string.IsNullOrWhiteSpace(req.SubjectId) || req.Envelope == null)
             {
-                return Results.BadRequest(new { error = "SubjectId and Envelope cannot be empty." });
+                // WHY: This endpoint's rejections now all use SecureProblemDetails, so a caller does not
+                //      have to parse one schema for a validation failure and another for a fault.
+                return SecureProblemResult(
+                    context,
+                    StatusCodes.Status400BadRequest,
+                    "SubjectId and Envelope cannot be empty.");
             }
 
             try
@@ -1464,7 +1496,12 @@ public class Program
             }
             catch (CryptographicException ex)
             {
-                return Results.BadRequest(new { error = ex.Message });
+                // WHY: As above -- a hand-rolled '{ error = ex.Message }' returns normally and so never
+                //      reaches the middleware's sanitizer, publishing raw exception text to the client.
+                return SecureProblemResult(
+                    context,
+                    StatusCodes.Status400BadRequest,
+                    SecureExceptionSanitizer.SanitizeDetail(ex.Message, StatusCodes.Status400BadRequest, context.TraceIdentifier));
             }
         })
         .WithName("DecryptSubjectRecord")
@@ -1478,11 +1515,17 @@ public class Program
             ExportEncryptedDatasetRequest req,
             IEncryptedStorageService storage,
             IConfiguration config,
+            HttpContext context,
             CancellationToken ct) =>
         {
             if (string.IsNullOrWhiteSpace(req.TrajectoryFileName))
             {
-                return Results.BadRequest(new { error = "TrajectoryFileName cannot be empty." });
+                // WHY: This endpoint's rejections now all use SecureProblemDetails, so a caller does not
+                //      have to parse one schema for a validation failure and another for a fault.
+                return SecureProblemResult(
+                    context,
+                    StatusCodes.Status400BadRequest,
+                    "TrajectoryFileName cannot be empty.");
             }
 
             string exportDir = req.ExportDirectory ?? config["TRAJECTORY_EXPORT_DIR"] ?? Path.Combine(Directory.GetCurrentDirectory(), "simulations", "exports");
@@ -1501,11 +1544,22 @@ public class Program
             }
             catch (FileNotFoundException ex)
             {
-                return Results.NotFound(new { error = ex.Message });
+                // WHY: The worst of these. FileNotFoundException.Message embeds the full path it
+                //      probed, so this branch handed every caller an absolute server path -- exactly
+                //      what Directive 14 names first. The sanitizer rewrites it to [REDACTED_PATH].
+                return SecureProblemResult(
+                    context,
+                    StatusCodes.Status404NotFound,
+                    SecureExceptionSanitizer.SanitizeDetail(ex.Message, StatusCodes.Status404NotFound, context.TraceIdentifier));
             }
             catch (Exception ex)
             {
-                return Results.BadRequest(new { error = ex.Message });
+                // WHY: As above -- a hand-rolled '{ error = ex.Message }' returns normally and so never
+                //      reaches the middleware's sanitizer, publishing raw exception text to the client.
+                return SecureProblemResult(
+                    context,
+                    StatusCodes.Status400BadRequest,
+                    SecureExceptionSanitizer.SanitizeDetail(ex.Message, StatusCodes.Status400BadRequest, context.TraceIdentifier));
             }
         })
         .WithName("ExportEncryptedDatasetBundle")
@@ -1790,14 +1844,19 @@ public class Program
         // ---------------------------------------------------------------------
         // REST API: User Management - Create User
         // ---------------------------------------------------------------------
-        app.MapPost("/api/users", async (CreateUserRequest request, IUserAuthenticationService auth, CancellationToken ct) =>
+        app.MapPost("/api/users", async (CreateUserRequest request, IUserAuthenticationService auth, HttpContext context, CancellationToken ct) =>
         {
             // WHAT: Provisions a new sovereign user account with a pre-existing public key.
             // WHY:  Allows Administrator to add users who bring their own key material.
             // HOW:  Validates input, stores user record in database, and logs compliance audit event.
             if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.PublicKeyBase64))
             {
-                return Results.BadRequest(new { error = "Username and publicKeyBase64 are required." });
+                // WHY: This endpoint's rejections now all use SecureProblemDetails, so a caller does not
+                //      have to parse one schema for a validation failure and another for a fault.
+                return SecureProblemResult(
+                    context,
+                    StatusCodes.Status400BadRequest,
+                    "Username and publicKeyBase64 are required.");
             }
 
             try
@@ -1814,7 +1873,12 @@ public class Program
             }
             catch (InvalidOperationException ex)
             {
-                return Results.BadRequest(new { error = ex.Message });
+                // WHY: As above -- a hand-rolled '{ error = ex.Message }' returns normally and so never
+                //      reaches the middleware's sanitizer, publishing raw exception text to the client.
+                return SecureProblemResult(
+                    context,
+                    StatusCodes.Status400BadRequest,
+                    SecureExceptionSanitizer.SanitizeDetail(ex.Message, StatusCodes.Status400BadRequest, context.TraceIdentifier));
             }
         })
         .WithName("CreateUser")
@@ -1830,14 +1894,19 @@ public class Program
         // ---------------------------------------------------------------------
         // REST API: User Management - Generate Keypair and Create User
         // ---------------------------------------------------------------------
-        app.MapPost("/api/users/generate-keypair", async (GenerateKeyRequest request, IUserAuthenticationService auth, CancellationToken ct) =>
+        app.MapPost("/api/users/generate-keypair", async (GenerateKeyRequest request, IUserAuthenticationService auth, HttpContext context, CancellationToken ct) =>
         {
             // WHAT: Generates an asymmetric keypair and immediately registers the new user account.
             // WHY:  Enables Administrators to onboard new team members in a single step with secure credentials.
             // HOW:  Derives keypair, writes public key to user store, and returns the private key bundle.
             if (string.IsNullOrWhiteSpace(request.Username))
             {
-                return Results.BadRequest(new { error = "Username is required." });
+                // WHY: This endpoint's rejections now all use SecureProblemDetails, so a caller does not
+                //      have to parse one schema for a validation failure and another for a fault.
+                return SecureProblemResult(
+                    context,
+                    StatusCodes.Status400BadRequest,
+                    "Username is required.");
             }
 
             try
@@ -1861,7 +1930,12 @@ public class Program
             }
             catch (InvalidOperationException ex)
             {
-                return Results.BadRequest(new { error = ex.Message });
+                // WHY: As above -- a hand-rolled '{ error = ex.Message }' returns normally and so never
+                //      reaches the middleware's sanitizer, publishing raw exception text to the client.
+                return SecureProblemResult(
+                    context,
+                    StatusCodes.Status400BadRequest,
+                    SecureExceptionSanitizer.SanitizeDetail(ex.Message, StatusCodes.Status400BadRequest, context.TraceIdentifier));
             }
         })
         .WithName("GenerateUserKeypair")
@@ -1877,7 +1951,7 @@ public class Program
         // ---------------------------------------------------------------------
         // REST API: User Management - Delete User
         // ---------------------------------------------------------------------
-        app.MapDelete("/api/users/{username}", async (string username, IUserAuthenticationService auth, CancellationToken ct) =>
+        app.MapDelete("/api/users/{username}", async (string username, IUserAuthenticationService auth, HttpContext context, CancellationToken ct) =>
         {
             // WHAT: Deletes a user account.
             // WHY:  Enforces security hygiene and user de-provisioning, protecting against deletion of the last admin.
@@ -1887,14 +1961,23 @@ public class Program
                 bool deleted = await auth.DeleteUserAsync(username, ct);
                 if (!deleted)
                 {
-                    return Results.BadRequest(new { error = "Cannot delete user. User not found." });
+                    // WHY: Same single rejection schema as this endpoint's fault path below.
+                    return SecureProblemResult(
+                        context,
+                        StatusCodes.Status400BadRequest,
+                        "Cannot delete user. User not found.");
                 }
 
                 return Results.Ok(new { message = $"User '{username}' successfully deleted." });
             }
             catch (InvalidOperationException ex)
             {
-                return Results.BadRequest(new { error = ex.Message });
+                // WHY: As above -- a hand-rolled '{ error = ex.Message }' returns normally and so never
+                //      reaches the middleware's sanitizer, publishing raw exception text to the client.
+                return SecureProblemResult(
+                    context,
+                    StatusCodes.Status400BadRequest,
+                    SecureExceptionSanitizer.SanitizeDetail(ex.Message, StatusCodes.Status400BadRequest, context.TraceIdentifier));
             }
         })
         .WithName("DeleteUser")
