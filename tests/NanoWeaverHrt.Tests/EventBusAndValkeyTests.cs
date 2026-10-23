@@ -639,6 +639,42 @@ public sealed class EventBusAndValkeyTests : IClassFixture<WebApplicationFactory
     }
 
     /// <summary>
+    /// Verifies the echo-token pruning pass removes expired tokens, keeps fresh ones, and does so with no timing.
+    /// </summary>
+    [Fact]
+    public async Task ValkeyEventBridge_PruneExpiredEchoTokens_RemovesOnlyExpiredEntriesDeterministically()
+    {
+        // WHAT: Seeds the echo-prevention dictionary with one stale and one fresh token and prunes it.
+        // WHY:  BackgroundService runs the worker on a thread-pool thread, so whether its first pass ever saw
+        //       a populated dictionary was a race against the test thread; coverage of the removal lines
+        //       therefore varied between machines. Calling the pruning method directly removes the race.
+        // HOW:  Writes the private dictionary by reflection, calls PruneExpiredEchoTokens, checks the survivors.
+        await using ChannelEventBus bus = new();
+        Mock<IValkeyConnectionFactory> mockFactory = new();
+        ValkeyEventBridge bridge = new(bus, mockFactory.Object);
+
+        System.Reflection.FieldInfo field = typeof(ValkeyEventBridge).GetField(
+            "_locallyProducedEvents",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!; // private field of this very type; it exists.
+        System.Collections.Concurrent.ConcurrentDictionary<Guid, DateTimeOffset> tokens =
+            (System.Collections.Concurrent.ConcurrentDictionary<Guid, DateTimeOffset>)field.GetValue(bridge)!; // initialised inline; never null.
+
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        Guid stale = Guid.NewGuid();
+        Guid fresh = Guid.NewGuid();
+        tokens[stale] = now.AddMinutes(-10);
+        tokens[fresh] = now;
+
+        int removed = bridge.PruneExpiredEchoTokens(now.AddMinutes(-5));
+
+        Assert.Equal(1, removed);
+        Assert.False(tokens.ContainsKey(stale));
+        Assert.True(tokens.ContainsKey(fresh));
+        Assert.Equal(0, bridge.PruneExpiredEchoTokens(now.AddMinutes(-5)));
+        bridge.Dispose();
+    }
+
+    /// <summary>
     /// Verifies integration between UserSessionState, IInternalEventBus, and IValkeyCacheService.
     /// </summary>
     [Fact]

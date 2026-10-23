@@ -128,14 +128,12 @@ public sealed class ValkeyEventBridge : BackgroundService, IValkeyEventBridge
             while (!stoppingToken.IsCancellationRequested)
             {
                 // Prune expired echo prevention tokens older than 5 minutes
-                DateTimeOffset cutoff = DateTimeOffset.UtcNow.AddMinutes(-5);
-                foreach (KeyValuePair<Guid, DateTimeOffset> kvp in _locallyProducedEvents)
-                {
-                    if (kvp.Value < cutoff)
-                    {
-                        _locallyProducedEvents.TryRemove(kvp.Key, out _);
-                    }
-                }
+                // WHAT: Delegates the pruning pass to a synchronous method.
+                // WHY:  BackgroundService runs this worker on a thread-pool thread, so whether the first pass
+                //       finds any tokens depends on whether a test thread published first. Keeping the
+                //       pruning logic here made its coverage depend on that race.
+                // HOW:  PruneExpiredEchoTokens is a plain method that tests call directly with seeded data.
+                PruneExpiredEchoTokens(DateTimeOffset.UtcNow.AddMinutes(-5));
 
                 await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken).ConfigureAwait(false);
             }
@@ -312,5 +310,33 @@ public sealed class ValkeyEventBridge : BackgroundService, IValkeyEventBridge
         }
         _localSubscriptions.Clear();
         base.Dispose();
+    }
+
+    /// <summary>
+    /// Removes echo-prevention tokens that were recorded before the supplied cutoff.
+    /// </summary>
+    /// <param name="cutoff">Tokens recorded strictly earlier than this instant are discarded.</param>
+    /// <returns>The number of expired tokens found and removed.</returns>
+    /// <remarks>
+    /// An echo-prevention token is the ID of an event this node itself published to Valkey; remembering it
+    /// stops the node from re-processing its own broadcast when the cluster echoes it back. Old tokens can
+    /// never be echoed any more, so they are dropped to keep memory bounded.
+    /// </remarks>
+    internal int PruneExpiredEchoTokens(DateTimeOffset cutoff)
+    {
+        // WHAT: Scans the token dictionary and removes every entry older than the cutoff.
+        // WHY:  Prevents unbounded growth of the echo-prevention set on long-lived nodes.
+        // HOW:  Enumerates the concurrent dictionary (safe against concurrent writers) and TryRemove each stale key.
+        int removed = 0;
+        foreach (KeyValuePair<Guid, DateTimeOffset> kvp in _locallyProducedEvents)
+        {
+            if (kvp.Value < cutoff)
+            {
+                _locallyProducedEvents.TryRemove(kvp.Key, out _);
+                removed++;
+            }
+        }
+
+        return removed;
     }
 }

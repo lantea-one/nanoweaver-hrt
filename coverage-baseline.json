@@ -1,19 +1,18 @@
 {
   "schema_version": 1,
-  "seeded_from_commit": "98bfacd861667d09d20b792e80d3b95412ac9b3f",
+  "seeded_from_commit": "d3e3495651e0218f0f9cc2e6b568a20addd18814",
   "seeded_on_utc": "2026-10-23",
   "measurement": {
     "runsettings": "coverage-full.runsettings",
     "weaver_test_postgres": "unset"
   },
-  "line_rate": 98.79,
-  "branch_rate": 92.55,
-  "uncovered_lines_total": 125,
+  "line_rate": 98.8,
+  "branch_rate": 92.64,
+  "uncovered_lines_total": 124,
   "classes": {
     "NanoWeaverHrt.Bridges.ValkeyEventBridge/<<RegisterInboundClusterListenersAsync>b__21_1>d": 1,
     "NanoWeaverHrt.Bridges.ValkeyEventBridge/<<RegisterInboundClusterListenersAsync>b__21_2>d": 1,
     "NanoWeaverHrt.Bridges.ValkeyEventBridge/<<RegisterInboundClusterListenersAsync>b__21_3>d": 1,
-    "NanoWeaverHrt.Bridges.ValkeyEventBridge/<ExecuteAsync>d__18": 1,
     "NanoWeaverHrt.Bridges.ValkeyEventBridge/<ForwardOutboundAsync>d__20`1": 3,
     "NanoWeaverHrt.Bridges.ValkeyEventBridge/<ProcessInboundMessageAsync>d__22`1": 6,
     "NanoWeaverHrt.Bridges.ValkeyEventBridge/<RegisterInboundClusterListenersAsync>d__21": 3,
