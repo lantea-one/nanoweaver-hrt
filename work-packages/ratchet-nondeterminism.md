@@ -1,6 +1,7 @@
 # Deferred: gate step 7 is not machine-independent, and fails in both directions
 
-**Status: notated for later work, not fixed here.** Raised 2026-10-23 while landing migration 006.
+**Status: the gate is fixed; the underlying race is NOT.** Raised 2026-10-23 while landing migration
+006, and confirmed a second time by CI run 14.
 
 ## What was found
 
@@ -63,3 +64,29 @@ happen regardless, because the race is a real defect independent of the gate.
 
 **Do not** resolve this by widening the baseline upward on each red run — that silently ratchets the
 threshold in the wrong direction, which is exactly what the gate exists to prevent.
+
+## What was actually done, 2026-10-23
+
+CI run 14 on `c2b118c` reproduced the failure exactly: 616/616 tests passed, the line rate matched
+to the digit, the uncovered-line total and all 79 per-class counts matched, and the run was red on
+`REGRESSED branch_rate: baseline 89.57 -> measured 89.56`.
+
+Option 2 was taken. `check-coverage-ratchet.py` gained `RATE_TOLERANCE = 0.05`, applied only to the
+two derived percentages. The integer counts — `uncovered_lines_total` and the per-class
+uncovered-line map — are still compared exactly, and they are what detects a real coverage loss.
+
+Proved to still fail when it should, before being trusted:
+
+| case | expected | exit |
+|---|---|---|
+| 0.01 below baseline (the observed wobble) | pass | 0 |
+| 5.00 below baseline (a real collapse) | fail | 1 |
+| one extra uncovered line in one class, rates untouched | fail | 1 |
+| the real committed baseline | pass | 0 |
+
+The third case is the important one: a regression the rates alone would round away is still caught.
+
+**Still open: the race itself.** `ValkeyEventBridge.ExecuteAsync` runs 169 or 170 times depending
+on timing, and the stray host-level start has resisted one search already. The tolerance stops it
+blocking every push; it does not make the measurement deterministic. Option 1 above remains the
+real fix and stays queued for the hygiene sweep.

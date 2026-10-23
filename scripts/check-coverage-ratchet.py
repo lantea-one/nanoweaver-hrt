@@ -7,8 +7,10 @@ WHY:  Gate step 4 excludes compiler-generated code (minimal-API endpoint lambdas
       machines), so its 100.00% describes only part of the solution. This step measures the whole
       thing and refuses any regression, while forcing every improvement to be committed so the
       baseline can only ever move toward 100%.
-HOW:  Exit 0 only when the measurement matches the baseline exactly. Exit 1 on any regression, on a
-      stale baseline (a pure improvement), and when no report exists at all (fail closed).
+HOW:  Exit 0 only when the measurement matches the baseline: the uncovered-line counts exactly, and
+      the two derived rates within RATE_TOLERANCE, which absorbs a wobble no machine controls. Exit
+      1 on any regression, on a stale baseline (a pure improvement), and when no report exists at
+      all (fail closed).
 
 Usage: python3 -I scripts/check-coverage-ratchet.py REPORT_DIR BASELINE_JSON [--update] [--allow-regression]
 Pure standard library, like scripts/check-docblocks.py.
@@ -24,6 +26,12 @@ import sys
 import xml.etree.ElementTree as ET
 
 BRANCH_PATTERN = re.compile(r"\((\d+)/(\d+)\)")
+
+# Largest difference in line_rate or branch_rate, in percentage points, treated as noise rather
+# than as a regression or an improvement. Sized to absorb the ~0.01 wobble the ValkeyEventBridge
+# race produces between machines and runs, and nothing larger. The integer uncovered-line counts
+# are compared exactly and are what actually guards against a coverage loss.
+RATE_TOLERANCE = 0.05
 
 
 def measure(report_dir):
@@ -73,12 +81,28 @@ def compare(baseline, measured):
     regressions = []
     improvements = []
 
+    # WHAT: Compares the two derived percentages with a tolerance, not for exact equality.
+    # WHY:  branch_rate is not reproducible across machines. The ValkeyEventBridge race makes
+    #       ExecuteAsync run 169 or 170 times depending on timing, which moves the rate by about
+    #       0.01. CI runs 13 and 14 both failed on exactly that: run 14 measured branch 89.56
+    #       against a baseline of 89.57 while the line rate, the uncovered-line total and every
+    #       per-class count matched to the digit. An exact float match on a value that wobbles
+    #       cannot stay green, and because this gate fails closed in both directions - below is a
+    #       regression, above is "stale" - the wobble alone was enough to block every push.
+    # HOW:  A difference within RATE_TOLERANCE counts as neither a regression nor an improvement.
+    #       The real detectors are untouched and stay exact: uncovered_lines_total and the
+    #       per-class uncovered-line map below are integers, so they do not drift, and a genuine
+    #       coverage loss shows up there as well as in the rate. This is a tolerance on a derived
+    #       summary, not on the guarantee. The race itself is still an open defect worth fixing;
+    #       see work-packages/ratchet-nondeterminism.md.
     for key in ("line_rate", "branch_rate"):
         old = baseline[key]
         new = measured[key]
+        if abs(new - old) <= RATE_TOLERANCE:
+            continue
         if new < old:
             regressions.append(f"{key}: baseline {old:.2f} -> measured {new:.2f}")
-        elif new > old:
+        else:
             improvements.append(f"{key}: baseline {old:.2f} -> measured {new:.2f}")
 
     old_total = baseline["uncovered_lines_total"]
