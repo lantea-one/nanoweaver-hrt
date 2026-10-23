@@ -166,10 +166,18 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and Push Web Container Image
+        # WHAT: Build this image for linux/amd64 only, never the runner's native architecture.
+        # WHY:  This workflow mirrors the Forgejo pipeline, and the images it publishes must match
+        #       the ones Forgejo publishes. Forgejo pins both images to linux/amd64 because the
+        #       simulation image depends on the amd64-only Intel GPU runtime. The .NET base images
+        #       here are multi-arch, so without a pin this image would follow whatever architecture
+        #       GitHub's runner happens to be, and a mirror could silently diverge from its source.
+        # HOW:  Pass an explicit single-platform list to docker/build-push-action.
         uses: docker/build-push-action@v5
         with:
           context: .
           file: docker/web/Dockerfile.web
+          platforms: linux/amd64
           push: ${{ github.event_name != 'pull_request' }}
           tags: |
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/nanoweaver-hrt-web:latest
@@ -177,10 +185,19 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Build and Push Simulation Container Image
+        # WHAT: Build this image for linux/amd64 only, never the runner's native architecture.
+        # WHY:  The simulation image installs the Intel GPU runtime (intel-opencl-icd,
+        #       intel-level-zero-gpu, libze1), and repositories.intel.com publishes those
+        #       packages for amd64 alone - its binary-arm64 index returns 403, so on an aarch64
+        #       runner this image dies inside apt. ubuntu-latest is amd64 today, so this builds
+        #       natively; the pin states the dependency explicitly so the mirror stays correct and
+        #       matches the Forgejo image even if GitHub's default runner architecture changes.
+        # HOW:  Pass an explicit single-platform list to docker/build-push-action.
         uses: docker/build-push-action@v5
         with:
           context: .
           file: docker/simulation/Dockerfile.simulation
+          platforms: linux/amd64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/nanoweaver-hrt-simulation:latest
           cache-from: type=gha
