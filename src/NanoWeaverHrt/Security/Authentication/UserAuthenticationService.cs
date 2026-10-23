@@ -487,6 +487,46 @@ public sealed class UserAuthenticationService : IUserAuthenticationService
     }
 
     /// <inheritdoc/>
+    public async Task<UserAccount?> TryCreateUserAsync(
+        string username,
+        UserRole role,
+        AccessGate gate,
+        string publicKeyBase64,
+        KeyAlgorithm algorithm,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+        ArgumentException.ThrowIfNullOrWhiteSpace(publicKeyBase64);
+
+        UserAccount user = new()
+        {
+            Username = username.Trim(),
+            Role = role,
+            AccessGate = gate,
+            Algorithm = algorithm,
+            PublicKeyBase64 = publicKeyBase64.Trim(),
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+            IsActive = true
+        };
+
+        // WHAT: Inserts the account only if the name is free.
+        // WHY:  A refused duplicate must neither alter the existing account nor appear in the ledger as a creation.
+        // HOW:  The repository's insert-only path returns false on conflict; we audit solely on success.
+        if (!await _userRepository.TryCreateUserAsync(user, ct))
+        {
+            return null;
+        }
+
+        _auditService.LogAction(
+            "USER_MANAGEMENT",
+            "UserCreated",
+            $"user:{user.Username}",
+            $"{{\"role\":\"{role}\",\"gate\":\"{gate}\",\"algorithm\":\"{algorithm}\"}}");
+
+        return user;
+    }
+
+    /// <inheritdoc/>
     public async Task<bool> DeleteUserAsync(string username, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(username);

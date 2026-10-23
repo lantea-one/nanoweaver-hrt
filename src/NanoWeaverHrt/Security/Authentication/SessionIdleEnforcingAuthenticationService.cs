@@ -153,6 +153,16 @@ public sealed class SessionIdleEnforcingAuthenticationService : IUserAuthenticat
         _inner.CreateUserAsync(username, role, gate, publicKeyBase64, algorithm, ct);
 
     /// <inheritdoc/>
+    public Task<UserAccount?> TryCreateUserAsync(
+        string username,
+        UserRole role,
+        AccessGate gate,
+        string publicKeyBase64,
+        KeyAlgorithm algorithm,
+        CancellationToken ct = default) =>
+        _inner.TryCreateUserAsync(username, role, gate, publicKeyBase64, algorithm, ct);
+
+    /// <inheritdoc/>
     public string GenerateBearerToken(UserAccount user) =>
         _inner.GenerateBearerToken(user);
 

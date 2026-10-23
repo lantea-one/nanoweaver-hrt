@@ -1861,13 +1861,23 @@ public class Program
 
             try
             {
-                UserAccount user = await auth.CreateUserAsync(
+                UserAccount? user = await auth.TryCreateUserAsync(
                     request.Username,
                     request.Role,
                     request.AccessGate,
                     request.PublicKeyBase64,
                     request.Algorithm,
                     ct);
+
+                if (user is null)
+                {
+                    // WHY: This endpoint provisions NEW accounts only; silently rebinding an existing
+                    //      account's key and role would be an account takeover primitive.
+                    return SecureProblemResult(
+                        context,
+                        StatusCodes.Status409Conflict,
+                        "A user with that username already exists.");
+                }
 
                 return Results.Created($"/api/users/{user.Username}", user);
             }
@@ -1889,7 +1899,8 @@ public class Program
         .Produces<UserAccount>(StatusCodes.Status201Created)
         .Produces(StatusCodes.Status400BadRequest)
         .Produces(StatusCodes.Status401Unauthorized)
-        .Produces(StatusCodes.Status403Forbidden);
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status409Conflict);
 
         // ---------------------------------------------------------------------
         // REST API: User Management - Generate Keypair and Create User

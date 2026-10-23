@@ -44,6 +44,17 @@ public interface IUserRepository
     Task CreateUserAsync(UserAccount user, CancellationToken ct = default);
 
     /// <summary>
+    /// Inserts a new user account only when the username is not already taken; never modifies an existing row.
+    /// </summary>
+    /// <param name="user">The user account to insert.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>True when the row was inserted; false when the username was already in use.</returns>
+    /// <remarks>
+    /// Unlike <see cref="CreateUserAsync"/>, which upserts, the database arbitrates the conflict atomically.
+    /// </remarks>
+    Task<bool> TryCreateUserAsync(UserAccount user, CancellationToken ct = default);
+
+    /// <summary>
     /// Updates the last login timestamp for an authenticated user.
     /// </summary>
     /// <param name="username">The username whose login timestamp is updating.</param>

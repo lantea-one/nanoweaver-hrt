@@ -459,6 +459,8 @@ public sealed class SessionIdleEnforcementTests : IDisposable
         inner.Setup(s => s.ListUsersAsync(It.IsAny<CancellationToken>())).ReturnsAsync(accounts);
         inner.Setup(s => s.CreateUserAsync("admin", UserRole.Administrator, AccessGate.ApiWeb, "pub", KeyAlgorithm.Ed25519, It.IsAny<CancellationToken>()))
             .ReturnsAsync(account);
+        inner.Setup(s => s.TryCreateUserAsync("admin", UserRole.Administrator, AccessGate.ApiWeb, "pub", KeyAlgorithm.Ed25519, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(account);
         inner.Setup(s => s.GenerateBearerToken(account)).Returns("minted-token");
         inner.Setup(s => s.DeleteUserAsync("admin", It.IsAny<CancellationToken>())).ReturnsAsync(true);
 
@@ -472,6 +474,7 @@ public sealed class SessionIdleEnforcementTests : IDisposable
         Assert.Equal("token", (await service.AuthenticateWithPrivateKeyAsync("admin", "pem", "pass")).Token);
         Assert.Same(accounts, await service.ListUsersAsync());
         Assert.Same(account, await service.CreateUserAsync("admin", UserRole.Administrator, AccessGate.ApiWeb, "pub", KeyAlgorithm.Ed25519));
+        Assert.Same(account, await service.TryCreateUserAsync("admin", UserRole.Administrator, AccessGate.ApiWeb, "pub", KeyAlgorithm.Ed25519));
         Assert.Equal("minted-token", service.GenerateBearerToken(account));
         Assert.True(await service.DeleteUserAsync("admin"));
 

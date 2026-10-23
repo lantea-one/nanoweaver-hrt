@@ -336,6 +336,74 @@ public sealed class UserRepository : IUserRepository, IDisposable
     }
 
     /// <inheritdoc/>
+    public async Task<bool> TryCreateUserAsync(UserAccount user, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+        ArgumentException.ThrowIfNullOrWhiteSpace(user.Username);
+        ArgumentException.ThrowIfNullOrWhiteSpace(user.PublicKeyBase64);
+
+        await InitializeAsync(ct);
+        await _lock.WaitAsync(ct);
+
+        // WHAT: Insert-only account creation.
+        // WHY:  A check-then-insert would let two concurrent callers both see "absent"; the unique key must decide.
+        // HOW:  ON CONFLICT DO NOTHING reports 0 affected rows when the username exists.
+        try
+        {
+            bool isPostgres = _configRepo.ActiveBackendName.StartsWith("PostgreSQL", StringComparison.OrdinalIgnoreCase);
+            if (isPostgres)
+            {
+                try
+                {
+                    using NpgsqlConnection conn = new(_postgresConnString);
+                    await conn.OpenAsync(ct);
+                    const string sql = @"
+                        INSERT INTO weaver_users (username, role, access_gate, key_algorithm, public_key, created_at_utc, last_login_utc, is_active)
+                        VALUES (@u, @r, @g, @a, @p, @c, @l, @act)
+                        ON CONFLICT (username) DO NOTHING;
+                    ";
+                    using NpgsqlCommand cmd = new(sql, conn);
+                    cmd.Parameters.AddWithValue("@u", user.Username);
+                    cmd.Parameters.AddWithValue("@r", user.Role.ToString());
+                    cmd.Parameters.AddWithValue("@g", user.AccessGate.ToString());
+                    cmd.Parameters.AddWithValue("@a", user.Algorithm.ToString());
+                    cmd.Parameters.AddWithValue("@p", user.PublicKeyBase64);
+                    cmd.Parameters.AddWithValue("@c", user.CreatedAtUtc.UtcDateTime);
+                    cmd.Parameters.AddWithValue("@l", (object?)user.LastLoginUtc?.UtcDateTime ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@act", user.IsActive);
+                    return await cmd.ExecuteNonQueryAsync(ct) > 0;
+                }
+                catch
+                {
+                    // Fall back to SQLite
+                }
+            }
+
+            using SqliteConnection sqlite = new($"Data Source={_sqlitePath}");
+            await sqlite.OpenAsync(ct);
+            const string sqliteSql = @"
+                INSERT INTO weaver_users (username, role, access_gate, key_algorithm, public_key, created_at_utc, last_login_utc, is_active)
+                VALUES (@u, @r, @g, @a, @p, @c, @l, @act)
+                ON CONFLICT(username) DO NOTHING;
+            ";
+            using SqliteCommand sqliteCmd = new(sqliteSql, sqlite);
+            sqliteCmd.Parameters.AddWithValue("@u", user.Username);
+            sqliteCmd.Parameters.AddWithValue("@r", user.Role.ToString());
+            sqliteCmd.Parameters.AddWithValue("@g", user.AccessGate.ToString());
+            sqliteCmd.Parameters.AddWithValue("@a", user.Algorithm.ToString());
+            sqliteCmd.Parameters.AddWithValue("@p", user.PublicKeyBase64);
+            sqliteCmd.Parameters.AddWithValue("@c", user.CreatedAtUtc.ToString("o"));
+            sqliteCmd.Parameters.AddWithValue("@l", (object?)user.LastLoginUtc?.ToString("o") ?? DBNull.Value);
+            sqliteCmd.Parameters.AddWithValue("@act", user.IsActive ? 1 : 0);
+            return await sqliteCmd.ExecuteNonQueryAsync(ct) > 0;
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    /// <inheritdoc/>
     public async Task UpdateLastLoginAsync(string username, DateTimeOffset loginTimeUtc, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(username);

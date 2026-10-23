@@ -120,6 +120,24 @@ public interface IUserAuthenticationService
         CancellationToken ct = default);
 
     /// <summary>
+    /// Registers a new user account only when the username is not already in use.
+    /// </summary>
+    /// <param name="username">The username to register.</param>
+    /// <param name="role">The authorization role.</param>
+    /// <param name="gate">The access gate.</param>
+    /// <param name="publicKeyBase64">The Base64-encoded public key bytes.</param>
+    /// <param name="algorithm">The signature algorithm.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The created user account, or null when the username was already taken (nothing is changed).</returns>
+    Task<UserAccount?> TryCreateUserAsync(
+        string username,
+        UserRole role,
+        AccessGate gate,
+        string publicKeyBase64,
+        KeyAlgorithm algorithm,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Mints a signed bearer token for an authenticated user account.
     /// </summary>
     /// <param name="user">The user account for whom the token is minted.</param>

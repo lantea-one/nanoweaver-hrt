@@ -57,7 +57,7 @@ public sealed class UserProvisioningEndpointTests : IClassFixture<WebApplication
     private sealed class FaultInjectingAuthenticationService : IUserAuthenticationService
     {
         /// <summary>
-        /// The real service every call but <see cref="CreateUserAsync"/> is forwarded to.
+        /// The real service every call but <see cref="TryCreateUserAsync"/> is forwarded to.
         /// </summary>
         private readonly IUserAuthenticationService _inner;
 
@@ -97,8 +97,12 @@ public sealed class UserProvisioningEndpointTests : IClassFixture<WebApplication
         public Task<IReadOnlyList<UserAccount>> ListUsersAsync(CancellationToken ct = default) => _inner.ListUsersAsync(ct);
 
         /// <inheritdoc/>
-        /// <exception cref="InvalidOperationException">Always, carrying <see cref="HostileFaultMessage"/>.</exception>
         public Task<UserAccount> CreateUserAsync(string username, UserRole role, AccessGate gate, string publicKeyBase64, KeyAlgorithm algorithm, CancellationToken ct = default)
+            => _inner.CreateUserAsync(username, role, gate, publicKeyBase64, algorithm, ct);
+
+        /// <inheritdoc/>
+        /// <exception cref="InvalidOperationException">Always, carrying <see cref="HostileFaultMessage"/>.</exception>
+        public Task<UserAccount?> TryCreateUserAsync(string username, UserRole role, AccessGate gate, string publicKeyBase64, KeyAlgorithm algorithm, CancellationToken ct = default)
             => throw new InvalidOperationException(HostileFaultMessage);
 
         /// <inheritdoc/>
@@ -364,27 +368,20 @@ public sealed class UserProvisioningEndpointTests : IClassFixture<WebApplication
     }
 
     /// <summary>
-    /// Documents that reusing an existing username silently rebinds that account instead of being refused.
+    /// Verifies that reusing an existing username is refused with 409 Conflict and changes nothing.
     /// </summary>
     /// <remarks>
-    /// This test records current behaviour, which is a FINDING rather than a desired contract.
-    /// <c>UserRepository.CreateUserAsync</c> issues <c>ON CONFLICT(username) DO UPDATE</c>, an upsert, so a
-    /// second <c>POST /api/users</c> for a name that already exists overwrites that account's role, access
-    /// gate, algorithm and public key, answers <c>201 Created</c>, and is recorded in the compliance audit
-    /// ledger as <c>UserCreated</c>. The endpoint's own <c>catch (InvalidOperationException)</c> is
-    /// therefore unreachable on the SQLite path. An endpoint named CreateUser that reports 201 should
-    /// refuse a name already in use with <c>409 Conflict</c>; changing that also changes first-launch setup
-    /// and the generate-keypair re-key flow, which both rely on the upsert, so it is a deliberate decision
-    /// and not a drive-by fix. Should the semantics be corrected, this test is expected to fail and must be
-    /// rewritten to assert the refusal.
+    /// <c>POST /api/users</c> provisions new accounts only. It used to share the upserting
+    /// <c>CreateUserAsync</c>, so a second call silently rebound the existing account's role, gate and key
+    /// and answered 201. The endpoint now uses the insert-only <c>TryCreateUserAsync</c>.
     /// </remarks>
     [Fact]
-    public async Task CreateUser_WithExistingUsername_SilentlyRebindsTheAccount_KnownFinding()
+    public async Task CreateUser_WithExistingUsername_IsRefusedWithConflictAndLeavesTheAccountUnchanged()
     {
         // WHAT: Creates an account, then posts the same username again with a different role and key.
-        // WHY:  Pins the real behaviour of the upsert so the overwrite cannot be mistaken for a refusal, and
-        //       so a future correction to 409 Conflict trips loudly here instead of passing unnoticed.
-        // HOW:  Compares the stored role and public key before and after the second call.
+        // WHY:  Silently rebinding an account's key and role is an account-takeover primitive; the original
+        //       account must survive byte for byte, which is the half that matters more than the status code.
+        // HOW:  Asserts 409 problem details, then compares the stored role, gate and key with the first call.
         var (adminToken, _, _) = await ProvisionRoleTokensAsync(_factory);
         using HttpClient adminClient = CreateClient(_factory, adminToken);
 
@@ -411,17 +408,57 @@ public sealed class UserProvisioningEndpointTests : IClassFixture<WebApplication
             PublicKeyBase64 = secondKey
         });
 
-        // Current behaviour: accepted as a creation, not refused as a conflict.
-        Assert.Equal(HttpStatusCode.Created, second.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+        Assert.Equal("application/problem+json", second.Content.Headers.ContentType?.MediaType);
+        string body = await second.Content.ReadAsStringAsync();
+        Assert.Contains("urn:weaver:error:conflict", body, StringComparison.Ordinal);
+        Assert.Contains("already exists", body, StringComparison.Ordinal);
 
         UserAccount[]? users = await adminClient.GetFromJsonAsync<UserAccount[]>("/api/users");
         Assert.NotNull(users);
         Assert.Single(users, u => u.Username == "prov_rebound");
 
         UserAccount stored = users.First(u => u.Username == "prov_rebound");
-        Assert.Equal(UserRole.Administrator, stored.Role);
-        Assert.Equal(AccessGate.ApiWeb, stored.AccessGate);
-        Assert.Equal(secondKey, stored.PublicKeyBase64);
+        Assert.Equal(UserRole.Patient, stored.Role);
+        Assert.Equal(AccessGate.Web, stored.AccessGate);
+        Assert.Equal(firstKey, stored.PublicKeyBase64);
+    }
+
+    /// <summary>
+    /// Verifies that first-launch setup and the generate-keypair re-key flow still use the retained upsert.
+    /// </summary>
+    [Fact]
+    public async Task SetupAndGenerateKeypairRekey_StillUpsertAfterInsertOnlyCreateUser()
+    {
+        // WHAT: Completes setup, then calls generate-keypair twice for one username.
+        // WHY:  Both flows rely on the upsert in CreateUserAsync; making POST /api/users insert-only must
+        //       not have changed them.
+        // HOW:  Setup is exercised by ProvisionRoleTokensAsync; the second generate-keypair call must answer
+        //       200 (not 409) and replace the stored public key with the newly generated one.
+        var (adminToken, _, _) = await ProvisionRoleTokensAsync(_factory);
+        using HttpClient adminClient = CreateClient(_factory, adminToken);
+
+        UserAccount[]? initial = await adminClient.GetFromJsonAsync<UserAccount[]>("/api/users");
+        Assert.NotNull(initial);
+        Assert.Contains(initial, u => u.Username == "prov_admin" && u.Role == UserRole.Administrator);
+
+        GenerateKeyRequest request = new() { Username = "prov_rekeyed", Role = UserRole.Researcher, AccessGate = AccessGate.Api, Algorithm = KeyAlgorithm.Ed25519 };
+
+        HttpResponseMessage first = await adminClient.PostAsJsonAsync("/api/users/generate-keypair", request);
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        GeneratedKeyBundle? firstBundle = await first.Content.ReadFromJsonAsync<GeneratedKeyBundle>();
+        Assert.NotNull(firstBundle);
+
+        HttpResponseMessage second = await adminClient.PostAsJsonAsync("/api/users/generate-keypair", request);
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+        GeneratedKeyBundle? secondBundle = await second.Content.ReadFromJsonAsync<GeneratedKeyBundle>();
+        Assert.NotNull(secondBundle);
+        Assert.NotEqual(firstBundle.PublicKeyBase64, secondBundle.PublicKeyBase64);
+
+        UserAccount[]? users = await adminClient.GetFromJsonAsync<UserAccount[]>("/api/users");
+        Assert.NotNull(users);
+        Assert.Single(users, u => u.Username == "prov_rekeyed");
+        Assert.Equal(secondBundle.PublicKeyBase64, users.First(u => u.Username == "prov_rekeyed").PublicKeyBase64);
     }
 
     /// <summary>
@@ -436,7 +473,7 @@ public sealed class UserProvisioningEndpointTests : IClassFixture<WebApplication
         //       '{ error = ex.Message }', which returns normally and so never passes through
         //       SecureExceptionHandlerMiddleware -- the sanitizer was proven only on the middleware path,
         //       while the handler path was the one actually leaking.
-        // HOW:  Overrides IUserAuthenticationService with a decorator that faults only on CreateUserAsync,
+        // HOW:  Overrides IUserAuthenticationService with a decorator that faults only on TryCreateUserAsync,
         //       so token validation still works, and asserts every secret is absent and each redaction
         //       marker is present.
         string faultDataDir = Path.Combine(_tempDataDir, "fault");

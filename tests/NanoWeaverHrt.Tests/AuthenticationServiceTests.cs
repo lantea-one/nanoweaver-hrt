@@ -197,6 +197,88 @@ public sealed class AuthenticationServiceTests : IDisposable
     }
 
     /// <summary>
+    /// Verifies that the insert-only repository path inserts a fresh name and refuses a taken one untouched.
+    /// </summary>
+    [Fact]
+    public async Task UserRepository_TryCreateUserAsync_InsertsFreshNameAndRefusesTakenNameWithoutModifyingIt()
+    {
+        // WHAT: Inserts a username twice through TryCreateUserAsync with different role, gate and key.
+        // WHY:  The database must arbitrate the conflict so a duplicate can never overwrite an account.
+        // HOW:  Asserts true then false, then reads the row back and compares it with the first insert.
+        UserAccount original = new()
+        {
+            Username = "try_create_user",
+            Role = UserRole.Patient,
+            AccessGate = AccessGate.Web,
+            Algorithm = KeyAlgorithm.Ed25519,
+            PublicKeyBase64 = "MCowBQYDK2VwAyEA1111111111111111111111111111111111111111111=",
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+            IsActive = true
+        };
+        UserAccount duplicate = new()
+        {
+            Username = "try_create_user",
+            Role = UserRole.Administrator,
+            AccessGate = AccessGate.ApiWeb,
+            Algorithm = KeyAlgorithm.Ed25519,
+            PublicKeyBase64 = "MCowBQYDK2VwAyEA2222222222222222222222222222222222222222222=",
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+            IsActive = false
+        };
+
+        Assert.True(await _userRepository.TryCreateUserAsync(original));
+        Assert.False(await _userRepository.TryCreateUserAsync(duplicate));
+
+        UserAccount? stored = await _userRepository.GetUserAsync("try_create_user");
+        Assert.NotNull(stored);
+        Assert.Equal(UserRole.Patient, stored.Role);
+        Assert.Equal(AccessGate.Web, stored.AccessGate);
+        Assert.Equal(original.PublicKeyBase64, stored.PublicKeyBase64);
+        Assert.True(stored.IsActive);
+        Assert.Single((await _userRepository.ListUsersAsync()), u => u.Username == "try_create_user");
+    }
+
+    /// <summary>
+    /// Verifies argument validation on the insert-only repository path.
+    /// </summary>
+    [Fact]
+    public async Task UserRepository_TryCreateUserAsync_InvalidArguments_Throw()
+    {
+        // WHAT: Passes a null account and accounts with blank username or key.
+        // WHY:  Fail-fast validation must match the upserting CreateUserAsync.
+        // HOW:  Asserts the argument exceptions.
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _userRepository.TryCreateUserAsync(null!));
+        await Assert.ThrowsAsync<ArgumentException>(() => _userRepository.TryCreateUserAsync(new UserAccount { Username = " ", PublicKeyBase64 = "k" }));
+        await Assert.ThrowsAsync<ArgumentException>(() => _userRepository.TryCreateUserAsync(new UserAccount { Username = "u", PublicKeyBase64 = " " }));
+    }
+
+    /// <summary>
+    /// Verifies the service-level insert-only creation returns null for a duplicate and leaves the account intact.
+    /// </summary>
+    [Fact]
+    public async Task TryCreateUserAsync_DuplicateUsername_ReturnsNullAndKeepsOriginalAccount()
+    {
+        // WHAT: Creates an account through the service, then repeats the name with a different role and key.
+        // WHY:  A refused duplicate must not alter the account (and is not audited as a creation).
+        // HOW:  Asserts non-null then null, plus argument validation, then re-reads the stored account.
+        GeneratedKeyBundle bundle = _authService.GenerateSecureKeyBundle("try_svc", UserRole.Researcher, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
+
+        UserAccount? created = await _authService.TryCreateUserAsync(" try_svc ", UserRole.Researcher, AccessGate.ApiWeb, bundle.PublicKeyBase64, KeyAlgorithm.Ed25519);
+        Assert.NotNull(created);
+        Assert.Equal("try_svc", created.Username);
+
+        Assert.Null(await _authService.TryCreateUserAsync("try_svc", UserRole.Administrator, AccessGate.Api, "other-key", KeyAlgorithm.Ed25519));
+
+        UserAccount? stored = await _userRepository.GetUserAsync("try_svc");
+        Assert.NotNull(stored);
+        Assert.Equal(UserRole.Researcher, stored.Role);
+        Assert.Equal(bundle.PublicKeyBase64, stored.PublicKeyBase64);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => _authService.TryCreateUserAsync(" ", UserRole.Researcher, AccessGate.Api, "k", KeyAlgorithm.Ed25519));
+        await Assert.ThrowsAsync<ArgumentException>(() => _authService.TryCreateUserAsync("x", UserRole.Researcher, AccessGate.Api, " ", KeyAlgorithm.Ed25519));
+    }
+
+    /// <summary>
     /// Verifies constructor argument validation on <see cref="UserAuthenticationService"/> and <see cref="UserRepository"/>.
     /// </summary>
     [Fact]
