@@ -5,8 +5,9 @@ NanoWeaverHrt (nanoweaver-hrt): Molecular Simulation Node Daemon
 ------------------------------------------------------------------------------
 WHAT: Lightweight, zero-dependency HTTP simulation daemon and hardware probe 
       for oxDNA 2.4 and LAMMPS molecular dynamics runtimes.
-WHY:  Exposes health checks, OpenCL/SYCL GPU accelerator telemetry, and 
-      simulation job execution endpoints to the sovereign .NET 10 microservice.
+WHY:  Exposes health checks and OpenCL/SYCL GPU accelerator telemetry to the
+      sovereign .NET 10 microservice. It submits no jobs: the engine containers run
+      the decks in configs/ directly, so every POST is refused.
 HOW:  Utilizes Python 3's built-in http.server and socketserver to bind to 
       port 8080, inspecting /dev/dri, clinfo, and /workspace mounts.
 ==============================================================================
@@ -19,6 +20,7 @@ import signal
 import socket
 import subprocess
 import sys
+import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
@@ -156,33 +158,19 @@ class SimulationDaemonHandler(BaseHTTPRequestHandler):
         self._send_json_response(404, {"error": f"Endpoint '{self.path}' not found on simulation daemon."})
 
     def do_POST(self):
-        """Handles simulation job submissions or validation requests."""
-        parsed = urlparse(self.path)
-        path = parsed.path.rstrip("/")
+        """Rejects every POST, because this daemon submits no jobs.
 
-        if path in ("/simulate", "/api/simulate", "/jobs"):
-            content_length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(content_length) if content_length > 0 else b"{}"
-            try:
-                payload = json.loads(body.decode("utf-8")) if body else {}
-            except Exception:
-                self._send_json_response(400, {"error": "Malformed JSON payload."})
-                return
-
-            deck = payload.get("deck", "minidna.in")
-            engine = payload.get("engine", "oxdna" if "oxdna" in deck.lower() else "lammps")
-
-            job_id = f"job_{int(time.time())}_{os.urandom(4).hex()}"
-            self._send_json_response(200, {
-                "jobId": job_id,
-                "status": "Accepted",
-                "deck": deck,
-                "engine": engine,
-                "message": f"Simulation job '{job_id}' queued for execution on {engine}.",
-                "timestampUtc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-            })
-            return
-
+        WHAT: Answers any POST with a JSON 404, in the same shape do_GET uses.
+        WHY:  There used to be a /simulate, /api/simulate and /jobs handler here that
+              minted a job_id and answered {"status": "Accepted"} without ever starting
+              a solver. Nothing in the platform called it, and a caller that believed it
+              would wait forever for a trajectory no engine was ever asked to produce.
+              Reporting success for work that will not happen is worse than refusing it,
+              so the endpoint is gone rather than left as a stub.
+        HOW:  Simulation runs are launched by the engine containers from the decks in
+              configs/, not over HTTP. Should job submission ever be wanted, it needs a
+              real queue and a real executor, not a revival of this handler.
+        """
         self._send_json_response(404, {"error": f"POST endpoint '{self.path}' not supported."})
 
     def log_message(self, format_str, *args):
@@ -198,10 +186,20 @@ def run_daemon():
     server.daemon_threads = True
 
     def _shutdown_handler(signum, frame):
+        # WHAT: Requests shutdown from a helper thread instead of this one.
+        # WHY:  A Python signal handler runs on the main thread, suspending whatever that
+        #       thread was doing -- here, serve_forever(). shutdown() sets a flag and then
+        #       BLOCKS until the serve_forever loop acknowledges it, but that loop cannot
+        #       resume until this handler returns. Calling it directly therefore deadlocks:
+        #       SIGTERM left the daemon listening and `docker stop` only ever killed it by
+        #       waiting out its grace period and sending SIGKILL, which means no in-flight
+        #       request was ever allowed to finish.
+        # HOW:  A separate thread blocks on shutdown() while this handler returns at once,
+        #       letting serve_forever observe the flag and exit. run_daemon's `finally`
+        #       closes the socket, so neither server_close() nor sys.exit() belongs here.
         sys.stderr.write(f"\n[SimDaemon] Signal {signum} received. Gracefully stopping daemon...\n")
-        server.shutdown()
-        server.server_close()
-        sys.exit(0)
+        sys.stderr.flush()
+        threading.Thread(target=server.shutdown, name="shutdown", daemon=True).start()
 
     signal.signal(signal.SIGTERM, _shutdown_handler)
     signal.signal(signal.SIGINT, _shutdown_handler)
