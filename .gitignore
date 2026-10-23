@@ -999,3 +999,7 @@ secrets/
 # Agent worktrees: isolated checkouts created for concurrent sub-agent work.
 # These are full copies of the repository and must never be committed.
 .claude/worktrees/
+
+# npm lockfile: package.json declares no dependencies, so this file pins nothing and
+# carries no supply-chain value. Remove this entry if real dependencies are ever added.
+package-lock.json
