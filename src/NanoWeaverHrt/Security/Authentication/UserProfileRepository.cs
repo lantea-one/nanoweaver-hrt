@@ -119,18 +119,18 @@ public sealed class UserProfileRepository : IUserProfileRepository, IDisposable
                     updated_at_utc = @uat;");
 
             WeaverDbParameters.Add(cmd, "@u", profile.Username);
-            WeaverDbParameters.Add(cmd, "@fn", profile.FirstName ?? string.Empty);
-            WeaverDbParameters.Add(cmd, "@ln", profile.LastName ?? string.Empty);
-            WeaverDbParameters.AddNullable(cmd, "@pn", profile.PreferredName);
-            WeaverDbParameters.AddNullable(cmd, "@em", profile.EmailAddress);
-            WeaverDbParameters.AddNullable(cmd, "@ph", profile.PhoneNumber);
-            WeaverDbParameters.AddNullable(cmd, "@dob", profile.DateOfBirth);
+            WeaverDbParameters.Add(cmd, "@fn", _protector.EncryptRequiredField(profile.FirstName ?? string.Empty));
+            WeaverDbParameters.Add(cmd, "@ln", _protector.EncryptRequiredField(profile.LastName ?? string.Empty));
+            WeaverDbParameters.AddNullable(cmd, "@pn", _protector.EncryptField(profile.PreferredName));
+            WeaverDbParameters.AddNullable(cmd, "@em", _protector.EncryptField(profile.EmailAddress));
+            WeaverDbParameters.AddNullable(cmd, "@ph", _protector.EncryptField(profile.PhoneNumber));
+            WeaverDbParameters.AddNullable(cmd, "@dob", _protector.EncryptField(profile.DateOfBirth));
             WeaverDbParameters.AddNullable(cmd, "@pic", encryptedPicture);
             WeaverDbParameters.Add(cmd, "@reg", profile.Regimen.HasValue ? profile.Regimen.Value.ToString() : DBNull.Value);
             WeaverDbParameters.Add(cmd, "@gen", profile.GenderAssignedAtBirth.ToString());
             WeaverDbParameters.Add(cmd, "@pro", pronounsJson);
-            WeaverDbParameters.AddNullable(cmd, "@emn", profile.EmergencyMedicalNotes);
-            WeaverDbParameters.AddNullable(cmd, "@bio", profile.Bio);
+            WeaverDbParameters.AddNullable(cmd, "@emn", _protector.EncryptField(profile.EmergencyMedicalNotes));
+            WeaverDbParameters.AddNullable(cmd, "@bio", _protector.EncryptField(profile.Bio));
             WeaverDbParameters.Add(cmd, "@lang", string.IsNullOrWhiteSpace(profile.LanguagePreference) ? "en-US" : profile.LanguagePreference);
 
             WeaverDbParameters.Add(cmd, "@cat", session.Dialect.TimestampValue(profile.CreatedAtUtc));
@@ -170,7 +170,7 @@ public sealed class UserProfileRepository : IUserProfileRepository, IDisposable
             await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct);
             while (await reader.ReadAsync(ct))
             {
-                list.Add(MapAddressFromReader(reader));
+                list.Add(MapAddressFromReader(reader, _protector));
             }
 
             return list;
@@ -218,11 +218,11 @@ public sealed class UserProfileRepository : IUserProfileRepository, IDisposable
             WeaverDbParameters.Add(cmd, "@id", address.Id);
             WeaverDbParameters.Add(cmd, "@u", address.Username);
             WeaverDbParameters.Add(cmd, "@at", address.AddressType);
-            WeaverDbParameters.Add(cmd, "@l1", address.AddressLine1);
-            WeaverDbParameters.AddNullable(cmd, "@l2", address.AddressLine2);
-            WeaverDbParameters.Add(cmd, "@ci", address.City);
-            WeaverDbParameters.Add(cmd, "@sp", address.StateOrProvince);
-            WeaverDbParameters.Add(cmd, "@pc", address.PostalCode);
+            WeaverDbParameters.Add(cmd, "@l1", _protector.EncryptRequiredField(address.AddressLine1));
+            WeaverDbParameters.AddNullable(cmd, "@l2", _protector.EncryptField(address.AddressLine2));
+            WeaverDbParameters.Add(cmd, "@ci", _protector.EncryptRequiredField(address.City));
+            WeaverDbParameters.Add(cmd, "@sp", _protector.EncryptRequiredField(address.StateOrProvince));
+            WeaverDbParameters.Add(cmd, "@pc", _protector.EncryptRequiredField(address.PostalCode));
             WeaverDbParameters.Add(cmd, "@co", address.Country);
 
             WeaverDbParameters.Add(cmd, "@ip", session.Dialect.BooleanValue(address.IsPrimary));
@@ -289,7 +289,7 @@ public sealed class UserProfileRepository : IUserProfileRepository, IDisposable
             await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct);
             while (await reader.ReadAsync(ct))
             {
-                list.Add(MapContactFromReader(reader));
+                list.Add(MapContactFromReader(reader, _protector));
             }
 
             return list;
@@ -335,12 +335,12 @@ public sealed class UserProfileRepository : IUserProfileRepository, IDisposable
 
             WeaverDbParameters.Add(cmd, "@id", contact.Id);
             WeaverDbParameters.Add(cmd, "@u", contact.Username);
-            WeaverDbParameters.Add(cmd, "@cn", contact.ContactName);
-            WeaverDbParameters.Add(cmd, "@rel", contact.Relationship);
-            WeaverDbParameters.Add(cmd, "@ph", contact.PhoneNumber);
-            WeaverDbParameters.AddNullable(cmd, "@em", contact.EmailAddress);
+            WeaverDbParameters.Add(cmd, "@cn", _protector.EncryptRequiredField(contact.ContactName));
+            WeaverDbParameters.Add(cmd, "@rel", _protector.EncryptRequiredField(contact.Relationship));
+            WeaverDbParameters.Add(cmd, "@ph", _protector.EncryptRequiredField(contact.PhoneNumber));
+            WeaverDbParameters.AddNullable(cmd, "@em", _protector.EncryptField(contact.EmailAddress));
             WeaverDbParameters.Add(cmd, "@po", contact.PriorityOrder);
-            WeaverDbParameters.AddNullable(cmd, "@nt", contact.Notes);
+            WeaverDbParameters.AddNullable(cmd, "@nt", _protector.EncryptField(contact.Notes));
 
             WeaverDbParameters.Add(cmd, "@cdm", session.Dialect.BooleanValue(contact.CanDiscussMedicalInfo));
             WeaverDbParameters.Add(cmd, "@cat", session.Dialect.TimestampValue(contact.CreatedAtUtc));
@@ -389,18 +389,18 @@ public sealed class UserProfileRepository : IUserProfileRepository, IDisposable
     internal static UserProfile MapProfileFromReader(DbDataReader reader, ProfileDataProtector protector)
     {
         string username = reader.GetString(0);
-        string firstName = reader.GetString(1);
-        string lastName = reader.GetString(2);
-        string? preferredName = reader.IsDBNull(3) ? null : reader.GetString(3);
-        string? email = reader.IsDBNull(4) ? null : reader.GetString(4);
-        string? phone = reader.IsDBNull(5) ? null : reader.GetString(5);
-        string? dob = reader.IsDBNull(6) ? null : reader.GetString(6);
+        string firstName = protector.DecryptRequiredField(reader.GetString(1));
+        string lastName = protector.DecryptRequiredField(reader.GetString(2));
+        string? preferredName = protector.DecryptField(reader.IsDBNull(3) ? null : reader.GetString(3));
+        string? email = protector.DecryptField(reader.IsDBNull(4) ? null : reader.GetString(4));
+        string? phone = protector.DecryptField(reader.IsDBNull(5) ? null : reader.GetString(5));
+        string? dob = protector.DecryptField(reader.IsDBNull(6) ? null : reader.GetString(6));
         string? encryptedPic = reader.IsDBNull(7) ? null : reader.GetString(7);
         string? regimenStr = reader.IsDBNull(8) ? null : reader.GetString(8);
         string genderStr = reader.GetString(9);
         string pronounsJson = reader.GetString(10);
-        string? emergencyNotes = reader.IsDBNull(11) ? null : reader.GetString(11);
-        string? bio = reader.IsDBNull(12) ? null : reader.GetString(12);
+        string? emergencyNotes = protector.DecryptField(reader.IsDBNull(11) ? null : reader.GetString(11));
+        string? bio = protector.DecryptField(reader.IsDBNull(12) ? null : reader.GetString(12));
         string languagePref = reader.GetString(13);
 
         DateTimeOffset created = WeaverDbValues.ReadTimestamp(reader, 14);
@@ -451,17 +451,18 @@ public sealed class UserProfileRepository : IUserProfileRepository, IDisposable
     /// Maps a database reader row to a strongly-typed <see cref="PatientAddress"/>.
     /// </summary>
     /// <param name="reader">A reader positioned on the address row to read.</param>
+    /// <param name="protector">Protector that decrypts the street, city, state and postal-code columns.</param>
     /// <returns>The postal address described by the current row.</returns>
-    internal static PatientAddress MapAddressFromReader(DbDataReader reader)
+    internal static PatientAddress MapAddressFromReader(DbDataReader reader, ProfileDataProtector protector)
     {
         string id = reader.GetString(0);
         string username = reader.GetString(1);
         string addressType = reader.GetString(2);
-        string line1 = reader.GetString(3);
-        string? line2 = reader.IsDBNull(4) ? null : reader.GetString(4);
-        string city = reader.GetString(5);
-        string state = reader.GetString(6);
-        string postalCode = reader.GetString(7);
+        string line1 = protector.DecryptRequiredField(reader.GetString(3));
+        string? line2 = protector.DecryptField(reader.IsDBNull(4) ? null : reader.GetString(4));
+        string city = protector.DecryptRequiredField(reader.GetString(5));
+        string state = protector.DecryptRequiredField(reader.GetString(6));
+        string postalCode = protector.DecryptRequiredField(reader.GetString(7));
         string country = reader.GetString(8);
         bool isPrimary = WeaverDbValues.ReadBoolean(reader, 9);
         DateTimeOffset created = WeaverDbValues.ReadTimestamp(reader, 10);
@@ -488,18 +489,19 @@ public sealed class UserProfileRepository : IUserProfileRepository, IDisposable
     /// Maps a database reader row to a strongly-typed <see cref="PatientContact"/>.
     /// </summary>
     /// <param name="reader">A reader positioned on the contact row to read.</param>
+    /// <param name="protector">Protector that decrypts the name, phone, e-mail and notes columns.</param>
     /// <returns>The emergency or next-of-kin contact described by the current row.</returns>
-    internal static PatientContact MapContactFromReader(DbDataReader reader)
+    internal static PatientContact MapContactFromReader(DbDataReader reader, ProfileDataProtector protector)
     {
         string id = reader.GetString(0);
         string username = reader.GetString(1);
-        string contactName = reader.GetString(2);
-        string relationship = reader.GetString(3);
-        string phone = reader.GetString(4);
-        string? email = reader.IsDBNull(5) ? null : reader.GetString(5);
+        string contactName = protector.DecryptRequiredField(reader.GetString(2));
+        string relationship = protector.DecryptRequiredField(reader.GetString(3));
+        string phone = protector.DecryptRequiredField(reader.GetString(4));
+        string? email = protector.DecryptField(reader.IsDBNull(5) ? null : reader.GetString(5));
         int priority = reader.GetInt32(6);
         bool canDiscuss = WeaverDbValues.ReadBoolean(reader, 7);
-        string? notes = reader.IsDBNull(8) ? null : reader.GetString(8);
+        string? notes = protector.DecryptField(reader.IsDBNull(8) ? null : reader.GetString(8));
         DateTimeOffset created = WeaverDbValues.ReadTimestamp(reader, 9);
         DateTimeOffset updated = WeaverDbValues.ReadTimestamp(reader, 10);
 

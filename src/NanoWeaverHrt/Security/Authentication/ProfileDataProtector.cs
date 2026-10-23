@@ -139,25 +139,7 @@ public sealed class ProfileDataProtector
             return plainDataUri;
         }
 
-        byte[] plainBytes = Encoding.UTF8.GetBytes(plainDataUri);
-        byte[] nonce = new byte[NonceSizeBytes];
-        RandomNumberGenerator.Fill(nonce);
-
-        byte[] cipherBytes = new byte[plainBytes.Length];
-        byte[] tag = new byte[TagSizeBytes];
-
-        using (AesGcm aes = new(_encryptionKey.Span, TagSizeBytes))
-        {
-            aes.Encrypt(nonce, plainBytes, cipherBytes, tag);
-        }
-
-        // Combine: Nonce + Tag + Ciphertext
-        byte[] payload = new byte[NonceSizeBytes + TagSizeBytes + cipherBytes.Length];
-        Buffer.BlockCopy(nonce, 0, payload, 0, NonceSizeBytes);
-        Buffer.BlockCopy(tag, 0, payload, NonceSizeBytes, TagSizeBytes);
-        Buffer.BlockCopy(cipherBytes, 0, payload, NonceSizeBytes + TagSizeBytes, cipherBytes.Length);
-
-        return $"{EncryptedPrefix}{Convert.ToBase64String(payload)}";
+        return EncryptCore(plainDataUri);
     }
 
     /// <summary>
@@ -234,6 +216,150 @@ public sealed class ProfileDataProtector
 
         throw new CryptographicException(UndecryptableMessage);
     }
+
+    /// <summary>
+    /// Always encrypts a text value into the <c>data:application/encrypted;base64,…</c> envelope.
+    /// </summary>
+    /// <param name="plainText">The non-empty text to protect.</param>
+    /// <returns>The authenticated AES-256-GCM envelope.</returns>
+    /// <remarks>
+    /// Unlike <see cref="EncryptDataUri"/> this never passes a value through because it merely looks like an
+    /// envelope; a patient who types such a string into a free-text field must get it encrypted, not stored raw.
+    /// </remarks>
+    private string EncryptCore(string plainText)
+    {
+        // WHAT: Seals one string with a fresh nonce under the node PHI key.
+        // WHY:  Every write path, picture or PII field, must produce the same authenticated envelope.
+        // HOW:  Random 96-bit nonce, AES-GCM encrypt, then Base64 of nonce + tag + ciphertext.
+        byte[] plainBytes = Encoding.UTF8.GetBytes(plainText);
+        byte[] nonce = new byte[NonceSizeBytes];
+        RandomNumberGenerator.Fill(nonce);
+
+        byte[] cipherBytes = new byte[plainBytes.Length];
+        byte[] tag = new byte[TagSizeBytes];
+
+        using (AesGcm aes = new(_encryptionKey.Span, TagSizeBytes))
+        {
+            aes.Encrypt(nonce, plainBytes, cipherBytes, tag);
+        }
+
+        // Combine: Nonce + Tag + Ciphertext
+        byte[] payload = new byte[NonceSizeBytes + TagSizeBytes + cipherBytes.Length];
+        Buffer.BlockCopy(nonce, 0, payload, 0, NonceSizeBytes);
+        Buffer.BlockCopy(tag, 0, payload, NonceSizeBytes, TagSizeBytes);
+        Buffer.BlockCopy(cipherBytes, 0, payload, NonceSizeBytes + TagSizeBytes, cipherBytes.Length);
+
+        return $"{EncryptedPrefix}{Convert.ToBase64String(payload)}";
+    }
+
+    /// <summary>
+    /// Encrypts one protected-health-information text field for storage.
+    /// </summary>
+    /// <param name="plainText">The field value, or <c>null</c> when the field is absent.</param>
+    /// <returns><c>null</c> for <c>null</c>, the empty string for the empty string, otherwise the envelope.</returns>
+    /// <remarks>
+    /// Nothing is hidden by encrypting an empty value, so absence and emptiness stay visible and
+    /// <c>NOT NULL</c> columns keep working. Whitespace-only text is real data and is encrypted unchanged.
+    /// </remarks>
+    public string? EncryptField(string? plainText)
+    {
+        // WHAT: Null/empty-preserving field encryption.
+        // WHY:  Optional columns must remain NULL when absent, and an empty string leaks nothing.
+        // HOW:  Short-circuits null and empty, otherwise delegates to the always-encrypt core.
+        if (string.IsNullOrEmpty(plainText))
+        {
+            return plainText;
+        }
+
+        return EncryptCore(plainText);
+    }
+
+    /// <summary>
+    /// Decrypts one protected-health-information text field read from storage.
+    /// </summary>
+    /// <param name="storedValue">The stored column value, or <c>null</c> when the column is NULL.</param>
+    /// <returns>The plaintext, or <c>null</c>/empty when the stored value was.</returns>
+    /// <exception cref="CryptographicException">
+    /// The value is not an envelope, is malformed, was forged, or was written under a different key. The message
+    /// never contains the stored value.
+    /// </exception>
+    /// <remarks>
+    /// A non-empty value that is not an envelope is refused instead of returned: after migration 005 no plaintext
+    /// can legitimately be present, so one that is must never be rendered as if it were trustworthy.
+    /// </remarks>
+    public string? DecryptField(string? storedValue)
+    {
+        // WHAT: Strict counterpart of EncryptField.
+        // WHY:  Silently returning an unencrypted value would hide a bypassed or tampered row.
+        // HOW:  Passes through null/empty and hands everything else to the strict envelope reader.
+        if (string.IsNullOrEmpty(storedValue))
+        {
+            return storedValue;
+        }
+
+        return DecryptEnvelope(storedValue);
+    }
+
+    /// <summary>
+    /// Encrypts a field that is never <c>null</c> (a <c>NOT NULL</c> column).
+    /// </summary>
+    /// <param name="plainText">The field value; may be empty.</param>
+    /// <returns>The empty string for empty input, otherwise the envelope.</returns>
+    public string EncryptRequiredField(string plainText)
+    {
+        // WHAT: Non-nullable flavour of EncryptField.
+        // WHY:  NOT NULL columns and non-nullable model properties need a string result, not string?.
+        // HOW:  Empty stays empty (nothing to hide); anything else is sealed.
+        return plainText.Length == 0 ? string.Empty : EncryptCore(plainText);
+    }
+
+    /// <summary>
+    /// Decrypts a field read from a <c>NOT NULL</c> column.
+    /// </summary>
+    /// <param name="storedValue">The stored column value; may be empty.</param>
+    /// <returns>The plaintext, or the empty string for an empty stored value.</returns>
+    /// <exception cref="CryptographicException">The value is not a valid envelope for this node.</exception>
+    public string DecryptRequiredField(string storedValue)
+    {
+        // WHAT: Non-nullable flavour of DecryptField.
+        // WHY:  Mirrors EncryptRequiredField so the model's non-nullable properties stay non-nullable.
+        // HOW:  Empty stays empty; anything else goes through the strict envelope reader.
+        return storedValue.Length == 0 ? string.Empty : DecryptEnvelope(storedValue);
+    }
+
+    /// <summary>
+    /// Strictly decrypts one non-empty stored value.
+    /// </summary>
+    /// <param name="storedValue">A non-empty stored column value.</param>
+    /// <returns>The plaintext.</returns>
+    /// <exception cref="CryptographicException">The value is not an envelope, or cannot be decrypted.</exception>
+    private string DecryptEnvelope(string storedValue)
+    {
+        // WHAT: Rejects plaintext, then decrypts.
+        // WHY:  After migration 005 a non-envelope value means the row bypassed encryption or was tampered with.
+        // HOW:  Uses DecryptDataUri for the decrypt so the legacy-key fallback and LegacyDecryptionCount behave
+        //       exactly as they do for the picture column.
+        if (!IsEncrypted(storedValue))
+        {
+            throw new CryptographicException(UnprotectedFieldMessage);
+        }
+
+        return DecryptDataUri(storedValue);
+    }
+
+    /// <summary>
+    /// Determines whether a stored value already carries the encrypted envelope prefix.
+    /// </summary>
+    /// <param name="value">The stored column value.</param>
+    /// <returns><c>true</c> when the value starts with the envelope prefix.</returns>
+    /// <remarks>The migration uses this to stay idempotent: an envelope is never encrypted a second time.</remarks>
+    public static bool IsEncrypted(string? value) =>
+        value is not null && value.StartsWith(EncryptedPrefix, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Error message used when a PHI column holds a non-empty value that is not an encrypted envelope.
+    /// </summary>
+    private const string UnprotectedFieldMessage = "Protected profile field is not stored in encrypted form.";
 
     /// <summary>
     /// Attempts an AES-256-GCM open operation with the supplied key.

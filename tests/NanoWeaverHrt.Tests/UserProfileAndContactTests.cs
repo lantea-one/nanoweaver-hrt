@@ -388,12 +388,12 @@ public sealed class UserProfileAndContactTests : IClassFixture<WebApplicationFac
             Assert.False(contacts[0].CanDiscussMedicalInfo);
 
             // Test MockDateTimeDataReader for Address mapping
-            PatientAddress mappedAddress = UserProfileRepository.MapAddressFromReader(new MockDateTimeAddressDataReader());
+            PatientAddress mappedAddress = UserProfileRepository.MapAddressFromReader(new MockDateTimeAddressDataReader(protector), protector);
             Assert.Equal("test_id", mappedAddress.Id);
             Assert.True(mappedAddress.IsPrimary);
 
             // Test MockDateTimeContactDataReader for Contact mapping
-            PatientContact mappedContact = UserProfileRepository.MapContactFromReader(new MockDateTimeContactDataReader());
+            PatientContact mappedContact = UserProfileRepository.MapContactFromReader(new MockDateTimeContactDataReader(protector), protector);
             Assert.Equal("test_id", mappedContact.Id);
             Assert.True(mappedContact.CanDiscussMedicalInfo);
         }
@@ -408,6 +408,16 @@ public sealed class UserProfileAndContactTests : IClassFixture<WebApplicationFac
     /// </summary>
     private sealed class MockDateTimeAddressDataReader : DbDataReader
     {
+        /// <summary>Envelope standing in for an encrypted PHI column.</summary>
+        private readonly string _encryptedValue;
+
+        /// <summary>Creates the mock with a real envelope produced by the protector under test.</summary>
+        /// <param name="protector">Protector used to manufacture the encrypted column value.</param>
+        public MockDateTimeAddressDataReader(ProfileDataProtector protector)
+        {
+            _encryptedValue = protector.EncryptRequiredField("test");
+        }
+
         public override bool Read() => true;
         public override bool NextResult() => false;
         public override bool HasRows => true;
@@ -425,7 +435,7 @@ public sealed class UserProfileAndContactTests : IClassFixture<WebApplicationFac
             11 => typeof(DateTime),
             _ => typeof(string)
         };
-        public override string GetString(int ordinal) => ordinal == 0 ? "test_id" : "test";
+        public override string GetString(int ordinal) => ordinal == 0 ? "test_id" : (ordinal is >= 3 and <= 7) ? _encryptedValue : "test";
         public override bool GetBoolean(int ordinal) => true;
         public override DateTime GetDateTime(int ordinal) => DateTime.UtcNow;
         public override byte GetByte(int ordinal) => 0;
@@ -452,6 +462,16 @@ public sealed class UserProfileAndContactTests : IClassFixture<WebApplicationFac
     /// </summary>
     private sealed class MockDateTimeContactDataReader : DbDataReader
     {
+        /// <summary>Envelope standing in for an encrypted PHI column.</summary>
+        private readonly string _encryptedValue;
+
+        /// <summary>Creates the mock with a real envelope produced by the protector under test.</summary>
+        /// <param name="protector">Protector used to manufacture the encrypted column value.</param>
+        public MockDateTimeContactDataReader(ProfileDataProtector protector)
+        {
+            _encryptedValue = protector.EncryptRequiredField("test");
+        }
+
         public override bool Read() => true;
         public override bool NextResult() => false;
         public override bool HasRows => true;
@@ -470,7 +490,7 @@ public sealed class UserProfileAndContactTests : IClassFixture<WebApplicationFac
             10 => typeof(DateTime),
             _ => typeof(string)
         };
-        public override string GetString(int ordinal) => ordinal == 0 ? "test_id" : "test";
+        public override string GetString(int ordinal) => ordinal == 0 ? "test_id" : (ordinal is (>= 2 and <= 5) or 8) ? _encryptedValue : "test";
         public override int GetInt32(int ordinal) => 1;
         public override bool GetBoolean(int ordinal) => true;
         public override DateTime GetDateTime(int ordinal) => DateTime.UtcNow;

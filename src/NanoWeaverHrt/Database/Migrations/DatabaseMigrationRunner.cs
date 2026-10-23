@@ -1,5 +1,6 @@
 using System.Data.Common;
 using NanoWeaverHrt.Database.Access;
+using NanoWeaverHrt.Security.Authentication;
 
 namespace NanoWeaverHrt.Database.Migrations;
 
@@ -22,7 +23,8 @@ public sealed class DatabaseMigrationRunner : IDisposable
     /// Initializes a new instance of the <see cref="DatabaseMigrationRunner"/> class with registered migrations.
     /// </summary>
     /// <param name="migrations">Optional explicit migrations collection; defaults to built-in migrations if omitted.</param>
-    public DatabaseMigrationRunner(IEnumerable<IDatabaseMigration>? migrations = null)
+    /// <param name="protector">Optional PHI protector handed to the built-in encryption migration; the host supplies it through dependency injection.</param>
+    public DatabaseMigrationRunner(IEnumerable<IDatabaseMigration>? migrations = null, ProfileDataProtector? protector = null)
     {
         // WHAT: Discovers and orders all registered migration instances by version.
         // WHY:  Guarantees migrations are applied in strict ascending numerical order.
@@ -39,7 +41,8 @@ public sealed class DatabaseMigrationRunner : IDisposable
                 new Migration001_InitialSchema(),
                 new Migration002_UserAuditAndIndexes(),
                 new Migration003_UserProfileAddressesAndContacts(),
-                new Migration004_PatientDnaImportsAndResults()
+                new Migration004_PatientDnaImportsAndResults(),
+                new Migration005_EncryptPatientPhi(protector)
             }.OrderBy(m => m.Version).ToList();
         }
     }

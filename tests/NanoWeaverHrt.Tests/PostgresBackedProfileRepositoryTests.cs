@@ -188,7 +188,7 @@ public sealed class PostgresBackedProfileRepositoryTests : IDisposable
         // WHY:  The migration runner once bound its applied-at timestamp as text to a TIMESTAMPTZ column, so
         //       PostgreSQL rejected every migration; a swallowing catch upstream hid the failure, which means
         //       "no exception escaped" proves nothing. Only the recorded rows prove the migrations applied.
-        // HOW:  Asserts the table holds versions 1 to 4, each with a real, recent timestamp.
+        // HOW:  Asserts the table holds versions 1 to 5, each with a real, recent timestamp.
         string connectionString = await _postgres.CreateIsolatedDatabaseAsync();
         IConfiguration configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
@@ -209,14 +209,16 @@ public sealed class PostgresBackedProfileRepositoryTests : IDisposable
             Assert.True(WeaverDbValues.ReadTimestamp(reader, 1) > DateTimeOffset.UtcNow.AddHours(-1));
         }
 
-        Assert.Equal([1L, 2L, 3L, 4L], versions);
+        Assert.Equal([1L, 2L, 3L, 4L, 5L], versions);
     }
 
     /// <summary>
     /// Verifies a value too wide for a PostgreSQL column surfaces as SQLSTATE 22001 and never reaches SQLite.
+    /// The postal code used to be the probe, but it is now encrypted into a TEXT column and fits at any length;
+    /// <c>country</c> stays a plaintext VARCHAR(64) and keeps the silent-fallback regression guarded.
     /// </summary>
     [Fact]
-    public async Task PostgreSql_OversizedPostalCode_RaisesTruncationAndWritesNothingToSqlite()
+    public async Task PostgreSql_OversizedPlaintextColumn_RaisesTruncationAndWritesNothingToSqlite()
     {
         if (!_postgres.IsAvailable)
         {
@@ -241,8 +243,8 @@ public sealed class PostgresBackedProfileRepositoryTests : IDisposable
             AddressLine1 = "1 Road",
             City = "Portland",
             StateOrProvince = "OR",
-            PostalCode = new string('9', 64),
-            Country = "US"
+            PostalCode = "97201",
+            Country = new string('U', 65)
         };
 
         PostgresException ex = await Assert.ThrowsAsync<PostgresException>(() => repo.UpsertAddressAsync(address));

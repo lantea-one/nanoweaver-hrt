@@ -286,7 +286,9 @@ public sealed class NodeSecretIsolationAndPhiMigrationTests : IDisposable
         int upgraded = await Program.ReEncryptLegacyProfilePhiAsync(userRepository, nodeRepo, nodeProtector);
 
         Assert.Equal(1, upgraded);
-        Assert.Equal(1, nodeProtector.LegacyDecryptionCount);
+        // The profile carries a picture plus a first and last name, and every one of them is now sealed, so the
+        // historic key was needed once per protected value rather than once per row.
+        Assert.Equal(3, nodeProtector.LegacyDecryptionCount);
 
         // A second pass, with a protector holding the same persisted key, must find nothing left to do and must
         // never touch the legacy key again: the stored ciphertext now belongs to this node.
