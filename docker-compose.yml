@@ -108,8 +108,21 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    # WHAT: Publishes the sovereign Web UI and API on the loopback interface only.
+    # WHY:  Prime Directive #9 says never expose port 5000 directly to the public internet,
+    #       and a bare "5000:5000" does exactly that: it binds 0.0.0.0 AND [::] through a
+    #       Docker NAT rule that host ufw/firewalld rules do not filter. Verified by
+    #       observation before this change -- `ss -ltn` reported 0.0.0.0:5000 and [::]:5000
+    #       after a plain `docker compose up -d`, meaning the whole platform, patient record
+    #       pages included, was reachable from any machine on the network. The three public
+    #       overlays already pinned this to 127.0.0.1 and routed traffic through a TLS
+    #       reverse proxy, so they were correcting a default that should never have shipped.
+    # HOW:  Binds 127.0.0.1 to match the simulation daemon (8080) and the database (5432).
+    #       For genuine public access use one of the hardened overlays in compose/ --
+    #       public-caddy, public-nginx or public-cloudflare -- which terminate TLS in front
+    #       of this port rather than publishing it raw.
     ports:
-      - "5000:5000"
+      - "127.0.0.1:5000:5000"
     environment:
       - HOME=/tmp
       - ASPNETCORE_URLS=http://+:5000

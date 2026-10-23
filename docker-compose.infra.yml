@@ -51,8 +51,19 @@ services:
       POSTGRES_PASSWORD: ${WEAVER_POSTGRES_PASSWORD:-weaver_secret_change_me}
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
-      # Persistent PostgreSQL catalog and metadata volume
-      - postgres_metadata:/var/lib/postgresql/data
+      # WHAT: Persistent PostgreSQL catalog and metadata volume, mounted one level
+      #       above PGDATA at /var/lib/postgresql rather than at /var/lib/postgresql/data.
+      # WHY:  pgduckdb/pgduckdb runs as USER postgres (uid 999) and its image contains no
+      #       /var/lib/postgresql/data directory. A named volume mounted straight onto that
+      #       missing path is therefore created root:root with nothing to inherit ownership
+      #       from, uid 999 cannot mkdir PGDATA inside it, and the container crash-loops on
+      #       "mkdir: cannot create directory '/var/lib/postgresql/data/pgdata': Permission
+      #       denied" -- so this overlay never actually started on a clean machine.
+      # HOW:  /var/lib/postgresql DOES exist in the image, owned by postgres:postgres, so a
+      #       fresh named volume mounted there inherits that ownership and the entrypoint can
+      #       create PGDATA itself. Verified by observation: the container reaches
+      #       "database system is ready to accept connections" and pg_isready reports healthy.
+      - postgres_metadata:/var/lib/postgresql
       # Shared columnar Parquet directory written by the .NET trajectory parser
       - ./simulations/parquet:/workspace/parquet:rw
       # Read-only access to raw molecular trajectories
