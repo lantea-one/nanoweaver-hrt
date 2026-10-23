@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
-  "seeded_from_commit": "f06e7d3650064f32c50068bdb7cda8d4b8ad4715",
+  "seeded_from_commit": "c5bdbfc117a63c8dcfb958b06bc1b7cbfbfca93c",
   "seeded_on_utc": "2026-10-23",
   "measurement": {
     "runsettings": "coverage-full.runsettings",
     "weaver_test_postgres": "unset"
   },
-  "line_rate": 96.73,
-  "branch_rate": 89.46,
+  "line_rate": 96.75,
+  "branch_rate": 89.57,
   "uncovered_lines_total": 345,
   "classes": {
     "NanoWeaverHrt.Bridges.ValkeyEventBridge/<<RegisterInboundClusterListenersAsync>b__21_1>d": 1,

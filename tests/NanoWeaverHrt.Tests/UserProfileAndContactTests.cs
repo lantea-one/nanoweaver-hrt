@@ -325,7 +325,9 @@ public sealed class UserProfileAndContactTests : IClassFixture<WebApplicationFac
             using (SqliteConnection conn = new($"Data Source={Path.Combine(tempDir, "weaver_config.db")}"))
             {
                 await conn.OpenAsync();
-                using var cmd = new SqliteCommand("UPDATE weaver_user_profiles SET pronouns_json = '{invalid_json' WHERE username = 'null-user'", conn);
+                // The column holds an encrypted envelope; seal the payload so decryption succeeds and the JSON handling is what runs.
+                using var cmd = new SqliteCommand("UPDATE weaver_user_profiles SET pronouns_json = @sealed WHERE username = 'null-user'", conn);
+                cmd.Parameters.AddWithValue("@sealed", protector.EncryptRequiredField("{invalid_json"));
                 await cmd.ExecuteNonQueryAsync();
             }
 
@@ -337,7 +339,9 @@ public sealed class UserProfileAndContactTests : IClassFixture<WebApplicationFac
             using (SqliteConnection conn = new($"Data Source={Path.Combine(tempDir, "weaver_config.db")}"))
             {
                 await conn.OpenAsync();
-                using var cmd = new SqliteCommand("UPDATE weaver_user_profiles SET pronouns_json = 'null' WHERE username = 'null-user'", conn);
+                // The column holds an encrypted envelope; seal the payload so decryption succeeds and the JSON handling is what runs.
+                using var cmd = new SqliteCommand("UPDATE weaver_user_profiles SET pronouns_json = @sealed WHERE username = 'null-user'", conn);
+                cmd.Parameters.AddWithValue("@sealed", protector.EncryptRequiredField("null"));
                 await cmd.ExecuteNonQueryAsync();
             }
 

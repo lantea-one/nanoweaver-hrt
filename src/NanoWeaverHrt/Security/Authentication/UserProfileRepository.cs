@@ -126,9 +126,11 @@ public sealed class UserProfileRepository : IUserProfileRepository, IDisposable
             WeaverDbParameters.AddNullable(cmd, "@ph", _protector.EncryptField(profile.PhoneNumber));
             WeaverDbParameters.AddNullable(cmd, "@dob", _protector.EncryptField(profile.DateOfBirth));
             WeaverDbParameters.AddNullable(cmd, "@pic", encryptedPicture);
-            WeaverDbParameters.Add(cmd, "@reg", profile.Regimen.HasValue ? profile.Regimen.Value.ToString() : DBNull.Value);
-            WeaverDbParameters.Add(cmd, "@gen", profile.GenderAssignedAtBirth.ToString());
-            WeaverDbParameters.Add(cmd, "@pro", pronounsJson);
+            // WHAT: Seals the gender-identity trio. WHY: regimen plus sex at birth identifies a transgender patient.
+            // HOW:  A null regimen stays NULL (EncryptField passes null through); the NOT NULL columns use the required flavour.
+            WeaverDbParameters.AddNullable(cmd, "@reg", _protector.EncryptField(profile.Regimen?.ToString()));
+            WeaverDbParameters.Add(cmd, "@gen", _protector.EncryptRequiredField(profile.GenderAssignedAtBirth.ToString()));
+            WeaverDbParameters.Add(cmd, "@pro", _protector.EncryptRequiredField(pronounsJson));
             WeaverDbParameters.AddNullable(cmd, "@emn", _protector.EncryptField(profile.EmergencyMedicalNotes));
             WeaverDbParameters.AddNullable(cmd, "@bio", _protector.EncryptField(profile.Bio));
             WeaverDbParameters.Add(cmd, "@lang", string.IsNullOrWhiteSpace(profile.LanguagePreference) ? "en-US" : profile.LanguagePreference);
@@ -396,9 +398,12 @@ public sealed class UserProfileRepository : IUserProfileRepository, IDisposable
         string? phone = protector.DecryptField(reader.IsDBNull(5) ? null : reader.GetString(5));
         string? dob = protector.DecryptField(reader.IsDBNull(6) ? null : reader.GetString(6));
         string? encryptedPic = reader.IsDBNull(7) ? null : reader.GetString(7);
-        string? regimenStr = reader.IsDBNull(8) ? null : reader.GetString(8);
-        string genderStr = reader.GetString(9);
-        string pronounsJson = reader.GetString(10);
+        // WHAT: Decrypts the gender-identity trio before any parsing.
+        // WHY:  The stored text is an encrypted envelope; parsing it directly would find neither an enum nor JSON.
+        // HOW:  Decrypt first; Enum.TryParse and JsonSerializer.Deserialize below then run on the plaintext.
+        string? regimenStr = protector.DecryptField(reader.IsDBNull(8) ? null : reader.GetString(8));
+        string genderStr = protector.DecryptRequiredField(reader.GetString(9));
+        string pronounsJson = protector.DecryptRequiredField(reader.GetString(10));
         string? emergencyNotes = protector.DecryptField(reader.IsDBNull(11) ? null : reader.GetString(11));
         string? bio = protector.DecryptField(reader.IsDBNull(12) ? null : reader.GetString(12));
         string languagePref = reader.GetString(13);
