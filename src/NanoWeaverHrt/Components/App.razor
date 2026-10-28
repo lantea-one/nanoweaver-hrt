@@ -16,13 +16,14 @@
     <Routes @rendermode="InteractiveServer" />
     <script src="_framework/blazor.web.js"></script>
     @*
-        WHAT: Session and idle-watcher helpers, loaded ahead of the dashboard script.
-        WHY:  Prime Directive 12's idle sign-out and the Bearer token storage live here,
-              and both the sign-in page and MainLayout call into them through JS interop.
-        HOW:  Plain browser script exposing window.weaver* functions; held to the same
-              100% coverage gate as weaver-visualizer.js (see tests/weaver-session.test.mjs).
+        WHAT: Session, idle-watcher, and client-side challenge-response authentication scripts.
+        WHY:  Prime Directive 12 & Audit C8 mandate client-side challenge signing without
+              transmitting raw private keys across the Blazor SignalR circuit.
+        HOW:  Vendored crypto module loaded with SRI hash validation, followed by weaver-auth.js.
     *@
     <script src="js/weaver-session.js"></script>
+    <script type="module" src="lib/weaver-crypto-vendor.js" integrity="sha384-cGSuUAxVag6M22EUFPXwy2Ru6SijbfQ8wdJ+2GBTND1XmMtuH2Atb50BfuBg/z0F"></script>
+    <script src="js/weaver-auth.js"></script>
     <script src="js/app.js"></script>
     <script src="js/weaver-visualizer.js"></script>
 </body>

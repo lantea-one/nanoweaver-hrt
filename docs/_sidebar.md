@@ -13,6 +13,7 @@
 * [**Example Biomedical Workflows**](example-workflows.md)
 * [**DIY & HomeLab Fabrication (How-To)**](diy-fabrication-guide.md)
 * [**PQC & Regulatory Compliance**](compliance-and-security.md)
+* [**Vendored JavaScript & Integrity**](vendored-javascript.md)
 * [**REST API Reference & Tests**](api-reference.md)
 * [**Release Notes & Changelog**](release-notes.md)
 * [**Scientific & Legal Disclaimer**](disclaimer.md)

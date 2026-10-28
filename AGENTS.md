@@ -64,7 +64,7 @@
       ```bash
       ./scripts/verify-all.sh
       ```
-    - Never push or finalize if any of the 7 verification steps fail.
+    - Never push or finalize if any of the 8 verification steps fail.
 
 11. **Sovereign Forgejo Git Remote Enforcement**:
     - Never commit, push, or mirror to GitHub.
@@ -135,7 +135,7 @@
 
 ## 3. Developer Workflows & Quality Verification
 
-### Run Full Verification Gate (All 7 Checks)
+### Run Full Verification Gate (All 8 Checks)
 ```bash
 ./scripts/verify-all.sh
 ```
@@ -147,6 +147,7 @@ This runs:
 5. Markdown scan (0 unescaped single-dollar LaTeX interpolation tokens)
 6. Docblock scan (`scripts/check-docblocks.py`: every documented member has one `<param>` per parameter and a `<returns>`)
 7. Un-excluded coverage ratchet (`scripts/check-coverage-ratchet.py`: re-measures with compiler-generated code included and compares against the committed `coverage-baseline.json`; no rate may fall and no class's uncovered-line count may rise)
+8. Vendored JS & SRI integrity check (`scripts/verify-vendored-js.sh`: SHA-256 and SHA-384 SRI checks, zero external CDN scripts in templates, and Node RFC 8032 & ML-DSA-65 test vectors)
 
 ### How to Build & Run Locally
 ```bash

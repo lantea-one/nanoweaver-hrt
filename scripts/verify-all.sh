@@ -14,14 +14,14 @@
 set -euo pipefail
 
 echo "=============================================================================="
-echo ">> Step 1/7: Verifying .NET Code Formatting..."
+echo ">> Step 1/8: Verifying .NET Code Formatting..."
 echo "=============================================================================="
 XDG_RUNTIME_DIR=/tmp dotnet format NanoWeaverHrt.slnx --no-restore --verify-no-changes --verbosity normal
 echo "✓ .NET code formatting verified cleanly."
 
 echo ""
 echo "=============================================================================="
-echo ">> Step 2/7: Verifying JavaScript Code & Coverage Gate (100% Threshold)..."
+echo ">> Step 2/8: Verifying JavaScript Code & Coverage Gate (100% Threshold)..."
 echo "=============================================================================="
 npm test
 echo "✓ JavaScript test suite passed with 100% line, branch, and function coverage."
@@ -36,7 +36,7 @@ else
 fi
 echo ""
 echo "=============================================================================="
-echo ">> Step 3/7: Running .NET Test Suite with Coverage Collection..."
+echo ">> Step 3/8: Running .NET Test Suite with Coverage Collection..."
 echo "=============================================================================="
 XDG_RUNTIME_DIR=/tmp dotnet test NanoWeaverHrt.slnx \
     --configuration Release \
@@ -47,7 +47,7 @@ echo "✓ All .NET unit and integration tests passed."
 
 echo ""
 echo "=============================================================================="
-echo ">> Step 4/7: Enforcing 100.00% Line & Branch Coverage Threshold..."
+echo ">> Step 4/8: Enforcing 100.00% Line & Branch Coverage Threshold..."
 echo "=============================================================================="
 python3 -c "
 import xml.etree.ElementTree as ET
@@ -101,7 +101,7 @@ print('✓ Line and branch code coverage verified at 100.00%.')
 
 echo ""
 echo "=============================================================================="
-echo ">> Step 5/7: Verifying Documentation Markdown Math Delimiters..."
+echo ">> Step 5/8: Verifying Documentation Markdown Math Delimiters..."
 echo "=============================================================================="
 python3 - << 'EOF'
 import glob, re, sys
@@ -146,7 +146,7 @@ EOF
 
 echo ""
 echo "=============================================================================="
-echo ">> Step 6/7: Verifying XML Docblock Completeness (<param> / <returns>)..."
+echo ">> Step 6/8: Verifying XML Docblock Completeness (<param> / <returns>)..."
 echo "=============================================================================="
 # WHY: The C# compiler cannot enforce Prime Directive 2. CS1591 fires only when a doc
 #      comment is missing entirely, and only for publicly visible members; CS1573 fires
@@ -157,7 +157,7 @@ echo "✓ Every documented member has a <param> per parameter and a <returns>."
 
 echo ""
 echo "=============================================================================="
-echo ">> Step 7/7: Enforcing the un-excluded coverage ratchet..."
+echo ">> Step 7/8: Enforcing the un-excluded coverage ratchet..."
 echo "=============================================================================="
 rm -rf artifacts/coverage-full
 # WHY: the ratchet must be a machine-independent number. With WEAVER_TEST_POSTGRES set, the
@@ -172,6 +172,13 @@ env -u WEAVER_TEST_POSTGRES XDG_RUNTIME_DIR=/tmp dotnet test NanoWeaverHrt.slnx 
     --verbosity minimal
 python3 -I scripts/check-coverage-ratchet.py artifacts/coverage-full coverage-baseline.json
 echo "✓ Un-excluded coverage matches the committed ratchet baseline."
+
+echo ""
+echo "=============================================================================="
+echo ">> Step 8/8: Verifying Vendored JavaScript Subsystem & SRI Integrity..."
+echo "=============================================================================="
+bash scripts/verify-vendored-js.sh
+echo "✓ Vendored JavaScript subsystem verified cleanly."
 
 echo ""
 echo "=============================================================================="

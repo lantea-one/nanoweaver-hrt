@@ -1,5 +1,4 @@
 @page "/login"
-@inject IUserAuthenticationService AuthService
 @inject UserSessionState SessionState
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
@@ -36,7 +35,7 @@
 
             <div class="form-group mt-3">
                 <label for="loginUser" class="form-label">Username</label>
-                <input id="loginUser" class="form-control font-mono" placeholder="e.g., administrator or researcher-01" @bind="_username" />
+                <input id="loginUser" class="form-control font-mono" placeholder="e.g., administrator or researcher-01" />
                 <div class="form-hint">Enter your registered identity handle on this sovereign node.</div>
             </div>
 
@@ -47,7 +46,7 @@
                         <label for="keyFileUpload" class="btn btn-sm btn-outline cursor-pointer" style="margin:0;">
                             📁 Upload Key File
                         </label>
-                        <InputFile id="keyFileUpload" OnChange="HandleKeyFileUpload" accept=".pem,.key,.txt" style="display:none;" />
+                        <input id="keyFileUpload" type="file" accept=".pem,.key,.txt" style="display:none;" />
                         <button type="button" class="btn btn-sm btn-secondary" @onclick="() => _showPrivateKey = !_showPrivateKey">
                             @(_showPrivateKey ? "🔒 Mask Key" : "👁 Show Key")
                         </button>
@@ -55,24 +54,22 @@
                 </div>
 @*
     WHAT: Multi-line textarea for the PEM private key, masked via CSS rather than input type.
-    WHY:  A single-line <input> collapses the newlines out of pasted PEM text, after which the
-          key cannot be parsed and sign-in fails with a signature error. Only the file-upload
-          path worked. A textarea preserves the line structure a PEM envelope requires.
+    WHY:  Keeps the private key strictly in browser DOM memory without SignalR circuit streaming (Audit C8).
     HOW:  The mask toggle swaps a CSS class instead of the input type, because type="password"
           is unavailable on a textarea.
 *@
-                <textarea id="privKeyPem" rows="5" class="form-control font-mono private-key-input @(_showPrivateKey ? string.Empty : "is-masked")" placeholder="Paste private key PEM text (including the BEGIN and END lines) or upload a key file above..." @bind="_privateKeyPem"></textarea>
-                <div class="form-hint">Paste your cryptographic private key or upload your .pem/.key file. Keys are verified locally in-memory and never stored.</div>
+                <textarea id="privKeyPem" rows="5" class="form-control font-mono private-key-input @(_showPrivateKey ? string.Empty : "is-masked")" placeholder="Paste private key PEM text (including the BEGIN and END lines) or upload a key file above..."></textarea>
+                <div class="form-hint">Paste your cryptographic private key or upload your .pem/.key file. Keys are signed locally in browser memory and never transmitted to the server.</div>
             </div>
 
             <div class="form-group mt-3">
                 <label for="loginPassword" class="form-label">Passphrase (if key is encrypted)</label>
-                <input id="loginPassword" type="password" class="form-control" placeholder="Leave blank for unencrypted private key" @bind="_password" />
+                <input id="loginPassword" type="password" class="form-control" placeholder="Leave blank for unencrypted private key" />
                 <div class="form-hint">Optional: Enter your decryption passphrase if your private key was password-protected.</div>
             </div>
 
             <div class="actions mt-4 text-center">
-                <button class="btn btn-primary w-100" @onclick="Authenticate">Sign In with Private Key</button>
+                <button id="loginSubmitBtn" class="btn btn-primary w-100" @onclick="Authenticate">Sign In with Private Key</button>
             </div>
 
             <div class="mt-3 text-center text-muted subtext">
@@ -83,21 +80,6 @@
 </div>
 
 @code {
-    /// <summary>
-    /// User input value for account username.
-    /// </summary>
-    private string _username = string.Empty;
-
-    /// <summary>
-    /// User input text containing the PEM-encoded private key.
-    /// </summary>
-    private string _privateKeyPem = string.Empty;
-
-    /// <summary>
-    /// Optional passphrase input for decrypting protected private keys.
-    /// </summary>
-    private string _password = string.Empty;
-
     /// <summary>
     /// Controls whether the private key input is masked as a password or displayed as plain text.
     /// </summary>
@@ -128,75 +110,65 @@
     }
 
     /// <summary>
-    /// Reads an uploaded private key file directly into the private key input field.
+    /// Attaches client-side event handlers after the component has rendered.
     /// </summary>
-    /// <param name="e">File input event arguments.</param>
-    private async Task HandleKeyFileUpload(InputFileChangeEventArgs e)
+    /// <param name="firstRender">True if this is the component's first render cycle.</param>
+    /// <returns>An asynchronous task tracking the operation.</returns>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        // WHAT: Reads the raw contents of an uploaded .pem or .key file in the browser.
-        // WHY:  Permits researchers to select their key file without manually copy-pasting multi-line text.
-        // HOW:  Opens a bounded stream (max 64 KB) and decodes text using UTF-8 StreamReader.
-        _errorMessage = null;
-        try
-        {
-            if (e.File != null)
-            {
-                using Stream stream = e.File.OpenReadStream(maxAllowedSize: 65536);
-                using StreamReader reader = new(stream, System.Text.Encoding.UTF8);
-                _privateKeyPem = await reader.ReadToEndAsync();
-            }
-        }
-        catch (Exception ex)
-        {
-            _errorMessage = $"Failed to read uploaded key file: {ex.Message}";
-        }
-    }
-
-    /// <summary>
-    /// Submits user credentials and verifies private key signatures against stored public keys.
-    /// </summary>
-    private async Task Authenticate()
-    {
-        _errorMessage = null;
-        if (string.IsNullOrWhiteSpace(_username) || string.IsNullOrWhiteSpace(_privateKeyPem))
-        {
-            _errorMessage = "Username and private key are both required.";
-            return;
-        }
-
-        var result = await AuthService.AuthenticateWithPrivateKeyAsync(
-            _username.Trim(),
-            _privateKeyPem.Trim(),
-            string.IsNullOrWhiteSpace(_password) ? null : _password,
-            isWebRequest: true);
-
-        if (!result.Success)
-        {
-            _errorMessage = result.ErrorMessage ?? "Authentication failed.";
-            return;
-        }
-
-        SessionState.SetUser(result.User);
-        if (!string.IsNullOrEmpty(result.Token))
+        // WHAT: Binds client-side change handler to key file upload input.
+        // WHY:  Allows reading private key files into DOM memory without SignalR streaming (Audit C8).
+        // HOW:  Invokes JS weaverBindKeyFileInput passing input and textarea IDs.
+        if (firstRender)
         {
             try
             {
-                await JS.InvokeVoidAsync("weaverSetSession", result.Token);
+                await JS.InvokeVoidAsync("weaverBindKeyFileInput", "keyFileUpload", "privKeyPem");
             }
             catch (Exception)
             {
                 // Disconnected circuit or unit test environment
             }
         }
+    }
 
-        Navigation.NavigateTo("/");
+    /// <summary>
+    /// Submits user credentials and verifies private key signatures against stored public keys.
+    /// </summary>
+    /// <returns>An asynchronous task tracking the sign-in operation.</returns>
+    private async Task Authenticate()
+    {
+        // WHAT: Executes asymmetric challenge-response sign-in via client-side JavaScript.
+        // WHY:  Ensures private key never crosses the SignalR circuit to the server (Audit C8).
+        // HOW:  Invokes window.weaverSignIn and stores authenticated user in SessionState.
+        _errorMessage = null;
+        try
+        {
+            WeaverSignInResult result = await JS.InvokeAsync<WeaverSignInResult>("weaverSignIn");
+            if (!result.Ok || result.User == null)
+            {
+                _errorMessage = result.Error ?? "Authentication failed.";
+                return;
+            }
+
+            SessionState.SetUser(result.User);
+            Navigation.NavigateTo("/");
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Authentication failed: {ex.Message}";
+        }
     }
 
     /// <summary>
     /// Signs out the currently authenticated user and resets page state.
     /// </summary>
+    /// <returns>An asynchronous task tracking the sign-out operation.</returns>
     private async Task SignOut()
     {
+        // WHAT: Clears authenticated browser session in client storage and server state.
+        // WHY:  Terminates user authorization and revokes bearer session tokens.
+        // HOW:  Invokes weaverClearSession and clears SessionState.
         try
         {
             await JS.InvokeVoidAsync("weaverClearSession");
@@ -209,4 +181,17 @@
         SessionState.SignOut();
         Navigation.NavigateTo("/login");
     }
+
+    /// <summary>
+    /// Interop payload returned by client-side weaverSignIn.
+    /// </summary>
+    /// <param name="Ok">Indicates whether the sign-in workflow succeeded.</param>
+    /// <param name="Error">Descriptive error message on failure.</param>
+    /// <param name="Token">Signed JWT session bearer token.</param>
+    /// <param name="User">Authenticated user account record.</param>
+    private sealed record WeaverSignInResult(
+        bool Ok,
+        string? Error,
+        string? Token,
+        UserAccount? User);
 }
