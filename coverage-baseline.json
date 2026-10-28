@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
-  "seeded_from_commit": "41d6ea7da3ad1eff90dd77f770f3fc84067f01e7",
+  "seeded_from_commit": "fb19a05d9784a9a8a5a054135f7f2ceaca979741",
   "seeded_on_utc": "2026-10-28",
   "measurement": {
     "runsettings": "coverage-full.runsettings",
     "weaver_test_postgres": "unset"
   },
-  "line_rate": 98.98,
-  "branch_rate": 93.74,
-  "uncovered_lines_total": 119,
+  "line_rate": 98.79,
+  "branch_rate": 94.01,
+  "uncovered_lines_total": 146,
   "classes": {
     "NanoWeaverHrt.Bridges.ValkeyEventBridge/<<RegisterInboundClusterListenersAsync>b__21_1>d": 1,
     "NanoWeaverHrt.Bridges.ValkeyEventBridge/<<RegisterInboundClusterListenersAsync>b__21_2>d": 1,
@@ -19,6 +19,11 @@
     "NanoWeaverHrt.Caching.ValkeyCacheService/<GetAsync>d__8`1": 4,
     "NanoWeaverHrt.Caching.ValkeyLockService/<AcquireLockAsync>d__6": 1,
     "NanoWeaverHrt.Caching.ValkeyLockService/DistributedLockToken/<DisposeAsync>d__6": 4,
+    "NanoWeaverHrt.Components.Layout.MainLayout": 21,
+    "NanoWeaverHrt.Components.Layout.MainLayout/<OnAfterRenderAsync>d__23": 2,
+    "NanoWeaverHrt.Components.Layout.MainLayout/<TryReadSessionTokenAsync>d__28": 2,
+    "NanoWeaverHrt.Components.Pages.Login/WeaverSignInResult": 1,
+    "NanoWeaverHrt.Components.Pages.SetupWizard": 1,
     "NanoWeaverHrt.Events.ChannelEventBus/<PublishAsync>d__6`1": 9,
     "NanoWeaverHrt.Program/<>c": 2,
     "NanoWeaverHrt.Program/<>c/<<Main>b__4_18>d": 1,

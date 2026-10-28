@@ -30,7 +30,12 @@
             </div>
             <div class="badge badge-accent">@_acceleratorBackend.ToUpperInvariant()</div>
             <div class="badge badge-outline">DB: @ConfigRepo.ActiveBackendName</div>
-            <div class="badge badge-primary">@SessionState.CurrentUser?.Username (@SessionState.CurrentUser?.Role)</div>
+@*
+            WHAT: Binds authenticated user chip using non-null assertion.
+            WHY:  ShellVisible requires SessionState.IsAuthenticated, which guarantees CurrentUser is non-null.
+            HOW:  Direct property access on SessionState.CurrentUser!.
+        *@
+            <div class="badge badge-primary">@SessionState.CurrentUser!.Username (@SessionState.CurrentUser!.Role)</div>
             <button class="btn btn-sm btn-outline text-muted" @onclick="HandleSignOut">Sign Out</button>
         </div>
     }
