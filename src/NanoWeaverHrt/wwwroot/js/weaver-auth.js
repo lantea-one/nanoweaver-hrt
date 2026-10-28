@@ -86,16 +86,24 @@ function extractKeyMaterialFromPkcs8(derBytes) {
         };
     }
 
-    // 2. ML-DSA-65 SeedAndEncoding (length 4098: seed at [28..60], expanded key at [64..4096])
-    if (derBytes.length === 4098 &&
-        derBytes[19] === 0x12 &&
-        derBytes[26] === 0x04 && derBytes[27] === 0x20) {
-        return {
-            ok: true,
-            algorithm: 'MlDsa65',
-            seed: derBytes.slice(28, 60),
-            secretKey: derBytes.slice(64, 4096)
-        };
+    // 2. ML-DSA-65 SeedAndEncoding (length 4098: seed at [28..60] or [30..62], expanded key at [64..4096] or [66..4098])
+    if (derBytes.length === 4098 && derBytes[19] === 0x12) {
+        if (derBytes[28] === 0x04 && derBytes[29] === 0x20) {
+            return {
+                ok: true,
+                algorithm: 'MlDsa65',
+                seed: derBytes.slice(30, 62),
+                secretKey: derBytes.slice(66, 4098)
+            };
+        }
+        if (derBytes[26] === 0x04 && derBytes[27] === 0x20) {
+            return {
+                ok: true,
+                algorithm: 'MlDsa65',
+                seed: derBytes.slice(28, 60),
+                secretKey: derBytes.slice(64, 4096)
+            };
+        }
     }
 
     // 3. ML-DSA-65 SeedOnly (length 54: seed at [22..54])

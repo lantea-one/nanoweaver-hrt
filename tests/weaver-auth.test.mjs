@@ -154,7 +154,7 @@ test('extractKeyMaterialFromPkcs8: parses Ed25519 layouts (48 and 83 bytes)', ()
 });
 
 test('extractKeyMaterialFromPkcs8: parses ML-DSA-65 layouts (4098, 54, and 4060 bytes)', () => {
-    // 1. SeedAndEncoding (4098 bytes)
+    // 1. SeedAndEncoding (4098 bytes - compact layout)
     const der4098 = new Uint8Array(4098);
     der4098[19] = 0x12;
     der4098[26] = 0x04;
@@ -167,6 +167,20 @@ test('extractKeyMaterialFromPkcs8: parses ML-DSA-65 layouts (4098, 54, and 4060 
     assert.equal(res4098.algorithm, 'MlDsa65');
     assert.equal(res4098.seed.length, 32);
     assert.equal(res4098.secretKey.length, 4032);
+
+    // 1b. SeedAndEncoding (4098 bytes - BouncyCastle sequence layout)
+    const der4098Bc = new Uint8Array(4098);
+    der4098Bc[19] = 0x12;
+    der4098Bc[28] = 0x04;
+    der4098Bc[29] = 0x20;
+    der4098Bc.subarray(30, 62).fill(0x33);
+    der4098Bc.subarray(66, 4098).fill(0x44);
+
+    const res4098Bc = extractKeyMaterialFromPkcs8(der4098Bc);
+    assert.equal(res4098Bc.ok, true);
+    assert.equal(res4098Bc.algorithm, 'MlDsa65');
+    assert.equal(res4098Bc.seed.length, 32);
+    assert.equal(res4098Bc.secretKey.length, 4032);
 
     // Corrupted 4098
     const bad4098 = new Uint8Array(der4098);
