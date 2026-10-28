@@ -26,6 +26,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\NanoWeaverHrt\NanoWeaverHrt.csproj" />
+    <ProjectReference Include="..\..\src\NanoWeaverHrt.Client\NanoWeaverHrt.Client.csproj" />
   </ItemGroup>
 
 </Project>

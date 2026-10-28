@@ -13,7 +13,7 @@
 
 | Phase | Work Package File | Target Model Tier | Architectural Layer & Scope | Status |
 | :--- | :--- | :--- | :--- | :--- |
-| **P26** | [`p26-gui-instance-store-and-key-vault.md`](p26-gui-instance-store-and-key-vault.md) | `flash` / `sonnet` / `haiku` | **Layer 1 (Persistence & Crypto)**: `NanoWeaverHrt.Client` SQLite multi-instance registry (`IInstanceProfileRepository`) & `AES-256-GCM` client key vault (`IClientKeyRingVault`, `Ed25519` & `ML-DSA-65`) | **READY** |
+| **P26** | Standalone Instance Store & Vault | `NanoWeaverHrt.Client` SQLite multi-instance registry (`IInstanceProfileRepository`) & `AES-256-GCM` client key vault (`IClientKeyRingVault`, `Ed25519` & `ML-DSA-65`) | **COMPLETED** |
 | **P27** | [`p27-multi-instance-api-client-sdk.md`](p27-multi-instance-api-client-sdk.md) | `flash` / `sonnet` | **Layer 2 (Domain & Auth SDK)**: `INanoWeaverNodeClient` challenge-response PKI auth, telemetry polling, `IMultiInstanceCoordinator` & state-transition alerts | **READY** |
 | **P28** | [`p28-background-tray-and-notifications.md`](p28-background-tray-and-notifications.md) | `flash_lite` / `haiku` | **Layer 2/3 (Background Daemon & Tray)**: `NanoWeaverHrt.Gui.Core` `IBackgroundInstanceMonitor`, `ITrayIconController`, `INativeNotificationSink` & 15-min idle lock | **READY** |
 | **P29** | [`p29-avalonia-core-views-and-viewmodels.md`](p29-avalonia-core-views-and-viewmodels.md) | `flash` / `sonnet` | **Layer 4a (Shared GUI Core & ViewModels)**: `InstanceOnboardingViewModel`, `MainShellViewModel`, sovereign dark-theme palette & headless xUnit tests | **READY** |
@@ -57,6 +57,7 @@
 | **P23** | Subject Access REST API | 14 minimal API endpoints for subject grants (`/api/subject-access/grants`), my-subjects (`/api/subject-access/my-subjects`), cohort group CRUD, group members, and group grants (`/api/subject-groups`) with OpenAPI documentation | **COMPLETED** |
 | **P24** | Sovereign Cohort Web UI | `CohortManagementModal` component, `UserManagement` grants management modal & cohort launcher, `DnaManagementPage` cohort filtering & zero-access alert banner, and bUnit test suite (`CohortManagementComponentTests`) | **COMPLETED** |
 | **P25** | Verification & Closeout | Full 8-gate pre-flight verification, comprehensive documentation across `compliance-and-security.md` and `api-reference.md`, and ratchet closeout | **COMPLETED** |
+| **P26** | Instance Store & Key Vault | `NanoWeaverHrt.Client` SQLite multi-instance registry (`IInstanceProfileRepository`) & `AES-256-GCM` client key vault (`IClientKeyRingVault`, `Ed25519` & `ML-DSA-65`) | **COMPLETED** |
 
 ---
 

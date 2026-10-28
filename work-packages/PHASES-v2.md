@@ -1153,9 +1153,9 @@ Renumbering from rev 1: old P2–P18 are now P3–P19. New P2 is the transport-g
 
 All work for the standalone multi-instance desktop and mobile GUI applications is executed on the `feature/gui-application` branch until code, 100% test coverage, compliance, documentation, GitHub Pages, code signing, and CI/CD artifact builds are complete, after which `feature/gui-application` is merged into `main` and deleted.
 
-| Phase | Work Package | Target LLM Tier | Summary of Scope |
-| :--- | :--- | :--- | :--- |
-| **P26** | `p26-gui-instance-store-and-key-vault.md` | `flash` / `sonnet` / `haiku` | `NanoWeaverHrt.Client` SQLite multi-instance connection profile repository (`IInstanceProfileRepository`) and `AES-256-GCM` client key vault (`IClientKeyRingVault`) for `Ed25519` and `ML-DSA-65`. |
+| Phase | Work Package | Target LLM Tier | Summary of Scope | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| **P26** | `p26-gui-instance-store-and-key-vault.md` | `flash` / `sonnet` / `haiku` | `NanoWeaverHrt.Client` SQLite multi-instance connection profile repository (`IInstanceProfileRepository`) and `AES-256-GCM` client key vault (`IClientKeyRingVault`) for `Ed25519` and `ML-DSA-65`. | **COMPLETED** |
 | **P27** | `p27-multi-instance-api-client-sdk.md` | `flash` / `sonnet` | `INanoWeaverNodeClient` PKI challenge-response authentication (`/api/auth/challenge` -> `/api/auth/token`), telemetry/simulation REST client, and `IMultiInstanceCoordinator` alert diffing. |
 | **P28** | `p28-background-tray-and-notifications.md` | `flash_lite` / `haiku` | `NanoWeaverHrt.Gui.Core` background monitoring daemon (`IBackgroundInstanceMonitor`), system tray state machine (`ITrayIconController`), notification dispatcher (`INativeNotificationSink`), and 15-minute idle lock. |
 | **P29** | `p29-avalonia-core-views-and-viewmodels.md` | `flash` / `sonnet` | Cross-platform MVVM ViewModels (`InstanceOnboardingViewModel`, `MainShellViewModel`), sovereign high-contrast dark theme palette, and 100% unit tests. |
