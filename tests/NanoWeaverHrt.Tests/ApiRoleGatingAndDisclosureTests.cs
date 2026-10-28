@@ -562,11 +562,11 @@ public sealed class ApiRoleGatingAndDisclosureTests : IClassFixture<WebApplicati
         Assert.NotNull(exchangeProblem);
         Assert.Equal(401, exchangeProblem.Status);
 
-        HttpResponseMessage emptyLogin = await anonymousClient.PostAsJsonAsync("/api/auth/login-key", new KeyLoginRequest { Username = "", PrivateKeyPem = "" });
+        HttpResponseMessage emptyLogin = await anonymousClient.PostAsJsonAsync("/api/auth/web-token", new TokenExchangeRequest { Username = "", ChallengeId = "", SignatureBase64 = "" });
         Assert.Equal(HttpStatusCode.BadRequest, emptyLogin.StatusCode);
         Assert.Equal("application/problem+json", emptyLogin.Content.Headers.ContentType?.MediaType);
 
-        HttpResponseMessage unknownLogin = await anonymousClient.PostAsJsonAsync("/api/auth/login-key", new KeyLoginRequest { Username = "ghost_user", PrivateKeyPem = "-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----" });
+        HttpResponseMessage unknownLogin = await anonymousClient.PostAsJsonAsync("/api/auth/web-token", new TokenExchangeRequest { Username = "ghost_user", ChallengeId = Guid.NewGuid().ToString("N"), SignatureBase64 = "AAAA" });
         Assert.Equal(HttpStatusCode.Unauthorized, unknownLogin.StatusCode);
 
         SecureProblemDetails? loginProblem = await unknownLogin.Content.ReadFromJsonAsync<SecureProblemDetails>();

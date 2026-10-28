@@ -165,44 +165,6 @@ public sealed record TokenExchangeRequest : IExamplesProvider<TokenExchangeReque
 }
 
 /// <summary>
-/// Request payload for direct private-key authentication.
-/// </summary>
-public sealed record KeyLoginRequest : IExamplesProvider<KeyLoginRequest>
-{
-    /// <summary>
-    /// Gets the username attempting authentication.
-    /// </summary>
-    [Description("Authenticating account username.")]
-    [JsonPropertyName("username")]
-    public string Username { get; init; } = string.Empty;
-
-    /// <summary>
-    /// Gets the user's private key PEM text.
-    /// </summary>
-    [Description("Private key PEM text (plain or encrypted).")]
-    [JsonPropertyName("privateKeyPem")]
-    public string PrivateKeyPem { get; init; } = string.Empty;
-
-    /// <summary>
-    /// Gets the optional password if the private key is encrypted.
-    /// </summary>
-    [Description("Optional passphrase if private key is encrypted.")]
-    [JsonPropertyName("password")]
-    public string? Password { get; init; }
-
-    /// <summary>
-    /// Generates a representative example instance of <see cref="KeyLoginRequest"/> for OpenAPI documentation.
-    /// </summary>
-    /// <returns>A sample private-key login request.</returns>
-    public KeyLoginRequest GetExamples() => new()
-    {
-        Username = "researcher-01",
-        PrivateKeyPem = "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIP...SAMPLE...=\n-----END PRIVATE KEY-----\n",
-        Password = null
-    };
-}
-
-/// <summary>
 /// Request payload for registering a new user account with an existing public key.
 /// </summary>
 public sealed record CreateUserRequest : IExamplesProvider<CreateUserRequest>

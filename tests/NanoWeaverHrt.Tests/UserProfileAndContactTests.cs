@@ -810,10 +810,7 @@ public sealed class UserProfileAndContactTests : IClassFixture<WebApplicationFac
         Assert.Equal(HttpStatusCode.OK, initRes.StatusCode);
 
         // Sign in admin to get bearer token
-        HttpResponseMessage adminLoginResp = await _client.PostAsJsonAsync("/api/auth/login-key", new { username = "admin-sys", privateKeyPem = adminBundle.PrivateKeyPem });
-        Assert.Equal(HttpStatusCode.OK, adminLoginResp.StatusCode);
-        JsonElement adminLoginJson = await adminLoginResp.Content.ReadFromJsonAsync<JsonElement>();
-        string adminToken = adminLoginJson.GetProperty("token").GetString()!;
+        string adminToken = await TestChallengeHelper.ExchangeChallengeTokenAsync(_client, "admin-sys", adminBundle.PrivateKeyPem);
 
         // 2. Create regular user (patient-bob) using admin client
         using HttpRequestMessage createUserReq = new(HttpMethod.Post, "/api/users/generate-keypair")
@@ -833,10 +830,7 @@ public sealed class UserProfileAndContactTests : IClassFixture<WebApplicationFac
         Assert.NotNull(bobBundle);
 
         // Sign in bob to get bob's bearer token
-        HttpResponseMessage bobLoginResp = await _client.PostAsJsonAsync("/api/auth/login-key", new { username = "patient-bob", privateKeyPem = bobBundle.PrivateKeyPem });
-        Assert.Equal(HttpStatusCode.OK, bobLoginResp.StatusCode);
-        JsonElement bobLoginJson = await bobLoginResp.Content.ReadFromJsonAsync<JsonElement>();
-        string bobToken = bobLoginJson.GetProperty("token").GetString()!;
+        string bobToken = await TestChallengeHelper.ExchangeChallengeTokenAsync(_client, "patient-bob", bobBundle.PrivateKeyPem);
 
         // 3. Unauthenticated requests to /profile, /addresses, /contacts should return 401
         using HttpClient cleanClient = _factory.CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = false });

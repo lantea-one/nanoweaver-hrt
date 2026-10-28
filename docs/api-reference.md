@@ -1222,20 +1222,28 @@ Verifies the cryptographic signature over the challenge and issues an authentica
 
 ---
 
-### `POST /api/auth/login-key`
-Authenticates directly with a private key PEM, for Web UI sign-in and scripts that hold a key file. The key is decrypted in memory only, used to sign an ephemeral nonce, and never stored.
+### `POST /api/auth/web-token`
+Exchanges a digitally signed challenge nonce for an authenticated browser session and an `HttpOnly` `weaver_session` cookie. Operates on the web transport boundary (`isWebRequest: true`), enforcing same-origin or configured public origin validation.
 
 * **Method**: `POST`
-* **Request Payload (JSON)** — `KeyLoginRequest`:
+* **Request Payload (JSON)** — `TokenExchangeRequest`:
   ```json
   {
     "username": "lead_researcher",
-    "privateKeyPem": "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIA...\n-----END PRIVATE KEY-----",
-    "password": "optional-passphrase-if-the-key-is-encrypted"
+    "challengeId": "chal_1234567890abcdef",
+    "signatureBase64": "c2lnbmF0dXJlX2J5dGVzX2Jhc2U2NA=="
   }
   ```
-* **Response Status**: `200 OK` — `AuthTokenResponse`, and sets the `weaver_session` cookie.
-* **Errors**: `400 Bad Request` when `username` or `privateKeyPem` is missing; `401 Unauthorized` on verification failure.
+* **Response Status**: `200 OK` — `AuthTokenResponse`, and sets the `weaver_session` cookie (`HttpOnly; SameSite=Strict; Secure`).
+  ```json
+  {
+    "token": "eyJ1c2VybmFtZSI6...",
+    "tokenType": "Bearer",
+    "expiresInSeconds": 28800,
+    "user": { "username": "lead_researcher", "role": "Researcher", "accessGate": "ApiWeb" }
+  }
+  ```
+* **Errors**: `400 Bad Request` when required fields are missing; `401 Unauthorized` on challenge/signature mismatch or access-gating violation; `403 Forbidden` on origin mismatch.
 
 ---
 

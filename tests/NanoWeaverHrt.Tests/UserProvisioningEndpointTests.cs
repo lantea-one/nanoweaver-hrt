@@ -87,10 +87,6 @@ public sealed class UserProvisioningEndpointTests : IClassFixture<WebApplication
             => _inner.VerifyChallengeAndIssueTokenAsync(username, challengeId, signatureBase64, isWebRequest, ct);
 
         /// <inheritdoc/>
-        public Task<(bool Success, string? ErrorMessage, string? Token, UserAccount? User)> AuthenticateWithPrivateKeyAsync(string username, string privateKeyPem, string? password = null, bool isWebRequest = true, CancellationToken ct = default)
-            => _inner.AuthenticateWithPrivateKeyAsync(username, privateKeyPem, password, isWebRequest, ct);
-
-        /// <inheritdoc/>
         public Task<(bool Valid, UserAccount? User, string? ErrorReason)> ValidateTokenAsync(string token, CancellationToken ct = default)
             => _inner.ValidateTokenAsync(token, ct);
 

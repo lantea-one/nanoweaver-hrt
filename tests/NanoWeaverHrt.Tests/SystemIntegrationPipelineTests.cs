@@ -117,17 +117,12 @@ public sealed class SystemIntegrationPipelineTests : IClassFixture<WebApplicatio
         HttpResponseMessage initRes = await _client.PostAsJsonAsync("/api/setup/initialize", initReq);
         Assert.Equal(HttpStatusCode.OK, initRes.StatusCode);
 
-        // Login as Administrator
-        KeyLoginRequest adminLoginReq = new()
-        {
-            Username = "pipeline_admin",
-            PrivateKeyPem = adminBundle.PrivateKeyPem
-        };
-        HttpResponseMessage adminLoginRes = await _client.PostAsJsonAsync("/api/auth/login-key", adminLoginReq);
-        Assert.Equal(HttpStatusCode.OK, adminLoginRes.StatusCode);
-        AuthTokenResponse? adminAuth = await adminLoginRes.Content.ReadFromJsonAsync<AuthTokenResponse>();
-        Assert.NotNull(adminAuth);
-        string adminToken = adminAuth.Token;
+        // Login as Administrator via challenge-response
+        string adminToken = await TestChallengeHelper.ExchangeChallengeTokenAsync(
+            _client,
+            "pipeline_admin",
+            adminBundle.PrivateKeyPem,
+            useWebTokenEndpoint: true);
 
         // ---------------------------------------------------------------------
         // STEP 2: Administrator Provisions a Researcher Account
@@ -152,19 +147,14 @@ public sealed class SystemIntegrationPipelineTests : IClassFixture<WebApplicatio
         // ---------------------------------------------------------------------
         // STEP 3: Authenticate Researcher & Obtain Token
         // ---------------------------------------------------------------------
-        // WHAT: Performs direct private key authentication for dr_researcher.
+        // WHAT: Performs challenge-response authentication for dr_researcher.
         // WHY:  Obtains valid claims for subsequent simulation and analysis steps.
-        // HOW:  Submits username and private key PEM to /api/auth/login-key.
-        KeyLoginRequest researcherLoginReq = new()
-        {
-            Username = "dr_researcher",
-            PrivateKeyPem = researcherBundle.PrivateKeyPem
-        };
-        HttpResponseMessage resLoginRes = await _client.PostAsJsonAsync("/api/auth/login-key", researcherLoginReq);
-        Assert.Equal(HttpStatusCode.OK, resLoginRes.StatusCode);
-        AuthTokenResponse? resAuth = await resLoginRes.Content.ReadFromJsonAsync<AuthTokenResponse>();
-        Assert.NotNull(resAuth);
-        string researcherToken = resAuth.Token;
+        // HOW:  Exchanges challenge signature at /api/auth/web-token.
+        string researcherToken = await TestChallengeHelper.ExchangeChallengeTokenAsync(
+            _client,
+            "dr_researcher",
+            researcherBundle.PrivateKeyPem,
+            useWebTokenEndpoint: true);
 
         using HttpClient resClient = _factory.CreateClient();
         resClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", researcherToken);
@@ -353,18 +343,15 @@ public sealed class SystemIntegrationPipelineTests : IClassFixture<WebApplicatio
         };
         await _client.PostAsJsonAsync("/api/setup/initialize", initReq);
 
-        KeyLoginRequest adminLogin = new()
-        {
-            Username = "patient_flow_admin",
-            PrivateKeyPem = adminBundle.PrivateKeyPem
-        };
-        HttpResponseMessage adminLoginRes = await _client.PostAsJsonAsync("/api/auth/login-key", adminLogin);
-        AuthTokenResponse? adminAuth = await adminLoginRes.Content.ReadFromJsonAsync<AuthTokenResponse>();
-        Assert.NotNull(adminAuth);
+        string adminToken = await TestChallengeHelper.ExchangeChallengeTokenAsync(
+            _client,
+            "patient_flow_admin",
+            adminBundle.PrivateKeyPem,
+            useWebTokenEndpoint: true);
 
         // Administrator creates a Patient account via /api/users/generate-keypair
         using HttpRequestMessage patientKeyReq = new(HttpMethod.Post, "/api/users/generate-keypair");
-        patientKeyReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", adminAuth.Token);
+        patientKeyReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
         patientKeyReq.Content = JsonContent.Create(new GenerateKeyRequest
         {
             Username = "patient_charlie",
@@ -377,19 +364,15 @@ public sealed class SystemIntegrationPipelineTests : IClassFixture<WebApplicatio
         GeneratedKeyBundle? patientBundle = await patientKeyRes.Content.ReadFromJsonAsync<GeneratedKeyBundle>();
         Assert.NotNull(patientBundle);
 
-        // Authenticate as Patient
-        KeyLoginRequest patLogin = new()
-        {
-            Username = "patient_charlie",
-            PrivateKeyPem = patientBundle.PrivateKeyPem
-        };
-        HttpResponseMessage patLoginRes = await _client.PostAsJsonAsync("/api/auth/login-key", patLogin);
-        Assert.Equal(HttpStatusCode.OK, patLoginRes.StatusCode);
-        AuthTokenResponse? patAuth = await patLoginRes.Content.ReadFromJsonAsync<AuthTokenResponse>();
-        Assert.NotNull(patAuth);
+        // Authenticate as Patient via challenge-response
+        string patientToken = await TestChallengeHelper.ExchangeChallengeTokenAsync(
+            _client,
+            "patient_charlie",
+            patientBundle.PrivateKeyPem,
+            useWebTokenEndpoint: true);
 
         using HttpClient patClient = _factory.CreateClient();
-        patClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", patAuth.Token);
+        patClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", patientToken);
 
         // Patient accesses /api/patient/dna (Authorized)
         HttpResponseMessage dnaRes = await patClient.GetAsync("/api/patient/dna?regimen=MaleToFemale");
@@ -409,7 +392,7 @@ public sealed class SystemIntegrationPipelineTests : IClassFixture<WebApplicatio
 
         // Administrator provisions an encrypted record for the subject under GDPR Article 17
         using HttpRequestMessage encReq = new(HttpMethod.Post, "/api/compliance/encrypt-record");
-        encReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", adminAuth.Token);
+        encReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
         encReq.Content = JsonContent.Create(new EncryptRecordRequest
         {
             SubjectId = "patient_charlie",
@@ -420,14 +403,14 @@ public sealed class SystemIntegrationPipelineTests : IClassFixture<WebApplicatio
 
         // Administrator executes GDPR Article 17 crypto-shredding on patient key
         using HttpRequestMessage shredReq = new(HttpMethod.Post, "/api/compliance/crypto-shred");
-        shredReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", adminAuth.Token);
+        shredReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
         shredReq.Content = JsonContent.Create(new CryptoShredRequest { SubjectId = "patient_charlie" });
         HttpResponseMessage shredRes = await _client.SendAsync(shredReq);
         Assert.Equal(HttpStatusCode.OK, shredRes.StatusCode);
 
         // Verify audit log recorded crypto-shredding
         using HttpRequestMessage auditReq = new(HttpMethod.Get, "/api/compliance/audit-ledger?limit=10");
-        auditReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", adminAuth.Token);
+        auditReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
         HttpResponseMessage auditRes = await _client.SendAsync(auditReq);
         Assert.Equal(HttpStatusCode.OK, auditRes.StatusCode);
         string auditJson = await auditRes.Content.ReadAsStringAsync();

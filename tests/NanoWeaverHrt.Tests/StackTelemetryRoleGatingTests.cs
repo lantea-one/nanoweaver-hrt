@@ -140,17 +140,7 @@ public sealed class StackTelemetryRoleGatingTests : IClassFixture<WebApplication
         GeneratedKeyBundle? bundle = await keyResponse.Content.ReadFromJsonAsync<GeneratedKeyBundle>();
         Assert.NotNull(bundle);
 
-        KeyLoginRequest loginRequest = new()
-        {
-            Username = username,
-            PrivateKeyPem = bundle.PrivateKeyPem
-        };
-
-        HttpResponseMessage loginResponse = await _client.PostAsJsonAsync("/api/auth/login-key", loginRequest);
-        Assert.Equal(HttpStatusCode.OK, loginResponse.StatusCode);
-        AuthTokenResponse? auth = await loginResponse.Content.ReadFromJsonAsync<AuthTokenResponse>();
-        Assert.NotNull(auth);
-        return auth.Token;
+        return await TestChallengeHelper.ExchangeChallengeTokenAsync(_client, username, bundle.PrivateKeyPem);
     }
 
     /// <summary>

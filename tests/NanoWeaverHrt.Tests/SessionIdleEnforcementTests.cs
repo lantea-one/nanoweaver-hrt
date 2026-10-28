@@ -461,8 +461,6 @@ public sealed class SessionIdleEnforcementTests : IDisposable
         inner.Setup(s => s.CreateChallenge("admin")).Returns(challenge);
         inner.Setup(s => s.VerifyChallengeAndIssueTokenAsync("admin", "cid", "sig", true, It.IsAny<CancellationToken>()))
             .ReturnsAsync((true, null, "token", account));
-        inner.Setup(s => s.AuthenticateWithPrivateKeyAsync("admin", "pem", "pass", true, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((true, null, "token", account));
         inner.Setup(s => s.ListUsersAsync(It.IsAny<CancellationToken>())).ReturnsAsync(accounts);
         inner.Setup(s => s.CreateUserAsync("admin", UserRole.Administrator, AccessGate.ApiWeb, "pub", KeyAlgorithm.Ed25519, It.IsAny<CancellationToken>()))
             .ReturnsAsync(account);
@@ -480,7 +478,6 @@ public sealed class SessionIdleEnforcementTests : IDisposable
         Assert.Same(bundle, service.GenerateSecureKeyBundle("admin", UserRole.Administrator, AccessGate.ApiWeb, KeyAlgorithm.Ed25519, "pass"));
         Assert.Same(challenge, service.CreateChallenge("admin"));
         Assert.Equal("token", (await service.VerifyChallengeAndIssueTokenAsync("admin", "cid", "sig", true)).Token);
-        Assert.Equal("token", (await service.AuthenticateWithPrivateKeyAsync("admin", "pem", "pass")).Token);
         Assert.Same(accounts, await service.ListUsersAsync());
         Assert.Same(account, await service.CreateUserAsync("admin", UserRole.Administrator, AccessGate.ApiWeb, "pub", KeyAlgorithm.Ed25519));
         Assert.Same(account, await service.TryCreateUserAsync("admin", UserRole.Administrator, AccessGate.ApiWeb, "pub", KeyAlgorithm.Ed25519));

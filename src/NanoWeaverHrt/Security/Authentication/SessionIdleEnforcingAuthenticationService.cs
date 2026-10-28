@@ -130,15 +130,6 @@ public sealed class SessionIdleEnforcingAuthenticationService : IUserAuthenticat
         _inner.VerifyChallengeAndIssueTokenAsync(username, challengeId, signatureBase64, isWebRequest, ct);
 
     /// <inheritdoc/>
-    public Task<(bool Success, string? ErrorMessage, string? Token, UserAccount? User)> AuthenticateWithPrivateKeyAsync(
-        string username,
-        string privateKeyPem,
-        string? password = null,
-        bool isWebRequest = true,
-        CancellationToken ct = default) =>
-        _inner.AuthenticateWithPrivateKeyAsync(username, privateKeyPem, password, isWebRequest, ct);
-
-    /// <inheritdoc/>
     public Task<IReadOnlyList<UserAccount>> ListUsersAsync(CancellationToken ct = default) =>
         _inner.ListUsersAsync(ct);
 

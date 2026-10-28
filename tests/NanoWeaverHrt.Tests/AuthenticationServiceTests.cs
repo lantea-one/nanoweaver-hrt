@@ -525,14 +525,14 @@ public sealed class AuthenticationServiceTests : IDisposable
     }
 
     /// <summary>
-    /// Verifies direct private key authentication for plain and encrypted keys across Ed25519 and ML-DSA-65.
+    /// Verifies challenge-response authentication for plain and encrypted keys across Ed25519 and ML-DSA-65.
     /// </summary>
     [Fact]
-    public async Task DirectPrivateKeyAuth_PlainAndEncryptedKeys_AuthenticatesCleanly()
+    public async Task ChallengeResponseAuth_PlainAndEncryptedKeys_AuthenticatesCleanly()
     {
-        // WHAT: Tests AuthenticateWithPrivateKeyAsync across key formats and algorithms.
-        // WHY:  Enables both interactive Web UI login and headless automation using private key files.
-        // HOW:  Creates accounts with plain and encrypted Ed25519 and ML-DSA-65 keys and verifies login outcomes.
+        // WHAT: Tests CreateChallenge + VerifyChallengeAndIssueTokenAsync across key formats and algorithms.
+        // WHY:  Enforces asymmetric challenge-response authentication without transmitting private keys (Audit C8).
+        // HOW:  Issues challenges, signs with TestChallengeHelper, and verifies token issuance and audit trail.
         GeneratedKeyBundle adminBundle = _authService.GenerateSecureKeyBundle(
             "admin_root",
             UserRole.Administrator,
@@ -545,10 +545,12 @@ public sealed class AuthenticationServiceTests : IDisposable
             KeyAlgorithm.Ed25519);
 
         // 1. Ed25519 Plain Key Authentication
-        var (edSuccess, _, edToken, _) = await _authService.AuthenticateWithPrivateKeyAsync(
+        AuthChallenge edChal = _authService.CreateChallenge("admin_root");
+        string edSig = TestChallengeHelper.SignNonceWithPem(adminBundle.PrivateKeyPem, edChal.NonceBase64);
+        var (edSuccess, _, edToken, _) = await _authService.VerifyChallengeAndIssueTokenAsync(
             "admin_root",
-            adminBundle.PrivateKeyPem,
-            password: null,
+            edChal.ChallengeId,
+            edSig,
             isWebRequest: true);
 
         Assert.True(edSuccess);
@@ -569,24 +571,29 @@ public sealed class AuthenticationServiceTests : IDisposable
             edEnc.PublicKeyBase64,
             KeyAlgorithm.Ed25519);
 
-        var (encSuccess, _, encToken, _) = await _authService.AuthenticateWithPrivateKeyAsync(
+        AuthChallenge encChal = _authService.CreateChallenge("ed_enc_user");
+        string encSig = TestChallengeHelper.SignNonceWithPem(edEnc.PrivateKeyPem, encChal.NonceBase64, passphrase: "mypassword123");
+        var (encSuccess, _, encToken, _) = await _authService.VerifyChallengeAndIssueTokenAsync(
             "ed_enc_user",
-            edEnc.PrivateKeyPem,
-            password: "mypassword123",
+            encChal.ChallengeId,
+            encSig,
             isWebRequest: true);
 
         Assert.True(encSuccess);
         Assert.NotNull(encToken);
 
-        // 3. Ed25519 Encrypted Key Authentication with wrong password
-        var (failSuccess, failError, _, _) = await _authService.AuthenticateWithPrivateKeyAsync(
+        // 3. Ed25519 Encrypted Key Authentication with wrong password throws in helper, and invalid signature fails
+        Assert.ThrowsAny<Exception>(() => TestChallengeHelper.SignNonceWithPem(edEnc.PrivateKeyPem, encChal.NonceBase64, passphrase: "WRONG_PASSWORD"));
+
+        AuthChallenge failChal = _authService.CreateChallenge("ed_enc_user");
+        var (failSuccess, failError, _, _) = await _authService.VerifyChallengeAndIssueTokenAsync(
             "ed_enc_user",
-            edEnc.PrivateKeyPem,
-            password: "WRONG_PASSWORD",
+            failChal.ChallengeId,
+            Convert.ToBase64String(new byte[64]),
             isWebRequest: true);
 
         Assert.False(failSuccess);
-        Assert.Contains("decrypt private key", failError?.ToLowerInvariant());
+        Assert.NotNull(failError);
 
         // 4. ML-DSA-65 Plain Key Authentication
         GeneratedKeyBundle mlPlain = _authService.GenerateSecureKeyBundle(
@@ -602,14 +609,21 @@ public sealed class AuthenticationServiceTests : IDisposable
             mlPlain.PublicKeyBase64,
             KeyAlgorithm.MlDsa65);
 
-        var (mlSuccess, _, mlToken, _) = await _authService.AuthenticateWithPrivateKeyAsync(
+        AuthChallenge mlChal = _authService.CreateChallenge("ml_user");
+        string mlSig = TestChallengeHelper.SignNonceWithPem(mlPlain.PrivateKeyPem, mlChal.NonceBase64, KeyAlgorithm.MlDsa65);
+        var (mlSuccess, _, mlToken, _) = await _authService.VerifyChallengeAndIssueTokenAsync(
             "ml_user",
-            mlPlain.PrivateKeyPem,
-            password: null,
+            mlChal.ChallengeId,
+            mlSig,
             isWebRequest: true);
 
         Assert.True(mlSuccess);
         Assert.NotNull(mlToken);
+
+        // 5. Audit trail assertions
+        var auditTrail = _auditService.GetAuditRecords();
+        Assert.Contains(auditTrail, e => e.Action == "UserAuthenticated" && e.DetailsJson.Contains("\"isWeb\":true"));
+        Assert.Contains(auditTrail, e => e.Action == "AuthenticationFailed");
     }
 
     /// <summary>
@@ -660,11 +674,13 @@ public sealed class AuthenticationServiceTests : IDisposable
             webUserBundle.PublicKeyBase64,
             KeyAlgorithm.Ed25519);
 
-        // 1. Api user attempting Web login -> must be rejected
-        var (apiWebLoginSuccess, apiWebLoginError, _, _) = await _authService.AuthenticateWithPrivateKeyAsync(
+        // 1. Api user attempting Web login via VerifyChallengeAndIssueTokenAsync(..., isWebRequest: true) -> must be rejected
+        AuthChallenge apiChal = _authService.CreateChallenge("api_only_user");
+        string apiSig = TestChallengeHelper.SignNonceWithPem(apiUserBundle.PrivateKeyPem, apiChal.NonceBase64);
+        var (apiWebLoginSuccess, apiWebLoginError, _, _) = await _authService.VerifyChallengeAndIssueTokenAsync(
             "api_only_user",
-            apiUserBundle.PrivateKeyPem,
-            password: null,
+            apiChal.ChallengeId,
+            apiSig,
             isWebRequest: true);
 
         Assert.False(apiWebLoginSuccess);
@@ -804,7 +820,6 @@ public sealed class AuthenticationServiceTests : IDisposable
         Assert.NotNull(new GenerateKeyRequest().GetExamples());
         Assert.NotNull(new ChallengeRequest().GetExamples());
         Assert.NotNull(new TokenExchangeRequest().GetExamples());
-        Assert.NotNull(new KeyLoginRequest().GetExamples());
         Assert.NotNull(new CreateUserRequest().GetExamples());
         Assert.NotNull(new AuthTokenResponse().GetExamples());
         Assert.NotNull(new SetupStatusResponse().GetExamples());
@@ -882,32 +897,26 @@ public sealed class AuthenticationServiceTests : IDisposable
     [Fact]
     public void KeyParsingAndChallengeCleanup_EdgeCases_Covered()
     {
-        // WHAT: Tests DecryptPrivateKeyBytes boundary checks, invalid Base64 PEM, missing passphrase, and expired challenge eviction.
-        // WHY:  Ensures 100% line and branch coverage across private key parsing and challenge dictionaries.
-        // HOW:  Passes truncated bytes, invalid Base64 PEM, and expired challenge items.
-        // 1. Truncated encrypted bytes (< 44 bytes)
-        byte[]? tooShort = UserAuthenticationService.DecryptPrivateKeyBytes(new byte[20], "password");
-        Assert.Null(tooShort);
+        // WHAT: Tests EncryptPrivateKeyBytes PBKDF2/AES-GCM encryption, round-trip extraction, and expired challenge eviction.
+        // WHY:  Ensures 100% line and branch coverage across private key envelope encryption and challenge dictionaries.
+        // HOW:  Encrypts random DER bytes, wraps in PEM, asserts round-trip via TestChallengeHelper, and checks eviction.
+        // 1. EncryptPrivateKeyBytes produces valid envelope and round-trips via TestChallengeHelper.ExtractDerFromPem
+        byte[] rawDer = new byte[48];
+        RandomNumberGenerator.Fill(rawDer);
+        byte[] envelope = UserAuthenticationService.EncryptPrivateKeyBytes(rawDer, "Passphrase123!");
+        Assert.True(envelope.Length > 44);
 
-        // 2. Corrupted Base64 in PEM
-        byte[]? corrupted = UserAuthenticationService.ExtractPrivateKeyDerFromPem("-----BEGIN PRIVATE KEY-----\n!!corrupted_not_base64!!\n-----END PRIVATE KEY-----", null);
-        Assert.Null(corrupted);
+        string encPem = UserAuthenticationService.FormatPem("ENCRYPTED PRIVATE KEY", envelope);
+        byte[] roundTrip = TestChallengeHelper.ExtractDerFromPem(encPem, "Passphrase123!");
+        Assert.Equal(rawDer, roundTrip);
 
-        // 3. Plain PEM without encryption
-        GeneratedKeyBundle plainBundle = _authService.GenerateSecureKeyBundle("plain_user", UserRole.Researcher, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
-        byte[]? plainDer = UserAuthenticationService.ExtractPrivateKeyDerFromPem(plainBundle.PrivateKeyPem, null);
-        Assert.NotNull(plainDer);
+        // Wrong passphrase fails decryption
+        Assert.ThrowsAny<Exception>(() => TestChallengeHelper.ExtractDerFromPem(encPem, "WrongPassword!"));
 
-        // 4. Encrypted PEM with valid password, empty password, and null password
-        GeneratedKeyBundle encBundle = _authService.GenerateSecureKeyBundle("enc_user", UserRole.Researcher, AccessGate.ApiWeb, KeyAlgorithm.Ed25519, "Passphrase123!");
-        byte[]? decryptedDer = UserAuthenticationService.ExtractPrivateKeyDerFromPem(encBundle.PrivateKeyPem, "Passphrase123!");
-        Assert.NotNull(decryptedDer);
-
-        byte[]? emptyPass = UserAuthenticationService.ExtractPrivateKeyDerFromPem(encBundle.PrivateKeyPem, "");
-        Assert.Null(emptyPass);
-
-        byte[]? nullPass = UserAuthenticationService.ExtractPrivateKeyDerFromPem(encBundle.PrivateKeyPem, null);
-        Assert.Null(nullPass);
+        // 2. FormatPem handles arbitrary types cleanly
+        string plainPem = UserAuthenticationService.FormatPem("PUBLIC KEY", rawDer);
+        Assert.Contains("-----BEGIN PUBLIC KEY-----", plainPem);
+        Assert.Contains("-----END PUBLIC KEY-----", plainPem);
 
         // 5. Expired challenge eviction
         AuthChallenge expiredChal = new()

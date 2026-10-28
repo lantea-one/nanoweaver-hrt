@@ -210,15 +210,13 @@ public sealed class AuthEndpointsIntegrationTests : IClassFixture<WebApplication
         Assert.False(string.IsNullOrEmpty(exchangedToken.Token));
 
         // ---------------------------------------------------------------------
-        // STEP 6: Direct Private Key Login & Session Cookie
+        // STEP 6: Direct Private Key Login & Session Cookie (via Challenge Handshake)
         // ---------------------------------------------------------------------
-        KeyLoginRequest keyLoginReq = new()
-        {
-            Username = "super_admin",
-            PrivateKeyPem = adminBundle.PrivateKeyPem
-        };
-
-        HttpResponseMessage keyLoginRes = await _client.PostAsJsonAsync("/api/auth/login-key", keyLoginReq);
+        HttpResponseMessage keyLoginRes = await TestChallengeHelper.LoginViaChallengeAsync(
+            _client,
+            "super_admin",
+            adminBundle.PrivateKeyPem,
+            useWebTokenEndpoint: true);
         Assert.Equal(HttpStatusCode.OK, keyLoginRes.StatusCode);
         Assert.True(keyLoginRes.Headers.Contains("Set-Cookie"));
 
@@ -281,24 +279,23 @@ public sealed class AuthEndpointsIntegrationTests : IClassFixture<WebApplication
         // ---------------------------------------------------------------------
         // STEP 8: Access Gating Restrictions (Web-only blocked from API)
         // ---------------------------------------------------------------------
-        // Login as Web-only user to obtain token
-        KeyLoginRequest webLoginReq = new()
-        {
-            Username = "web_only_patient",
-            PrivateKeyPem = webBundle.PrivateKeyPem
-        };
-
-        // Note: /api/auth/login-key grants a browser session cookie, so it is the web transport (isWebRequest=true)
-        // and ACCEPTS Web-only users. The API transport (/api/auth/token) is what refuses them.
-        HttpResponseMessage webApiLoginRes = await _client.PostAsJsonAsync("/api/auth/login-key", webLoginReq);
+        // Login as Web-only user to obtain token via challenge-response
+        HttpResponseMessage webApiLoginRes = await TestChallengeHelper.LoginViaChallengeAsync(
+            _client,
+            "web_only_patient",
+            webBundle.PrivateKeyPem,
+            useWebTokenEndpoint: true);
         Assert.Equal(HttpStatusCode.OK, webApiLoginRes.StatusCode);
 
         // ---------------------------------------------------------------------
         // STEP 9: Role Gating Restrictions
         // ---------------------------------------------------------------------
         // Login as Researcher
-        KeyLoginRequest resLogin = new() { Username = "researcher_lead", PrivateKeyPem = resBundle.PrivateKeyPem };
-        HttpResponseMessage resLoginRes = await _client.PostAsJsonAsync("/api/auth/login-key", resLogin);
+        HttpResponseMessage resLoginRes = await TestChallengeHelper.LoginViaChallengeAsync(
+            _client,
+            "researcher_lead",
+            resBundle.PrivateKeyPem,
+            useWebTokenEndpoint: true);
         AuthTokenResponse? resAuth = await resLoginRes.Content.ReadFromJsonAsync<AuthTokenResponse>();
         Assert.NotNull(resAuth);
 
@@ -317,8 +314,11 @@ public sealed class AuthEndpointsIntegrationTests : IClassFixture<WebApplication
         Assert.Equal(HttpStatusCode.Forbidden, resUsers.StatusCode);
 
         // Login as Patient
-        KeyLoginRequest patLogin = new() { Username = "patient_007", PrivateKeyPem = patBundle.PrivateKeyPem };
-        HttpResponseMessage patLoginRes = await _client.PostAsJsonAsync("/api/auth/login-key", patLogin);
+        HttpResponseMessage patLoginRes = await TestChallengeHelper.LoginViaChallengeAsync(
+            _client,
+            "patient_007",
+            patBundle.PrivateKeyPem,
+            useWebTokenEndpoint: true);
         AuthTokenResponse? patAuth = await patLoginRes.Content.ReadFromJsonAsync<AuthTokenResponse>();
         Assert.NotNull(patAuth);
 
@@ -745,5 +745,31 @@ public sealed class AuthEndpointsIntegrationTests : IClassFixture<WebApplication
         {
             authService.MaxActiveChallenges = originalCap;
         }
+    }
+
+    /// <summary>
+    /// Verifies that the removed /api/auth/login-key endpoint returns 401 Unauthorized rather than accepting a private key.
+    /// </summary>
+    /// <returns>An asynchronous task tracking the assertion.</returns>
+    [Fact]
+    public async Task RemovedLoginKeyEndpoint_Returns401Unauthorized()
+    {
+        // WHAT: Attempts calling legacy /api/auth/login-key with credentials.
+        // WHY:  Proves the private-key oracle endpoint was completely eliminated from the unauthenticated allow-list (Audit C8).
+        // HOW:  Ensures node is initialized, sends POST to /api/auth/login-key, and asserts HTTP 401 Unauthorized.
+        UserAuthenticationService authService = _factory.Services.GetRequiredService<UserAuthenticationService>();
+        if (await authService.IsSetupRequiredAsync())
+        {
+            GeneratedKeyBundle adminBundle = authService.GenerateSecureKeyBundle("admin_probe", UserRole.Administrator, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
+            await authService.CompleteInitialSetupAsync("admin_probe", adminBundle.PublicKeyBase64, KeyAlgorithm.Ed25519, AccessGate.ApiWeb);
+        }
+
+        using HttpRequestMessage request = new(HttpMethod.Post, "/api/auth/login-key")
+        {
+            Content = JsonContent.Create(new { username = "admin", privateKeyPem = "-----BEGIN PRIVATE KEY-----" })
+        };
+
+        HttpResponseMessage response = await _client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 }

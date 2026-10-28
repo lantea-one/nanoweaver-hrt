@@ -179,7 +179,7 @@ public class Program
 
             c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
             {
-                Description = "Asymmetric Private-Key Authenticated Bearer Token (issued by /api/auth/token or /api/auth/login-key). Example: 'Bearer {token}'",
+                Description = "Asymmetric Private-Key Authenticated Bearer Token (issued by /api/auth/token or /api/auth/web-token). Example: 'Bearer {token}'",
                 Name = "Authorization",
                 In = ParameterLocation.Header,
                 Type = SecuritySchemeType.ApiKey,
@@ -422,8 +422,7 @@ public class Program
             // 4. Public authentication endpoints (do not require an existing token)
             if (path.Equals("/api/auth/challenge", StringComparison.OrdinalIgnoreCase) ||
                 path.Equals("/api/auth/token", StringComparison.OrdinalIgnoreCase) ||
-                path.Equals("/api/auth/web-token", StringComparison.OrdinalIgnoreCase) ||
-                path.Equals("/api/auth/login-key", StringComparison.OrdinalIgnoreCase))
+                path.Equals("/api/auth/web-token", StringComparison.OrdinalIgnoreCase))
             {
                 await next();
                 return;
@@ -1812,60 +1811,6 @@ public class Program
         .WithSummary("Exchanges a digitally signed challenge nonce for an authenticated Bearer token.")
         .WithDescription("Verifies the signature against the registered public key and returns a scoped Bearer token.")
         .Accepts<TokenExchangeRequest>("application/json", "application/xml", "application/x-yaml")
-        .Produces<AuthTokenResponse>(StatusCodes.Status200OK)
-        .Produces(StatusCodes.Status400BadRequest)
-        .Produces(StatusCodes.Status401Unauthorized);
-
-        // ---------------------------------------------------------------------
-        // REST API: Direct Private Key Login (Web UI only - grants a browser session cookie)
-        // ---------------------------------------------------------------------
-        app.MapPost("/api/auth/login-key", async (KeyLoginRequest request, IUserAuthenticationService auth, HttpContext context, CancellationToken ct) =>
-        {
-            // WHAT: Authenticates user directly using their private key PEM and optional password.
-            // WHY:  Provides streamlined sign-in for the browser UI. This endpoint grants a browser session cookie,
-            //       so it IS the web transport; API-only accounts must use /api/auth/token instead.
-            // HOW:  Decrypts private key in-memory, signs an ephemeral nonce, validates against public key, and sets session cookie.
-            //       The transport is fixed by endpoint identity (isWebRequest: true), never derived from a header,
-            //       Origin, Accept or body field, because every one of those is client-controlled and would let a
-            //       caller certify their own transport and void the Api/Web access gate.
-            if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.PrivateKeyPem))
-            {
-                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Username and privateKeyPem are required.");
-            }
-
-            var (success, errorMessage, token, user) = await auth.AuthenticateWithPrivateKeyAsync(
-                request.Username,
-                request.PrivateKeyPem,
-                request.Password,
-                isWebRequest: true,
-                ct);
-
-            if (!success || token == null || user == null)
-            {
-                return SecureProblemResult(context, StatusCodes.Status401Unauthorized, errorMessage ?? "Authentication failed.");
-            }
-
-            context.Response.Cookies.Append("weaver_session", token, new CookieOptions
-            {
-                HttpOnly = true,
-                SameSite = SameSiteMode.Strict,
-                Secure = context.Request.IsHttps,
-                Expires = DateTimeOffset.UtcNow.AddHours(8)
-            });
-
-            return Results.Ok(new AuthTokenResponse
-            {
-                Token = token,
-                TokenType = "Bearer",
-                ExpiresInSeconds = 28800,
-                User = user
-            });
-        })
-        .WithName("LoginWithPrivateKey")
-        .WithTags("Authentication & Setup")
-        .WithSummary("Authenticates a browser session directly using private key PEM and optional password.")
-        .WithDescription("Web-transport endpoint: refuses Api-gated accounts, verifies private key ownership, sets the session cookie and returns a Bearer token.")
-        .Accepts<KeyLoginRequest>("application/json", "application/xml", "application/x-yaml")
         .Produces<AuthTokenResponse>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status400BadRequest)
         .Produces(StatusCodes.Status401Unauthorized);

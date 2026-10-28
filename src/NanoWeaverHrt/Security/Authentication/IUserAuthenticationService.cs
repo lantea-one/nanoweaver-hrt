@@ -69,22 +69,6 @@ public interface IUserAuthenticationService
         CancellationToken ct = default);
 
     /// <summary>
-    /// Authenticates a user directly using their private key PEM and optional password (primarily for Web UI login).
-    /// </summary>
-    /// <param name="username">The username attempting authentication.</param>
-    /// <param name="privateKeyPem">The user's private key PEM string (plain or encrypted).</param>
-    /// <param name="password">Optional password if private key is encrypted.</param>
-    /// <param name="isWebRequest">True if authenticating for interactive Web UI session; false for API token.</param>
-    /// <param name="ct">Cancellation token.</param>
-    /// <returns>Authentication verdict, error message (if any), bearer token, and user record.</returns>
-    Task<(bool Success, string? ErrorMessage, string? Token, UserAccount? User)> AuthenticateWithPrivateKeyAsync(
-        string username,
-        string privateKeyPem,
-        string? password = null,
-        bool isWebRequest = true,
-        CancellationToken ct = default);
-
-    /// <summary>
     /// Validates an authenticated bearer token and extracts authorized principal claims.
     /// </summary>
     /// <param name="token">The bearer token string.</param>

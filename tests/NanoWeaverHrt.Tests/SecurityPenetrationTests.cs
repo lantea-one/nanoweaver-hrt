@@ -94,14 +94,11 @@ public sealed class SecurityPenetrationTests : IClassFixture<WebApplicationFacto
         };
         _client.PostAsJsonAsync("/api/setup/initialize", initReq).GetAwaiter().GetResult();
 
-        KeyLoginRequest loginReq = new()
-        {
-            Username = "sec_admin",
-            PrivateKeyPem = _adminBundle.PrivateKeyPem
-        };
-        HttpResponseMessage loginRes = _client.PostAsJsonAsync("/api/auth/login-key", loginReq).GetAwaiter().GetResult();
-        AuthTokenResponse loginResp = loginRes.Content.ReadFromJsonAsync<AuthTokenResponse>().GetAwaiter().GetResult()!;
-        _adminToken = loginResp.Token;
+        _adminToken = TestChallengeHelper.ExchangeChallengeTokenAsync(
+            _client,
+            "sec_admin",
+            _adminBundle.PrivateKeyPem,
+            useWebTokenEndpoint: true).GetAwaiter().GetResult();
     }
 
     /// <inheritdoc/>
@@ -243,19 +240,19 @@ public sealed class SecurityPenetrationTests : IClassFixture<WebApplicationFacto
     [Fact]
     public async Task TransportBoundary_IsDecidedByEndpoint_InAllFourDirections()
     {
-        // WHAT: Proves cookie-granting login-key is Web-only and token is Api-only.
+        // WHAT: Proves cookie-granting web-token is Web-only and token is Api-only.
         // WHY:  The transport must come from endpoint identity, never a client-supplied field (Directive 12).
         // HOW:  Provisions a Web and an Api account, then exercises both endpoints with each.
         GeneratedKeyBundle web = await ProvisionGatedUserAsync("gate_web_user", AccessGate.Web);
         GeneratedKeyBundle api = await ProvisionGatedUserAsync("gate_api_user", AccessGate.Api);
 
         // 1. Web account via the cookie-granting endpoint: accepted and receives the cookie
-        HttpResponseMessage webLogin = await _client.PostAsJsonAsync("/api/auth/login-key", new KeyLoginRequest { Username = "gate_web_user", PrivateKeyPem = web.PrivateKeyPem });
+        HttpResponseMessage webLogin = await TestChallengeHelper.LoginViaChallengeAsync(_client, "gate_web_user", web.PrivateKeyPem, useWebTokenEndpoint: true);
         Assert.Equal(HttpStatusCode.OK, webLogin.StatusCode);
         Assert.Contains(webLogin.Headers.GetValues("Set-Cookie"), c => c.StartsWith("weaver_session=", StringComparison.Ordinal));
 
         // 2. Api account via the cookie-granting endpoint: refused, no cookie, opaque fixed message
-        HttpResponseMessage apiLogin = await _client.PostAsJsonAsync("/api/auth/login-key", new KeyLoginRequest { Username = "gate_api_user", PrivateKeyPem = api.PrivateKeyPem });
+        HttpResponseMessage apiLogin = await TestChallengeHelper.LoginViaChallengeAsync(_client, "gate_api_user", api.PrivateKeyPem, useWebTokenEndpoint: true);
         Assert.Equal(HttpStatusCode.Unauthorized, apiLogin.StatusCode);
         Assert.False(apiLogin.Headers.Contains("Set-Cookie"));
         Assert.Contains("API access only", await apiLogin.Content.ReadAsStringAsync());
@@ -294,13 +291,12 @@ public sealed class SecurityPenetrationTests : IClassFixture<WebApplicationFacto
         GeneratedKeyBundle? bundle = await keyRes.Content.ReadFromJsonAsync<GeneratedKeyBundle>();
         Assert.NotNull(bundle);
 
-        // 1. Direct login via /api/auth/login-key is the cookie-granting web transport, so a Web-gated user is accepted
-        KeyLoginRequest loginReq = new()
-        {
-            Username = "browser_only_user",
-            PrivateKeyPem = bundle.PrivateKeyPem
-        };
-        HttpResponseMessage loginRes = await _client.PostAsJsonAsync("/api/auth/login-key", loginReq);
+        // 1. Direct login via /api/auth/web-token is the cookie-granting web transport, so a Web-gated user is accepted
+        HttpResponseMessage loginRes = await TestChallengeHelper.LoginViaChallengeAsync(
+            _client,
+            "browser_only_user",
+            bundle.PrivateKeyPem,
+            useWebTokenEndpoint: true);
         Assert.Equal(HttpStatusCode.OK, loginRes.StatusCode);
         AuthTokenResponse? loginAuth = await loginRes.Content.ReadFromJsonAsync<AuthTokenResponse>();
         Assert.NotNull(loginAuth);
