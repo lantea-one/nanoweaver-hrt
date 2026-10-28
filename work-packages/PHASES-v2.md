@@ -1145,3 +1145,23 @@ Renumbering from rev 1: old P2–P18 are now P3–P19. New P2 is the transport-g
 | `package-lock.json` tracking | dropped; gitignored with a reason (P12) |
 | 390px via `resize_window` | dropped; one CDP attempt then an honest note (P19) |
 | `docker-compose.nvidia.yml` verification | dropped; host setup, documented (P19) |
+
+
+---
+
+## 7. Standalone Cross-Platform Desktop & Mobile GUI Phases (`P26–P35`, branch `feature/gui-application`)
+
+All work for the standalone multi-instance desktop and mobile GUI applications is executed on the `feature/gui-application` branch until code, 100% test coverage, compliance, documentation, GitHub Pages, code signing, and CI/CD artifact builds are complete, after which `feature/gui-application` is merged into `main` and deleted.
+
+| Phase | Work Package | Target LLM Tier | Summary of Scope |
+| :--- | :--- | :--- | :--- |
+| **P26** | `p26-gui-instance-store-and-key-vault.md` | `flash` / `sonnet` / `haiku` | `NanoWeaverHrt.Client` SQLite multi-instance connection profile repository (`IInstanceProfileRepository`) and `AES-256-GCM` client key vault (`IClientKeyRingVault`) for `Ed25519` and `ML-DSA-65`. |
+| **P27** | `p27-multi-instance-api-client-sdk.md` | `flash` / `sonnet` | `INanoWeaverNodeClient` PKI challenge-response authentication (`/api/auth/challenge` -> `/api/auth/token`), telemetry/simulation REST client, and `IMultiInstanceCoordinator` alert diffing. |
+| **P28** | `p28-background-tray-and-notifications.md` | `flash_lite` / `haiku` | `NanoWeaverHrt.Gui.Core` background monitoring daemon (`IBackgroundInstanceMonitor`), system tray state machine (`ITrayIconController`), notification dispatcher (`INativeNotificationSink`), and 15-minute idle lock. |
+| **P29** | `p29-avalonia-core-views-and-viewmodels.md` | `flash` / `sonnet` | Cross-platform MVVM ViewModels (`InstanceOnboardingViewModel`, `MainShellViewModel`), sovereign high-contrast dark theme palette, and 100% unit tests. |
+| **P30** | `p30-desktop-and-mobile-platform-heads.md` | `flash` / `sonnet` | `NanoWeaverHrt.Desktop` (`NanoWeaverHrt`) and `NanoWeaverHrt.Mobile` platform executables, OS-native notification and tray adapters (`Linux`, `macOS`, `Windows`, `Android`, `iOS`, `iPadOS`). |
+| **P31** | `p31-sovereign-codesign-pki-and-rotation.md` | `flash` / `haiku` | Sovereign X.509 `id-kp-codeSigning` CA + 90-day short-lived leaf certificate rotation scripts, GPG archive signing keyring, and scheduled monthly CI rotation workflows on Forgejo and GitHub Actions. |
+| **P32** | `p32-linux-packages-and-aur.md` | `flash_lite` / `haiku` | Reproducible Linux binary package builders for ArchLinux (`nanoweaver-hrt-desktop-{x86_64,arm64}.pkg.tar.zst`), unified Fedora RPM (`nanoweaver-hrt-desktop-{amd64,arm64}.rpm`), unified Debian/Ubuntu DEB (`nanoweaver-hrt-desktop-{amd64,arm64}.deb`), and AUR packages (`nanoweaver-hrt-desktop-bin` & `nanoweaver-hrt-desktop-git`). |
+| **P33** | `p33-macos-windows-mobile-packaging.md` | `flash` / `sonnet` | macOS `/Applications` bundle (`NanoWeaverHrt.dmg`), Windows dual-scope installer (`nanoweaver-hrt-desktop-installer.exe` supporting `Current User` or `System` with explicit choice when elevated) + Windows Store `NanoWeaverHrt.msix` artifact, and sideloadable Mobile packages (`nanoweaver-hrt-mobile-android.apk`, `nanoweaver-hrt-mobile-ios.ipa`, `nanoweaver-hrt-mobile-ipados.ipa`). |
+| **P34** | `p34-ci-cd-artifact-workflows.md` | `flash_lite` / `haiku` | Forgejo Actions (`.forgejo/workflows/build-and-deploy.yml`) and mirrored GitHub Actions (`.github/workflows/build-and-deploy.yml`) multi-platform GUI build, signing, and artifact upload jobs. |
+| **P35** | `p35-docs-verification-and-merge-closeout.md` | `flash` / `sonnet` | Author `docs/desktop-and-mobile-gui.md`, update Docsify `_sidebar.md` and security docs, run full 8-gate verification, merge `feature/gui-application` into `main`, push to `origin`, and delete `feature/gui-application`. |

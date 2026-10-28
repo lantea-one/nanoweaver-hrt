@@ -9,8 +9,20 @@
 ### 1.1 Master Architecture & Design Documents
 - [`PHASES-v2.md`](PHASES-v2.md) — Master Remediation & Feature Phase Plan (`P1–P20` permanent historical audit reference)
 
-### 1.2 Active Work Packages
-*None — All phases P1 through P25 are fully completed and verified.*
+### 1.2 Active Work Packages (`feature/gui-application`: `P26–P35`)
+
+| Phase | Work Package File | Target Model Tier | Architectural Layer & Scope | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| **P26** | [`p26-gui-instance-store-and-key-vault.md`](p26-gui-instance-store-and-key-vault.md) | `flash` / `sonnet` / `haiku` | **Layer 1 (Persistence & Crypto)**: `NanoWeaverHrt.Client` SQLite multi-instance registry (`IInstanceProfileRepository`) & `AES-256-GCM` client key vault (`IClientKeyRingVault`, `Ed25519` & `ML-DSA-65`) | **READY** |
+| **P27** | [`p27-multi-instance-api-client-sdk.md`](p27-multi-instance-api-client-sdk.md) | `flash` / `sonnet` | **Layer 2 (Domain & Auth SDK)**: `INanoWeaverNodeClient` challenge-response PKI auth, telemetry polling, `IMultiInstanceCoordinator` & state-transition alerts | **READY** |
+| **P28** | [`p28-background-tray-and-notifications.md`](p28-background-tray-and-notifications.md) | `flash_lite` / `haiku` | **Layer 2/3 (Background Daemon & Tray)**: `NanoWeaverHrt.Gui.Core` `IBackgroundInstanceMonitor`, `ITrayIconController`, `INativeNotificationSink` & 15-min idle lock | **READY** |
+| **P29** | [`p29-avalonia-core-views-and-viewmodels.md`](p29-avalonia-core-views-and-viewmodels.md) | `flash` / `sonnet` | **Layer 4a (Shared GUI Core & ViewModels)**: `InstanceOnboardingViewModel`, `MainShellViewModel`, sovereign dark-theme palette & headless xUnit tests | **READY** |
+| **P30** | [`p30-desktop-and-mobile-platform-heads.md`](p30-desktop-and-mobile-platform-heads.md) | `flash` / `sonnet` | **Layer 4b (Desktop & Mobile Heads)**: `NanoWeaverHrt.Desktop` (`NanoWeaverHrt`) & `NanoWeaverHrt.Mobile` executables, native OS notification/tray adapters (`Linux`, `macOS`, `Windows`, `Android`, `iOS`, `iPadOS`) | **READY** |
+| **P31** | [`p31-sovereign-codesign-pki-and-rotation.md`](p31-sovereign-codesign-pki-and-rotation.md) | `flash` / `haiku` | **Layer 5a (Code Signing & Rotation)**: Sovereign X.509 `id-kp-codeSigning` CA + 90-day leaf rotation scripts, GPG archive signing & scheduled rotation workflows | **READY** |
+| **P32** | [`p32-linux-packages-and-aur.md`](p32-linux-packages-and-aur.md) | `flash_lite` / `haiku` | **Layer 5b (Linux & AUR Packaging)**: Arch `.pkg.tar.zst` (`x86_64` & `arm64`), unified `.deb` (`amd64` & `arm64`), unified `.rpm` (`amd64` & `arm64`), and AUR (`-bin` & `-git`) | **READY** |
+| **P33** | [`p33-macos-windows-mobile-packaging.md`](p33-macos-windows-mobile-packaging.md) | `flash` / `sonnet` | **Layer 5c (macOS, Windows & Mobile Packaging)**: macOS `NanoWeaverHrt.dmg`, Windows dual-scope `nanoweaver-hrt-desktop-installer.exe` (`Current User` / `System`) + `NanoWeaverHrt.msix`, and Mobile `.apk` & `.ipa` (`Android`, `iOS`, `iPadOS`) | **READY** |
+| **P34** | [`p34-ci-cd-artifact-workflows.md`](p34-ci-cd-artifact-workflows.md) | `flash_lite` / `haiku` | **Layer 5d (CI/CD Artifact Matrix)**: Forgejo Actions & mirrored GitHub Actions multi-platform package build, signing & artifact upload on `feature/gui-application` and `main` | **READY** |
+| **P35** | [`p35-docs-verification-and-merge-closeout.md`](p35-docs-verification-and-merge-closeout.md) | `flash` / `sonnet` | **Layer 5e (Docs, Pages & Merge Closeout)**: `docs/desktop-and-mobile-gui.md`, Docsify sidebar, 8-gate verification, merge `feature/gui-application` -> `main` & branch cleanup | **READY** |
 
 ---
 
@@ -75,6 +87,11 @@ All architectural and scoping questions were presented via interactive forms and
    - **Cohort Group Creation Boundary**: Both Administrators and Researchers can create and manage subject groups (cohorts). Administrators can add any subject; Researchers can **only** add subjects they already have access to.
    - **Unified Cohort Web UI**: Dedicated cohort and group management interface accessible from both `DnaManagementPage.razor` (with cohort-based patient filtering) and `UserManagement.razor` (with grant management modal).
    - **Cleanup of Completed Work Items**: Removed completed instruction files (`docs/work-packages/non-root-containers.md` and `work-packages/c8-challenge-response-proposal.md`), while retaining `PHASES-v2.md` as the permanent completed historical reference.
+10. **[P26–P35 Decisions] Standalone Cross-Platform Desktop & Mobile GUI Applications (`feature/gui-application`)**:
+   - **Cross-Platform GUI Architecture**: Selected Avalonia UI 11 + shared .NET 10 Client SDK (`NanoWeaverHrt.Client` + `NanoWeaverHrt.Gui.Core` + `NanoWeaverHrt.Desktop` + `NanoWeaverHrt.Mobile`) with headless xUnit testing (`Avalonia.Headless.XUnit`) so Linux (`amd64`/`arm64`), macOS, Windows, Android, iOS, and iPadOS share 100% of business logic, ViewModels, and PKI security invariants while maintaining 100.00% line and branch coverage on Linux CI.
+   - **Sovereign Code-Signing PKI & 90-Day Automated Rotation**: Because Let's Encrypt ACME only issues TLS `serverAuth` (`1.3.6.1.5.5.7.3.1`) certificates and prohibits the `codeSigning` (`1.3.6.1.5.5.7.3.3`) EKU, ratified a Sovereign X.509 Code-Signing CA (`id-kp-codeSigning`) + OpenPGP/GPG Archive Signing Key with automated 90-day leaf certificate renewal and rotation via scheduled Forgejo and mirrored GitHub Actions workflows (`.forgejo/workflows/rotate-codesign-certs.yml` and `.github/workflows/rotate-codesign-certs.yml`).
+   - **Unified Linux Package Naming**: Consolidated self-contained Debian and Ubuntu packages into `nanoweaver-hrt-desktop-amd64.deb` and `nanoweaver-hrt-desktop-arm64.deb`, and consolidated Fedora/RPM packages into `nanoweaver-hrt-desktop-amd64.rpm` and `nanoweaver-hrt-desktop-arm64.rpm`, alongside ArchLinux `nanoweaver-hrt-desktop-x86_64.pkg.tar.zst` and `nanoweaver-hrt-desktop-arm64.pkg.tar.zst` and AUR packages `nanoweaver-hrt-desktop-bin` and `nanoweaver-hrt-desktop-git`.
+   - **Branch Isolation & Mirroring Strategy**: All GUI work packages and implementation are isolated on `feature/gui-application` pushed to `origin` (`git.lantea.one`, which automatically mirrors to GitHub on its backend), building all Linux, macOS, Windows (`nanoweaver-hrt-desktop-installer.exe` + `NanoWeaverHrt.msix`), and Mobile (`Android`, `iOS`, `iPadOS`) artifacts on both Forgejo Actions and GitHub Actions prior to merging into `main` and deleting `feature/gui-application`.
 
 ---
 
