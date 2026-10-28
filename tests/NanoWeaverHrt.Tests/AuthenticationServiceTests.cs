@@ -111,6 +111,7 @@ public sealed class AuthenticationServiceTests : IDisposable
     /// <inheritdoc/>
     public void Dispose()
     {
+        _authService.Dispose();
         _subjectKeyVault.Dispose();
         _userRepository.Dispose();
         if (Directory.Exists(_tempDir))
@@ -1021,5 +1022,84 @@ public sealed class AuthenticationServiceTests : IDisposable
         Assert.True(Program.IsValidPatientIdentifier("."));
         Assert.True(Program.IsValidPatientIdentifier("patient-007_test.v1"));
         Assert.True(Program.IsValidPatientIdentifier(new string('b', 64)));
+    }
+
+    /// <summary>
+    /// Verifies that authentication challenges are minted with a 120-second TTL and that expired
+    /// entries are pruned both on explicit invocation and periodic timer ticks.
+    /// </summary>
+    [Fact]
+    public void CreateChallenge_Sets120SecondExpiration_AndPrunesExpiredEntries()
+    {
+        // WHAT: Asserts 120s expiration window and sweeps expired challenges.
+        // WHY:  L9 challenge store hardening requires bounded lifetimes and proactive garbage collection.
+        // HOW:  Creates a challenge, asserts TTL in [115..121], registers an expired challenge, and tests pruning and timer tick.
+        AuthChallenge challenge = _authService.CreateChallenge("alice");
+        double ttlSeconds = (challenge.ExpiresAtUtc - DateTimeOffset.UtcNow).TotalSeconds;
+        Assert.True(ttlSeconds >= 115 && ttlSeconds <= 121, $"Expected TTL near 120s, got {ttlSeconds}s");
+
+        AuthChallenge expiredChallenge = new()
+        {
+            ChallengeId = "expired-test-id",
+            Username = "bob",
+            NonceBase64 = Convert.ToBase64String(new byte[32]),
+            ExpiresAtUtc = DateTimeOffset.UtcNow.AddMinutes(-5)
+        };
+        _authService.RegisterChallengeForTesting(expiredChallenge);
+
+        int pruned = _authService.PruneExpiredChallenges(DateTimeOffset.UtcNow);
+        Assert.True(pruned >= 1, "Expected at least 1 expired challenge removed.");
+
+        // Additional sweep on timer tick when nothing expired
+        _authService.OnPruneTimerTick(null);
+        int secondPruned = _authService.PruneExpiredChallenges(DateTimeOffset.UtcNow);
+        Assert.Equal(0, secondPruned);
+    }
+
+    /// <summary>
+    /// Verifies that when the active challenge store reaches its capacity, creating a challenge throws
+    /// <see cref="ChallengeStoreCapacityExceededException"/>, and that pruning expired entries restores capacity.
+    /// </summary>
+    [Fact]
+    public void CreateChallenge_WhenMaxActiveChallengesReached_ThrowsCapacityException()
+    {
+        // WHAT: Tests challenge store capacity capping and proactive pruning before cap checks.
+        // WHY:  Unauthenticated challenge requests must not exhaust host memory (Audit L9).
+        // HOW:  Sets MaxActiveChallenges to 2, verifies 3rd creation throws, registers expired challenge at cap and verifies replacement succeeds.
+        int originalCap = _authService.MaxActiveChallenges;
+        try
+        {
+            _authService.MaxActiveChallenges = 2;
+            _authService.PruneExpiredChallenges(DateTimeOffset.UtcNow.AddHours(1));
+
+            AuthChallenge c1 = _authService.CreateChallenge("alice");
+            AuthChallenge c2 = _authService.CreateChallenge("bob");
+            Assert.NotNull(c1);
+            Assert.NotNull(c2);
+
+            ChallengeStoreCapacityExceededException ex = Assert.Throws<ChallengeStoreCapacityExceededException>(
+                () => _authService.CreateChallenge("carol"));
+            Assert.Equal(2, ex.MaxCapacity);
+
+            // Register an expired challenge directly to simulate expiration while at cap
+            AuthChallenge expired = new()
+            {
+                ChallengeId = "expired-cap-test",
+                Username = "dan",
+                NonceBase64 = Convert.ToBase64String(new byte[32]),
+                ExpiresAtUtc = DateTimeOffset.UtcNow.AddMinutes(-10)
+            };
+            _authService.PruneExpiredChallenges(DateTimeOffset.UtcNow.AddHours(1));
+            _authService.CreateChallenge("eve");
+            _authService.RegisterChallengeForTesting(expired);
+
+            // CreateChallenge should prune the expired entry first, leaving 1 active, and succeed
+            AuthChallenge cNew = _authService.CreateChallenge("frank");
+            Assert.NotNull(cNew);
+        }
+        finally
+        {
+            _authService.MaxActiveChallenges = originalCap;
+        }
     }
 }

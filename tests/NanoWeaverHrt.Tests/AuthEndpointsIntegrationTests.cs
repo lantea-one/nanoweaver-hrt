@@ -9,6 +9,11 @@ using Org.BouncyCastle.Security;
 using NanoWeaverHrt.Endocrine;
 using NanoWeaverHrt.Models;
 using NanoWeaverHrt.Security.Authentication;
+using NanoWeaverHrt.Security.Cryptography;
+using NanoWeaverHrt.Security.Models;
+using NanoWeaverHrt.Compliance;
+using NanoWeaverHrt.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace NanoWeaverHrt.Tests;
@@ -416,5 +421,329 @@ public sealed class AuthEndpointsIntegrationTests : IClassFixture<WebApplication
         signer.BlockUpdate(data, 0, data.Length);
         byte[] sig = signer.GenerateSignature();
         return Convert.ToBase64String(sig);
+    }
+
+    /// <summary>
+    /// Helper signing raw bytes using ML-DSA-65 private key PEM.
+    /// </summary>
+    private static string SignMlDsa65(string privateKeyPem, byte[] data)
+    {
+        string clean = privateKeyPem
+            .Replace("-----BEGIN PRIVATE KEY-----", "")
+            .Replace("-----END PRIVATE KEY-----", "")
+            .Replace("\r", "")
+            .Replace("\n", "")
+            .Trim();
+
+        PostQuantumCryptoProvider pqc = new();
+        PqcSignature sig = pqc.SignData(data, clean, "test_signer");
+        return sig.SignatureBase64;
+    }
+
+    /// <summary>
+    /// Verifies that POST /api/auth/web-token accepts Web and ApiWeb accounts across both Ed25519 and ML-DSA-65,
+    /// sets the HttpOnly weaver_session cookie with SameSite=Strict, and records isWeb=true in the audit ledger.
+    /// </summary>
+    [Fact]
+    public async Task WebToken_AllowsWebAndApiWebAccounts_AndSetsHttpOnlyCookie()
+    {
+        // WHAT: Tests web-transport token exchange for Web and ApiWeb accounts with Ed25519 and ML-DSA-65.
+        // WHY:  Proves browser UI login establishes an authenticated session without leaking private keys.
+        // HOW:  Issues challenge, signs nonce, calls POST /api/auth/web-token, checks cookie and audit log.
+        using IServiceScope scope = _factory.Services.CreateScope();
+        IUserAuthenticationService auth = scope.ServiceProvider.GetRequiredService<IUserAuthenticationService>();
+        IComplianceAuditService audit = scope.ServiceProvider.GetRequiredService<IComplianceAuditService>();
+
+        if (await auth.IsSetupRequiredAsync())
+        {
+            GeneratedKeyBundle adminBundle = auth.GenerateSecureKeyBundle("web_admin", UserRole.Administrator, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
+            await auth.CompleteInitialSetupAsync("web_admin", adminBundle.PublicKeyBase64, KeyAlgorithm.Ed25519, AccessGate.ApiWeb);
+        }
+
+        var testAccounts = new[]
+        {
+            ("web_ed25519_user", AccessGate.Web, KeyAlgorithm.Ed25519),
+            ("web_mldsa_user", AccessGate.Web, KeyAlgorithm.MlDsa65),
+            ("apiweb_ed25519_user", AccessGate.ApiWeb, KeyAlgorithm.Ed25519)
+        };
+
+        foreach (var (username, gate, algorithm) in testAccounts)
+        {
+            GeneratedKeyBundle bundle = auth.GenerateSecureKeyBundle(username, UserRole.Researcher, gate, algorithm);
+            await auth.CreateUserAsync(username, UserRole.Researcher, gate, bundle.PublicKeyBase64, algorithm);
+
+            // Step 1: Request challenge
+            ChallengeRequest chalReq = new() { Username = username };
+            HttpResponseMessage chalRes = await _client.PostAsJsonAsync("/api/auth/challenge", chalReq);
+            Assert.Equal(HttpStatusCode.OK, chalRes.StatusCode);
+            AuthChallenge? challenge = await chalRes.Content.ReadFromJsonAsync<AuthChallenge>();
+            Assert.NotNull(challenge);
+
+            // Step 2: Sign raw 32-byte nonce
+            byte[] nonce = Convert.FromBase64String(challenge.NonceBase64);
+            string signature = algorithm == KeyAlgorithm.Ed25519
+                ? SignEd25519(bundle.PrivateKeyPem, nonce)
+                : SignMlDsa65(bundle.PrivateKeyPem, nonce);
+
+            // Step 3: Exchange for web token
+            TokenExchangeRequest tokenReq = new()
+            {
+                Username = username,
+                ChallengeId = challenge.ChallengeId,
+                SignatureBase64 = signature
+            };
+
+            HttpResponseMessage webTokenRes = await _client.PostAsJsonAsync("/api/auth/web-token", tokenReq);
+            Assert.Equal(HttpStatusCode.OK, webTokenRes.StatusCode);
+
+            AuthTokenResponse? tokenResponse = await webTokenRes.Content.ReadFromJsonAsync<AuthTokenResponse>();
+            Assert.NotNull(tokenResponse);
+            Assert.False(string.IsNullOrEmpty(tokenResponse.Token));
+            Assert.Equal(username, tokenResponse.User?.Username);
+
+            // Verify Set-Cookie header
+            Assert.True(webTokenRes.Headers.TryGetValues("Set-Cookie", out var cookieHeaders));
+            string setCookie = string.Join(";", cookieHeaders);
+            Assert.Contains("weaver_session=", setCookie, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("httponly", setCookie, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("samesite=strict", setCookie, StringComparison.OrdinalIgnoreCase);
+
+            // Verify audit ledger record
+            IReadOnlyList<AuditRecord> records = audit.GetAuditRecords(50);
+            Assert.Contains(records, r =>
+                r.Action == "UserAuthenticated" &&
+                r.Resource == $"user:{username}" &&
+                r.DetailsJson.Contains("\"isWeb\":true", StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    /// <summary>
+    /// Verifies that POST /api/auth/web-token rejects accounts gated strictly for API transport
+    /// with 401 Unauthorized and does not emit a Set-Cookie header.
+    /// </summary>
+    [Fact]
+    public async Task WebToken_RejectsApiOnlyAccount_With401AndNoCookie()
+    {
+        // WHAT: Attempts to authenticate an Api-only account on the web-token endpoint.
+        // WHY:  Enforces transport boundary gating (P2 Invariant) so API keys cannot open browser sessions.
+        // HOW:  Creates AccessGate.Api user, signs challenge, posts to /api/auth/web-token, asserts 401 and no cookie.
+        using IServiceScope scope = _factory.Services.CreateScope();
+        IUserAuthenticationService auth = scope.ServiceProvider.GetRequiredService<IUserAuthenticationService>();
+
+        if (await auth.IsSetupRequiredAsync())
+        {
+            GeneratedKeyBundle adminBundle = auth.GenerateSecureKeyBundle("gate_admin2", UserRole.Administrator, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
+            await auth.CompleteInitialSetupAsync("gate_admin2", adminBundle.PublicKeyBase64, KeyAlgorithm.Ed25519, AccessGate.ApiWeb);
+        }
+
+        string apiUser = "api_only_user";
+        GeneratedKeyBundle bundle = auth.GenerateSecureKeyBundle(apiUser, UserRole.Researcher, AccessGate.Api, KeyAlgorithm.Ed25519);
+        await auth.CreateUserAsync(apiUser, UserRole.Researcher, AccessGate.Api, bundle.PublicKeyBase64, KeyAlgorithm.Ed25519);
+
+        ChallengeRequest chalReq = new() { Username = apiUser };
+        HttpResponseMessage chalRes = await _client.PostAsJsonAsync("/api/auth/challenge", chalReq);
+        Assert.Equal(HttpStatusCode.OK, chalRes.StatusCode);
+        AuthChallenge? challenge = await chalRes.Content.ReadFromJsonAsync<AuthChallenge>();
+        Assert.NotNull(challenge);
+
+        byte[] nonce = Convert.FromBase64String(challenge.NonceBase64);
+        string signature = SignEd25519(bundle.PrivateKeyPem, nonce);
+
+        TokenExchangeRequest tokenReq = new()
+        {
+            Username = apiUser,
+            ChallengeId = challenge.ChallengeId,
+            SignatureBase64 = signature
+        };
+
+        HttpResponseMessage webTokenRes = await _client.PostAsJsonAsync("/api/auth/web-token", tokenReq);
+        Assert.Equal(HttpStatusCode.Unauthorized, webTokenRes.StatusCode);
+        Assert.False(webTokenRes.Headers.Contains("Set-Cookie"));
+    }
+
+    /// <summary>
+    /// Verifies same-origin enforcement on POST /api/auth/web-token across allowed local/reverse-proxy
+    /// origins, cross-origin rejections, invalid URIs, Sec-Fetch-Site rules, and missing payload fields.
+    /// </summary>
+    [Fact]
+    public async Task WebToken_ValidatesSameOriginAndConfiguredPublicOrigin()
+    {
+        // WHAT: Tests origin filtering, Sec-Fetch-Site header inspection, and payload validation.
+        // WHY:  Protects the session-cookie-setting web-token endpoint against CSRF and cross-site fixation.
+        // HOW:  Executes POST /api/auth/web-token with varied Origin, Sec-Fetch-Site headers, and payload structures.
+        using IServiceScope scope = _factory.Services.CreateScope();
+        IUserAuthenticationService auth = scope.ServiceProvider.GetRequiredService<IUserAuthenticationService>();
+        IConfigurationRepository configRepo = scope.ServiceProvider.GetRequiredService<IConfigurationRepository>();
+
+        if (await auth.IsSetupRequiredAsync())
+        {
+            GeneratedKeyBundle adminBundle = auth.GenerateSecureKeyBundle("origin_admin", UserRole.Administrator, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
+            await auth.CompleteInitialSetupAsync("origin_admin", adminBundle.PublicKeyBase64, KeyAlgorithm.Ed25519, AccessGate.ApiWeb);
+        }
+
+        string username = "origin_test_user";
+        GeneratedKeyBundle bundle = auth.GenerateSecureKeyBundle(username, UserRole.Researcher, AccessGate.Web, KeyAlgorithm.Ed25519);
+        await auth.CreateUserAsync(username, UserRole.Researcher, AccessGate.Web, bundle.PublicKeyBase64, KeyAlgorithm.Ed25519);
+
+        async Task<TokenExchangeRequest> CreateValidRequestAsync()
+        {
+            ChallengeRequest chalReq = new() { Username = username };
+            HttpResponseMessage chalRes = await _client.PostAsJsonAsync("/api/auth/challenge", chalReq);
+            AuthChallenge challenge = (await chalRes.Content.ReadFromJsonAsync<AuthChallenge>())!;
+            byte[] nonce = Convert.FromBase64String(challenge.NonceBase64);
+            string signature = SignEd25519(bundle.PrivateKeyPem, nonce);
+            return new TokenExchangeRequest
+            {
+                Username = username,
+                ChallengeId = challenge.ChallengeId,
+                SignatureBase64 = signature
+            };
+        }
+
+        // 1. Missing Origin header -> 200 OK
+        {
+            using HttpRequestMessage req = new(HttpMethod.Post, "/api/auth/web-token")
+            {
+                Content = JsonContent.Create(await CreateValidRequestAsync())
+            };
+            HttpResponseMessage res = await _client.SendAsync(req);
+            Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        }
+
+        // 2. Origin matching Host (http://localhost) -> 200 OK
+        {
+            using HttpRequestMessage req = new(HttpMethod.Post, "/api/auth/web-token")
+            {
+                Content = JsonContent.Create(await CreateValidRequestAsync())
+            };
+            req.Headers.Add("Origin", "http://localhost");
+            HttpResponseMessage res = await _client.SendAsync(req);
+            Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        }
+
+        // 3. Origin matching Peer:CollaborativeWorkerEndpoint -> 200 OK
+        {
+            await configRepo.SetDatabaseOverrideAsync("Peer:CollaborativeWorkerEndpoint", "https://hrt.lantea.one");
+            using HttpRequestMessage req = new(HttpMethod.Post, "/api/auth/web-token")
+            {
+                Content = JsonContent.Create(await CreateValidRequestAsync())
+            };
+            req.Headers.Add("Origin", "https://hrt.lantea.one");
+            HttpResponseMessage res = await _client.SendAsync(req);
+            Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        }
+
+        // 4. Origin matching DOMAIN environment variable -> 200 OK
+        string? oldDomain = Environment.GetEnvironmentVariable("DOMAIN");
+        try
+        {
+            Environment.SetEnvironmentVariable("DOMAIN", "proxy.lantea.one");
+            using HttpRequestMessage req = new(HttpMethod.Post, "/api/auth/web-token")
+            {
+                Content = JsonContent.Create(await CreateValidRequestAsync())
+            };
+            req.Headers.Add("Origin", "https://proxy.lantea.one");
+            HttpResponseMessage res = await _client.SendAsync(req);
+            Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("DOMAIN", oldDomain);
+        }
+
+        // 5. Cross-origin request from evil.example.com -> 403 Forbidden
+        {
+            using HttpRequestMessage req = new(HttpMethod.Post, "/api/auth/web-token")
+            {
+                Content = JsonContent.Create(await CreateValidRequestAsync())
+            };
+            req.Headers.Add("Origin", "https://evil.example.com");
+            HttpResponseMessage res = await _client.SendAsync(req);
+            Assert.Equal(HttpStatusCode.Forbidden, res.StatusCode);
+        }
+
+        // 6. Malformed Origin header -> 403 Forbidden
+        {
+            using HttpRequestMessage req = new(HttpMethod.Post, "/api/auth/web-token")
+            {
+                Content = JsonContent.Create(await CreateValidRequestAsync())
+            };
+            req.Headers.TryAddWithoutValidation("Origin", "://bad-uri");
+            HttpResponseMessage res = await _client.SendAsync(req);
+            Assert.Equal(HttpStatusCode.Forbidden, res.StatusCode);
+        }
+
+        // 7. Sec-Fetch-Site: cross-site -> 403 Forbidden
+        {
+            using HttpRequestMessage req = new(HttpMethod.Post, "/api/auth/web-token")
+            {
+                Content = JsonContent.Create(await CreateValidRequestAsync())
+            };
+            req.Headers.Add("Sec-Fetch-Site", "cross-site");
+            HttpResponseMessage res = await _client.SendAsync(req);
+            Assert.Equal(HttpStatusCode.Forbidden, res.StatusCode);
+        }
+
+        // 8. Missing request body fields -> 400 BadRequest
+        {
+            TokenExchangeRequest emptyUser = new() { Username = "", ChallengeId = "c1", SignatureBase64 = "s1" };
+            HttpResponseMessage res = await _client.PostAsJsonAsync("/api/auth/web-token", emptyUser);
+            Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
+        }
+
+        {
+            TokenExchangeRequest emptyChal = new() { Username = "user", ChallengeId = "", SignatureBase64 = "s1" };
+            HttpResponseMessage res = await _client.PostAsJsonAsync("/api/auth/web-token", emptyChal);
+            Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
+        }
+
+        {
+            TokenExchangeRequest emptySig = new() { Username = "user", ChallengeId = "c1", SignatureBase64 = "" };
+            HttpResponseMessage res = await _client.PostAsJsonAsync("/api/auth/web-token", emptySig);
+            Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
+        }
+    }
+
+    /// <summary>
+    /// Verifies that POST /api/auth/challenge returns HTTP 429 TooManyRequests with problem details
+    /// when the in-memory active challenge capacity is reached.
+    /// </summary>
+    [Fact]
+    public async Task CreateChallengeEndpoint_WhenCapReached_Returns429TooManyRequests()
+    {
+        // WHAT: Validates 429 throttling on POST /api/auth/challenge when store reaches capacity.
+        // WHY:  Protects unauthenticated challenge endpoint from memory exhaustion (Audit L9).
+        // HOW:  Temporarily lowers MaxActiveChallenges to 1, creates 1st challenge (200), then 2nd (429).
+        UserAuthenticationService authService = _factory.Services.GetRequiredService<UserAuthenticationService>();
+        if (await authService.IsSetupRequiredAsync())
+        {
+            GeneratedKeyBundle adminBundle = authService.GenerateSecureKeyBundle("cap_admin", UserRole.Administrator, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
+            await authService.CompleteInitialSetupAsync("cap_admin", adminBundle.PublicKeyBase64, KeyAlgorithm.Ed25519, AccessGate.ApiWeb);
+        }
+
+        int originalCap = authService.MaxActiveChallenges;
+
+        try
+        {
+            authService.MaxActiveChallenges = 1;
+            authService.PruneExpiredChallenges(DateTimeOffset.UtcNow.AddHours(1));
+
+            // First challenge succeeds
+            ChallengeRequest req1 = new() { Username = "throttle_test_user" };
+            HttpResponseMessage res1 = await _client.PostAsJsonAsync("/api/auth/challenge", req1);
+            Assert.Equal(HttpStatusCode.OK, res1.StatusCode);
+
+            // Second challenge triggers capacity overflow -> 429 Too Many Requests
+            ChallengeRequest req2 = new() { Username = "throttle_test_user" };
+            HttpResponseMessage res2 = await _client.PostAsJsonAsync("/api/auth/challenge", req2);
+            Assert.Equal((HttpStatusCode)429, res2.StatusCode);
+            Assert.Equal("application/problem+json", res2.Content.Headers.ContentType?.MediaType);
+            string body = await res2.Content.ReadAsStringAsync();
+            Assert.Contains("Too many pending authentication challenges", body, StringComparison.Ordinal);
+        }
+        finally
+        {
+            authService.MaxActiveChallenges = originalCap;
+        }
     }
 }

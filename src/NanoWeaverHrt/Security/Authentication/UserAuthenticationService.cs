@@ -20,7 +20,7 @@ namespace NanoWeaverHrt.Security.Authentication;
 /// Production implementation of <see cref="IUserAuthenticationService"/> providing asymmetric private-key authentication,
 /// challenge-response token exchanges, role-based access control, and first-launch setup gating.
 /// </summary>
-public sealed class UserAuthenticationService : IUserAuthenticationService
+public sealed class UserAuthenticationService : IUserAuthenticationService, IDisposable
 {
     /// <summary>
     /// Master user account persistence repository.
@@ -58,9 +58,9 @@ public sealed class UserAuthenticationService : IUserAuthenticationService
     private readonly ConcurrentDictionary<string, AuthChallenge> _activeChallenges = new();
 
     /// <summary>
-    /// Lifetime duration for authentication challenge nonces before expiration.
+    /// Lifetime duration for authentication challenge nonces before expiration (120 seconds).
     /// </summary>
-    private static readonly TimeSpan ChallengeLifetime = TimeSpan.FromSeconds(60);
+    public static readonly TimeSpan ChallengeLifetime = TimeSpan.FromSeconds(120);
 
     /// <summary>
     /// Default token validity period (8 hours).
@@ -93,6 +93,7 @@ public sealed class UserAuthenticationService : IUserAuthenticationService
         // HOW:  INodeSecretStore hands over key material that RandomNumberGenerator produced on first launch
         //       and that persists in an owner-only file, so tokens also survive a service restart.
         _tokenHmacKey = secretStore.TokenSigningKey;
+        _pruneTimer = new Timer(OnPruneTimerTick, null, DefaultPruneInterval, DefaultPruneInterval);
     }
 
     /// <summary>
@@ -226,14 +227,15 @@ public sealed class UserAuthenticationService : IUserAuthenticationService
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(username);
 
-        // Clean expired challenges
+        // WHAT: Sweeps expired challenges and enforces the hard upper bound on active challenges before allocating a nonce.
+        // WHY:  /api/auth/challenge is unauthenticated; capping _activeChallenges stops an attacker from exhausting heap memory.
+        // HOW:  Prunes expired entries first, then throws ChallengeStoreCapacityExceededException if still at or above MaxActiveChallenges.
         DateTimeOffset now = DateTimeOffset.UtcNow;
-        foreach (var kvp in _activeChallenges)
+        PruneExpiredChallenges(now);
+
+        if (_activeChallenges.Count >= MaxActiveChallenges)
         {
-            if (kvp.Value.ExpiresAtUtc <= now)
-            {
-                _activeChallenges.TryRemove(kvp.Key, out _);
-            }
+            throw new ChallengeStoreCapacityExceededException(MaxActiveChallenges);
         }
 
         byte[] nonce = new byte[32];
@@ -890,4 +892,63 @@ public sealed class UserAuthenticationService : IUserAuthenticationService
     /// <param name="username">The raw username string.</param>
     /// <returns>The normalized lowercase username.</returns>
     private static string NormalizeUsername(string username) => username.Trim().ToLowerInvariant();
+
+    /// <summary>
+    /// Default maximum number of concurrent unconsumed authentication challenges permitted in memory.
+    /// </summary>
+    public const int DefaultMaxActiveChallenges = 10_000;
+
+    /// <summary>
+    /// Default interval between background sweeps of expired authentication challenges.
+    /// </summary>
+    private static readonly TimeSpan DefaultPruneInterval = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Periodic timer that sweeps expired authentication challenges even when no new challenges arrive.
+    /// </summary>
+    private readonly Timer _pruneTimer;
+
+    /// <summary>
+    /// Gets or sets the maximum number of active authentication challenges allowed before new requests are throttled.
+    /// </summary>
+    /// <remarks>
+    /// Exposed as <c>internal</c> so unit and integration tests can exercise the capacity limit without allocating
+    /// 10,000 challenge records.
+    /// </remarks>
+    internal int MaxActiveChallenges { get; set; } = DefaultMaxActiveChallenges;
+
+    /// <summary>
+    /// Timer callback that sweeps expired authentication challenges using the current UTC clock.
+    /// </summary>
+    /// <param name="state">Unused timer state object.</param>
+    internal void OnPruneTimerTick(object? state)
+    {
+        PruneExpiredChallenges(DateTimeOffset.UtcNow);
+    }
+
+    /// <inheritdoc/>
+    public int PruneExpiredChallenges(DateTimeOffset nowUtc)
+    {
+        // WHAT: Removes every challenge from _activeChallenges whose ExpiresAtUtc is at or before nowUtc.
+        // WHY:  Prevents unbounded memory growth from abandoned authentication challenges (Audit L9).
+        // HOW:  Iterates the lock-free ConcurrentDictionary enumerator and atomically removes expired keys.
+        int removed = 0;
+        foreach (KeyValuePair<string, AuthChallenge> kvp in _activeChallenges)
+        {
+            if (kvp.Value.ExpiresAtUtc <= nowUtc && _activeChallenges.TryRemove(kvp.Key, out _))
+            {
+                removed++;
+            }
+        }
+
+        return removed;
+    }
+
+    /// <summary>
+    /// Disposes the background challenge pruning timer.
+    /// </summary>
+    public void Dispose()
+    {
+        _pruneTimer.Dispose();
+    }
 }

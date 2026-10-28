@@ -470,6 +470,8 @@ public sealed class SessionIdleEnforcementTests : IDisposable
             .ReturnsAsync(account);
         inner.Setup(s => s.GenerateBearerToken(account)).Returns("minted-token");
         inner.Setup(s => s.DeleteUserAsync("admin", It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        inner.Setup(s => s.PruneExpiredChallenges(now)).Returns(3);
 
         SessionIdleEnforcingAuthenticationService service = new(inner.Object, tracker.Object);
 
@@ -484,6 +486,7 @@ public sealed class SessionIdleEnforcementTests : IDisposable
         Assert.Same(account, await service.TryCreateUserAsync("admin", UserRole.Administrator, AccessGate.ApiWeb, "pub", KeyAlgorithm.Ed25519));
         Assert.Equal("minted-token", service.GenerateBearerToken(account));
         Assert.True(await service.DeleteUserAsync("admin"));
+        Assert.Equal(3, service.PruneExpiredChallenges(now));
 
         inner.VerifyAll();
     }

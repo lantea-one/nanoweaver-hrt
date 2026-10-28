@@ -111,6 +111,9 @@ public sealed class UserProvisioningEndpointTests : IClassFixture<WebApplication
 
         /// <inheritdoc/>
         public Task<bool> DeleteUserAsync(string username, CancellationToken ct = default) => _inner.DeleteUserAsync(username, ct);
+
+        /// <inheritdoc/>
+        public int PruneExpiredChallenges(DateTimeOffset nowUtc) => _inner.PruneExpiredChallenges(nowUtc);
     }
 
     /// <summary>

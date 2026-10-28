@@ -422,6 +422,7 @@ public class Program
             // 4. Public authentication endpoints (do not require an existing token)
             if (path.Equals("/api/auth/challenge", StringComparison.OrdinalIgnoreCase) ||
                 path.Equals("/api/auth/token", StringComparison.OrdinalIgnoreCase) ||
+                path.Equals("/api/auth/web-token", StringComparison.OrdinalIgnoreCase) ||
                 path.Equals("/api/auth/login-key", StringComparison.OrdinalIgnoreCase))
             {
                 await next();
@@ -1745,22 +1746,33 @@ public class Program
         {
             // WHAT: Mints a time-bounded cryptographic challenge nonce.
             // WHY:  Initiates zero-knowledge asymmetric challenge-response authentication.
-            // HOW:  Generates 32 random bytes and stores in active challenges with a 60-second TTL.
+            // HOW:  Generates 32 random bytes and stores in active challenges with a 120-second TTL, returning 429 if the cap is reached.
             if (string.IsNullOrWhiteSpace(request.Username))
             {
                 return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Username is required.");
             }
 
-            AuthChallenge challenge = auth.CreateChallenge(request.Username);
-            return Results.Ok(challenge);
+            try
+            {
+                AuthChallenge challenge = auth.CreateChallenge(request.Username);
+                return Results.Ok(challenge);
+            }
+            catch (ChallengeStoreCapacityExceededException)
+            {
+                return SecureProblemResult(
+                    context,
+                    StatusCodes.Status429TooManyRequests,
+                    "Too many pending authentication challenges. Please retry shortly.");
+            }
         })
         .WithName("CreateAuthChallenge")
         .WithTags("Authentication & Setup")
         .WithSummary("Issues a cryptographic challenge nonce for private-key authentication.")
-        .WithDescription("Mints a time-bounded (60s) 256-bit challenge nonce that must be signed by the user's private key.")
+        .WithDescription("Mints a time-bounded (120s) 256-bit challenge nonce that must be signed by the user's private key.")
         .Accepts<ChallengeRequest>("application/json", "application/xml", "application/x-yaml")
         .Produces<AuthChallenge>(StatusCodes.Status200OK)
-        .Produces(StatusCodes.Status400BadRequest);
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status429TooManyRequests);
 
         // ---------------------------------------------------------------------
         // REST API: Challenge-Response Token Exchange
@@ -3185,6 +3197,67 @@ public class Program
         .Produces(StatusCodes.Status403Forbidden)
         .Produces(StatusCodes.Status404NotFound);
 
+        // ---------------------------------------------------------------------
+        // REST API: Browser Challenge-Response Session Exchange (Web UI transport)
+        // ---------------------------------------------------------------------
+        app.MapPost("/api/auth/web-token", async (
+            TokenExchangeRequest request,
+            IUserAuthenticationService auth,
+            IConfigurationRepository configRepo,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Verifies a browser-signed challenge nonce and establishes an authenticated Web UI session.
+            // WHY:  Completes challenge-response login for the browser UI without ever transmitting the user's private key to the server (Audit C8).
+            // HOW:  Enforces same-origin rules, validates the signature with isWebRequest: true, sets the HttpOnly weaver_session cookie, and returns AuthTokenResponse.
+            if (!await IsAllowedWebTokenOriginAsync(context, configRepo, ct))
+            {
+                return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Cross-origin browser session requests are forbidden.");
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.ChallengeId) || string.IsNullOrWhiteSpace(request.SignatureBase64))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Username, challengeId, and signatureBase64 are all required.");
+            }
+
+            var (success, errorMessage, token, user) = await auth.VerifyChallengeAndIssueTokenAsync(
+                request.Username,
+                request.ChallengeId,
+                request.SignatureBase64,
+                isWebRequest: true,
+                ct);
+
+            if (!success || token == null || user == null)
+            {
+                return SecureProblemResult(context, StatusCodes.Status401Unauthorized, errorMessage ?? "Authentication failed.");
+            }
+
+            context.Response.Cookies.Append("weaver_session", token, new CookieOptions
+            {
+                HttpOnly = true,
+                SameSite = SameSiteMode.Strict,
+                Secure = context.Request.IsHttps,
+                Expires = DateTimeOffset.UtcNow.AddHours(8)
+            });
+
+            return Results.Ok(new AuthTokenResponse
+            {
+                Token = token,
+                TokenType = "Bearer",
+                ExpiresInSeconds = 28800,
+                User = user
+            });
+        })
+        .WithName("ExchangeWebAuthToken")
+        .WithTags("Authentication & Setup")
+        .WithSummary("Exchanges a browser-signed challenge nonce for an interactive Web UI session cookie and token.")
+        .WithDescription("Web-transport endpoint: refuses Api-only accounts, verifies the challenge signature against the registered public key, and sets the HttpOnly weaver_session cookie.")
+        .Accepts<TokenExchangeRequest>("application/json", "application/xml", "application/x-yaml")
+        .Produces<AuthTokenResponse>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden);
+
         app.Run();
     }
 
@@ -3769,6 +3842,64 @@ public class Program
             SerializeSecureProblem(context, statusCode, detail, includeSetupRequiredFlag: false),
             "application/problem+json; charset=utf-8",
             statusCode: statusCode);
+    }
+
+    /// <summary>
+    /// Validates that a browser session token exchange request did not originate from an untrusted cross-origin site.
+    /// </summary>
+    /// <param name="context">The active HTTP request context.</param>
+    /// <param name="configRepo">The system configuration repository holding the configured public endpoint.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns><c>true</c> if the request origin is permitted; otherwise, <c>false</c>.</returns>
+    private static async Task<bool> IsAllowedWebTokenOriginAsync(
+        HttpContext context,
+        IConfigurationRepository configRepo,
+        CancellationToken ct)
+    {
+        // WHAT: Checks Sec-Fetch-Site and Origin headers against the request host and configured public origin.
+        // WHY:  /api/auth/web-token sets a browser session cookie; rejecting cross-origin requests blocks cross-site
+        //       session fixation while still permitting reverse-proxy overlays (Caddy/Nginx) where Origin matches the public domain.
+        // HOW:  Rejects Sec-Fetch-Site values other than 'same-origin'/'none', and when Origin is present, verifies its host
+        //       matches HttpContext.Request.Host, Peer:CollaborativeWorkerEndpoint, or the DOMAIN environment variable.
+        string? secFetchSite = context.Request.Headers["Sec-Fetch-Site"];
+        if (!string.IsNullOrWhiteSpace(secFetchSite) &&
+            !string.Equals(secFetchSite, "same-origin", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(secFetchSite, "none", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        string? originHeader = context.Request.Headers.Origin;
+        if (string.IsNullOrWhiteSpace(originHeader))
+        {
+            return true;
+        }
+
+        if (!Uri.TryCreate(originHeader, UriKind.Absolute, out Uri? originUri))
+        {
+            return false;
+        }
+
+        if (string.Equals(originUri.Host, context.Request.Host.Host, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        string configuredEndpoint = await configRepo.GetValueAsync("Peer:CollaborativeWorkerEndpoint", "http://localhost:5000", ct);
+        if (Uri.TryCreate(configuredEndpoint, UriKind.Absolute, out Uri? configuredUri) &&
+            string.Equals(originUri.Host, configuredUri.Host, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        string? envDomain = Environment.GetEnvironmentVariable("DOMAIN");
+        if (!string.IsNullOrWhiteSpace(envDomain) &&
+            string.Equals(originUri.Host, envDomain.Trim(), StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return false;
     }
 
     /// <summary>

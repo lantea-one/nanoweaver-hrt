@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
-  "seeded_from_commit": "6c5ae718418fb0fa4e39166bb01a7fb0ace792b6",
+  "seeded_from_commit": "e8d06fdd23f6f03ade6d46d70418b0204d5a2447",
   "seeded_on_utc": "2026-10-28",
   "measurement": {
     "runsettings": "coverage-full.runsettings",
     "weaver_test_postgres": "unset"
   },
-  "line_rate": 98.94,
-  "branch_rate": 93.59,
-  "uncovered_lines_total": 124,
+  "line_rate": 98.96,
+  "branch_rate": 93.71,
+  "uncovered_lines_total": 123,
   "classes": {
     "NanoWeaverHrt.Bridges.ValkeyEventBridge/<<RegisterInboundClusterListenersAsync>b__21_1>d": 1,
     "NanoWeaverHrt.Bridges.ValkeyEventBridge/<<RegisterInboundClusterListenersAsync>b__21_2>d": 1,
@@ -48,7 +48,7 @@
     "NanoWeaverHrt.Program/<>c/<<Main>b__4_91>d": 2,
     "NanoWeaverHrt.Security.Authentication.UserAuthenticationService/<AuthenticateWithPrivateKeyAsync>d__15": 4,
     "NanoWeaverHrt.Security.Authentication.UserAuthenticationService/<ValidateTokenAsync>d__16": 5,
-    "NanoWeaverHrt.Security.Authentication.UserAuthenticationService/<VerifyChallengeAndIssueTokenAsync>d__14": 4,
+    "NanoWeaverHrt.Security.Authentication.UserAuthenticationService/<VerifyChallengeAndIssueTokenAsync>d__14": 3,
     "NanoWeaverHrt.Security.Authentication.UserProfileRepository/<DeleteAddressAsync>d__8": 1,
     "NanoWeaverHrt.Security.Authentication.UserProfileRepository/<DeleteContactAsync>d__11": 1,
     "NanoWeaverHrt.Security.Authentication.UserProfileRepository/<GetAddressesAsync>d__6": 1,

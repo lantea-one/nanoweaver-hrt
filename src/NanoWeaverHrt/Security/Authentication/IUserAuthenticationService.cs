@@ -151,4 +151,11 @@ public interface IUserAuthenticationService
     /// <param name="ct">Cancellation token.</param>
     /// <returns><c>true</c> if successfully deleted; otherwise, <c>false</c>.</returns>
     Task<bool> DeleteUserAsync(string username, CancellationToken ct = default);
+
+    /// <summary>
+    /// Removes all expired authentication challenges from the active challenge cache.
+    /// </summary>
+    /// <param name="nowUtc">The reference UTC timestamp against which challenge expiration is evaluated.</param>
+    /// <returns>The number of expired challenges removed.</returns>
+    int PruneExpiredChallenges(DateTimeOffset nowUtc);
 }
