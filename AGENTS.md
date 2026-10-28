@@ -85,6 +85,14 @@
     - Never expose raw stack traces, local filesystem paths (`/home/...`, `C:\...`), database connection strings or credentials, private key PEM material, or internal SQL fragments to API clients.
     - Redact sensitive tokens and map internal server errors to opaque correlation trace IDs.
 
+15. **Autonomous Agent Phasing & Work Package Breakdown Playbook**:
+    - When decomposing large architectural or multi-layer features into tasks (especially for execution by smaller context-window or subagent LLMs), decompose them into atomic, single-layer work packages:
+      - **Phase Sizing (Bounded Architectural Layer)**: Exactly one architectural layer per phase (e.g., Migration & Repository → Service & Gating → REST API Endpoints → Blazor UI → Verification & Documentation). Never conflate schema migrations with UI rendering in a single phase.
+      - **File Contract Independence**: Every work package must specify exact input/output interfaces, concrete types, method signatures, and invariants before code is written, ensuring downstream phases compile against fixed contracts without ambiguity.
+      - **Downward Ratchet Preservation**: Minimize Roslyn state machine divergence. Always append new methods and minimal-API endpoints to the end of files. Avoid capturing outer local variables in endpoint lambdas. Synchronize `ExcludeByFile` rules across `coverlet.runsettings` and `coverage-full.runsettings`.
+      - **Clean Up Protocol**: Upon successful merge and upstream push of a phase or phase group, remove temporary phase instruction files (e.g., `work-packages/pXX-*.md`) to prevent workspace clutter, while updating `PHASES-v2.md` and `work-packages/README.md` as permanent audit records.
+      - **Interactive Decisions Pattern**: Whenever an architectural fork, scoping ambiguity, or design decision arises, present it to the user as an interactive question form with a clearly justified recommended default option.
+
 ---
 
 ## 2. Architecture Overview
@@ -181,3 +189,45 @@ docker compose -f docker-compose.yml -f compose/docker-compose.public-caddy.yml 
 - **Blittable Structs**: Ensure coordinates, bounding boxes, and velocity structs use `[StructLayout(LayoutKind.Sequential, Pack = 4)]`.
 - **Async Pattern**: Use `ValueTask` for high-frequency frame emission callbacks (`Func<long, ReadOnlySpan<AtomCoordinate>, ValueTask>`) to avoid state-machine heap allocations when operations complete synchronously.
 - **Sandboxed Command Execution**: Always attempt commands sandboxed first; only use `BypassSandbox: true` for commands requiring elevated network/auth access (e.g. `git push`, `gh run`). Keep `toolSummary` identical on retries.
+
+---
+
+## 5. Work Package Breakdown & LLM Phasing Playbook
+
+To ensure reliable, deterministic contributions from smaller context-window models or autonomous subagents, follow this standardized task decomposition process:
+
+### 5.1 The 5-Layer Architectural Phase Sizing
+Never assign an LLM agent a task spanning the full vertical stack (schema through UI) in a single prompt. Large compound tasks cause context overflow, missed docblocks, and coverage regressions. Always partition features into 5 discrete phases:
+
+1. **Phase 1: Persistence & Schema Evolution**
+   - Implements `IDatabaseMigration` supporting both SQLite and PostgreSQL.
+   - Implements zero-allocation repository methods on `IWeaverDbConnectionFactory`.
+   - Comprehensive repository unit tests with isolated SQLite connection pools (`SqliteConnection.ClearPool`).
+2. **Phase 2: Domain Logic & Security Gating**
+   - Implements domain services (`IService`), permission calculation, effective tiered access resolution, and audit logging to `weaver_audit_ledger`.
+   - Unit tests covering 100% of branch logic, edge cases, and boundary constraints.
+3. **Phase 3: Minimal API Endpoints & Contracts**
+   - Defines request/response DTO records and maps endpoints at the end of `Program.cs`.
+   - Uses typed dependency injection parameters; zero captured outer variables.
+   - RFC 7807 problem details mappings and full endpoint integration tests with `WebApplicationFactory`.
+4. **Phase 4: Sovereign Blazor UI & Client Interactions**
+   - Implements accessible, dark-mode compliant Razor components (`.razor`) and modal dialogues.
+   - Synchronizes `ExcludeByFile` in `coverlet.runsettings` and `coverage-full.runsettings` for non-security UI components, or writes 100% bUnit tests for security components.
+   - Verifies browser state isolation, keyboard navigation, and zero inline styles.
+5. **Phase 5: End-to-End Verification, Documentation & Closeout**
+   - Runs full 8-gate `./scripts/verify-all.sh` verification.
+   - Updates `docs/` Markdown specifications using clean Unicode (zero unescaped single-dollar symbols).
+   - Consolidates phase notes into `PHASES-v2.md` and `work-packages/README.md`, removing temporary `work-packages/pXX-*.md` instruction files.
+
+### 5.2 Downward Coverage Ratchet Invariants for Autonomous Agents
+The compiler-generated state machine ratchet (`scripts/check-coverage-ratchet.py`) prohibits any increase in uncovered lines across Roslyn lambdas (`<<Main>b__4_N>d`) and async state machines (`<Method>d__N`):
+- **Append Order Invariant**: Always append new methods and minimal API endpoint registrations to the bottom of classes and `Program.cs`. Never insert methods into the middle of existing files.
+- **Async Block Scope**: Wrap `await using` statements inside explicit blocks `{ await using ... }` in repository methods to eliminate compiler exception-path branches.
+- **Mock Setup Precision**: In Moq test setups, match parameter positions exactly; loose-mode Moq returns `null` for mismatched `Task<T?>` calls, leading to hard-to-trace `NullReferenceException` cascades in state machines.
+- **bUnit Fresh Queries**: In bUnit component tests, always re-query DOM elements via `cut.Find(...)` after asynchronous state dispatches rather than reusing stale `IElement` references.
+
+### 5.3 Interactive Decision Forms
+When resolving architectural alternatives, ambiguities, or configuration choices:
+- Formulate choices into multiple-choice options with a single recommended default option prefixed with `(Recommended)`.
+- Explicitly explain the architectural rationale, trade-offs, and security implications of each option.
+- Never make unratified assumptions on security boundaries, cryptographic algorithms, or database schemas.

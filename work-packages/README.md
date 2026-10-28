@@ -125,3 +125,66 @@ Always format before running `./scripts/verify-all.sh`:
 ```bash
 XDG_RUNTIME_DIR=/tmp dotnet format NanoWeaverHrt.slnx --no-restore && ./scripts/verify-all.sh
 ```
+
+---
+
+## 4. Work Package Authoring & LLM Task Phasing Guide
+
+This guide establishes the standard operating procedure for human architects and AI assistants when specifying, decomposing, and executing complex features. It cross-references and implements the requirements of [`AGENTS.md`](../AGENTS.md) (Section 1.15 and Section 5).
+
+### 4.1 When and How to Create Work Packages
+Whenever a new feature or remediation spans multiple layers (e.g., schema migration, service logic, HTTP API, or UI rendering), create a dedicated work package file under `work-packages/` following the naming convention:
+```
+work-packages/p<Number>-<descriptive-slug>.md
+```
+*(Example: `work-packages/p26-biometric-audit-stream.md`)*
+
+### 4.2 Standard Work Package Template
+Every authored work package MUST follow this markdown structure:
+
+```markdown
+# Work Package PXX: <Feature Title>
+
+## 1. Context & Objective
+- **Problem Statement**: Plain-English description of the gap or capability needed.
+- **Goal & Scope**: High-level boundaries of what is included and explicitly excluded.
+- **Target Role / Boundary**: Target actors (`Administrator`, `Researcher`, `Patient`) and transport boundary (`Api`, `Web`, `ApiWeb`).
+
+## 2. Technical Contracts & Invariants
+- **Interfaces & Types**: Concrete method signatures, models, and return types before writing implementation.
+- **Database Schema**: Explicit SQL DDL (SQLite & PostgreSQL) and migration version identifier.
+- **REST Endpoints**: HTTP method, URI, request DTO, response DTO, and RFC 7807 problem details mappings.
+- **Coverage & Ratchet Invariants**: Applicable `ExcludeByFile` rules or required test fixture locations.
+
+## 3. Step-by-Step Implementation Tasks
+1. Task 1: Schema migration & connection factory queries.
+2. Task 2: Service layer implementation & unit tests.
+3. Task 3: API route mapping & integration tests.
+4. Task 4: Blazor UI component & bUnit tests.
+5. Task 5: Pre-flight gate verification & documentation.
+
+## 4. Verification Gate & Acceptance Criteria
+- [ ] Zero build warnings (`/warnaserror`).
+- [ ] 100.00% line & branch coverage on developer-authored code (Step 4).
+- [ ] 100% downward ratchet compliance (Step 7).
+- [ ] 100% XML docblock coverage on all members (Step 6).
+- [ ] Zero unescaped single-dollar math tokens in documentation (Step 5).
+```
+
+### 4.3 Phasing Rules for Smaller LLMs
+Smaller context-window models or autonomous subagents succeed when tasks have tightly constrained scopes and deterministic boundaries. When orchestrating work for smaller LLMs:
+1. **One Architectural Layer Per Turn**: Decompose the master plan into 1-layer units (Migration/Repo → Service → Minimal API → Blazor UI → Verification). Never combine database migration writing with Blazor UI component authoring in the same prompt.
+2. **Pre-Specify Method Signatures**: Never allow the LLM to invent its own interface method signatures during service or UI implementation. Always provide the exact `Task<T>` signature, parameter names, and order in the work package prompt.
+3. **Moq Argument Order Invariance**: In tests, ensure mock setups (`Setup(x => x.Method(...))`) match the exact parameter order of the pre-specified interface to avoid Moq loose-mode silent `null` returns.
+4. **Interactive Form Pattern**: When a requirement fork is encountered, prompt the user with a structured form containing a clearly reasoned `(Recommended)` default option before proceeding.
+
+### 4.4 Lifecycle & Clean-Up Protocol
+To prevent workspace drift, token bloat, and stale branch clutter:
+1. **Active State**: The active work package instruction file (`pXX-*.md`) resides in `work-packages/` while in progress.
+2. **Review & Gate**: The implementation is verified via `./scripts/verify-all.sh`.
+3. **Ratification & Pruning**:
+   - Record user decisions and key milestones in `work-packages/README.md` (Section 1.3 and Section 2).
+   - Update `work-packages/PHASES-v2.md` to reflect completion.
+   - Delete the temporary `pXX-*.md` instruction file from `work-packages/`.
+   - Prune all ephemeral git worktrees (`git worktree prune`) and delete stale local branches (`git branch -d ...`).
+   - Commit and push clean state to sovereign Forgejo remote `origin/main`.
