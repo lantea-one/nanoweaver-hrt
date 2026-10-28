@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.IO.Pipelines;
 using System.Reflection;
 using System.Runtime;
@@ -129,6 +130,7 @@ public class Program
         builder.Services.AddSingleton<IPatientDnaRepository, PatientDnaRepository>();
         builder.Services.AddSingleton<IAssetIntegrityService, AssetIntegrityService>();
         builder.Services.AddSingleton<ISubjectAccessRepository, SubjectAccessRepository>();
+        builder.Services.AddSingleton<ISubjectAccessService, SubjectAccessService>();
         // WHAT: Registers the authentication service behind the server-side idle expiration decorator.
         // WHY:  Prime Directive 12 requires idle sign-out to be validated server-side. The idle clock
         //       therefore lives in a singleton registry that no browser can touch, and every token
@@ -471,7 +473,7 @@ public class Program
                 return;
             }
 
-            // 8. Role Gating: per-subject identity, profile, and PHI record routes (self-service or Administrator)
+            // 8. Role Gating: per-subject identity, profile, and PHI record routes (self-service, Administrator, or tiered Researcher)
             PathString userSubPath = default;
             PathString patientSubPath = default;
             bool isUsersPath = path.StartsWithSegments("/api/users", out userSubPath);
@@ -479,12 +481,35 @@ public class Program
             if (isUsersPath || isPatientsPath)
             {
                 // WHAT: Resolves the subject of the record from the route and compares it with the session identity.
-                // WHY:  Prime Directive 12 scopes the Patient role to its own personalized records and does not
-                //       grant the Researcher role the patient identity or PHI surface at all.
-                // HOW:  ResolveSubjectRecordAccess is a pure, exhaustively unit-tested decision; a cross-subject
-                //       denial is masked as a 404 so that another patient's records look exactly like no records.
+                // WHY:  Allows patients self-service, administrators full oversight, and researchers tiered access.
+                // HOW:  Queries effective access level for researchers, applies ResolveSubjectRecordAccess, and masks cross-subject denials.
                 PathString effectiveSubPath = isUsersPath ? userSubPath : patientSubPath;
-                SubjectRecordAccessDecision decision = ResolveSubjectRecordAccess(effectiveSubPath.Value, user.Username, user.Role);
+                SubjectAccessLevel? grantedLevel = null;
+                if (user.Role == UserRole.Researcher)
+                {
+                    string sub = (effectiveSubPath.Value ?? string.Empty).TrimStart('/');
+                    int slashIndex = sub.IndexOf('/');
+                    string targetSubject = slashIndex >= 0 ? sub[..slashIndex] : sub;
+                    if (!string.IsNullOrEmpty(targetSubject))
+                    {
+                        var subjectAccess = context.RequestServices.GetService<ISubjectAccessService>();
+                        if (subjectAccess != null)
+                        {
+                            grantedLevel = await subjectAccess.GetEffectiveAccessLevelAsync(user.Username, targetSubject, context.RequestAborted);
+                            if (grantedLevel.HasValue)
+                            {
+                                context.Items["SubjectAccessLevel"] = grantedLevel.Value;
+                            }
+                        }
+                    }
+                }
+
+                SubjectRecordAccessDecision decision = ResolveSubjectRecordAccess(
+                    effectiveSubPath.Value,
+                    user.Username,
+                    user.Role,
+                    grantedLevel,
+                    context.Request.Method);
 
                 if (decision == SubjectRecordAccessDecision.MaskedAsNotFound)
                 {
@@ -1962,7 +1987,7 @@ public class Program
             // WHY:  Allows users to inspect their profile and administrators to view patient demographic information.
             // HOW:  Validates caller authorization, checks account existence, and queries IUserProfileRepository.
             UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            if (!HasProfileSubjectAccess(currentUser, username, context))
             {
                 return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: You may only view or manage your own profile, addresses, and contacts.");
             }
@@ -2046,7 +2071,7 @@ public class Program
             // WHY:  Provides delivery, residential, or clinic address lookup for patient logistics.
             // HOW:  Validates caller permissions, checks target existence, and fetches address records.
             UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            if (!HasFullReadSubjectAccess(currentUser, username, context))
             {
                 return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: You may only view or manage your own profile, addresses, and contacts.");
             }
@@ -2171,7 +2196,7 @@ public class Program
             // WHY:  Identifies outreach individuals, caregivers, and emergency contacts if patient cannot be reached.
             // HOW:  Validates permissions, checks account existence, and queries contacts ordered by priority.
             UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            if (!HasFullReadSubjectAccess(currentUser, username, context))
             {
                 return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: You may only view or manage your own profile, addresses, and contacts.");
             }
@@ -2285,13 +2310,15 @@ public class Program
         // ---------------------------------------------------------------------
         // REST API: Patient Digital DNA Package Generation & Download
         // ---------------------------------------------------------------------
-        app.MapGet("/api/patient/dna", (
+        app.MapGet("/api/patient/dna", async (
             HttpContext context,
             IFabricationService fab,
+            ISubjectAccessService subjectAccess,
             string? patientId,
             TherapeuticRegimen? regimen,
             string? geometry,
-            double? targetKd) =>
+            double? targetKd,
+            CancellationToken ct) =>
         {
             // WHAT: Synthesizes a patient-targeted Digital DNA package.
             // WHY:  Allows Patients, Researchers, and Administrators to download digital DNA blueprints.
@@ -2309,9 +2336,20 @@ public class Program
                         "The requested patient identifier format is invalid.");
                 }
 
-                if (currentUser == null
-                    || (currentUser.Role != UserRole.Administrator
-                        && !string.Equals(currentUser.Username, trimmedId, StringComparison.OrdinalIgnoreCase)))
+                bool isAuthorized = currentUser != null && (
+                    currentUser.Role == UserRole.Administrator ||
+                    string.Equals(currentUser.Username, trimmedId, StringComparison.OrdinalIgnoreCase));
+
+                if (!isAuthorized && currentUser?.Role == UserRole.Researcher)
+                {
+                    SubjectAccessLevel? lvl = await subjectAccess.GetEffectiveAccessLevelAsync(currentUser.Username, trimmedId, ct);
+                    if (lvl.HasValue && lvl.Value >= SubjectAccessLevel.GenomicAccess)
+                    {
+                        isAuthorized = true;
+                    }
+                }
+
+                if (!isAuthorized)
                 {
                     return SecureProblemResult(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
                 }
@@ -2375,7 +2413,7 @@ public class Program
             // WHY:  Allows patients, clinicians, and researchers to review nanocarrier architectures and sequences.
             // HOW:  Validates permissions, verifies patient existence, and queries the repository.
             UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            if (!HasGenomicSubjectAccess(currentUser, username, context))
             {
                 return SecureProblemResult(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
             }
@@ -2410,7 +2448,7 @@ public class Program
             // WHY:  Supplies detailed staple routings, annealing schedule, and provenance for inspection or download.
             // HOW:  Validates authorization, checks record existence, and verifies patient ownership.
             UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            if (!HasGenomicSubjectAccess(currentUser, username, context))
             {
                 return SecureProblemResult(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
             }
@@ -2452,7 +2490,7 @@ public class Program
             // WHY:  Allows clinicians and researchers to design and assign custom nanocarrier configurations.
             // HOW:  Synthesizes origami components via IFabricationService, computes composition, and saves blueprint and kinetics result.
             UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            if (!HasGenomicSubjectAccess(currentUser, username, context))
             {
                 return SecureProblemResult(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
             }
@@ -2527,7 +2565,7 @@ public class Program
             // WHY:  Allows researchers and patients to retire superseded blueprints.
             // HOW:  Validates permissions, verifies ownership, and deletes record via repository.
             UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            if (!HasGenomicSubjectAccess(currentUser, username, context))
             {
                 return SecureProblemResult(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
             }
@@ -2570,7 +2608,7 @@ public class Program
             // WHY:  Supplies imported file assets to the DNA management interface.
             // HOW:  Validates authorization, checks user existence, and queries repository.
             UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            if (!HasGenomicSubjectAccess(currentUser, username, context))
             {
                 return SecureProblemResult(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
             }
@@ -2605,7 +2643,7 @@ public class Program
             // WHY:  Allows reviewing the raw sequence text, checksums, and metadata of an import.
             // HOW:  Validates caller permissions and queries import by ID.
             UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            if (!HasGenomicSubjectAccess(currentUser, username, context))
             {
                 return SecureProblemResult(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
             }
@@ -2647,7 +2685,7 @@ public class Program
             // WHY:  Integrates external patient genetic sequences into the decentralized sovereign platform.
             // HOW:  Calculates SHA-256 checksum, persists import record, and optionally triggers automated pharmacogenomics analysis.
             UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            if (!HasGenomicSubjectAccess(currentUser, username, context))
             {
                 return SecureProblemResult(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
             }
@@ -2725,7 +2763,7 @@ public class Program
             // WHY:  Allows cleaning up superseded or corrupted import files.
             // HOW:  Validates caller permissions and deletes entry from repository.
             UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            if (!HasGenomicSubjectAccess(currentUser, username, context))
             {
                 return SecureProblemResult(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
             }
@@ -2769,7 +2807,7 @@ public class Program
             // WHY:  Allows patients and clinicians to review physiological responses and nanocarrier metrics.
             // HOW:  Validates permissions, queries results, and applies optional resultType filtering.
             UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            if (!HasGenomicSubjectAccess(currentUser, username, context))
             {
                 return SecureProblemResult(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
             }
@@ -2809,7 +2847,7 @@ public class Program
             // WHY:  Provides fine-grained access to individual metric reports and findings.
             // HOW:  Validates caller permissions and queries result by ID.
             UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            if (!HasGenomicSubjectAccess(currentUser, username, context))
             {
                 return SecureProblemResult(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
             }
@@ -2849,7 +2887,7 @@ public class Program
             // WHY:  Allows laboratory tools and simulation runners to record outcomes against the patient.
             // HOW:  Validates input fields, verifies target patient existence, and persists result record.
             UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            if (!HasGenomicSubjectAccess(currentUser, username, context))
             {
                 return SecureProblemResult(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
             }
@@ -2905,7 +2943,7 @@ public class Program
             // WHY:  Allows cleaning up test or superseded result snapshots.
             // HOW:  Validates caller permissions and deletes entry from repository.
             UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
+            if (!HasGenomicSubjectAccess(currentUser, username, context))
             {
                 return SecureProblemResult(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
             }
@@ -3440,20 +3478,25 @@ public class Program
     /// <param name="subPath">Path remainder below '/api/users' or '/api/patients' (e.g. '/alice/dna/42').</param>
     /// <param name="callerUsername">Username taken from the validated session, never from the request body.</param>
     /// <param name="callerRole">Role taken from the validated session.</param>
+    /// <param name="grantedLevel">Optional tiered access level granted to the researcher over the target subject.</param>
+    /// <param name="httpMethod">Optional HTTP method requested.</param>
     /// <returns>The access decision the authentication middleware must apply.</returns>
     /// <remarks>
     /// The subject is read out of the route itself and compared against the authenticated identity, so a caller
-    /// can never widen its own scope with a client-supplied identifier. Researchers are not granted this
-    /// surface at all: Prime Directive 12 scopes them to simulation, trajectory, endocrine and dataset work,
-    /// and a cohort view would have to be a separate de-identified projection.
+    /// can never widen its own scope with a client-supplied identifier. Researchers with active grants may access
+    /// genomic or profile resources corresponding to their granted tier.
     /// </remarks>
-    public static SubjectRecordAccessDecision ResolveSubjectRecordAccess(string? subPath, string callerUsername, UserRole callerRole)
+    public static SubjectRecordAccessDecision ResolveSubjectRecordAccess(
+        string? subPath,
+        string callerUsername,
+        UserRole callerRole,
+        SubjectAccessLevel? grantedLevel = null,
+        string? httpMethod = null)
     {
-        // WHAT: Decides self / Administrator / deny for the patient record and profile sub-resources.
-        // WHY:  Blanket Researcher read-write over every patient's DNA, imports and results is outside the
-        //       Directive 12 grant, and a Patient must only ever reach its own records.
-        // HOW:  Splits the subject username off the route remainder, compares it with the session identity,
-        //       and masks a cross-subject denial as a 404 so subjects cannot be enumerated.
+        // WHAT: Decides self / Administrator / tiered Researcher / deny for patient record and profile sub-resources.
+        // WHY:  Allows researchers with configurable tiers (ReadAccess: 1, GenomicAccess: 2, FullReadAccess: 3)
+        //       to access permitted resources while masking unauthorized requests as 404 to prevent subject enumeration.
+        // HOW:  Splits the subject username off the route remainder, compares with session identity and granted tiers.
         ArgumentNullException.ThrowIfNull(callerUsername);
 
         if (callerRole == UserRole.Administrator)
@@ -3474,14 +3517,56 @@ public class Program
         string resource = sub[(slashIndex + 1)..];
         bool isSelf = string.Equals(callerUsername, targetSubject, StringComparison.OrdinalIgnoreCase);
 
-        if (MatchesSubjectResource(resource, SubjectHealthRecordResources))
+        bool matchesHealth = MatchesSubjectResource(resource, SubjectHealthRecordResources);
+        bool matchesSelfService = MatchesSubjectResource(resource, SubjectSelfServiceResources);
+
+        if (matchesHealth)
         {
-            return isSelf ? SubjectRecordAccessDecision.Allowed : SubjectRecordAccessDecision.MaskedAsNotFound;
+            if (isSelf)
+            {
+                return SubjectRecordAccessDecision.Allowed;
+            }
+
+            if (callerRole == UserRole.Researcher && grantedLevel.HasValue && grantedLevel.Value >= SubjectAccessLevel.GenomicAccess)
+            {
+                return SubjectRecordAccessDecision.Allowed;
+            }
+
+            return SubjectRecordAccessDecision.MaskedAsNotFound;
         }
 
-        if (MatchesSubjectResource(resource, SubjectSelfServiceResources))
+        if (matchesSelfService)
         {
-            return isSelf ? SubjectRecordAccessDecision.Allowed : SubjectRecordAccessDecision.Forbidden;
+            if (isSelf)
+            {
+                return SubjectRecordAccessDecision.Allowed;
+            }
+
+            if (callerRole == UserRole.Researcher && grantedLevel.HasValue)
+            {
+                bool isGet = string.Equals(httpMethod, "GET", StringComparison.OrdinalIgnoreCase);
+
+                if (resource.StartsWith("profile", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (isGet && grantedLevel.Value >= SubjectAccessLevel.ReadAccess)
+                    {
+                        return SubjectRecordAccessDecision.Allowed;
+                    }
+                    return SubjectRecordAccessDecision.Forbidden;
+                }
+
+                if (resource.StartsWith("addresses", StringComparison.OrdinalIgnoreCase) ||
+                    resource.StartsWith("contacts", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (isGet && grantedLevel.Value >= SubjectAccessLevel.FullReadAccess)
+                    {
+                        return SubjectRecordAccessDecision.Allowed;
+                    }
+                    return SubjectRecordAccessDecision.Forbidden;
+                }
+            }
+
+            return SubjectRecordAccessDecision.Forbidden;
         }
 
         return SubjectRecordAccessDecision.Forbidden;
@@ -4012,6 +4097,105 @@ public class Program
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Checks whether the authenticated caller has genomic access (Tier 2 or above) over the target patient records.
+    /// </summary>
+    /// <param name="currentUser">The authenticated caller account.</param>
+    /// <param name="username">The target patient username.</param>
+    /// <param name="context">The HTTP request context.</param>
+    /// <returns>True if access is authorized; otherwise false.</returns>
+    internal static bool HasGenomicSubjectAccess([NotNullWhen(true)] UserAccount? currentUser, string username, HttpContext context)
+    {
+        if (currentUser == null)
+        {
+            return false;
+        }
+
+        if (currentUser.Role == UserRole.Administrator)
+        {
+            return true;
+        }
+
+        if (string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (currentUser.Role == UserRole.Researcher &&
+            context.Items["SubjectAccessLevel"] is SubjectAccessLevel lvl)
+        {
+            return lvl >= SubjectAccessLevel.GenomicAccess;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Checks whether the authenticated caller has full read access (Tier 3) over patient addresses or contacts.
+    /// </summary>
+    /// <param name="currentUser">The authenticated caller account.</param>
+    /// <param name="username">The target patient username.</param>
+    /// <param name="context">The HTTP request context.</param>
+    /// <returns>True if access is authorized; otherwise false.</returns>
+    internal static bool HasFullReadSubjectAccess([NotNullWhen(true)] UserAccount? currentUser, string username, HttpContext context)
+    {
+        if (currentUser == null)
+        {
+            return false;
+        }
+
+        if (currentUser.Role == UserRole.Administrator)
+        {
+            return true;
+        }
+
+        if (string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (currentUser.Role == UserRole.Researcher &&
+            context.Items["SubjectAccessLevel"] is SubjectAccessLevel lvl)
+        {
+            return lvl >= SubjectAccessLevel.FullReadAccess;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Checks whether the authenticated caller has profile read access (Tier 1 or above) over patient demographic profile.
+    /// </summary>
+    /// <param name="currentUser">The authenticated caller account.</param>
+    /// <param name="username">The target patient username.</param>
+    /// <param name="context">The HTTP request context.</param>
+    /// <returns>True if access is authorized; otherwise false.</returns>
+    internal static bool HasProfileSubjectAccess([NotNullWhen(true)] UserAccount? currentUser, string username, HttpContext context)
+    {
+        if (currentUser == null)
+        {
+            return false;
+        }
+
+        if (currentUser.Role == UserRole.Administrator)
+        {
+            return true;
+        }
+
+        if (string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (currentUser.Role == UserRole.Researcher &&
+            context.Items["SubjectAccessLevel"] is SubjectAccessLevel lvl)
+        {
+            return lvl >= SubjectAccessLevel.ReadAccess;
+        }
+
+        return false;
     }
 }
 
