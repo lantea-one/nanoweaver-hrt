@@ -7,11 +7,14 @@
 ## 1. Status of Work Packages
 
 ### 1.1 Master Architecture & Design Documents
-- [`PHASES-v2.md`](PHASES-v2.md) — Master Remediation & Feature Phase Plan (`P1–P19`)
-- [`c8-challenge-response-proposal.md`](c8-challenge-response-proposal.md) — Audit C8 Browser Challenge-Response Design Proposal
+- [`PHASES-v2.md`](PHASES-v2.md) — Master Remediation & Feature Phase Plan (`P1–P20` permanent historical audit reference)
 
-### 1.2 Active Work Packages
-*All current work packages through Phase P20 are completed and ratified.*
+### 1.2 Active Work Packages (`P21–P25: Subject Access & Cohort Management`)
+- [`p21-subject-access-schema-and-repository.md`](p21-subject-access-schema-and-repository.md) — Database schema migration (`Migration011`) and `ISubjectAccessRepository` for subject/group access and tiered permissions
+- [`p22-subject-access-service-and-gating.md`](p22-subject-access-service-and-gating.md) — Access control service (`ISubjectAccessService`), middleware route gating, and cryptographic audit ledger persistence
+- [`p23-subject-access-api-endpoints.md`](p23-subject-access-api-endpoints.md) — REST API minimal endpoints for subject grants, cohort group CRUD, group membership, and group grants
+- [`p24-cohort-web-ui.md`](p24-cohort-web-ui.md) — Sovereign Web UI unified cohort & access management across `DnaManagementPage` and `UserManagement`
+- [`p25-cohort-verification-and-closeout.md`](p25-cohort-verification-and-closeout.md) — Full pre-flight verification gate, documentation updates, and coverage ratchet closeout
 
 ---
 
@@ -63,6 +66,14 @@ All architectural and scoping questions were presented via interactive forms and
    - **Directive 5 Ratification**: Updated `AGENTS.md` Directive 5 to name the exact measured scope: 100.00% line and branch coverage across developer-authored code and security Razor components (Step 4), and a downward-only ratchet baseline for compiler-generated code (Step 7).
    - **In-Browser Key Generation (Phase P20)**: Scheduled follow-up work package [`p20-in-browser-key-generation.md`](p20-in-browser-key-generation.md) for pure client-side key generation in the browser (WebCrypto for Ed25519 and Noble for ML-DSA-65) so private keys never touch the server even during `/setup` or onboarding.
    - **Forgejo CI Runner Flakes**: Recorded user disposition treating intermittent simulation-image build timeouts on `heimdall` as known host infrastructure latency to be re-run on demand.
+9. **[P21–P25 Decisions] Subject Access Gating, Tiered Access Levels & Unified Cohorts**:
+   - **Tiered Researcher Access Levels**: Supported three configurable access tiers:
+     - `ReadAccess` (`1`): Read-only access to clinical/demographic profile (`/api/users/{username}/profile`, pronouns, regimen).
+     - `GenomicAccess` (`2`): Level 1 + full read/write access to DNA origami nanocarrier blueprints (`/api/patients/{username}/dna`), sequence imports (`/api/patients/{username}/imports`), and analytical/simulation results (`/api/patients/{username}/results`).
+     - `FullReadAccess` (`3`): Level 2 + read-only access to delivery addresses and outreach emergency contacts (`/api/users/{username}/addresses`, `/api/users/{username}/contacts`).
+   - **Cohort Group Creation Boundary**: Both Administrators and Researchers can create and manage subject groups (cohorts). Administrators can add any subject; Researchers can **only** add subjects they already have access to.
+   - **Unified Cohort Web UI**: Dedicated cohort and group management interface accessible from both `DnaManagementPage.razor` (with cohort-based patient filtering) and `UserManagement.razor` (with grant management modal).
+   - **Cleanup of Completed Work Items**: Removed completed instruction files (`docs/work-packages/non-root-containers.md` and `work-packages/c8-challenge-response-proposal.md`), while retaining `PHASES-v2.md` as the permanent completed historical reference.
 
 ---
 
