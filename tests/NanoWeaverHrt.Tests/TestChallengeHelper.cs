@@ -8,9 +8,13 @@ using System.Threading.Tasks;
 using NanoWeaverHrt.Security.Authentication;
 using NanoWeaverHrt.Security.Cryptography;
 using NanoWeaverHrt.Security.Models;
+using Org.BouncyCastle.Crypto;
+using Org.BouncyCastle.Crypto.Generators;
 using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Crypto.Signers;
+using Org.BouncyCastle.Pkcs;
 using Org.BouncyCastle.Security;
+using Org.BouncyCastle.X509;
 
 namespace NanoWeaverHrt.Tests;
 
@@ -219,5 +223,140 @@ public static class TestChallengeHelper
         }
 
         return auth.Token;
+    }
+
+    /// <summary>
+    /// Generates a cryptographic keypair bundle locally for test assertions, without server intervention.
+    /// </summary>
+    /// <param name="username">The username for the test bundle.</param>
+    /// <param name="role">The role assigned to the identity.</param>
+    /// <param name="gate">The access gate constraint.</param>
+    /// <param name="algorithm">The key algorithm (Ed25519 or ML-DSA-65).</param>
+    /// <param name="passphrase">Optional passphrase to encrypt the private key envelope.</param>
+    /// <returns>A populated <see cref="GeneratedKeyBundle"/> ready for test registration.</returns>
+    public static GeneratedKeyBundle CreateTestKeyBundle(
+        string username,
+        UserRole role = UserRole.Researcher,
+        AccessGate gate = AccessGate.ApiWeb,
+        KeyAlgorithm algorithm = KeyAlgorithm.Ed25519,
+        string? passphrase = null)
+    {
+        // WHAT: Derives Ed25519 or ML-DSA-65 keypair, optionally encrypts private key with passphrase, and formats PEMs.
+        // WHY:  Eliminates dependency on server-side private key generation endpoints in test fixtures (Phase P20).
+        // HOW:  Uses BouncyCastle generators, formats SPKI/PKCS#8 DER, and encrypts envelope if passphrase is provided.
+        SecureRandom random = new();
+        byte[] pubDer;
+        byte[] privDer;
+
+        if (algorithm == KeyAlgorithm.Ed25519)
+        {
+            Ed25519KeyPairGenerator keyGen = new();
+            keyGen.Init(new Ed25519KeyGenerationParameters(random));
+            AsymmetricCipherKeyPair pair = keyGen.GenerateKeyPair();
+            pubDer = SubjectPublicKeyInfoFactory.CreateSubjectPublicKeyInfo(pair.Public).GetDerEncoded();
+            privDer = PrivateKeyInfoFactory.CreatePrivateKeyInfo(pair.Private).GetDerEncoded();
+        }
+        else
+        {
+            MLDsaKeyPairGenerator keyGen = new();
+            keyGen.Init(new MLDsaKeyGenerationParameters(random, MLDsaParameters.ml_dsa_65));
+            AsymmetricCipherKeyPair pair = keyGen.GenerateKeyPair();
+            pubDer = SubjectPublicKeyInfoFactory.CreateSubjectPublicKeyInfo(pair.Public).GetDerEncoded();
+            privDer = PrivateKeyInfoFactory.CreatePrivateKeyInfo(pair.Private).GetDerEncoded();
+        }
+
+        string pubBase64 = Convert.ToBase64String(pubDer);
+        string pubPem = FormatPem("PUBLIC KEY", pubDer);
+        string privPem;
+        bool isEncrypted = false;
+
+        if (!string.IsNullOrWhiteSpace(passphrase))
+        {
+            byte[] encBytes = EncryptPrivateKeyBytes(privDer, passphrase);
+            privPem = FormatPem("ENCRYPTED PRIVATE KEY", encBytes);
+            isEncrypted = true;
+        }
+        else
+        {
+            privPem = FormatPem("PRIVATE KEY", privDer);
+        }
+
+        return new GeneratedKeyBundle
+        {
+            Username = username.Trim().ToLowerInvariant(),
+            Role = role,
+            AccessGate = gate,
+            Algorithm = algorithm,
+            PublicKeyBase64 = pubBase64,
+            PublicKeyPem = pubPem,
+            PrivateKeyPem = privPem,
+            IsPasswordProtected = isEncrypted
+        };
+    }
+
+    /// <summary>
+    /// Encrypts raw private key DER bytes into the standard [Salt: 16][Nonce: 12][Tag: 16][Ciphertext: N] envelope.
+    /// </summary>
+    /// <param name="privateKeyDer">Raw private key DER bytes.</param>
+    /// <param name="passphrase">User-entered encryption passphrase.</param>
+    /// <returns>Full encrypted envelope byte array.</returns>
+    public static byte[] EncryptPrivateKeyBytes(byte[] privateKeyDer, string passphrase)
+    {
+        // WHAT: Encrypts DER bytes using AES-256-GCM with a PBKDF2-SHA256 derived key (100,000 iterations).
+        // WHY:  Standard envelope layout matching client and server encryption formats.
+        // HOW:  Fills random salt and nonce, derives key via PBKDF2, encrypts via AesGcm, and concatenates bytes.
+        byte[] salt = new byte[16];
+        byte[] nonce = new byte[12];
+        RandomNumberGenerator.Fill(salt);
+        RandomNumberGenerator.Fill(nonce);
+
+        byte[] key = Rfc2898DeriveBytes.Pbkdf2(
+            Encoding.UTF8.GetBytes(passphrase),
+            salt,
+            iterations: 100000,
+            HashAlgorithmName.SHA256,
+            outputLength: 32);
+
+        byte[] ciphertext = new byte[privateKeyDer.Length];
+        byte[] tag = new byte[16];
+
+        using (AesGcm aesGcm = new(key, 16))
+        {
+            aesGcm.Encrypt(nonce, privateKeyDer, ciphertext, tag, associatedData: salt);
+        }
+
+        byte[] output = new byte[salt.Length + nonce.Length + tag.Length + ciphertext.Length];
+        Buffer.BlockCopy(salt, 0, output, 0, 16);
+        Buffer.BlockCopy(nonce, 0, output, 16, 12);
+        Buffer.BlockCopy(tag, 0, output, 28, 16);
+        Buffer.BlockCopy(ciphertext, 0, output, 44, ciphertext.Length);
+
+        CryptographicOperations.ZeroMemory(key);
+        return output;
+    }
+
+    /// <summary>
+    /// Formats DER bytes into standard RFC 7468 PEM text with 64-character lines.
+    /// </summary>
+    /// <param name="type">The label for the header and footer (e.g., PUBLIC KEY, PRIVATE KEY).</param>
+    /// <param name="derBytes">Raw bytes to encode as Base64.</param>
+    /// <returns>Formatted PEM string with newline terminator.</returns>
+    public static string FormatPem(string type, byte[] derBytes)
+    {
+        // WHAT: Encodes bytes to Base64 and wraps in 64-character lines surrounded by PEM delimiters.
+        // WHY:  Standard PEM rendering for cryptographic key material.
+        // HOW:  Uses Convert.ToBase64String and StringBuilder chunks of 64 characters.
+        string b64 = Convert.ToBase64String(derBytes);
+        StringBuilder sb = new();
+        sb.Append("-----BEGIN ").Append(type).Append("-----\n");
+
+        for (int i = 0; i < b64.Length; i += 64)
+        {
+            int length = Math.Min(64, b64.Length - i);
+            sb.Append(b64.AsSpan(i, length)).Append('\n');
+        }
+
+        sb.Append("-----END ").Append(type).Append("-----\n");
+        return sb.ToString();
     }
 }

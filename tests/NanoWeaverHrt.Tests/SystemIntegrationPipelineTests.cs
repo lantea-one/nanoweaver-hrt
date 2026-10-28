@@ -95,17 +95,11 @@ public sealed class SystemIntegrationPipelineTests : IClassFixture<WebApplicatio
         // WHAT: Performs initial setup wizard provisioning.
         // WHY:  Unlocks platform operations from 503 lockout state.
         // HOW:  Generates Ed25519 admin keypair and initializes the database.
-        GenerateKeyRequest adminKeyReq = new()
-        {
-            Username = "pipeline_admin",
-            Role = UserRole.Administrator,
-            AccessGate = AccessGate.ApiWeb,
-            Algorithm = KeyAlgorithm.Ed25519
-        };
-        HttpResponseMessage adminKeyRes = await _client.PostAsJsonAsync("/api/setup/generate-keypair", adminKeyReq);
-        Assert.Equal(HttpStatusCode.OK, adminKeyRes.StatusCode);
-        GeneratedKeyBundle? adminBundle = await adminKeyRes.Content.ReadFromJsonAsync<GeneratedKeyBundle>();
-        Assert.NotNull(adminBundle);
+        GeneratedKeyBundle adminBundle = TestChallengeHelper.CreateTestKeyBundle(
+            "pipeline_admin",
+            UserRole.Administrator,
+            AccessGate.ApiWeb,
+            KeyAlgorithm.Ed25519);
 
         InitialSetupRequest initReq = new()
         {
@@ -127,22 +121,26 @@ public sealed class SystemIntegrationPipelineTests : IClassFixture<WebApplicatio
         // ---------------------------------------------------------------------
         // STEP 2: Administrator Provisions a Researcher Account
         // ---------------------------------------------------------------------
-        // WHAT: Calls /api/users/generate-keypair to provision and register a Researcher.
+        // WHAT: Calls /api/users to provision and register a Researcher.
         // WHY:  Enforces separation of duties and role-gated access control.
-        // HOW:  Uses Admin Bearer token to authorize user registration and receive generated key bundle.
-        using HttpRequestMessage researcherKeyReq = new(HttpMethod.Post, "/api/users/generate-keypair");
+        // HOW:  Uses Admin Bearer token to authorize user registration with client-generated key.
+        GeneratedKeyBundle researcherBundle = TestChallengeHelper.CreateTestKeyBundle(
+            "dr_researcher",
+            UserRole.Researcher,
+            AccessGate.ApiWeb,
+            KeyAlgorithm.Ed25519);
+        using HttpRequestMessage researcherKeyReq = new(HttpMethod.Post, "/api/users");
         researcherKeyReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
-        researcherKeyReq.Content = JsonContent.Create(new GenerateKeyRequest
+        researcherKeyReq.Content = JsonContent.Create(new CreateUserRequest
         {
             Username = "dr_researcher",
             Role = UserRole.Researcher,
             AccessGate = AccessGate.ApiWeb,
-            Algorithm = KeyAlgorithm.Ed25519
+            Algorithm = KeyAlgorithm.Ed25519,
+            PublicKeyBase64 = researcherBundle.PublicKeyBase64
         });
         HttpResponseMessage researcherKeyRes = await _client.SendAsync(researcherKeyReq);
-        Assert.Equal(HttpStatusCode.OK, researcherKeyRes.StatusCode);
-        GeneratedKeyBundle? researcherBundle = await researcherKeyRes.Content.ReadFromJsonAsync<GeneratedKeyBundle>();
-        Assert.NotNull(researcherBundle);
+        Assert.Equal(HttpStatusCode.Created, researcherKeyRes.StatusCode);
 
         // ---------------------------------------------------------------------
         // STEP 3: Authenticate Researcher & Obtain Token
@@ -323,16 +321,11 @@ public sealed class SystemIntegrationPipelineTests : IClassFixture<WebApplicatio
     public async Task PatientSelfServiceAndCryptoShreddingPipeline_ExecutesSuccessfully()
     {
         // Setup initial admin
-        GenerateKeyRequest adminKeyReq = new()
-        {
-            Username = "patient_flow_admin",
-            Role = UserRole.Administrator,
-            AccessGate = AccessGate.ApiWeb,
-            Algorithm = KeyAlgorithm.Ed25519
-        };
-        HttpResponseMessage adminKeyRes = await _client.PostAsJsonAsync("/api/setup/generate-keypair", adminKeyReq);
-        GeneratedKeyBundle? adminBundle = await adminKeyRes.Content.ReadFromJsonAsync<GeneratedKeyBundle>();
-        Assert.NotNull(adminBundle);
+        GeneratedKeyBundle adminBundle = TestChallengeHelper.CreateTestKeyBundle(
+            "patient_flow_admin",
+            UserRole.Administrator,
+            AccessGate.ApiWeb,
+            KeyAlgorithm.Ed25519);
 
         InitialSetupRequest initReq = new()
         {
@@ -349,20 +342,24 @@ public sealed class SystemIntegrationPipelineTests : IClassFixture<WebApplicatio
             adminBundle.PrivateKeyPem,
             useWebTokenEndpoint: true);
 
-        // Administrator creates a Patient account via /api/users/generate-keypair
-        using HttpRequestMessage patientKeyReq = new(HttpMethod.Post, "/api/users/generate-keypair");
+        // Administrator creates a Patient account via /api/users
+        GeneratedKeyBundle patientBundle = TestChallengeHelper.CreateTestKeyBundle(
+            "patient_charlie",
+            UserRole.Patient,
+            AccessGate.ApiWeb,
+            KeyAlgorithm.Ed25519);
+        using HttpRequestMessage patientKeyReq = new(HttpMethod.Post, "/api/users");
         patientKeyReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
-        patientKeyReq.Content = JsonContent.Create(new GenerateKeyRequest
+        patientKeyReq.Content = JsonContent.Create(new CreateUserRequest
         {
             Username = "patient_charlie",
             Role = UserRole.Patient,
             AccessGate = AccessGate.ApiWeb,
-            Algorithm = KeyAlgorithm.Ed25519
+            Algorithm = KeyAlgorithm.Ed25519,
+            PublicKeyBase64 = patientBundle.PublicKeyBase64
         });
         HttpResponseMessage patientKeyRes = await _client.SendAsync(patientKeyReq);
-        Assert.Equal(HttpStatusCode.OK, patientKeyRes.StatusCode);
-        GeneratedKeyBundle? patientBundle = await patientKeyRes.Content.ReadFromJsonAsync<GeneratedKeyBundle>();
-        Assert.NotNull(patientBundle);
+        Assert.Equal(HttpStatusCode.Created, patientKeyRes.StatusCode);
 
         // Authenticate as Patient via challenge-response
         string patientToken = await TestChallengeHelper.ExchangeChallengeTokenAsync(

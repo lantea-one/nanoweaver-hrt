@@ -115,21 +115,13 @@ public sealed class AuthEndpointsIntegrationTests : IClassFixture<WebApplication
         // ---------------------------------------------------------------------
         // STEP 2: Generate Setup Keypair & Initialize Master Administrator
         // ---------------------------------------------------------------------
-        // WHAT: Calls /api/setup/generate-keypair and /api/setup/initialize.
-        // WHY:  Bootstraps the node's authoritative cryptographic identity.
-        // HOW:  Generates an Ed25519 keypair and invokes CompleteInitialSetupAsync via REST API.
-        GenerateKeyRequest keyGenReq = new()
-        {
-            Username = "super_admin",
-            Role = UserRole.Administrator,
-            AccessGate = AccessGate.ApiWeb,
-            Algorithm = KeyAlgorithm.Ed25519
-        };
+        // WHAT: Verifies that /api/setup/generate-keypair is removed (404) and initializes master admin via client-derived key.
+        // WHY:  Bootstraps the node's authoritative cryptographic identity without server-side private keys (P20).
+        // HOW:  Asserts 404 on /api/setup/generate-keypair, derives Ed25519 bundle via TestChallengeHelper, and invokes CompleteInitialSetupAsync.
+        HttpResponseMessage keyGenRes = await _client.PostAsJsonAsync("/api/setup/generate-keypair", new { Username = "super_admin" });
+        Assert.Equal(HttpStatusCode.NotFound, keyGenRes.StatusCode);
 
-        HttpResponseMessage keyGenRes = await _client.PostAsJsonAsync("/api/setup/generate-keypair", keyGenReq);
-        Assert.Equal(HttpStatusCode.OK, keyGenRes.StatusCode);
-        GeneratedKeyBundle? adminBundle = await keyGenRes.Content.ReadFromJsonAsync<GeneratedKeyBundle>();
-        Assert.NotNull(adminBundle);
+        GeneratedKeyBundle adminBundle = TestChallengeHelper.CreateTestKeyBundle("super_admin", UserRole.Administrator, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
         Assert.Equal("super_admin", adminBundle.Username);
         Assert.Equal(KeyAlgorithm.Ed25519, adminBundle.Algorithm);
 
@@ -227,47 +219,48 @@ public sealed class AuthEndpointsIntegrationTests : IClassFixture<WebApplication
         // ---------------------------------------------------------------------
         // STEP 7: User Management - Administrator Provisions Team Members
         // ---------------------------------------------------------------------
+        // Verify /api/users/generate-keypair is deprecated/removed (405 MethodNotAllowed)
+        HttpResponseMessage genDeprecatedRes = await adminClient.PostAsJsonAsync("/api/users/generate-keypair", new { Username = "researcher_lead" });
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, genDeprecatedRes.StatusCode);
+
         // 1. Provision Researcher User
-        GenerateKeyRequest resKeyReq = new()
+        GeneratedKeyBundle resBundle = TestChallengeHelper.CreateTestKeyBundle("researcher_lead", UserRole.Researcher, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
+        CreateUserRequest resKeyReq = new()
         {
             Username = "researcher_lead",
             Role = UserRole.Researcher,
             AccessGate = AccessGate.ApiWeb,
-            Algorithm = KeyAlgorithm.Ed25519
+            Algorithm = KeyAlgorithm.Ed25519,
+            PublicKeyBase64 = resBundle.PublicKeyBase64
         };
-
-        HttpResponseMessage resGenRes = await adminClient.PostAsJsonAsync("/api/users/generate-keypair", resKeyReq);
-        Assert.Equal(HttpStatusCode.OK, resGenRes.StatusCode);
-        GeneratedKeyBundle? resBundle = await resGenRes.Content.ReadFromJsonAsync<GeneratedKeyBundle>();
-        Assert.NotNull(resBundle);
+        HttpResponseMessage resGenRes = await adminClient.PostAsJsonAsync("/api/users", resKeyReq);
+        Assert.Equal(HttpStatusCode.Created, resGenRes.StatusCode);
 
         // 2. Provision Patient User
-        GenerateKeyRequest patKeyReq = new()
+        GeneratedKeyBundle patBundle = TestChallengeHelper.CreateTestKeyBundle("patient_007", UserRole.Patient, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
+        CreateUserRequest patKeyReq = new()
         {
             Username = "patient_007",
             Role = UserRole.Patient,
             AccessGate = AccessGate.ApiWeb,
-            Algorithm = KeyAlgorithm.Ed25519
+            Algorithm = KeyAlgorithm.Ed25519,
+            PublicKeyBase64 = patBundle.PublicKeyBase64
         };
-
-        HttpResponseMessage patGenRes = await adminClient.PostAsJsonAsync("/api/users/generate-keypair", patKeyReq);
-        Assert.Equal(HttpStatusCode.OK, patGenRes.StatusCode);
-        GeneratedKeyBundle? patBundle = await patGenRes.Content.ReadFromJsonAsync<GeneratedKeyBundle>();
-        Assert.NotNull(patBundle);
+        HttpResponseMessage patGenRes = await adminClient.PostAsJsonAsync("/api/users", patKeyReq);
+        Assert.Equal(HttpStatusCode.Created, patGenRes.StatusCode);
 
         // 3. Provision Web-only User
-        GenerateKeyRequest webKeyReq = new()
+        GeneratedKeyBundle webBundle = TestChallengeHelper.CreateTestKeyBundle("web_only_patient", UserRole.Patient, AccessGate.Web, KeyAlgorithm.Ed25519);
+        CreateUserRequest webKeyReq = new()
         {
             Username = "web_only_patient",
             Role = UserRole.Patient,
             AccessGate = AccessGate.Web,
-            Algorithm = KeyAlgorithm.Ed25519
+            Algorithm = KeyAlgorithm.Ed25519,
+            PublicKeyBase64 = webBundle.PublicKeyBase64
         };
-
-        HttpResponseMessage webGenRes = await adminClient.PostAsJsonAsync("/api/users/generate-keypair", webKeyReq);
-        Assert.Equal(HttpStatusCode.OK, webGenRes.StatusCode);
-        GeneratedKeyBundle? webBundle = await webGenRes.Content.ReadFromJsonAsync<GeneratedKeyBundle>();
-        Assert.NotNull(webBundle);
+        HttpResponseMessage webGenRes = await adminClient.PostAsJsonAsync("/api/users", webKeyReq);
+        Assert.Equal(HttpStatusCode.Created, webGenRes.StatusCode);
 
         // List Users (Admin only)
         HttpResponseMessage listRes = await adminClient.GetAsync("/api/users");
@@ -456,7 +449,7 @@ public sealed class AuthEndpointsIntegrationTests : IClassFixture<WebApplication
 
         if (await auth.IsSetupRequiredAsync())
         {
-            GeneratedKeyBundle adminBundle = auth.GenerateSecureKeyBundle("web_admin", UserRole.Administrator, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
+            GeneratedKeyBundle adminBundle = TestChallengeHelper.CreateTestKeyBundle("web_admin", UserRole.Administrator, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
             await auth.CompleteInitialSetupAsync("web_admin", adminBundle.PublicKeyBase64, KeyAlgorithm.Ed25519, AccessGate.ApiWeb);
         }
 
@@ -469,7 +462,7 @@ public sealed class AuthEndpointsIntegrationTests : IClassFixture<WebApplication
 
         foreach (var (username, gate, algorithm) in testAccounts)
         {
-            GeneratedKeyBundle bundle = auth.GenerateSecureKeyBundle(username, UserRole.Researcher, gate, algorithm);
+            GeneratedKeyBundle bundle = TestChallengeHelper.CreateTestKeyBundle(username, UserRole.Researcher, gate, algorithm);
             await auth.CreateUserAsync(username, UserRole.Researcher, gate, bundle.PublicKeyBase64, algorithm);
 
             // Step 1: Request challenge
@@ -532,12 +525,12 @@ public sealed class AuthEndpointsIntegrationTests : IClassFixture<WebApplication
 
         if (await auth.IsSetupRequiredAsync())
         {
-            GeneratedKeyBundle adminBundle = auth.GenerateSecureKeyBundle("gate_admin2", UserRole.Administrator, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
+            GeneratedKeyBundle adminBundle = TestChallengeHelper.CreateTestKeyBundle("gate_admin2", UserRole.Administrator, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
             await auth.CompleteInitialSetupAsync("gate_admin2", adminBundle.PublicKeyBase64, KeyAlgorithm.Ed25519, AccessGate.ApiWeb);
         }
 
         string apiUser = "api_only_user";
-        GeneratedKeyBundle bundle = auth.GenerateSecureKeyBundle(apiUser, UserRole.Researcher, AccessGate.Api, KeyAlgorithm.Ed25519);
+        GeneratedKeyBundle bundle = TestChallengeHelper.CreateTestKeyBundle(apiUser, UserRole.Researcher, AccessGate.Api, KeyAlgorithm.Ed25519);
         await auth.CreateUserAsync(apiUser, UserRole.Researcher, AccessGate.Api, bundle.PublicKeyBase64, KeyAlgorithm.Ed25519);
 
         ChallengeRequest chalReq = new() { Username = apiUser };
@@ -577,12 +570,12 @@ public sealed class AuthEndpointsIntegrationTests : IClassFixture<WebApplication
 
         if (await auth.IsSetupRequiredAsync())
         {
-            GeneratedKeyBundle adminBundle = auth.GenerateSecureKeyBundle("origin_admin", UserRole.Administrator, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
+            GeneratedKeyBundle adminBundle = TestChallengeHelper.CreateTestKeyBundle("origin_admin", UserRole.Administrator, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
             await auth.CompleteInitialSetupAsync("origin_admin", adminBundle.PublicKeyBase64, KeyAlgorithm.Ed25519, AccessGate.ApiWeb);
         }
 
         string username = "origin_test_user";
-        GeneratedKeyBundle bundle = auth.GenerateSecureKeyBundle(username, UserRole.Researcher, AccessGate.Web, KeyAlgorithm.Ed25519);
+        GeneratedKeyBundle bundle = TestChallengeHelper.CreateTestKeyBundle(username, UserRole.Researcher, AccessGate.Web, KeyAlgorithm.Ed25519);
         await auth.CreateUserAsync(username, UserRole.Researcher, AccessGate.Web, bundle.PublicKeyBase64, KeyAlgorithm.Ed25519);
 
         async Task<TokenExchangeRequest> CreateValidRequestAsync()
@@ -717,7 +710,7 @@ public sealed class AuthEndpointsIntegrationTests : IClassFixture<WebApplication
         UserAuthenticationService authService = _factory.Services.GetRequiredService<UserAuthenticationService>();
         if (await authService.IsSetupRequiredAsync())
         {
-            GeneratedKeyBundle adminBundle = authService.GenerateSecureKeyBundle("cap_admin", UserRole.Administrator, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
+            GeneratedKeyBundle adminBundle = TestChallengeHelper.CreateTestKeyBundle("cap_admin", UserRole.Administrator, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
             await authService.CompleteInitialSetupAsync("cap_admin", adminBundle.PublicKeyBase64, KeyAlgorithm.Ed25519, AccessGate.ApiWeb);
         }
 
@@ -760,7 +753,7 @@ public sealed class AuthEndpointsIntegrationTests : IClassFixture<WebApplication
         UserAuthenticationService authService = _factory.Services.GetRequiredService<UserAuthenticationService>();
         if (await authService.IsSetupRequiredAsync())
         {
-            GeneratedKeyBundle adminBundle = authService.GenerateSecureKeyBundle("admin_probe", UserRole.Administrator, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
+            GeneratedKeyBundle adminBundle = TestChallengeHelper.CreateTestKeyBundle("admin_probe", UserRole.Administrator, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
             await authService.CompleteInitialSetupAsync("admin_probe", adminBundle.PublicKeyBase64, KeyAlgorithm.Ed25519, AccessGate.ApiWeb);
         }
 

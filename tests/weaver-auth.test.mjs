@@ -28,7 +28,13 @@ const {
     requestChallenge,
     submitSignature,
     weaverSignIn,
-    weaverBindKeyFileInput
+    weaverBindKeyFileInput,
+    uint8ArrayToBase64,
+    formatPem,
+    encryptKeyEnvelope,
+    generateEd25519Keypair,
+    generateMlDsa65Keypair,
+    weaverGenerateKeyBundle
 } = WeaverAuth;
 
 /**
@@ -745,4 +751,235 @@ test('weaverBindKeyFileInput: attaches change listener, checks file size, and ha
 
     // Test with default options (omitted options argument)
     assert.equal(weaverBindKeyFileInput('fileIn', 'textOut'), false);
+
+    // Test with real global WeaverCryptoVendor default fallback
+    const origVendor = globalThis.WeaverCryptoVendor;
+    try {
+        globalThis.WeaverCryptoVendor = {
+            keygenEd25519: async () => ({
+                seed: new Uint8Array(32),
+                publicKey: new Uint8Array(32),
+                spkiDer: new Uint8Array(44),
+                pkcs8Der: new Uint8Array(48)
+            }),
+            keygenMlDsa65: async () => ({
+                seed: new Uint8Array(32),
+                publicKey: new Uint8Array(1952),
+                secretKey: new Uint8Array(4032),
+                spkiDer: new Uint8Array(1974),
+                pkcs8Der: new Uint8Array(4098)
+            }),
+            encryptAesGcmPbkdf2: async (_p, _s, _n, pt) => {
+                const out = new Uint8Array(pt.length + 16);
+                out.set(pt, 0);
+                return out;
+            }
+        };
+
+        const realEd = await generateEd25519Keypair();
+        assert.equal(realEd.spkiDer.length, 44);
+
+        const realMl = await generateMlDsa65Keypair();
+        assert.equal(realMl.spkiDer.length, 1974);
+
+        const realBundle = await weaverGenerateKeyBundle('eve', 'Researcher', 'ApiWeb', 'Ed25519', null);
+        assert.equal(realBundle.username, 'eve');
+
+        const realEncRes = await encryptKeyEnvelope(realEd.pkcs8Der, 'real_pass');
+        assert.equal(realEncRes.ok, true);
+    } finally {
+        globalThis.WeaverCryptoVendor = origVendor;
+    }
+});
+
+test('uint8ArrayToBase64: encodes correctly with Buffer and chunked btoa fallback', () => {
+    const data = new Uint8Array([0x48, 0x65, 0x6c, 0x6c, 0x6f]); // "Hello"
+    const expected = 'SGVsbG8=';
+    assert.equal(uint8ArrayToBase64(data), expected);
+
+    // Test non-Uint8Array
+    assert.equal(uint8ArrayToBase64('invalid'), '');
+    assert.equal(uint8ArrayToBase64(null), '');
+
+    // Test chunked fallback path with Buffer undefined
+    const origBuffer = globalThis.Buffer;
+    try {
+        globalThis.Buffer = undefined;
+        // Large buffer exceeding single chunk
+        const large = new Uint8Array(9000);
+        large.fill(0x41);
+        const encoded = uint8ArrayToBase64(large);
+        assert.equal(typeof encoded, 'string');
+        assert.ok(encoded.length > 9000);
+    } finally {
+        globalThis.Buffer = origBuffer;
+    }
+});
+
+test('formatPem: formats headers, footers and wraps at 64 characters', () => {
+    const bytes = new Uint8Array(100);
+    bytes.fill(0x42);
+    const pem = formatPem('TEST KEY', bytes);
+    assert.ok(pem.startsWith('-----BEGIN TEST KEY-----\n'));
+    assert.ok(pem.endsWith('-----END TEST KEY-----\n'));
+    const lines = pem.trim().split('\n');
+    assert.equal(lines[1].length, 64);
+
+    // Invalid arguments return empty string
+    assert.equal(formatPem(123, bytes), '');
+    assert.equal(formatPem('TEST', 'not-bytes'), '');
+});
+
+test('encryptKeyEnvelope: encrypts into standard envelope and round-trips with decryptKeyEnvelope', async () => {
+    const plainDer = new Uint8Array([0x10, 0x20, 0x30, 0x40, 0x50]);
+    const passphrase = 'test_secret_passphrase';
+
+    // Mock crypto adapter
+    const mockAdapter = {
+        encryptAesGcmPbkdf2: async (_pass, _salt, _nonce, plaintext) => {
+            // Emulate ciphertext + 16-byte tag
+            const out = new Uint8Array(plaintext.length + 16);
+            out.set(plaintext, 0);
+            out.fill(0xee, plaintext.length);
+            return out;
+        },
+        decryptAesGcmPbkdf2: async (_pass, _salt, _nonce, ciphertextWithTag) => {
+            return ciphertextWithTag.slice(0, ciphertextWithTag.length - 16);
+        }
+    };
+
+    const encRes = await encryptKeyEnvelope(plainDer, passphrase, mockAdapter);
+    assert.equal(encRes.ok, true);
+    assert.equal(encRes.envelopeBytes.length, 44 + plainDer.length);
+
+    // Decrypt using existing decryptKeyEnvelope
+    const decRes = await decryptKeyEnvelope(encRes.envelopeBytes, passphrase, mockAdapter);
+    assert.equal(decRes.ok, true);
+    assert.deepEqual(decRes.derBytes, plainDer);
+
+    // Validation failures
+    assert.equal((await encryptKeyEnvelope(null, passphrase, mockAdapter)).ok, false);
+    assert.equal((await encryptKeyEnvelope(new Uint8Array(0), passphrase, mockAdapter)).ok, false);
+    assert.equal((await encryptKeyEnvelope(plainDer, '', mockAdapter)).ok, false);
+    assert.equal((await encryptKeyEnvelope(plainDer, 123, mockAdapter)).ok, false);
+
+    // Missing adapter or missing method
+    assert.equal((await encryptKeyEnvelope(plainDer, passphrase, {})).ok, false);
+
+    // Adapter returns short/invalid ciphertext
+    const badAdapter1 = {
+        encryptAesGcmPbkdf2: async () => new Uint8Array(5)
+    };
+    assert.equal((await encryptKeyEnvelope(plainDer, passphrase, badAdapter1)).ok, false);
+
+    // Adapter throws
+    const badAdapter2 = {
+        encryptAesGcmPbkdf2: async () => { throw new Error('subtle failure'); }
+    };
+    assert.equal((await encryptKeyEnvelope(plainDer, passphrase, badAdapter2)).ok, false);
+});
+
+test('generateEd25519Keypair and generateMlDsa65Keypair: delegate to adapter and validate error branches', async () => {
+    const mockAdapter = {
+        keygenEd25519: async (seed) => ({
+            seed: seed || new Uint8Array(32),
+            publicKey: new Uint8Array(32),
+            spkiDer: new Uint8Array(44),
+            pkcs8Der: new Uint8Array(48)
+        }),
+        keygenMlDsa65: async (seed) => ({
+            seed: seed || new Uint8Array(32),
+            publicKey: new Uint8Array(1952),
+            secretKey: new Uint8Array(4032),
+            spkiDer: new Uint8Array(1974),
+            pkcs8Der: new Uint8Array(4098)
+        })
+    };
+
+    const edKey = await generateEd25519Keypair({ cryptoAdapter: mockAdapter });
+    assert.equal(edKey.spkiDer.length, 44);
+    assert.equal(edKey.pkcs8Der.length, 48);
+
+    const mlKey = await generateMlDsa65Keypair({ cryptoAdapter: mockAdapter });
+    assert.equal(mlKey.spkiDer.length, 1974);
+    assert.equal(mlKey.pkcs8Der.length, 4098);
+
+    // Missing adapter error branches
+    await assert.rejects(async () => {
+        await generateEd25519Keypair({ cryptoAdapter: {} });
+    }, /Ed25519 key generation provider is unavailable/);
+
+    await assert.rejects(async () => {
+        await generateMlDsa65Keypair({ cryptoAdapter: {} });
+    }, /ML-DSA-65 key generation provider is unavailable/);
+});
+
+test('weaverGenerateKeyBundle: generates unencrypted and password-protected bundles for Ed25519 and ML-DSA-65', async () => {
+    const mockAdapter = {
+        keygenEd25519: async () => ({
+            seed: new Uint8Array(32).fill(0x01),
+            publicKey: new Uint8Array(32).fill(0x02),
+            spkiDer: new Uint8Array(44).fill(0x03),
+            pkcs8Der: new Uint8Array(48).fill(0x04)
+        }),
+        keygenMlDsa65: async () => ({
+            seed: new Uint8Array(32).fill(0x05),
+            publicKey: new Uint8Array(1952).fill(0x06),
+            secretKey: new Uint8Array(4032).fill(0x07),
+            spkiDer: new Uint8Array(1974).fill(0x08),
+            pkcs8Der: new Uint8Array(4098).fill(0x09)
+        }),
+        encryptAesGcmPbkdf2: async (_pass, _salt, _nonce, plaintext) => {
+            const out = new Uint8Array(plaintext.length + 16);
+            out.set(plaintext, 0);
+            out.fill(0xaa, plaintext.length);
+            return out;
+        }
+    };
+
+    // 1. Ed25519 Plain
+    const edPlain = await weaverGenerateKeyBundle('Alice', 'Administrator', 'ApiWeb', 'Ed25519', null, { cryptoAdapter: mockAdapter });
+    assert.equal(edPlain.username, 'alice');
+    assert.equal(edPlain.algorithm, 'Ed25519');
+    assert.equal(edPlain.isPasswordProtected, false);
+    assert.ok(edPlain.publicKeyPem.includes('BEGIN PUBLIC KEY'));
+    assert.ok(edPlain.privateKeyPem.includes('BEGIN PRIVATE KEY'));
+    assert.ok(!edPlain.privateKeyPem.includes('BEGIN ENCRYPTED PRIVATE KEY'));
+
+    // 2. Ed25519 Encrypted
+    const edEnc = await weaverGenerateKeyBundle('Bob', 'Researcher', 'Web', 'Ed25519', 'secret123', { cryptoAdapter: mockAdapter });
+    assert.equal(edEnc.username, 'bob');
+    assert.equal(edEnc.isPasswordProtected, true);
+    assert.ok(edEnc.privateKeyPem.includes('BEGIN ENCRYPTED PRIVATE KEY'));
+
+    // 3. ML-DSA-65 Plain (using enum integer 1)
+    const mlPlain = await weaverGenerateKeyBundle('Charlie', 'Patient', 'Api', 1, '', { cryptoAdapter: mockAdapter });
+    assert.equal(mlPlain.username, 'charlie');
+    assert.equal(mlPlain.isPasswordProtected, false);
+    assert.ok(mlPlain.publicKeyPem.includes('BEGIN PUBLIC KEY'));
+    assert.ok(mlPlain.privateKeyPem.includes('BEGIN PRIVATE KEY'));
+
+    // 4. ML-DSA-65 Encrypted (using string 'MlDsa65')
+    const mlEnc = await weaverGenerateKeyBundle('Dana', 'Researcher', 'ApiWeb', 'MlDsa65', 'pqcPass!456', { cryptoAdapter: mockAdapter });
+    assert.equal(mlEnc.username, 'dana');
+    assert.equal(mlEnc.isPasswordProtected, true);
+    assert.ok(mlEnc.privateKeyPem.includes('BEGIN ENCRYPTED PRIVATE KEY'));
+
+    // 5. Username validation errors
+    await assert.rejects(async () => {
+        await weaverGenerateKeyBundle('', 'Admin', 'Api', 'Ed25519', null, { cryptoAdapter: mockAdapter });
+    }, /Username must not be empty/);
+
+    await assert.rejects(async () => {
+        await weaverGenerateKeyBundle(12345, 'Admin', 'Api', 'Ed25519', null, { cryptoAdapter: mockAdapter });
+    }, /Username must not be empty/);
+
+    // 6. Encrypt failure error branch
+    const failingAdapter = {
+        ...mockAdapter,
+        encryptAesGcmPbkdf2: async () => new Uint8Array(5) // Too short
+    };
+    await assert.rejects(async () => {
+        await weaverGenerateKeyBundle('Frank', 'Admin', 'Api', 'Ed25519', 'pass', { cryptoAdapter: failingAdapter });
+    }, /Failed to encrypt private key/);
 });

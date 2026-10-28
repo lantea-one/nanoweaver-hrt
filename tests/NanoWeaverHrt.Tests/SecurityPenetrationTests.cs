@@ -75,15 +75,11 @@ public sealed class SecurityPenetrationTests : IClassFixture<WebApplicationFacto
         _client = _factory.CreateClient();
 
         // Initialize Administrator for authenticated penetration baselines
-        GenerateKeyRequest adminKeyReq = new()
-        {
-            Username = "sec_admin",
-            Role = UserRole.Administrator,
-            AccessGate = AccessGate.ApiWeb,
-            Algorithm = KeyAlgorithm.Ed25519
-        };
-        HttpResponseMessage keyRes = _client.PostAsJsonAsync("/api/setup/generate-keypair", adminKeyReq).GetAwaiter().GetResult();
-        _adminBundle = keyRes.Content.ReadFromJsonAsync<GeneratedKeyBundle>().GetAwaiter().GetResult()!;
+        _adminBundle = TestChallengeHelper.CreateTestKeyBundle(
+            "sec_admin",
+            UserRole.Administrator,
+            AccessGate.ApiWeb,
+            KeyAlgorithm.Ed25519);
 
         InitialSetupRequest initReq = new()
         {
@@ -184,19 +180,24 @@ public sealed class SecurityPenetrationTests : IClassFixture<WebApplicationFacto
     /// <returns>The generated key bundle holding the private key PEM.</returns>
     private async Task<GeneratedKeyBundle> ProvisionGatedUserAsync(string username, AccessGate gate)
     {
-        using HttpRequestMessage req = new(HttpMethod.Post, "/api/users/generate-keypair");
+        GeneratedKeyBundle bundle = TestChallengeHelper.CreateTestKeyBundle(
+            username,
+            UserRole.Researcher,
+            gate,
+            KeyAlgorithm.Ed25519);
+
+        using HttpRequestMessage req = new(HttpMethod.Post, "/api/users");
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _adminToken);
-        req.Content = JsonContent.Create(new GenerateKeyRequest
+        req.Content = JsonContent.Create(new CreateUserRequest
         {
             Username = username,
             Role = UserRole.Researcher,
             AccessGate = gate,
-            Algorithm = KeyAlgorithm.Ed25519
+            Algorithm = KeyAlgorithm.Ed25519,
+            PublicKeyBase64 = bundle.PublicKeyBase64
         });
         HttpResponseMessage res = await _client.SendAsync(req);
-        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
-        GeneratedKeyBundle? bundle = await res.Content.ReadFromJsonAsync<GeneratedKeyBundle>();
-        Assert.NotNull(bundle);
+        Assert.Equal(HttpStatusCode.Created, res.StatusCode);
         return bundle;
     }
 
@@ -277,19 +278,7 @@ public sealed class SecurityPenetrationTests : IClassFixture<WebApplicationFacto
         // WHAT: Creates a user with AccessGate.Web and attempts REST API calls.
         // WHY:  Verifies strict transport access isolation between browser and machine clients.
         // HOW:  Mints token for Web-only user and asserts 403 Forbidden on /api/datasets.
-        using HttpRequestMessage webUserKeyReq = new(HttpMethod.Post, "/api/users/generate-keypair");
-        webUserKeyReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _adminToken);
-        webUserKeyReq.Content = JsonContent.Create(new GenerateKeyRequest
-        {
-            Username = "browser_only_user",
-            Role = UserRole.Researcher,
-            AccessGate = AccessGate.Web,
-            Algorithm = KeyAlgorithm.Ed25519
-        });
-        HttpResponseMessage keyRes = await _client.SendAsync(webUserKeyReq);
-        Assert.Equal(HttpStatusCode.OK, keyRes.StatusCode);
-        GeneratedKeyBundle? bundle = await keyRes.Content.ReadFromJsonAsync<GeneratedKeyBundle>();
-        Assert.NotNull(bundle);
+        GeneratedKeyBundle bundle = await ProvisionGatedUserAsync("browser_only_user", AccessGate.Web);
 
         // 1. Direct login via /api/auth/web-token is the cookie-granting web transport, so a Web-gated user is accepted
         HttpResponseMessage loginRes = await TestChallengeHelper.LoginViaChallengeAsync(

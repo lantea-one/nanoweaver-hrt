@@ -235,7 +235,7 @@ ITEM: ATOMS id type x y z
 
             if (await authService.IsSetupRequiredAsync())
             {
-                GeneratedKeyBundle bundle = authService.GenerateSecureKeyBundle(
+                GeneratedKeyBundle bundle = TestChallengeHelper.CreateTestKeyBundle(
                     "testadmin",
                     UserRole.Administrator,
                     AccessGate.ApiWeb,

@@ -51,60 +51,6 @@ public sealed record InitialSetupRequest : IExamplesProvider<InitialSetupRequest
 }
 
 /// <summary>
-/// Request payload for generating a high-security keypair.
-/// </summary>
-public sealed record GenerateKeyRequest : IExamplesProvider<GenerateKeyRequest>
-{
-    /// <summary>
-    /// Gets the username for whom to generate the keypair.
-    /// </summary>
-    [Description("Username for keypair ownership.")]
-    [JsonPropertyName("username")]
-    public string Username { get; init; } = string.Empty;
-
-    /// <summary>
-    /// Gets the authorization role to assign.
-    /// </summary>
-    [Description("Authorization role.")]
-    [JsonPropertyName("role")]
-    public UserRole Role { get; init; } = UserRole.Researcher;
-
-    /// <summary>
-    /// Gets the access gating boundary.
-    /// </summary>
-    [Description("Access gating boundary.")]
-    [JsonPropertyName("accessGate")]
-    public AccessGate AccessGate { get; init; } = AccessGate.ApiWeb;
-
-    /// <summary>
-    /// Gets the cryptographic algorithm.
-    /// </summary>
-    [Description("Cryptographic algorithm (Ed25519 or MlDsa65).")]
-    [JsonPropertyName("algorithm")]
-    public KeyAlgorithm Algorithm { get; init; } = KeyAlgorithm.Ed25519;
-
-    /// <summary>
-    /// Gets the optional password to encrypt the private key PEM.
-    /// </summary>
-    [Description("Optional passphrase for private key encryption.")]
-    [JsonPropertyName("password")]
-    public string? Password { get; init; }
-
-    /// <summary>
-    /// Generates a representative example instance of <see cref="GenerateKeyRequest"/> for OpenAPI documentation.
-    /// </summary>
-    /// <returns>A sample key generation request.</returns>
-    public GenerateKeyRequest GetExamples() => new()
-    {
-        Username = "researcher-01",
-        Role = UserRole.Researcher,
-        AccessGate = AccessGate.ApiWeb,
-        Algorithm = KeyAlgorithm.Ed25519,
-        Password = "optional-key-passphrase"
-    };
-}
-
-/// <summary>
 /// Request payload to issue an asymmetric authentication challenge for a username.
 /// </summary>
 public sealed record ChallengeRequest : IExamplesProvider<ChallengeRequest>

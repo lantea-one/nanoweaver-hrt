@@ -450,28 +450,247 @@ function weaverBindKeyFileInput(fileInputId, textareaId, options = {}) {
     return true;
 }
 
+/**
+ * Converts a Uint8Array into a Base64 string.
+ *
+ * WHAT: Converts raw byte buffer to standard RFC 4648 Base64.
+ * WHY:  Standard encoding for SubjectPublicKeyInfo and PEM serialization.
+ * HOW:  Uses Buffer.from in Node or chunked btoa in the browser.
+ *
+ * @param {Uint8Array} bytes Byte buffer to encode.
+ * @returns {string} Base64 string.
+ */
+function uint8ArrayToBase64(bytes) {
+    if (!(bytes instanceof Uint8Array)) {
+        return '';
+    }
+    if (typeof Buffer !== 'undefined') {
+        return Buffer.from(bytes).toString('base64');
+    }
+    let binary = '';
+    const chunkSize = 8192;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+    }
+    return btoa(binary);
+}
+
+/**
+ * Formats raw DER bytes into standard RFC 7468 PEM text with 64-character line wrapping.
+ *
+ * WHAT: Wraps Base64 DER bytes in BEGIN / END header lines.
+ * WHY:  Enables saving key files in human-readable and standard tool-compatible format.
+ * HOW:  Base64-encodes bytes, breaks into 64-char lines, and sandwiches between delimiters.
+ *
+ * @param {string} label PEM header label (e.g., 'PUBLIC KEY', 'PRIVATE KEY', 'ENCRYPTED PRIVATE KEY').
+ * @param {Uint8Array} derBytes Raw DER or encrypted envelope bytes.
+ * @returns {string} Standard PEM formatted string ending with a newline.
+ */
+function formatPem(label, derBytes) {
+    if (typeof label !== 'string' || !(derBytes instanceof Uint8Array)) {
+        return '';
+    }
+    const b64 = uint8ArrayToBase64(derBytes);
+    const lines = [];
+    for (let i = 0; i < b64.length; i += 64) {
+        lines.push(b64.slice(i, i + 64));
+    }
+    return `-----BEGIN ${label}-----\n${lines.join('\n')}\n-----END ${label}-----\n`;
+}
+
+/**
+ * Encrypts raw private key DER bytes into a password-protected envelope.
+ *
+ * WHAT: Encrypts DER bytes using AES-256-GCM with a PBKDF2-SHA256 derived key (100,000 iterations).
+ * WHY:  Symmetric client-side implementation of the node's standard envelope format:
+ *       [Salt: 16][Nonce: 12][Tag: 16][Ciphertext: N].
+ * HOW:  Generates 16-byte salt and 12-byte nonce, invokes adapter.encryptAesGcmPbkdf2,
+ *       and formats output bytes.
+ *
+ * @param {Uint8Array} derBytes Raw private key DER bytes to encrypt.
+ * @param {string} passphrase User-entered passphrase.
+ * @param {object} [cryptoAdapter] Optional crypto provider adapter (defaults to globalThis.WeaverCryptoVendor).
+ * @returns {Promise<{ ok: boolean, envelopeBytes?: Uint8Array, error?: string }>}
+ */
+async function encryptKeyEnvelope(derBytes, passphrase, cryptoAdapter) {
+    if (!(derBytes instanceof Uint8Array) || derBytes.length === 0 ||
+        typeof passphrase !== 'string' || passphrase.length === 0) {
+        return { ok: false, error: 'Failed to encrypt private key. Invalid input or empty passphrase.' };
+    }
+
+    const adapter = cryptoAdapter || globalThis.WeaverCryptoVendor;
+    if (!adapter || typeof adapter.encryptAesGcmPbkdf2 !== 'function') {
+        return { ok: false, error: 'Failed to encrypt private key. Cryptographic provider unavailable.' };
+    }
+
+    try {
+        const salt = new Uint8Array(16);
+        const nonce = new Uint8Array(12);
+        globalThis.crypto.getRandomValues(salt);
+        globalThis.crypto.getRandomValues(nonce);
+
+        const encryptedWithTag = await adapter.encryptAesGcmPbkdf2(passphrase, salt, nonce, derBytes);
+        if (!(encryptedWithTag instanceof Uint8Array) || encryptedWithTag.length < 16) {
+            return { ok: false, error: 'Failed to encrypt private key. Encryption returned invalid ciphertext.' };
+        }
+
+        const tag = encryptedWithTag.slice(encryptedWithTag.length - 16);
+        const ciphertext = encryptedWithTag.slice(0, encryptedWithTag.length - 16);
+
+        // Standard layout: [Salt: 16][Nonce: 12][Tag: 16][Ciphertext: N]
+        const envelopeBytes = new Uint8Array(16 + 12 + 16 + ciphertext.length);
+        envelopeBytes.set(salt, 0);
+        envelopeBytes.set(nonce, 16);
+        envelopeBytes.set(tag, 28);
+        envelopeBytes.set(ciphertext, 44);
+
+        return { ok: true, envelopeBytes };
+    } catch {
+        return { ok: false, error: 'Failed to encrypt private key envelope.' };
+    }
+}
+
+/**
+ * Generates an Ed25519 keypair in browser memory.
+ *
+ * WHAT: Mints 32-byte Ed25519 seed and derives SPKI (44 bytes) and PKCS#8 (48 bytes) DER bytes.
+ * WHY:  Client-side key derivation ensuring private keys never touch the network.
+ * HOW:  Invokes adapter.keygenEd25519.
+ *
+ * @param {object} [options] Optional parameters (e.g. seed, cryptoAdapter).
+ * @returns {Promise<{ seed: Uint8Array, publicKey: Uint8Array, spkiDer: Uint8Array, pkcs8Der: Uint8Array }>}
+ */
+async function generateEd25519Keypair(options = {}) {
+    const adapter = options.cryptoAdapter || globalThis.WeaverCryptoVendor;
+    if (!adapter || typeof adapter.keygenEd25519 !== 'function') {
+        throw new Error('Ed25519 key generation provider is unavailable.');
+    }
+    return adapter.keygenEd25519(options.seed);
+}
+
+/**
+ * Generates an ML-DSA-65 post-quantum keypair in browser memory.
+ *
+ * WHAT: Mints 32-byte seed and derives ML-DSA-65 SPKI (1974 bytes) and PKCS#8 (4098 bytes) DER bytes.
+ * WHY:  NIST FIPS 204 client-side post-quantum key generation.
+ * HOW:  Invokes adapter.keygenMlDsa65.
+ *
+ * @param {object} [options] Optional parameters (e.g. seed, cryptoAdapter).
+ * @returns {Promise<{ seed: Uint8Array, publicKey: Uint8Array, secretKey: Uint8Array, spkiDer: Uint8Array, pkcs8Der: Uint8Array }>}
+ */
+async function generateMlDsa65Keypair(options = {}) {
+    const adapter = options.cryptoAdapter || globalThis.WeaverCryptoVendor;
+    if (!adapter || typeof adapter.keygenMlDsa65 !== 'function') {
+        throw new Error('ML-DSA-65 key generation provider is unavailable.');
+    }
+    return adapter.keygenMlDsa65(options.seed);
+}
+
+/**
+ * Generates an asymmetric cryptographic keypair and bundle in client-side memory.
+ *
+ * WHAT: Derives Ed25519 or ML-DSA-65 keypair, optionally encrypts private key with passphrase,
+ *       formats PEM text, and returns full GeneratedKeyBundle matching the server DTO.
+ * WHY:  Fulfills Phase P20 (Audit C8 zero-knowledge architecture): private keys are minted directly
+ *       in browser memory and NEVER transmitted to the server.
+ * HOW:  Calls generateEd25519Keypair or generateMlDsa65Keypair, invokes encryptKeyEnvelope if
+ *       passphrase is provided, formats PEMs, and returns bundle object.
+ *
+ * @param {string} username Target identity handle.
+ * @param {string|number} role User authorization role.
+ * @param {string|number} accessGate Access gating constraint.
+ * @param {string|number} algorithm KeyAlgorithm (Ed25519 or MlDsa65).
+ * @param {string|null} [passphrase] Optional user passphrase to encrypt private key.
+ * @param {object} [options] Optional overrides (e.g., cryptoAdapter, seed).
+ * @returns {Promise<{
+ *   username: string,
+ *   role: string|number,
+ *   accessGate: string|number,
+ *   algorithm: string|number,
+ *   publicKeyBase64: string,
+ *   publicKeyPem: string,
+ *   privateKeyPem: string,
+ *   isPasswordProtected: boolean
+ * }>}
+ */
+async function weaverGenerateKeyBundle(username, role, accessGate, algorithm, passphrase, options = {}) {
+    if (typeof username !== 'string' || username.trim().length === 0) {
+        throw new Error('Username must not be empty.');
+    }
+
+    const isMlDsa = algorithm === 1 || algorithm === 'MlDsa65';
+    const key = isMlDsa
+        ? await generateMlDsa65Keypair(options)
+        : await generateEd25519Keypair(options);
+
+    const publicKeyPem = formatPem('PUBLIC KEY', key.spkiDer);
+    const publicKeyBase64 = uint8ArrayToBase64(key.spkiDer);
+    let privateKeyPem;
+    let isPasswordProtected = false;
+
+    if (typeof passphrase === 'string' && passphrase.length > 0) {
+        const encRes = await encryptKeyEnvelope(key.pkcs8Der, passphrase, options.cryptoAdapter);
+        if (!encRes.ok) {
+            throw new Error(encRes.error);
+        }
+        privateKeyPem = formatPem('ENCRYPTED PRIVATE KEY', encRes.envelopeBytes);
+        isPasswordProtected = true;
+    } else {
+        privateKeyPem = formatPem('PRIVATE KEY', key.pkcs8Der);
+    }
+
+    zeroizeBytes(key.seed);
+    if (key.secretKey) {
+        zeroizeBytes(key.secretKey);
+    }
+    zeroizeBytes(key.pkcs8Der);
+
+    return {
+        username: username.trim().toLowerCase(),
+        role: role,
+        accessGate: accessGate,
+        algorithm: algorithm,
+        publicKeyBase64: publicKeyBase64,
+        publicKeyPem: publicKeyPem,
+        privateKeyPem: privateKeyPem,
+        isPasswordProtected: isPasswordProtected
+    };
+}
+
 const WeaverAuth = {
     parsePrivateKeyPem,
     extractKeyMaterialFromPkcs8,
     decryptKeyEnvelope,
+    encryptKeyEnvelope,
     zeroizeBytes,
     signChallenge,
     requestChallenge,
     submitSignature,
     weaverSignIn,
-    weaverBindKeyFileInput
+    weaverBindKeyFileInput,
+    uint8ArrayToBase64,
+    formatPem,
+    generateEd25519Keypair,
+    generateMlDsa65Keypair,
+    weaverGenerateKeyBundle
 };
 
 if (typeof window !== 'undefined') {
     window.parsePrivateKeyPem = parsePrivateKeyPem;
     window.extractKeyMaterialFromPkcs8 = extractKeyMaterialFromPkcs8;
     window.decryptKeyEnvelope = decryptKeyEnvelope;
+    window.encryptKeyEnvelope = encryptKeyEnvelope;
     window.zeroizeBytes = zeroizeBytes;
     window.signChallenge = signChallenge;
     window.requestChallenge = requestChallenge;
     window.submitSignature = submitSignature;
     window.weaverSignIn = weaverSignIn;
     window.weaverBindKeyFileInput = weaverBindKeyFileInput;
+    window.uint8ArrayToBase64 = uint8ArrayToBase64;
+    window.formatPem = formatPem;
+    window.generateEd25519Keypair = generateEd25519Keypair;
+    window.generateMlDsa65Keypair = generateMlDsa65Keypair;
+    window.weaverGenerateKeyBundle = weaverGenerateKeyBundle;
 }
 
 if (typeof module !== 'undefined') {

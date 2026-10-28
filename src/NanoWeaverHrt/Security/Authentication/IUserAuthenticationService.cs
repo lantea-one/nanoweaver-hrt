@@ -30,22 +30,6 @@ public interface IUserAuthenticationService
         CancellationToken ct = default);
 
     /// <summary>
-    /// Generates a high-security asymmetric keypair (Ed25519 or ML-DSA-65) with optional password encryption.
-    /// </summary>
-    /// <param name="username">The username to bind to this keypair.</param>
-    /// <param name="role">The assigned authorization role.</param>
-    /// <param name="gate">The assigned access gating boundary.</param>
-    /// <param name="algorithm">The chosen cryptographic signature algorithm.</param>
-    /// <param name="password">Optional password to encrypt the private key PEM.</param>
-    /// <returns>A generated key bundle containing public and private PEM strings.</returns>
-    GeneratedKeyBundle GenerateSecureKeyBundle(
-        string username,
-        UserRole role,
-        AccessGate gate,
-        KeyAlgorithm algorithm,
-        string? password = null);
-
-    /// <summary>
     /// Issues a time-bounded cryptographic challenge nonce to initiate client authentication.
     /// </summary>
     /// <param name="username">The username requesting authentication.</param>

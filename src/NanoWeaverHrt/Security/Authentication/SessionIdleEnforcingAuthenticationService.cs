@@ -108,15 +108,6 @@ public sealed class SessionIdleEnforcingAuthenticationService : IUserAuthenticat
         _inner.CompleteInitialSetupAsync(adminUsername, publicKeyBase64, algorithm, accessGate, ct);
 
     /// <inheritdoc/>
-    public GeneratedKeyBundle GenerateSecureKeyBundle(
-        string username,
-        UserRole role,
-        AccessGate gate,
-        KeyAlgorithm algorithm,
-        string? password = null) =>
-        _inner.GenerateSecureKeyBundle(username, role, gate, algorithm, password);
-
-    /// <inheritdoc/>
     public AuthChallenge CreateChallenge(string username) =>
         _inner.CreateChallenge(username);
 

@@ -11,13 +11,11 @@
 - [`c8-challenge-response-proposal.md`](c8-challenge-response-proposal.md) — Audit C8 Browser Challenge-Response Design Proposal
 
 ### 1.2 Active Work Packages
-| Order | Phase | Work Package File | Scope Summary | Status |
-| :--- | :--- | :--- | :--- | :--- |
-| **1** | **P20** | [`p20-in-browser-key-generation.md`](p20-in-browser-key-generation.md) | Pure client-side Ed25519 & ML-DSA-65 keypair generation in the browser, removal of server-side private key generation endpoints (`/api/setup/generate-keypair`, `/api/users/generate-keypair`), PKCS#8 DER/PEM formatting and AES-256-GCM envelope sealing in JavaScript, zero server-side exposure of user private keys. | **ACTIVE** |
+*All current work packages through Phase P20 are completed and ratified.*
 
 ---
 
-### 1.3 Completed & Ratified Work Packages (`P1–P19`)
+### 1.3 Completed & Ratified Work Packages (`P1–P20`)
 *Note: Individual completed work package instruction files have been cleaned up and consolidated into the repository audit trail and `PHASES-v2.md`.*
 
 | Phase | Package / Scope | Key Deliverables & Milestones | Verification Status |
@@ -42,6 +40,7 @@
 | **P17** | bUnit Security Testing | Integrated `bunit` `1.38.5`, 100% component testing across `Login.razor`, `SetupWizard.razor`, and `MainLayout.razor` route guards | **COMPLETED** |
 | **P18** | Coverage Ratchet Closeout | Reached 100.00% line & branch coverage on non-compiler code, ratified baseline at 99.51% line / 96.38% branch across all state machines | **COMPLETED** |
 | **P19** | Multi-Container & E2E Verification | Multi-container Docker Compose validation (strict 127.0.0.1 bindings, 0600 keys, health probes, clean migrations), Playwright 390px mobile & interactive Ed25519/ML-DSA-65 sign-in | **COMPLETED** |
+| **P20** | In-Browser Key Generation & SRI | Pure client-side Ed25519 & ML-DSA-65 keypair derivation and AES-GCM envelope sealing in browser memory, removal of server-side key generation endpoints (`POST /api/setup/generate-keypair`, `POST /api/users/generate-keypair`), and server-side dynamic .NET W3C Subresource Integrity (SRI) SHA-384 generation for all authored scripts and styles via `IAssetIntegrityService`. | **COMPLETED** |
 
 ---
 

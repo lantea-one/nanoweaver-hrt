@@ -293,11 +293,15 @@
         {
             if (_generateKeyMode)
             {
-                _newGeneratedBundle = AuthService.GenerateSecureKeyBundle(
+                // WHAT: Derives keypair client-side in browser memory via WebCrypto/Noble.
+                // WHY:  Private keys never touch the server during user provisioning (Phase P20).
+                // HOW:  Invokes weaverGenerateKeyBundle in browser memory and submits only the public key.
+                _newGeneratedBundle = await JSRuntime.InvokeAsync<GeneratedKeyBundle>(
+                    "weaverGenerateKeyBundle",
                     _newUsername,
-                    _newRole,
-                    _newGate,
-                    _newAlgo,
+                    _newRole.ToString(),
+                    _newGate.ToString(),
+                    _newAlgo.ToString(),
                     string.IsNullOrWhiteSpace(_newKeyPassword) ? null : _newKeyPassword);
 
                 await AuthService.CreateUserAsync(

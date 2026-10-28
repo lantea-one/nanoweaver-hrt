@@ -275,7 +275,7 @@ public sealed class AuthenticationServiceTests : IDisposable
         // WHAT: Creates an account through the service, then repeats the name with a different role and key.
         // WHY:  A refused duplicate must not alter the account (and is not audited as a creation).
         // HOW:  Asserts non-null then null, plus argument validation, then re-reads the stored account.
-        GeneratedKeyBundle bundle = _authService.GenerateSecureKeyBundle("try_svc", UserRole.Researcher, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
+        GeneratedKeyBundle bundle = TestChallengeHelper.CreateTestKeyBundle("try_svc", UserRole.Researcher, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
 
         UserAccount? created = await _authService.TryCreateUserAsync(" try_svc ", UserRole.Researcher, AccessGate.ApiWeb, bundle.PublicKeyBase64, KeyAlgorithm.Ed25519);
         Assert.NotNull(created);
@@ -321,7 +321,7 @@ public sealed class AuthenticationServiceTests : IDisposable
         bool initialRequired = await _authService.IsSetupRequiredAsync();
         Assert.True(initialRequired);
 
-        GeneratedKeyBundle bundle = _authService.GenerateSecureKeyBundle(
+        GeneratedKeyBundle bundle = TestChallengeHelper.CreateTestKeyBundle(
             "master_admin",
             UserRole.Administrator,
             AccessGate.ApiWeb,
@@ -357,11 +357,11 @@ public sealed class AuthenticationServiceTests : IDisposable
     [Fact]
     public void KeyGeneration_Ed25519AndMlDsa65_GeneratesValidBundles()
     {
-        // WHAT: Tests GenerateSecureKeyBundle across algorithms and password protection modes.
+        // WHAT: Tests TestChallengeHelper.CreateTestKeyBundle across algorithms and password protection modes.
         // WHY:  Ensures both classical and post-quantum keys are generated with accurate PEM headers.
         // HOW:  Generates unencrypted and encrypted bundles for Ed25519 and ML-DSA-65 and asserts properties.
         // 1. Ed25519 Plain
-        GeneratedKeyBundle edPlain = _authService.GenerateSecureKeyBundle(
+        GeneratedKeyBundle edPlain = TestChallengeHelper.CreateTestKeyBundle(
             "ed_plain_user",
             UserRole.Researcher,
             AccessGate.ApiWeb,
@@ -374,18 +374,18 @@ public sealed class AuthenticationServiceTests : IDisposable
         Assert.Contains("BEGIN PRIVATE KEY", edPlain.PrivateKeyPem);
 
         // 2. Ed25519 Encrypted
-        GeneratedKeyBundle edEncrypted = _authService.GenerateSecureKeyBundle(
+        GeneratedKeyBundle edEncrypted = TestChallengeHelper.CreateTestKeyBundle(
             "ed_enc_user",
             UserRole.Administrator,
             AccessGate.ApiWeb,
             KeyAlgorithm.Ed25519,
-            password: "super_secret_passphrase");
+            passphrase: "super_secret_passphrase");
 
         Assert.True(edEncrypted.IsPasswordProtected);
         Assert.Contains("BEGIN ENCRYPTED PRIVATE KEY", edEncrypted.PrivateKeyPem);
 
         // 3. ML-DSA-65 Plain
-        GeneratedKeyBundle mlPlain = _authService.GenerateSecureKeyBundle(
+        GeneratedKeyBundle mlPlain = TestChallengeHelper.CreateTestKeyBundle(
             "ml_plain_user",
             UserRole.Researcher,
             AccessGate.ApiWeb,
@@ -397,12 +397,12 @@ public sealed class AuthenticationServiceTests : IDisposable
         Assert.Contains("BEGIN PRIVATE KEY", mlPlain.PrivateKeyPem);
 
         // 4. ML-DSA-65 Encrypted
-        GeneratedKeyBundle mlEncrypted = _authService.GenerateSecureKeyBundle(
+        GeneratedKeyBundle mlEncrypted = TestChallengeHelper.CreateTestKeyBundle(
             "ml_enc_user",
             UserRole.Patient,
             AccessGate.Web,
             KeyAlgorithm.MlDsa65,
-            password: "pqc_passphrase_456");
+            passphrase: "pqc_passphrase_456");
 
         Assert.True(mlEncrypted.IsPasswordProtected);
         Assert.Contains("BEGIN ENCRYPTED PRIVATE KEY", mlEncrypted.PrivateKeyPem);
@@ -417,7 +417,7 @@ public sealed class AuthenticationServiceTests : IDisposable
         // WHAT: Tests CreateChallenge and VerifyChallengeAndIssueTokenAsync with Ed25519.
         // WHY:  Proves zero-knowledge private-key authentication without transmitting private keys.
         // HOW:  Registers a user, requests a challenge nonce, signs it locally with Ed25519, and verifies token issuance.
-        GeneratedKeyBundle bundle = _authService.GenerateSecureKeyBundle(
+        GeneratedKeyBundle bundle = TestChallengeHelper.CreateTestKeyBundle(
             "sig_researcher",
             UserRole.Researcher,
             AccessGate.ApiWeb,
@@ -483,7 +483,7 @@ public sealed class AuthenticationServiceTests : IDisposable
         // WHAT: Tests signature verification failure handling.
         // WHY:  Ensures forged or corrupted signatures are rejected with 401 Unauthorized.
         // HOW:  Signs arbitrary data and submits an invalid signature string.
-        GeneratedKeyBundle bundle = _authService.GenerateSecureKeyBundle(
+        GeneratedKeyBundle bundle = TestChallengeHelper.CreateTestKeyBundle(
             "victim_user",
             UserRole.Researcher,
             AccessGate.ApiWeb,
@@ -533,7 +533,7 @@ public sealed class AuthenticationServiceTests : IDisposable
         // WHAT: Tests CreateChallenge + VerifyChallengeAndIssueTokenAsync across key formats and algorithms.
         // WHY:  Enforces asymmetric challenge-response authentication without transmitting private keys (Audit C8).
         // HOW:  Issues challenges, signs with TestChallengeHelper, and verifies token issuance and audit trail.
-        GeneratedKeyBundle adminBundle = _authService.GenerateSecureKeyBundle(
+        GeneratedKeyBundle adminBundle = TestChallengeHelper.CreateTestKeyBundle(
             "admin_root",
             UserRole.Administrator,
             AccessGate.ApiWeb,
@@ -557,12 +557,12 @@ public sealed class AuthenticationServiceTests : IDisposable
         Assert.NotNull(edToken);
 
         // 2. Ed25519 Encrypted Key Authentication with valid password
-        GeneratedKeyBundle edEnc = _authService.GenerateSecureKeyBundle(
+        GeneratedKeyBundle edEnc = TestChallengeHelper.CreateTestKeyBundle(
             "ed_enc_user",
             UserRole.Researcher,
             AccessGate.ApiWeb,
             KeyAlgorithm.Ed25519,
-            password: "mypassword123");
+            passphrase: "mypassword123");
 
         await _authService.CreateUserAsync(
             "ed_enc_user",
@@ -596,7 +596,7 @@ public sealed class AuthenticationServiceTests : IDisposable
         Assert.NotNull(failError);
 
         // 4. ML-DSA-65 Plain Key Authentication
-        GeneratedKeyBundle mlPlain = _authService.GenerateSecureKeyBundle(
+        GeneratedKeyBundle mlPlain = TestChallengeHelper.CreateTestKeyBundle(
             "ml_user",
             UserRole.Researcher,
             AccessGate.ApiWeb,
@@ -635,7 +635,7 @@ public sealed class AuthenticationServiceTests : IDisposable
         // WHAT: Tests AccessGate.Api vs AccessGate.Web restrictions.
         // WHY:  Guarantees dedicated API keys cannot compromise Web sessions and vice versa.
         // HOW:  Attempts web login on Api user and API challenge verification on Web user.
-        GeneratedKeyBundle adminBundle = _authService.GenerateSecureKeyBundle(
+        GeneratedKeyBundle adminBundle = TestChallengeHelper.CreateTestKeyBundle(
             "admin_gate",
             UserRole.Administrator,
             AccessGate.ApiWeb,
@@ -647,7 +647,7 @@ public sealed class AuthenticationServiceTests : IDisposable
             KeyAlgorithm.Ed25519);
 
         // Api-only user
-        GeneratedKeyBundle apiUserBundle = _authService.GenerateSecureKeyBundle(
+        GeneratedKeyBundle apiUserBundle = TestChallengeHelper.CreateTestKeyBundle(
             "api_only_user",
             UserRole.Researcher,
             AccessGate.Api,
@@ -661,7 +661,7 @@ public sealed class AuthenticationServiceTests : IDisposable
             KeyAlgorithm.Ed25519);
 
         // Web-only user
-        GeneratedKeyBundle webUserBundle = _authService.GenerateSecureKeyBundle(
+        GeneratedKeyBundle webUserBundle = TestChallengeHelper.CreateTestKeyBundle(
             "web_only_user",
             UserRole.Patient,
             AccessGate.Web,
@@ -725,7 +725,7 @@ public sealed class AuthenticationServiceTests : IDisposable
         Assert.Equal("Malformed bearer token format.", multiDotReason);
 
         // 3. Valid token then tampered signature
-        GeneratedKeyBundle bundle = _authService.GenerateSecureKeyBundle(
+        GeneratedKeyBundle bundle = TestChallengeHelper.CreateTestKeyBundle(
             "tamper_user",
             UserRole.Researcher,
             AccessGate.ApiWeb,
@@ -765,7 +765,7 @@ public sealed class AuthenticationServiceTests : IDisposable
         // WHAT: Tests user listing, user deletion, and sole Administrator retention guard.
         // WHY:  Prevents administrative lockout where the final administrator is deleted.
         // HOW:  Creates initial admin, attempts to delete initial admin (fails), adds second admin, deletes first admin (succeeds).
-        GeneratedKeyBundle admin1 = _authService.GenerateSecureKeyBundle(
+        GeneratedKeyBundle admin1 = TestChallengeHelper.CreateTestKeyBundle(
             "admin_one",
             UserRole.Administrator,
             AccessGate.ApiWeb,
@@ -780,7 +780,7 @@ public sealed class AuthenticationServiceTests : IDisposable
         await Assert.ThrowsAsync<InvalidOperationException>(() => _authService.DeleteUserAsync("admin_one"));
 
         // Add second administrator
-        GeneratedKeyBundle admin2 = _authService.GenerateSecureKeyBundle(
+        GeneratedKeyBundle admin2 = TestChallengeHelper.CreateTestKeyBundle(
             "admin_two",
             UserRole.Administrator,
             AccessGate.ApiWeb,
@@ -817,7 +817,7 @@ public sealed class AuthenticationServiceTests : IDisposable
         // WHY:  Guarantees Swagger multi-format serializers and ReDoc documentation generate valid example trees.
         // HOW:  Invokes GetExamples on all records and asserts properties.
         Assert.NotNull(new InitialSetupRequest().GetExamples());
-        Assert.NotNull(new GenerateKeyRequest().GetExamples());
+        Assert.NotNull(new GeneratedKeyBundle().GetExamples());
         Assert.NotNull(new ChallengeRequest().GetExamples());
         Assert.NotNull(new TokenExchangeRequest().GetExamples());
         Assert.NotNull(new CreateUserRequest().GetExamples());
@@ -903,10 +903,10 @@ public sealed class AuthenticationServiceTests : IDisposable
         // 1. EncryptPrivateKeyBytes produces valid envelope and round-trips via TestChallengeHelper.ExtractDerFromPem
         byte[] rawDer = new byte[48];
         RandomNumberGenerator.Fill(rawDer);
-        byte[] envelope = UserAuthenticationService.EncryptPrivateKeyBytes(rawDer, "Passphrase123!");
+        byte[] envelope = TestChallengeHelper.EncryptPrivateKeyBytes(rawDer, "Passphrase123!");
         Assert.True(envelope.Length > 44);
 
-        string encPem = UserAuthenticationService.FormatPem("ENCRYPTED PRIVATE KEY", envelope);
+        string encPem = TestChallengeHelper.FormatPem("ENCRYPTED PRIVATE KEY", envelope);
         byte[] roundTrip = TestChallengeHelper.ExtractDerFromPem(encPem, "Passphrase123!");
         Assert.Equal(rawDer, roundTrip);
 
@@ -914,7 +914,7 @@ public sealed class AuthenticationServiceTests : IDisposable
         Assert.ThrowsAny<Exception>(() => TestChallengeHelper.ExtractDerFromPem(encPem, "WrongPassword!"));
 
         // 2. FormatPem handles arbitrary types cleanly
-        string plainPem = UserAuthenticationService.FormatPem("PUBLIC KEY", rawDer);
+        string plainPem = TestChallengeHelper.FormatPem("PUBLIC KEY", rawDer);
         Assert.Contains("-----BEGIN PUBLIC KEY-----", plainPem);
         Assert.Contains("-----END PUBLIC KEY-----", plainPem);
 
@@ -947,7 +947,7 @@ public sealed class AuthenticationServiceTests : IDisposable
         // WHAT: Tests that creating "MixedCaseUser" normalizes to lowercase, rejects duplicates, and deletes cleanly.
         // WHY:  Prevents mixed-case duplicate accounts (e.g., "Admin" and "admin") from coexisting or shadowing each other.
         // HOW:  Calls CompleteInitialSetupAsync, CreateUserAsync, TryCreateUserAsync, CreateChallenge, VerifyChallengeAndIssueTokenAsync, and DeleteUserAsync.
-        GeneratedKeyBundle adminBundle = _authService.GenerateSecureKeyBundle(
+        GeneratedKeyBundle adminBundle = TestChallengeHelper.CreateTestKeyBundle(
             "Admin_Master",
             UserRole.Administrator,
             AccessGate.ApiWeb,
@@ -958,7 +958,7 @@ public sealed class AuthenticationServiceTests : IDisposable
             adminBundle.PublicKeyBase64,
             KeyAlgorithm.Ed25519);
 
-        GeneratedKeyBundle bundle = _authService.GenerateSecureKeyBundle(
+        GeneratedKeyBundle bundle = TestChallengeHelper.CreateTestKeyBundle(
             "MixedCaseUser",
             UserRole.Researcher,
             AccessGate.ApiWeb,

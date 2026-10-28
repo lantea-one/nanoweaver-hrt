@@ -3571,10 +3571,130 @@ async function decryptAesGcmPbkdf2(passphrase, salt, nonce, ciphertextWithTag) {
   return new Uint8Array(decrypted);
 }
 
+/**
+ * Encrypts a plaintext buffer using AES-256-GCM with a PBKDF2-SHA256 derived key.
+ * @param {string} passphrase User passphrase.
+ * @param {Uint8Array} salt 16-byte PBKDF2 salt and AES-GCM additionalData.
+ * @param {Uint8Array} nonce 12-byte AES-GCM nonce.
+ * @param {Uint8Array} plaintext Plaintext bytes to encrypt.
+ * @returns {Promise<Uint8Array>} Encrypted bytes including 16-byte GCM authentication tag.
+ */
+async function encryptAesGcmPbkdf2(passphrase, salt, nonce, plaintext) {
+  const enc = new TextEncoder();
+  const baseKey = await globalThis.crypto.subtle.importKey(
+    'raw',
+    enc.encode(passphrase),
+    { name: 'PBKDF2' },
+    false,
+    ['deriveKey']
+  );
+
+  const aesKey = await globalThis.crypto.subtle.deriveKey(
+    {
+      name: 'PBKDF2',
+      salt: salt,
+      iterations: 100000,
+      hash: 'SHA-256'
+    },
+    baseKey,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt']
+  );
+
+  const encrypted = await globalThis.crypto.subtle.encrypt(
+    {
+      name: 'AES-GCM',
+      iv: nonce,
+      additionalData: salt,
+      tagLength: 128
+    },
+    aesKey,
+    plaintext
+  );
+
+  return new Uint8Array(encrypted);
+}
+
+/**
+ * Generates an Ed25519 keypair and DER-encoded SPKI/PKCS#8 structures.
+ * @param {Uint8Array} [seed] Optional 32-byte seed. If omitted, cryptographically random bytes are generated.
+ * @returns {Promise<{ seed: Uint8Array, publicKey: Uint8Array, spkiDer: Uint8Array, pkcs8Der: Uint8Array }>}
+ */
+async function keygenEd25519(seed) {
+  let s;
+  if (seed instanceof Uint8Array && seed.length === 32) {
+    s = new Uint8Array(seed);
+  } else {
+    s = new Uint8Array(32);
+    globalThis.crypto.getRandomValues(s);
+  }
+  const ext = getExtendedPublicKey(s);
+  const rawPub = ext.pointBytes;
+
+  const spkiDer = new Uint8Array(44);
+  spkiDer.set([0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00], 0);
+  spkiDer.set(rawPub, 12);
+
+  const pkcs8Der = new Uint8Array(48);
+  pkcs8Der.set([0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20], 0);
+  pkcs8Der.set(s, 16);
+
+  return { seed: s, publicKey: rawPub, spkiDer, pkcs8Der };
+}
+
+/**
+ * Generates an ML-DSA-65 keypair and DER-encoded SPKI/PKCS#8 structures.
+ * @param {Uint8Array} [seed] Optional 32-byte seed. If omitted, cryptographically random bytes are generated.
+ * @returns {Promise<{ seed: Uint8Array, publicKey: Uint8Array, secretKey: Uint8Array, spkiDer: Uint8Array, pkcs8Der: Uint8Array }>}
+ */
+async function keygenMlDsa65(seed) {
+  let s;
+  if (seed instanceof Uint8Array && seed.length === 32) {
+    s = new Uint8Array(seed);
+  } else {
+    s = new Uint8Array(32);
+    globalThis.crypto.getRandomValues(s);
+  }
+  const pair = ml_dsa65.keygen(s);
+
+  const spkiDer = new Uint8Array(1974);
+  spkiDer.set([
+    0x30, 0x82, 0x07, 0xb2,
+    0x30, 0x0b, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x03, 0x12,
+    0x03, 0x82, 0x07, 0xa1, 0x00
+  ], 0);
+  spkiDer.set(pair.publicKey, 22);
+
+  const pkcs8Der = new Uint8Array(4098);
+  pkcs8Der.set([
+    0x30, 0x82, 0x10, 0x02,
+    0x02, 0x01, 0x00,
+    0x30, 0x0b, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x03, 0x12,
+    0x04, 0x82, 0x0f, 0xec,
+    0x30, 0x82, 0x0f, 0xe6,
+    0x04, 0x20
+  ], 0);
+  pkcs8Der.set(s, 30);
+  pkcs8Der.set([0x04, 0x82, 0x0f, 0xc0], 62);
+  pkcs8Der.set(pair.secretKey, 66);
+
+  return {
+    seed: s,
+    publicKey: pair.publicKey,
+    secretKey: pair.secretKey,
+    spkiDer,
+    pkcs8Der
+  };
+}
+
 const WeaverCryptoVendor = {
   signEd25519,
   signMlDsa65,
-  decryptAesGcmPbkdf2
+  decryptAesGcmPbkdf2,
+  encryptAesGcmPbkdf2,
+  keygenEd25519,
+  keygenMlDsa65
 };
 
 if (typeof window !== 'undefined') {
@@ -3584,4 +3704,12 @@ if (typeof globalThis !== 'undefined') {
   globalThis.WeaverCryptoVendor = WeaverCryptoVendor;
 }
 
-export { decryptAesGcmPbkdf2, WeaverCryptoVendor as default, signEd25519, signMlDsa65 };
+export {
+  decryptAesGcmPbkdf2,
+  encryptAesGcmPbkdf2,
+  keygenEd25519,
+  keygenMlDsa65,
+  WeaverCryptoVendor as default,
+  signEd25519,
+  signMlDsa65
+};

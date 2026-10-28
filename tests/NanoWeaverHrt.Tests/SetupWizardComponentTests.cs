@@ -177,8 +177,8 @@ public sealed class SetupWizardComponentTests : TestContext
         // WHY:  Standard default workflow for generating asymmetric node identity.
         // HOW:  Configures mock bundle, clicks Generate, and verifies key textarea renders.
         _authMock.Setup(m => m.IsSetupRequiredAsync()).ReturnsAsync(true);
-        _authMock.Setup(m => m.GenerateSecureKeyBundle("administrator", UserRole.Administrator, AccessGate.ApiWeb, KeyAlgorithm.Ed25519, null))
-            .Returns(CreateBundle("-----BEGIN PRIVATE KEY-----\nED25519-PRIV\n-----END PRIVATE KEY-----", "-----BEGIN PUBLIC KEY-----\nED25519-PUB\n-----END PUBLIC KEY-----", "ED25519PUBKEYBASE64STRING1234567890=="));
+        JSInterop.Setup<GeneratedKeyBundle>("weaverGenerateKeyBundle", _ => true)
+            .SetResult(CreateBundle("-----BEGIN PRIVATE KEY-----\nED25519-PRIV\n-----END PRIVATE KEY-----", "-----BEGIN PUBLIC KEY-----\nED25519-PUB\n-----END PUBLIC KEY-----", "ED25519PUBKEYBASE64STRING1234567890=="));
 
         IRenderedComponent<SetupWizard> cut = RenderComponent<SetupWizard>();
         await cut.Find("button.btn-primary").ClickAsync(new MouseEventArgs());
@@ -201,8 +201,8 @@ public sealed class SetupWizardComponentTests : TestContext
         // WHY:  Allows operators to select post-quantum algorithms and protect private keys with passwords.
         // HOW:  Selects ML-DSA-65 algorithm, enters passphrase, clicks Generate, and asserts bundle.
         _authMock.Setup(m => m.IsSetupRequiredAsync()).ReturnsAsync(true);
-        _authMock.Setup(m => m.GenerateSecureKeyBundle("administrator", UserRole.Administrator, AccessGate.ApiWeb, KeyAlgorithm.MlDsa65, "Passphrase!123"))
-            .Returns(CreateBundle("-----BEGIN ENCRYPTED PRIVATE KEY-----\nMLDSA-PRIV\n-----END ENCRYPTED PRIVATE KEY-----", "-----BEGIN PUBLIC KEY-----\nMLDSA-PUB\n-----END PUBLIC KEY-----", "MLDSA65PUBKEYBASE64STRING1234567890=="));
+        JSInterop.Setup<GeneratedKeyBundle>("weaverGenerateKeyBundle", _ => true)
+            .SetResult(CreateBundle("-----BEGIN ENCRYPTED PRIVATE KEY-----\nMLDSA-PRIV\n-----END ENCRYPTED PRIVATE KEY-----", "-----BEGIN PUBLIC KEY-----\nMLDSA-PUB\n-----END PUBLIC KEY-----", "MLDSA65PUBKEYBASE64STRING1234567890=="));
 
         IRenderedComponent<SetupWizard> cut = RenderComponent<SetupWizard>();
         await cut.Find("button.btn-primary").ClickAsync(new MouseEventArgs());
@@ -226,10 +226,10 @@ public sealed class SetupWizardComponentTests : TestContext
     {
         // WHAT: Tests error handling during keypair generation.
         // WHY:  Cryptographic hardware or entropy pool failures must be surfaced clearly.
-        // HOW:  Configures GenerateSecureKeyBundle to throw and asserts error alert.
+        // HOW:  Configures JS interop for weaverGenerateKeyBundle to throw and asserts error alert.
         _authMock.Setup(m => m.IsSetupRequiredAsync()).ReturnsAsync(true);
-        _authMock.Setup(m => m.GenerateSecureKeyBundle(It.IsAny<string>(), It.IsAny<UserRole>(), It.IsAny<AccessGate>(), It.IsAny<KeyAlgorithm>(), It.IsAny<string?>()))
-            .Throws(new InvalidOperationException("Entropy pool exhausted."));
+        JSInterop.Setup<GeneratedKeyBundle>("weaverGenerateKeyBundle", _ => true)
+            .SetException(new InvalidOperationException("Entropy pool exhausted."));
 
         IRenderedComponent<SetupWizard> cut = RenderComponent<SetupWizard>();
         await cut.Find("button.btn-primary").ClickAsync(new MouseEventArgs());
@@ -251,8 +251,8 @@ public sealed class SetupWizardComponentTests : TestContext
         // WHY:  Without backup confirmation, administrators risk losing access permanently.
         // HOW:  Generates key bundle, leaves checkbox unchecked, clicks Next, and asserts error.
         _authMock.Setup(m => m.IsSetupRequiredAsync()).ReturnsAsync(true);
-        _authMock.Setup(m => m.GenerateSecureKeyBundle(It.IsAny<string>(), It.IsAny<UserRole>(), It.IsAny<AccessGate>(), It.IsAny<KeyAlgorithm>(), It.IsAny<string?>()))
-            .Returns(CreateBundle("priv", "pub", "pub-b64"));
+        JSInterop.Setup<GeneratedKeyBundle>("weaverGenerateKeyBundle", _ => true)
+            .SetResult(CreateBundle("priv", "pub", "pub-b64"));
 
         IRenderedComponent<SetupWizard> cut = RenderComponent<SetupWizard>();
         await cut.Find("button.btn-primary").ClickAsync(new MouseEventArgs());
@@ -276,8 +276,8 @@ public sealed class SetupWizardComponentTests : TestContext
         // WHY:  Enables saving the private key to a local PEM file.
         // HOW:  Sets weaverDownloadBlob to return true, clicks Download, and verifies backup confirmed.
         _authMock.Setup(m => m.IsSetupRequiredAsync()).ReturnsAsync(true);
-        _authMock.Setup(m => m.GenerateSecureKeyBundle(It.IsAny<string>(), It.IsAny<UserRole>(), It.IsAny<AccessGate>(), It.IsAny<KeyAlgorithm>(), It.IsAny<string?>()))
-            .Returns(CreateBundle("priv-pem-content", "pub", "pub-b64"));
+        JSInterop.Setup<GeneratedKeyBundle>("weaverGenerateKeyBundle", _ => true)
+            .SetResult(CreateBundle("priv-pem-content", "pub", "pub-b64"));
 
         JSInterop.Setup<bool>("weaverDownloadBlob", "administrator_private_key.pem", "priv-pem-content", "application/x-pem-file")
             .SetResult(true);
@@ -306,8 +306,8 @@ public sealed class SetupWizardComponentTests : TestContext
         // WHY:  Browsers that block automatic downloads must instruct the user to copy manually.
         // HOW:  Sets weaverDownloadBlob to return false, clicks Download, and asserts fallback message.
         _authMock.Setup(m => m.IsSetupRequiredAsync()).ReturnsAsync(true);
-        _authMock.Setup(m => m.GenerateSecureKeyBundle(It.IsAny<string>(), It.IsAny<UserRole>(), It.IsAny<AccessGate>(), It.IsAny<KeyAlgorithm>(), It.IsAny<string?>()))
-            .Returns(CreateBundle("priv-pem-content", "pub", "pub-b64"));
+        JSInterop.Setup<GeneratedKeyBundle>("weaverGenerateKeyBundle", _ => true)
+            .SetResult(CreateBundle("priv-pem-content", "pub", "pub-b64"));
 
         JSInterop.Setup<bool>("weaverDownloadBlob", "administrator_private_key.pem", "priv-pem-content", "application/x-pem-file")
             .SetResult(false);
@@ -333,8 +333,8 @@ public sealed class SetupWizardComponentTests : TestContext
         // WHY:  Prevents unhandled JS interop exceptions from crashing the wizard.
         // HOW:  Configures weaverDownloadBlob to throw and asserts download issue notice.
         _authMock.Setup(m => m.IsSetupRequiredAsync()).ReturnsAsync(true);
-        _authMock.Setup(m => m.GenerateSecureKeyBundle(It.IsAny<string>(), It.IsAny<UserRole>(), It.IsAny<AccessGate>(), It.IsAny<KeyAlgorithm>(), It.IsAny<string?>()))
-            .Returns(CreateBundle("priv-pem-content", "pub", "pub-b64"));
+        JSInterop.Setup<GeneratedKeyBundle>("weaverGenerateKeyBundle", _ => true)
+            .SetResult(CreateBundle("priv-pem-content", "pub", "pub-b64"));
 
         JSInterop.Setup<bool>("weaverDownloadBlob", "administrator_private_key.pem", "priv-pem-content", "application/x-pem-file")
             .SetException(new JSException("DOM exception"));
@@ -360,8 +360,8 @@ public sealed class SetupWizardComponentTests : TestContext
         // WHY:  Allows operators to securely store their private key in a password manager.
         // HOW:  Sets weaverCopyText to succeed, clicks Copy, and asserts backup confirmed.
         _authMock.Setup(m => m.IsSetupRequiredAsync()).ReturnsAsync(true);
-        _authMock.Setup(m => m.GenerateSecureKeyBundle(It.IsAny<string>(), It.IsAny<UserRole>(), It.IsAny<AccessGate>(), It.IsAny<KeyAlgorithm>(), It.IsAny<string?>()))
-            .Returns(CreateBundle("priv-pem-content", "pub", "pub-b64"));
+        JSInterop.Setup<GeneratedKeyBundle>("weaverGenerateKeyBundle", _ => true)
+            .SetResult(CreateBundle("priv-pem-content", "pub", "pub-b64"));
 
         JSInterop.SetupVoid("weaverCopyText", "priv-pem-content").SetVoidResult();
 
@@ -389,8 +389,8 @@ public sealed class SetupWizardComponentTests : TestContext
         // WHY:  Surfaces clipboard permission denials cleanly with instructions to copy manually.
         // HOW:  Configures weaverCopyText to throw and asserts fallback message.
         _authMock.Setup(m => m.IsSetupRequiredAsync()).ReturnsAsync(true);
-        _authMock.Setup(m => m.GenerateSecureKeyBundle(It.IsAny<string>(), It.IsAny<UserRole>(), It.IsAny<AccessGate>(), It.IsAny<KeyAlgorithm>(), It.IsAny<string?>()))
-            .Returns(CreateBundle("priv-pem-content", "pub", "pub-b64"));
+        JSInterop.Setup<GeneratedKeyBundle>("weaverGenerateKeyBundle", _ => true)
+            .SetResult(CreateBundle("priv-pem-content", "pub", "pub-b64"));
 
         JSInterop.SetupVoid("weaverCopyText", "priv-pem-content")
             .SetException(new JSException("Clipboard permission denied"));
@@ -496,8 +496,8 @@ public sealed class SetupWizardComponentTests : TestContext
         // WHY:  Operators must be able to revise earlier selections before committing setup.
         // HOW:  Advances to Step 2, clicks Back to Step 1, advances to Step 3, clicks Back to Step 2.
         _authMock.Setup(m => m.IsSetupRequiredAsync()).ReturnsAsync(true);
-        _authMock.Setup(m => m.GenerateSecureKeyBundle(It.IsAny<string>(), It.IsAny<UserRole>(), It.IsAny<AccessGate>(), It.IsAny<KeyAlgorithm>(), It.IsAny<string?>()))
-            .Returns(CreateBundle("priv", "pub", "pub-b64-value"));
+        JSInterop.Setup<GeneratedKeyBundle>("weaverGenerateKeyBundle", _ => true)
+            .SetResult(CreateBundle("priv", "pub", "pub-b64-value"));
 
         IRenderedComponent<SetupWizard> cut = RenderComponent<SetupWizard>();
         await cut.Find("button.btn-primary").ClickAsync(new MouseEventArgs());
@@ -538,8 +538,8 @@ public sealed class SetupWizardComponentTests : TestContext
         _authMock.Setup(m => m.IsSetupRequiredAsync()).ReturnsAsync(true);
 
         // Test 1: Standard key > 24 chars
-        _authMock.Setup(m => m.GenerateSecureKeyBundle(It.IsAny<string>(), It.IsAny<UserRole>(), It.IsAny<AccessGate>(), It.IsAny<KeyAlgorithm>(), It.IsAny<string?>()))
-            .Returns(CreateBundle("priv", "pub", "123456789012345678901234567890"));
+        JSInterop.Setup<GeneratedKeyBundle>("weaverGenerateKeyBundle", _ => true)
+            .SetResult(CreateBundle("priv", "pub", "123456789012345678901234567890"));
 
         IRenderedComponent<SetupWizard> cut = RenderComponent<SetupWizard>();
         await cut.Find("button.btn-primary").ClickAsync(new MouseEventArgs());
@@ -587,8 +587,8 @@ public sealed class SetupWizardComponentTests : TestContext
         // WHY:  Completes first-launch wizard and enables immediate administrative access.
         // HOW:  Configures CompleteInitialSetupAsync and GenerateBearerToken, clicks Initialize, and verifies session.
         _authMock.Setup(m => m.IsSetupRequiredAsync()).ReturnsAsync(true);
-        _authMock.Setup(m => m.GenerateSecureKeyBundle("administrator", UserRole.Administrator, AccessGate.ApiWeb, KeyAlgorithm.Ed25519, null))
-            .Returns(CreateBundle("priv", "pub", "pub-b64-ed25519-valid-key=="));
+        JSInterop.Setup<GeneratedKeyBundle>("weaverGenerateKeyBundle", _ => true)
+            .SetResult(CreateBundle("priv", "pub", "pub-b64-ed25519-valid-key=="));
 
         _authMock.Setup(m => m.CompleteInitialSetupAsync("administrator", "pub-b64-ed25519-valid-key==", KeyAlgorithm.Ed25519, AccessGate.ApiWeb))
             .ReturnsAsync(_masterAdmin);
@@ -626,8 +626,8 @@ public sealed class SetupWizardComponentTests : TestContext
         // WHY:  Setup completion in the database must not be blocked by browser storage failure.
         // HOW:  Configures weaverSetSession to throw, clicks Initialize, and asserts navigation.
         _authMock.Setup(m => m.IsSetupRequiredAsync()).ReturnsAsync(true);
-        _authMock.Setup(m => m.GenerateSecureKeyBundle("administrator", UserRole.Administrator, AccessGate.ApiWeb, KeyAlgorithm.Ed25519, null))
-            .Returns(CreateBundle("priv", "pub", "pub-b64-ed25519-valid-key=="));
+        JSInterop.Setup<GeneratedKeyBundle>("weaverGenerateKeyBundle", _ => true)
+            .SetResult(CreateBundle("priv", "pub", "pub-b64-ed25519-valid-key=="));
 
         _authMock.Setup(m => m.CompleteInitialSetupAsync("administrator", "pub-b64-ed25519-valid-key==", KeyAlgorithm.Ed25519, AccessGate.ApiWeb))
             .ReturnsAsync(_masterAdmin);
@@ -696,8 +696,8 @@ public sealed class SetupWizardComponentTests : TestContext
         // WHY:  Database integrity violations or IO errors must be displayed to the operator.
         // HOW:  Configures CompleteInitialSetupAsync to throw and asserts alert message.
         _authMock.Setup(m => m.IsSetupRequiredAsync()).ReturnsAsync(true);
-        _authMock.Setup(m => m.GenerateSecureKeyBundle(It.IsAny<string>(), It.IsAny<UserRole>(), It.IsAny<AccessGate>(), It.IsAny<KeyAlgorithm>(), It.IsAny<string?>()))
-            .Returns(CreateBundle("priv", "pub", "pub-b64"));
+        JSInterop.Setup<GeneratedKeyBundle>("weaverGenerateKeyBundle", _ => true)
+            .SetResult(CreateBundle("priv", "pub", "pub-b64"));
 
         _authMock.Setup(m => m.CompleteInitialSetupAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<KeyAlgorithm>(), It.IsAny<AccessGate>()))
             .Throws(new InvalidOperationException("Master administrator conflict."));

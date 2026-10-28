@@ -17,11 +17,11 @@ All client-side cryptographic primitives and vendor libraries are audited, vendo
 - **License**: MIT License (Paul Miller / noble-crypto contributors)
 - **SHA-256 Digest**:
   ```
-  5af1175228bf2aab9a8c790e49e2a7f7086610168a7d066c4a633817d996025c
+  a110817fa872155227a1011bd48e532ef4b93e409755f39bb416b942492e21d7
   ```
 - **SHA-384 (SRI) Digest**:
   ```
-  sha384-cGSuUAxVag6M22EUFPXwy2Ru6SijbfQ8wdJ+2GBTND1XmMtuH2Atb50BfuBg/z0F
+  sha384-2PWlMHMrV/enpeAeEB0EtHqLjYv9Rql4aPLZNGynBOQPFkoacC01+5WwbCsr8lgD
   ```
 - **Upstream Component Packages**:
   1. `@noble/ed25519` (Version: `3.2.0`): RFC 8032 Ed25519 high-assurance digital signature implementation.

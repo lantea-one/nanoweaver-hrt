@@ -222,17 +222,21 @@
         _step = 2;
     }
 
-    private void GenerateKeys()
+    private async Task GenerateKeys()
     {
         _errorMessage = null;
         _downloadStatus = null;
         try
         {
-            _generatedBundle = AuthService.GenerateSecureKeyBundle(
+            // WHAT: Derives asymmetric keypair client-side in browser memory via WebCrypto/Noble.
+            // WHY:  Prime Directive 12 & Audit C8: Private keys never touch the server during setup or sign-in.
+            // HOW:  Invokes weaverGenerateKeyBundle in browser memory and receives only public key + sealed bundle.
+            _generatedBundle = await JSRuntime.InvokeAsync<GeneratedKeyBundle>(
+                "weaverGenerateKeyBundle",
                 _adminUsername,
-                UserRole.Administrator,
-                _accessGate,
-                _selectedAlgorithm,
+                UserRole.Administrator.ToString(),
+                _accessGate.ToString(),
+                _selectedAlgorithm.ToString(),
                 string.IsNullOrWhiteSpace(_keyPassword) ? null : _keyPassword);
         }
         catch (Exception ex)

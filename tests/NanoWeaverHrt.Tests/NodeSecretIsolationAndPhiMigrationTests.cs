@@ -153,7 +153,7 @@ public sealed class NodeSecretIsolationAndPhiMigrationTests : IDisposable
 
         UserAccount admin = await nodeA.CompleteInitialSetupAsync(
             "isolation_admin",
-            nodeA.GenerateSecureKeyBundle("isolation_admin", UserRole.Administrator, AccessGate.ApiWeb, KeyAlgorithm.Ed25519).PublicKeyBase64,
+            TestChallengeHelper.CreateTestKeyBundle("isolation_admin", UserRole.Administrator, AccessGate.ApiWeb, KeyAlgorithm.Ed25519).PublicKeyBase64,
             KeyAlgorithm.Ed25519,
             AccessGate.ApiWeb);
 

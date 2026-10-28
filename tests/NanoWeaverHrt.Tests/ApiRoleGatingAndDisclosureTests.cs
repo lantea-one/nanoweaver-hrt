@@ -122,13 +122,13 @@ public sealed class ApiRoleGatingAndDisclosureTests : IClassFixture<WebApplicati
 
         if (await auth.IsSetupRequiredAsync())
         {
-            GeneratedKeyBundle adminBundle = auth.GenerateSecureKeyBundle("gate_admin", UserRole.Administrator, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
+            GeneratedKeyBundle adminBundle = TestChallengeHelper.CreateTestKeyBundle("gate_admin", UserRole.Administrator, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
             await auth.CompleteInitialSetupAsync("gate_admin", adminBundle.PublicKeyBase64, KeyAlgorithm.Ed25519, AccessGate.ApiWeb);
 
-            GeneratedKeyBundle researcherBundle = auth.GenerateSecureKeyBundle("gate_researcher", UserRole.Researcher, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
+            GeneratedKeyBundle researcherBundle = TestChallengeHelper.CreateTestKeyBundle("gate_researcher", UserRole.Researcher, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
             await auth.CreateUserAsync("gate_researcher", UserRole.Researcher, AccessGate.ApiWeb, researcherBundle.PublicKeyBase64, KeyAlgorithm.Ed25519);
 
-            GeneratedKeyBundle patientBundle = auth.GenerateSecureKeyBundle("gate_patient", UserRole.Patient, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
+            GeneratedKeyBundle patientBundle = TestChallengeHelper.CreateTestKeyBundle("gate_patient", UserRole.Patient, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
             await auth.CreateUserAsync("gate_patient", UserRole.Patient, AccessGate.ApiWeb, patientBundle.PublicKeyBase64, KeyAlgorithm.Ed25519);
         }
 
@@ -573,8 +573,8 @@ public sealed class ApiRoleGatingAndDisclosureTests : IClassFixture<WebApplicati
         Assert.NotNull(loginProblem);
         Assert.Equal(401, loginProblem.Status);
 
-        HttpResponseMessage keypairRejection = await anonymousClient.PostAsJsonAsync("/api/setup/generate-keypair", new GenerateKeyRequest { Username = "" });
-        Assert.Equal(HttpStatusCode.BadRequest, keypairRejection.StatusCode);
+        HttpResponseMessage keypairRejection = await anonymousClient.PostAsJsonAsync("/api/setup/generate-keypair", new { Username = "" });
+        Assert.Equal(HttpStatusCode.NotFound, keypairRejection.StatusCode);
     }
 
     /// <summary>
@@ -908,7 +908,7 @@ public sealed class ApiRoleGatingAndDisclosureTests : IClassFixture<WebApplicati
         UserAccount? second = existing.FirstOrDefault(u => string.Equals(u.Username, "gate_patient_two", StringComparison.OrdinalIgnoreCase));
         if (second == null)
         {
-            GeneratedKeyBundle bundle = auth.GenerateSecureKeyBundle("gate_patient_two", UserRole.Patient, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
+            GeneratedKeyBundle bundle = TestChallengeHelper.CreateTestKeyBundle("gate_patient_two", UserRole.Patient, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
             second = await auth.CreateUserAsync("gate_patient_two", UserRole.Patient, AccessGate.ApiWeb, bundle.PublicKeyBase64, KeyAlgorithm.Ed25519);
         }
 

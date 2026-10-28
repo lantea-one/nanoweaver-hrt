@@ -90,12 +90,12 @@ public sealed class MinimalApiEndpointEdgeCaseTests : IClassFixture<WebApplicati
 
         if (await authService.IsSetupRequiredAsync())
         {
-            GeneratedKeyBundle adminBundle = authService.GenerateSecureKeyBundle("admin", UserRole.Administrator, AccessGate.ApiWeb, KeyAlgorithm.Ed25519, null);
+            GeneratedKeyBundle adminBundle = TestChallengeHelper.CreateTestKeyBundle("admin", UserRole.Administrator, AccessGate.ApiWeb, KeyAlgorithm.Ed25519, null);
             await authService.CompleteInitialSetupAsync("admin", adminBundle.PublicKeyBase64, KeyAlgorithm.Ed25519, AccessGate.ApiWeb);
             _adminToken = await TestChallengeHelper.ExchangeChallengeTokenAsync(_client, "admin", adminBundle.PrivateKeyPem);
         }
 
-        GeneratedKeyBundle researcherBundle = authService.GenerateSecureKeyBundle("researcher-bob", UserRole.Researcher, AccessGate.ApiWeb, KeyAlgorithm.Ed25519, null);
+        GeneratedKeyBundle researcherBundle = TestChallengeHelper.CreateTestKeyBundle("researcher-bob", UserRole.Researcher, AccessGate.ApiWeb, KeyAlgorithm.Ed25519, null);
         await authService.CreateUserAsync("researcher-bob", UserRole.Researcher, AccessGate.ApiWeb, researcherBundle.PublicKeyBase64, KeyAlgorithm.Ed25519);
         _researcherToken = await TestChallengeHelper.ExchangeChallengeTokenAsync(_client, "researcher-bob", researcherBundle.PrivateKeyPem);
     }
@@ -141,12 +141,12 @@ public sealed class MinimalApiEndpointEdgeCaseTests : IClassFixture<WebApplicati
                 Assert.Equal(HttpStatusCode.BadRequest, initResp.StatusCode);
             }
 
-            // POST /api/setup/generate-keypair with empty payload -> 400 (line 1721)
+            // POST /api/setup/generate-keypair is removed in P20 -> 404
             using (HttpRequestMessage genReq = new(HttpMethod.Post, "/api/setup/generate-keypair"))
             {
                 genReq.Content = JsonContent.Create(new { Username = "" });
                 HttpResponseMessage genResp = await uninitClient.SendAsync(genReq);
-                Assert.Equal(HttpStatusCode.BadRequest, genResp.StatusCode);
+                Assert.Equal(HttpStatusCode.NotFound, genResp.StatusCode);
             }
         }
         finally
@@ -222,19 +222,19 @@ public sealed class MinimalApiEndpointEdgeCaseTests : IClassFixture<WebApplicati
     }
 
     /// <summary>
-    /// Verifies that POST /api/setup/generate-keypair with an empty username returns 400 Bad Request.
+    /// Verifies that POST /api/setup/generate-keypair returns 404 Not Found after client-side migration (P20).
     /// </summary>
     [Fact]
-    public async Task SetupGenerateKey_EmptyUsername_ReturnsBadRequest()
+    public async Task SetupGenerateKey_RemovedEndpoint_ReturnsNotFound()
     {
-        // WHAT: Tests username validation on /api/setup/generate-keypair.
-        // WHY:  Key generation requires a designated identity handle.
-        // HOW:  POSTs empty username payload and verifies 400 Bad Request.
+        // WHAT: Tests deprecation and removal of /api/setup/generate-keypair.
+        // WHY:  P20 eliminated server-side private key generation completely.
+        // HOW:  POSTs to /api/setup/generate-keypair and verifies 404 Not Found.
         using HttpRequestMessage req = new(HttpMethod.Post, "/api/setup/generate-keypair");
         req.Content = JsonContent.Create(new { Username = "" });
 
         HttpResponseMessage resp = await _client.SendAsync(req);
-        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
 
     /// <summary>
@@ -254,21 +254,21 @@ public sealed class MinimalApiEndpointEdgeCaseTests : IClassFixture<WebApplicati
     }
 
     /// <summary>
-    /// Verifies that POST /api/users/generate-keypair rejects empty usernames and POST /api/users rejects duplicate registrations.
+    /// Verifies that POST /api/users rejects empty usernames and duplicate registrations.
     /// </summary>
     [Fact]
     public async Task UserGenerateKey_ValidationAndDuplicateBranches()
     {
         // WHAT: Tests validation and duplicate user handling on user provisioning endpoints.
         // WHY:  Admin provisioning must validate username inputs and prevent duplicate handle collisions.
-        // HOW:  POSTs empty username to keypair generator (asserts 400), then POSTs duplicate username to create endpoint (asserts 409).
+        // HOW:  POSTs empty username to create endpoint (asserts 400), then POSTs duplicate username to create endpoint (asserts 409).
         await EnsureUsersProvisionedAsync();
 
-        // 1. Empty username -> 400 (line 1950)
-        using (HttpRequestMessage emptyReq = new(HttpMethod.Post, "/api/users/generate-keypair"))
+        // 1. Empty username or public key on POST /api/users -> 400
+        using (HttpRequestMessage emptyReq = new(HttpMethod.Post, "/api/users"))
         {
             emptyReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _adminToken);
-            emptyReq.Content = JsonContent.Create(new { Username = "" });
+            emptyReq.Content = JsonContent.Create(new { Username = "", PublicKeyBase64 = "" });
             HttpResponseMessage emptyResp = await _client.SendAsync(emptyReq);
             Assert.Equal(HttpStatusCode.BadRequest, emptyResp.StatusCode);
         }

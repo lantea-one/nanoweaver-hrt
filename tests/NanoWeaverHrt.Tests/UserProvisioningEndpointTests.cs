@@ -76,10 +76,6 @@ public sealed class UserProvisioningEndpointTests : IClassFixture<WebApplication
             => _inner.CompleteInitialSetupAsync(adminUsername, publicKeyBase64, algorithm, accessGate, ct);
 
         /// <inheritdoc/>
-        public GeneratedKeyBundle GenerateSecureKeyBundle(string username, UserRole role, AccessGate gate, KeyAlgorithm algorithm, string? password = null)
-            => _inner.GenerateSecureKeyBundle(username, role, gate, algorithm, password);
-
-        /// <inheritdoc/>
         public AuthChallenge CreateChallenge(string username) => _inner.CreateChallenge(username);
 
         /// <inheritdoc/>
@@ -199,13 +195,13 @@ public sealed class UserProvisioningEndpointTests : IClassFixture<WebApplication
 
         if (await auth.IsSetupRequiredAsync())
         {
-            GeneratedKeyBundle adminBundle = auth.GenerateSecureKeyBundle("prov_admin", UserRole.Administrator, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
+            GeneratedKeyBundle adminBundle = TestChallengeHelper.CreateTestKeyBundle("prov_admin", UserRole.Administrator, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
             await auth.CompleteInitialSetupAsync("prov_admin", adminBundle.PublicKeyBase64, KeyAlgorithm.Ed25519, AccessGate.ApiWeb);
 
-            GeneratedKeyBundle researcherBundle = auth.GenerateSecureKeyBundle("prov_researcher", UserRole.Researcher, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
+            GeneratedKeyBundle researcherBundle = TestChallengeHelper.CreateTestKeyBundle("prov_researcher", UserRole.Researcher, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
             await auth.CreateUserAsync("prov_researcher", UserRole.Researcher, AccessGate.ApiWeb, researcherBundle.PublicKeyBase64, KeyAlgorithm.Ed25519);
 
-            GeneratedKeyBundle patientBundle = auth.GenerateSecureKeyBundle("prov_patient", UserRole.Patient, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
+            GeneratedKeyBundle patientBundle = TestChallengeHelper.CreateTestKeyBundle("prov_patient", UserRole.Patient, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
             await auth.CreateUserAsync("prov_patient", UserRole.Patient, AccessGate.ApiWeb, patientBundle.PublicKeyBase64, KeyAlgorithm.Ed25519);
         }
 
@@ -241,9 +237,7 @@ public sealed class UserProvisioningEndpointTests : IClassFixture<WebApplication
     /// <returns>A Base64 public key the endpoint will accept.</returns>
     private static string FreshPublicKey(WebApplicationFactory<Program> factory, string username)
     {
-        using IServiceScope scope = factory.Services.CreateScope();
-        UserAuthenticationService auth = scope.ServiceProvider.GetRequiredService<UserAuthenticationService>();
-        return auth.GenerateSecureKeyBundle(username, UserRole.Researcher, AccessGate.Api, KeyAlgorithm.Ed25519).PublicKeyBase64;
+        return TestChallengeHelper.CreateTestKeyBundle(username, UserRole.Researcher, AccessGate.Api, KeyAlgorithm.Ed25519).PublicKeyBase64;
     }
 
     /// <summary>
@@ -449,16 +443,15 @@ public sealed class UserProvisioningEndpointTests : IClassFixture<WebApplication
     }
 
     /// <summary>
-    /// Verifies that first-launch setup and the generate-keypair re-key flow still use the retained upsert.
+    /// Verifies that the removed /api/users/generate-keypair endpoint returns 405 MethodNotAllowed,
+    /// while service-level CreateUserAsync retains its upsert semantics for rekeying.
     /// </summary>
     [Fact]
-    public async Task SetupAndGenerateKeypairRekey_StillUpsertAfterInsertOnlyCreateUser()
+    public async Task RemovedGenerateKeypairEndpoint_Returns405MethodNotAllowed_AndServiceRetainsUpsert()
     {
-        // WHAT: Completes setup, then calls generate-keypair twice for one username.
-        // WHY:  Both flows rely on the upsert in CreateUserAsync; making POST /api/users insert-only must
-        //       not have changed them.
-        // HOW:  Setup is exercised by ProvisionRoleTokensAsync; the second generate-keypair call must answer
-        //       200 (not 409) and replace the stored public key with the newly generated one.
+        // WHAT: Asserts 405 on deprecated /api/users/generate-keypair, then tests service-level CreateUserAsync rekey.
+        // WHY:  P20 eliminated server-side keypair generation endpoints entirely.
+        // HOW:  Posts to /api/users/generate-keypair (405), then verifies CreateUserAsync replaces stored public key.
         var (adminToken, _, _) = await ProvisionRoleTokensAsync(_factory);
         using HttpClient adminClient = CreateClient(_factory, adminToken);
 
@@ -466,18 +459,17 @@ public sealed class UserProvisioningEndpointTests : IClassFixture<WebApplication
         Assert.NotNull(initial);
         Assert.Contains(initial, u => u.Username == "prov_admin" && u.Role == UserRole.Administrator);
 
-        GenerateKeyRequest request = new() { Username = "prov_rekeyed", Role = UserRole.Researcher, AccessGate = AccessGate.Api, Algorithm = KeyAlgorithm.Ed25519 };
+        HttpResponseMessage deprecatedRes = await adminClient.PostAsJsonAsync("/api/users/generate-keypair", new { Username = "prov_rekeyed" });
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, deprecatedRes.StatusCode);
 
-        HttpResponseMessage first = await adminClient.PostAsJsonAsync("/api/users/generate-keypair", request);
-        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
-        GeneratedKeyBundle? firstBundle = await first.Content.ReadFromJsonAsync<GeneratedKeyBundle>();
-        Assert.NotNull(firstBundle);
+        using IServiceScope scope = _factory.Services.CreateScope();
+        UserAuthenticationService auth = scope.ServiceProvider.GetRequiredService<UserAuthenticationService>();
 
-        HttpResponseMessage second = await adminClient.PostAsJsonAsync("/api/users/generate-keypair", request);
-        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
-        GeneratedKeyBundle? secondBundle = await second.Content.ReadFromJsonAsync<GeneratedKeyBundle>();
-        Assert.NotNull(secondBundle);
-        Assert.NotEqual(firstBundle.PublicKeyBase64, secondBundle.PublicKeyBase64);
+        GeneratedKeyBundle firstBundle = TestChallengeHelper.CreateTestKeyBundle("prov_rekeyed", UserRole.Researcher, AccessGate.Api, KeyAlgorithm.Ed25519);
+        await auth.CreateUserAsync("prov_rekeyed", UserRole.Researcher, AccessGate.Api, firstBundle.PublicKeyBase64, KeyAlgorithm.Ed25519);
+
+        GeneratedKeyBundle secondBundle = TestChallengeHelper.CreateTestKeyBundle("prov_rekeyed", UserRole.Researcher, AccessGate.Api, KeyAlgorithm.Ed25519);
+        await auth.CreateUserAsync("prov_rekeyed", UserRole.Researcher, AccessGate.Api, secondBundle.PublicKeyBase64, KeyAlgorithm.Ed25519);
 
         UserAccount[]? users = await adminClient.GetFromJsonAsync<UserAccount[]>("/api/users");
         Assert.NotNull(users);

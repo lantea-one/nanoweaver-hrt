@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
-  "seeded_from_commit": "f63ee48bdcfd230c3241f5f08883a732c26ac42e",
+  "seeded_from_commit": "44200632f897d526363066351d2a396b7506e278",
   "seeded_on_utc": "2026-10-28",
   "measurement": {
     "runsettings": "coverage-full.runsettings",
     "weaver_test_postgres": "unset"
   },
-  "line_rate": 99.51,
-  "branch_rate": 96.38,
-  "uncovered_lines_total": 59,
+  "line_rate": 99.55,
+  "branch_rate": 96.4,
+  "uncovered_lines_total": 54,
   "classes": {
     "NanoWeaverHrt.Components.Layout.MainLayout": 21,
     "NanoWeaverHrt.Components.Layout.MainLayout/<OnAfterRenderAsync>d__23": 2,
@@ -18,15 +18,16 @@
     "NanoWeaverHrt.Program/<>c": 1,
     "NanoWeaverHrt.Program/<>c/<<Main>b__4_18>d": 1,
     "NanoWeaverHrt.Program/<>c/<<Main>b__4_60>d": 5,
-    "NanoWeaverHrt.Program/<>c/<<Main>b__4_68>d": 5,
+    "NanoWeaverHrt.Program/<>c/<<Main>b__4_68>d": 1,
+    "NanoWeaverHrt.Program/<>c/<<Main>b__4_69>d": 1,
     "NanoWeaverHrt.Program/<>c/<<Main>b__4_70>d": 1,
     "NanoWeaverHrt.Program/<>c/<<Main>b__4_71>d": 1,
     "NanoWeaverHrt.Program/<>c/<<Main>b__4_72>d": 1,
     "NanoWeaverHrt.Program/<>c/<<Main>b__4_73>d": 1,
     "NanoWeaverHrt.Program/<>c/<<Main>b__4_74>d": 1,
     "NanoWeaverHrt.Program/<>c/<<Main>b__4_75>d": 1,
-    "NanoWeaverHrt.Program/<>c/<<Main>b__4_76>d": 1,
     "NanoWeaverHrt.Program/<>c/<<Main>b__4_77>d": 1,
+    "NanoWeaverHrt.Program/<>c/<<Main>b__4_78>d": 1,
     "NanoWeaverHrt.Program/<>c/<<Main>b__4_79>d": 1,
     "NanoWeaverHrt.Program/<>c/<<Main>b__4_80>d": 1,
     "NanoWeaverHrt.Program/<>c/<<Main>b__4_81>d": 1,
@@ -36,8 +37,6 @@
     "NanoWeaverHrt.Program/<>c/<<Main>b__4_85>d": 1,
     "NanoWeaverHrt.Program/<>c/<<Main>b__4_86>d": 1,
     "NanoWeaverHrt.Program/<>c/<<Main>b__4_87>d": 1,
-    "NanoWeaverHrt.Program/<>c/<<Main>b__4_88>d": 1,
-    "NanoWeaverHrt.Program/<>c/<<Main>b__4_89>d": 1,
-    "NanoWeaverHrt.Program/<>c/<<Main>b__4_90>d": 1
+    "NanoWeaverHrt.Program/<>c/<<Main>b__4_88>d": 1
   }
 }

@@ -221,7 +221,7 @@ public sealed class ServiceStateMachineEdgeCaseTests : IDisposable
         Assert.Equal("First-launch setup required. Please complete initial setup at /setup.", setupErr);
 
         // Complete setup
-        GeneratedKeyBundle adminBundle = auth.GenerateSecureKeyBundle("admin", UserRole.Administrator, AccessGate.ApiWeb, KeyAlgorithm.Ed25519, null);
+        GeneratedKeyBundle adminBundle = TestChallengeHelper.CreateTestKeyBundle("admin", UserRole.Administrator, AccessGate.ApiWeb, KeyAlgorithm.Ed25519, null);
         await auth.CompleteInitialSetupAsync("admin", adminBundle.PublicKeyBase64, KeyAlgorithm.Ed25519, AccessGate.ApiWeb);
 
         // 2. Expired challenge branch (line 281)
@@ -239,7 +239,7 @@ public sealed class ServiceStateMachineEdgeCaseTests : IDisposable
         Assert.Equal("Authentication challenge has expired.", expErr);
 
         // 3. Deactivated user branch (line 293)
-        GeneratedKeyBundle userBundle = auth.GenerateSecureKeyBundle("inactive-user", UserRole.Researcher, AccessGate.ApiWeb, KeyAlgorithm.Ed25519, null);
+        GeneratedKeyBundle userBundle = TestChallengeHelper.CreateTestKeyBundle("inactive-user", UserRole.Researcher, AccessGate.ApiWeb, KeyAlgorithm.Ed25519, null);
         UserAccount deactivatedAccount = await auth.CreateUserAsync("inactive-user", UserRole.Researcher, AccessGate.ApiWeb, userBundle.PublicKeyBase64, KeyAlgorithm.Ed25519);
         deactivatedAccount = deactivatedAccount with { IsActive = false };
         await _userRepository.CreateUserAsync(deactivatedAccount);

@@ -620,13 +620,13 @@ public sealed class DatasetSignatureEnforcementTests : IClassFixture<WebApplicat
 
         if (await auth.IsSetupRequiredAsync())
         {
-            GeneratedKeyBundle adminBundle = auth.GenerateSecureKeyBundle("gate_admin", UserRole.Administrator, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
+            GeneratedKeyBundle adminBundle = TestChallengeHelper.CreateTestKeyBundle("gate_admin", UserRole.Administrator, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
             await auth.CompleteInitialSetupAsync("gate_admin", adminBundle.PublicKeyBase64, KeyAlgorithm.Ed25519, AccessGate.ApiWeb);
 
-            GeneratedKeyBundle researcherBundle = auth.GenerateSecureKeyBundle("gate_researcher", UserRole.Researcher, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
+            GeneratedKeyBundle researcherBundle = TestChallengeHelper.CreateTestKeyBundle("gate_researcher", UserRole.Researcher, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
             await auth.CreateUserAsync("gate_researcher", UserRole.Researcher, AccessGate.ApiWeb, researcherBundle.PublicKeyBase64, KeyAlgorithm.Ed25519);
 
-            GeneratedKeyBundle patientBundle = auth.GenerateSecureKeyBundle("gate_patient", UserRole.Patient, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
+            GeneratedKeyBundle patientBundle = TestChallengeHelper.CreateTestKeyBundle("gate_patient", UserRole.Patient, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
             await auth.CreateUserAsync("gate_patient", UserRole.Patient, AccessGate.ApiWeb, patientBundle.PublicKeyBase64, KeyAlgorithm.Ed25519);
         }
 

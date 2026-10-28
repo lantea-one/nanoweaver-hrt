@@ -785,18 +785,7 @@ public sealed class UserProfileAndContactTests : IClassFixture<WebApplicationFac
         // WHY:  Ensures RBAC authorization, self-access, validation, and RFC 7807 error responses work properly.
         // HOW:  Initializes admin and regular user accounts via setup, issues bearer tokens, and invokes HTTP requests.
         // 1. Setup admin account
-        GenerateKeyRequest keyGenReq = new()
-        {
-            Username = "admin-sys",
-            Role = UserRole.Administrator,
-            AccessGate = AccessGate.ApiWeb,
-            Algorithm = KeyAlgorithm.Ed25519
-        };
-
-        HttpResponseMessage keyGenRes = await _client.PostAsJsonAsync("/api/setup/generate-keypair", keyGenReq);
-        Assert.Equal(HttpStatusCode.OK, keyGenRes.StatusCode);
-        GeneratedKeyBundle? adminBundle = await keyGenRes.Content.ReadFromJsonAsync<GeneratedKeyBundle>();
-        Assert.NotNull(adminBundle);
+        GeneratedKeyBundle adminBundle = TestChallengeHelper.CreateTestKeyBundle("admin-sys", UserRole.Administrator, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
 
         InitialSetupRequest initReq = new()
         {
@@ -813,21 +802,21 @@ public sealed class UserProfileAndContactTests : IClassFixture<WebApplicationFac
         string adminToken = await TestChallengeHelper.ExchangeChallengeTokenAsync(_client, "admin-sys", adminBundle.PrivateKeyPem);
 
         // 2. Create regular user (patient-bob) using admin client
-        using HttpRequestMessage createUserReq = new(HttpMethod.Post, "/api/users/generate-keypair")
+        GeneratedKeyBundle bobBundle = TestChallengeHelper.CreateTestKeyBundle("patient-bob", UserRole.Patient, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
+        using HttpRequestMessage createUserReq = new(HttpMethod.Post, "/api/users")
         {
-            Content = JsonContent.Create(new GenerateKeyRequest
+            Content = JsonContent.Create(new CreateUserRequest
             {
                 Username = "patient-bob",
                 Role = UserRole.Patient,
                 AccessGate = AccessGate.ApiWeb,
-                Algorithm = KeyAlgorithm.Ed25519
+                Algorithm = KeyAlgorithm.Ed25519,
+                PublicKeyBase64 = bobBundle.PublicKeyBase64
             })
         };
         createUserReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
         HttpResponseMessage createUserResp = await _client.SendAsync(createUserReq);
-        Assert.Equal(HttpStatusCode.OK, createUserResp.StatusCode);
-        GeneratedKeyBundle? bobBundle = await createUserResp.Content.ReadFromJsonAsync<GeneratedKeyBundle>();
-        Assert.NotNull(bobBundle);
+        Assert.Equal(HttpStatusCode.Created, createUserResp.StatusCode);
 
         // Sign in bob to get bob's bearer token
         string bobToken = await TestChallengeHelper.ExchangeChallengeTokenAsync(_client, "patient-bob", bobBundle.PrivateKeyPem);

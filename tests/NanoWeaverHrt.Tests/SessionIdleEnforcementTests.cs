@@ -450,14 +450,11 @@ public sealed class SessionIdleEnforcementTests : IDisposable
 
         UserAccount account = new() { Username = "admin", Role = UserRole.Administrator };
         AuthChallenge challenge = new() { ChallengeId = "cid", Username = "admin", NonceBase64 = "bm9uY2U=" };
-        GeneratedKeyBundle bundle = new() { Username = "admin" };
         IReadOnlyList<UserAccount> accounts = [account];
 
         inner.Setup(s => s.IsSetupRequiredAsync(It.IsAny<CancellationToken>())).ReturnsAsync(true);
         inner.Setup(s => s.CompleteInitialSetupAsync("admin", "pub", KeyAlgorithm.Ed25519, AccessGate.ApiWeb, It.IsAny<CancellationToken>()))
             .ReturnsAsync(account);
-        inner.Setup(s => s.GenerateSecureKeyBundle("admin", UserRole.Administrator, AccessGate.ApiWeb, KeyAlgorithm.Ed25519, "pass"))
-            .Returns(bundle);
         inner.Setup(s => s.CreateChallenge("admin")).Returns(challenge);
         inner.Setup(s => s.VerifyChallengeAndIssueTokenAsync("admin", "cid", "sig", true, It.IsAny<CancellationToken>()))
             .ReturnsAsync((true, null, "token", account));
@@ -475,7 +472,6 @@ public sealed class SessionIdleEnforcementTests : IDisposable
 
         Assert.True(await service.IsSetupRequiredAsync());
         Assert.Same(account, await service.CompleteInitialSetupAsync("admin", "pub", KeyAlgorithm.Ed25519));
-        Assert.Same(bundle, service.GenerateSecureKeyBundle("admin", UserRole.Administrator, AccessGate.ApiWeb, KeyAlgorithm.Ed25519, "pass"));
         Assert.Same(challenge, service.CreateChallenge("admin"));
         Assert.Equal("token", (await service.VerifyChallengeAndIssueTokenAsync("admin", "cid", "sig", true)).Token);
         Assert.Same(accounts, await service.ListUsersAsync());

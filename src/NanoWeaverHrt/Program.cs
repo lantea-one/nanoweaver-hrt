@@ -39,6 +39,7 @@ using NanoWeaverHrt.Events;
 using NanoWeaverHrt.Events.Models;
 using NanoWeaverHrt.Caching;
 using NanoWeaverHrt.Bridges;
+using NanoWeaverHrt.Security.Integrity;
 
 namespace NanoWeaverHrt;
 
@@ -125,6 +126,7 @@ public class Program
         builder.Services.AddSingleton<ProfileDataProtector>();
         builder.Services.AddSingleton<IUserProfileRepository, UserProfileRepository>();
         builder.Services.AddSingleton<IPatientDnaRepository, PatientDnaRepository>();
+        builder.Services.AddSingleton<IAssetIntegrityService, AssetIntegrityService>();
         // WHAT: Registers the authentication service behind the server-side idle expiration decorator.
         // WHY:  Prime Directive 12 requires idle sign-out to be validated server-side. The idle clock
         //       therefore lives in a singleton registry that no browser can touch, and every token
@@ -386,7 +388,7 @@ public class Program
                     return;
                 }
 
-                if (!isSetupRequired && (path.Equals("/api/setup/initialize", StringComparison.OrdinalIgnoreCase) || path.Equals("/api/setup/generate-keypair", StringComparison.OrdinalIgnoreCase)))
+                if (!isSetupRequired && path.Equals("/api/setup/initialize", StringComparison.OrdinalIgnoreCase))
                 {
                     await WriteSecureProblemAsync(context, StatusCodes.Status400BadRequest, "System has already completed initial Administrator setup.");
                     return;
@@ -1709,36 +1711,6 @@ public class Program
         .Produces(StatusCodes.Status400BadRequest);
 
         // ---------------------------------------------------------------------
-        // REST API: First-Launch Keypair Generation
-        // ---------------------------------------------------------------------
-        app.MapPost("/api/setup/generate-keypair", (GenerateKeyRequest request, IUserAuthenticationService auth, HttpContext context) =>
-        {
-            // WHAT: Generates a high-security asymmetric keypair (Ed25519 or ML-DSA-65) for the initial administrator.
-            // WHY:  Allows administrators to generate secure cryptographic credentials directly without external CLI tools.
-            // HOW:  Invokes IUserAuthenticationService.GenerateSecureKeyBundle with optional passphrase encryption.
-            if (string.IsNullOrWhiteSpace(request.Username))
-            {
-                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Username is required.");
-            }
-
-            GeneratedKeyBundle bundle = auth.GenerateSecureKeyBundle(
-                request.Username,
-                UserRole.Administrator,
-                request.AccessGate,
-                request.Algorithm,
-                request.Password);
-
-            return Results.Ok(bundle);
-        })
-        .WithName("GenerateSetupKeypair")
-        .WithTags("Authentication & Setup")
-        .WithSummary("Generates a high-security asymmetric keypair for the initial Administrator.")
-        .WithDescription("Generates Ed25519 or ML-DSA-65 keypair with optional passphrase encryption.")
-        .Accepts<GenerateKeyRequest>("application/json", "application/xml", "application/x-yaml")
-        .Produces<GeneratedKeyBundle>(StatusCodes.Status200OK)
-        .Produces(StatusCodes.Status400BadRequest);
-
-        // ---------------------------------------------------------------------
         // REST API: Authentication Challenge Issuance
         // ---------------------------------------------------------------------
         app.MapPost("/api/auth/challenge", (ChallengeRequest request, IUserAuthenticationService auth, HttpContext context) =>
@@ -1932,63 +1904,6 @@ public class Program
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status403Forbidden)
         .Produces(StatusCodes.Status409Conflict);
-
-        // ---------------------------------------------------------------------
-        // REST API: User Management - Generate Keypair and Create User
-        // ---------------------------------------------------------------------
-        app.MapPost("/api/users/generate-keypair", async (GenerateKeyRequest request, IUserAuthenticationService auth, HttpContext context, CancellationToken ct) =>
-        {
-            // WHAT: Generates an asymmetric keypair and immediately registers the new user account.
-            // WHY:  Enables Administrators to onboard new team members in a single step with secure credentials.
-            // HOW:  Derives keypair, writes public key to user store, and returns the private key bundle.
-            if (string.IsNullOrWhiteSpace(request.Username))
-            {
-                // WHY: This endpoint's rejections now all use SecureProblemDetails, so a caller does not
-                //      have to parse one schema for a validation failure and another for a fault.
-                return SecureProblemResult(
-                    context,
-                    StatusCodes.Status400BadRequest,
-                    "Username is required.");
-            }
-
-            try
-            {
-                GeneratedKeyBundle bundle = auth.GenerateSecureKeyBundle(
-                    request.Username,
-                    request.Role,
-                    request.AccessGate,
-                    request.Algorithm,
-                    request.Password);
-
-                await auth.CreateUserAsync(
-                    request.Username,
-                    request.Role,
-                    request.AccessGate,
-                    bundle.PublicKeyBase64,
-                    request.Algorithm,
-                    ct);
-
-                return Results.Ok(bundle);
-            }
-            catch (InvalidOperationException ex)
-            {
-                // WHY: As above -- a hand-rolled '{ error = ex.Message }' returns normally and so never
-                //      reaches the middleware's sanitizer, publishing raw exception text to the client.
-                return SecureProblemResult(
-                    context,
-                    StatusCodes.Status400BadRequest,
-                    SecureExceptionSanitizer.SanitizeDetail(ex.Message, StatusCodes.Status400BadRequest, context.TraceIdentifier));
-            }
-        })
-        .WithName("GenerateUserKeypair")
-        .WithTags("User Management")
-        .WithSummary("Generates an asymmetric keypair and provisions a new user account.")
-        .WithDescription("Generates Ed25519 or ML-DSA-65 keys, registers the public key, and returns the private key bundle (Administrator role required).")
-        .Accepts<GenerateKeyRequest>("application/json", "application/xml", "application/x-yaml")
-        .Produces<GeneratedKeyBundle>(StatusCodes.Status200OK)
-        .Produces(StatusCodes.Status400BadRequest)
-        .Produces(StatusCodes.Status401Unauthorized)
-        .Produces(StatusCodes.Status403Forbidden);
 
         // ---------------------------------------------------------------------
         // REST API: User Management - Delete User

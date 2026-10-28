@@ -87,18 +87,11 @@ public sealed class StackTelemetryRoleGatingTests : IClassFixture<WebApplication
     /// <returns>A signed Administrator token.</returns>
     private async Task<string> InitializeAdministratorAsync()
     {
-        GenerateKeyRequest keyRequest = new()
-        {
-            Username = "stack_admin",
-            Role = UserRole.Administrator,
-            AccessGate = AccessGate.ApiWeb,
-            Algorithm = KeyAlgorithm.Ed25519
-        };
-
-        HttpResponseMessage keyResponse = await _client.PostAsJsonAsync("/api/setup/generate-keypair", keyRequest);
-        Assert.Equal(HttpStatusCode.OK, keyResponse.StatusCode);
-        GeneratedKeyBundle? bundle = await keyResponse.Content.ReadFromJsonAsync<GeneratedKeyBundle>();
-        Assert.NotNull(bundle);
+        GeneratedKeyBundle bundle = TestChallengeHelper.CreateTestKeyBundle(
+            "stack_admin",
+            UserRole.Administrator,
+            AccessGate.ApiWeb,
+            KeyAlgorithm.Ed25519);
 
         InitialSetupRequest setupRequest = new()
         {
@@ -127,18 +120,23 @@ public sealed class StackTelemetryRoleGatingTests : IClassFixture<WebApplication
         using HttpClient adminClient = _factory.CreateClient();
         adminClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
 
-        GenerateKeyRequest keyRequest = new()
+        GeneratedKeyBundle bundle = TestChallengeHelper.CreateTestKeyBundle(
+            username,
+            role,
+            AccessGate.ApiWeb,
+            KeyAlgorithm.Ed25519);
+
+        CreateUserRequest userRequest = new()
         {
             Username = username,
             Role = role,
             AccessGate = AccessGate.ApiWeb,
-            Algorithm = KeyAlgorithm.Ed25519
+            Algorithm = KeyAlgorithm.Ed25519,
+            PublicKeyBase64 = bundle.PublicKeyBase64
         };
 
-        HttpResponseMessage keyResponse = await adminClient.PostAsJsonAsync("/api/users/generate-keypair", keyRequest);
-        Assert.Equal(HttpStatusCode.OK, keyResponse.StatusCode);
-        GeneratedKeyBundle? bundle = await keyResponse.Content.ReadFromJsonAsync<GeneratedKeyBundle>();
-        Assert.NotNull(bundle);
+        HttpResponseMessage userResponse = await adminClient.PostAsJsonAsync("/api/users", userRequest);
+        Assert.Equal(HttpStatusCode.Created, userResponse.StatusCode);
 
         return await TestChallengeHelper.ExchangeChallengeTokenAsync(_client, username, bundle.PrivateKeyPem);
     }
