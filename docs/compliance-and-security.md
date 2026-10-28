@@ -310,3 +310,31 @@ The `SecureExceptionSanitizer` enforces four zero-disclosure rules:
 2. **Credential Redaction**: Connection string passwords, user passwords, and authorization tokens (`password=...;`, `pwd=...;`) are stripped and replaced with `[REDACTED]`.
 3. **Cryptographic Key Redaction**: Any PEM headers or base64 key blocks (`BEGIN PRIVATE KEY`, `BEGIN EC PRIVATE KEY`) are sanitized to `[REDACTED_KEY]`.
 4. **Internal Server Error Masking (HTTP 500)**: Raw stack traces, database schema details, and unhandled exception internals are never exposed to API consumers. The client receives an opaque correlation trace ID (`traceId`) to provide to system administrators for internal log correlation.
+
+---
+
+## 12. Subject Access Delegation, Tiered Gating & Research Cohorts
+
+To support decentralized collaborative clinical studies without compromising patient confidentiality, NanoWeaverHrt implements asymmetric subject access delegation and cohort privacy boundaries.
+
+### Tiered Subject Access Levels
+Subject access grants operate under a strictly hierarchical 3-tier authorization model:
+
+| Level | Name | Numeric Rank | Permitted Operations & Data Scope |
+| :--- | :--- | :--- | :--- |
+| **1** | `ReadAccess` | `1` | Basic observational study access, subject identifiers, and aggregate non-PHI metrics. |
+| **2** | `GenomicAccess` | `2` | Digitized DNA origami blueprints, fasta sequence imports, and biophysical nanocarrier simulation trajectories. |
+| **3** | `FullReadAccess` | `3` | Complete patient clinical history, encrypted endocrine records, and demographic contact profiles. |
+
+### Multi-Tier Resolution Model
+When a researcher requests access to a subject record, the authorization pipeline resolves the effective access level across direct subject grants, granted cohort groups, and created cohort groups:
+
+$$
+\text{EffectiveLevel} = \max\Big(\text{DirectGrantLevel}, \max_{G \in \text{GrantedGroups}}(G.\text{Level}), \max_{G \in \text{CreatedGroups}}(G.\text{Level})\Big)
+$$
+
+### Cohort Isolation & Privacy Invariants
+1. **Administrator Delegation**: Only users holding the `Administrator` role can grant researchers access to individual patients or assign researcher access to cohort groups.
+2. **Cohort Enrollment Scoping**: Researchers and Administrators can create research cohorts (`SubjectGroup`), but Researchers can only enroll subjects they already possess authorized access to (`GenomicAccess` or higher).
+3. **Immutable Creator Binding**: The `created_by` field on cohort groups is cryptographically immutable and verified against the caller's session token to prevent creator spoofing or elevation of privilege.
+4. **Tamper-Evident Audit Logging**: Every grant allocation, revocation, cohort creation, update, deletion, and member mutation is recorded in `weaver_audit_ledger` with cryptographic hash chain continuity.

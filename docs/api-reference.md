@@ -1685,7 +1685,191 @@ Clients receive errors in either JSON or XML:
 
 ---
 
-## 15. Automated Test Suite Execution & Coverage Gate
+## 15. Subject Access & Cohort Management Endpoints
+
+The subject access subsystem provides fine-grained authorization, direct patient access delegation, and research cohort management.
+
+### `GET /api/subject-access/grants`
+Lists active direct subject access grants. Only accessible to Administrators.
+
+* **Method**: `GET`
+* **Query Parameters**:
+  * `researcher` (optional): Filter grants by researcher username.
+  * `subject` (optional): Filter grants by subject username.
+* **Response Status**: `200 OK` — array of `SubjectGrant`.
+
+---
+
+### `POST /api/subject-access/grants`
+Grants a researcher access to a subject/patient. Administrator only.
+
+* **Method**: `POST`
+* **Request Payload (JSON)**:
+  ```json
+  {
+    "researcherUsername": "dr_watson",
+    "subjectUsername": "patient_sovereign_01",
+    "accessLevel": 2,
+    "notes": "IRB Protocol 2026-HRT-04"
+  }
+  ```
+* **Response Status**: `201 Created` — the persisted `SubjectGrant`.
+* **Errors**: `400 Bad Request`, `404 Not Found`.
+
+---
+
+### `DELETE /api/subject-access/grants/{researcherUsername}/{subjectUsername}`
+Revokes direct subject access. Administrator only.
+
+* **Method**: `DELETE`
+* **Response Status**: `200 OK`.
+* **Errors**: `404 Not Found`.
+
+---
+
+### `GET /api/subject-access/my-subjects`
+Lists subjects accessible to the authenticated researcher or administrator.
+
+* **Method**: `GET`
+* **Response Status**: `200 OK` — array of `AccessibleSubjectItem`:
+  ```json
+  [
+    {
+      "subjectUsername": "patient_sovereign_01",
+      "effectiveLevel": 2,
+      "grantedVia": "CohortGroup"
+    }
+  ]
+  ```
+
+---
+
+### `GET /api/subject-groups`
+Lists cohort groups accessible to the caller. Administrators see all groups; Researchers see created and granted cohorts.
+
+* **Method**: `GET`
+* **Response Status**: `200 OK` — array of `SubjectGroup`.
+
+---
+
+### `POST /api/subject-groups`
+Creates a new research cohort group. Researchers may only enroll subjects they have authorized access to.
+
+* **Method**: `POST`
+* **Request Payload (JSON)**:
+  ```json
+  {
+    "name": "MtF Micro-Dosing Cohort 2026",
+    "description": "Controlled nanocarrier delivery study",
+    "subjectUsernames": ["patient_001", "patient_002"]
+  }
+  ```
+* **Response Status**: `201 Created` — the created `SubjectGroup`.
+* **Errors**: `400 Bad Request`, `403 Forbidden` (if researcher attempts to enroll inaccessible subjects).
+
+---
+
+### `GET /api/subject-groups/{groupId}`
+Retrieves cohort group details. Accessible to administrators, group creator, and granted researchers.
+
+* **Method**: `GET`
+* **Response Status**: `200 OK` — `SubjectGroup`.
+* **Errors**: `403 Forbidden`, `404 Not Found`.
+
+---
+
+### `PUT /api/subject-groups/{groupId}`
+Updates a cohort group name and description. Authorized for administrators and group creator.
+
+* **Method**: `PUT`
+* **Request Payload (JSON)**:
+  ```json
+  {
+    "name": "MtF Extended Trial Cohort 2026",
+    "description": "Updated protocol parameters"
+  }
+  ```
+* **Response Status**: `200 OK` — `SubjectGroup`.
+* **Errors**: `400 Bad Request`, `403 Forbidden`, `404 Not Found`.
+
+---
+
+### `DELETE /api/subject-groups/{groupId}`
+Deletes a cohort group and cascades member and grant deletions. Authorized for administrators and group creator.
+
+* **Method**: `DELETE`
+* **Response Status**: `200 OK`.
+* **Errors**: `403 Forbidden`, `404 Not Found`.
+
+---
+
+### `GET /api/subject-groups/{groupId}/members`
+Lists all enrolled subject usernames for a cohort group.
+
+* **Method**: `GET`
+* **Response Status**: `200 OK` — array of string usernames.
+
+---
+
+### `POST /api/subject-groups/{groupId}/members`
+Enrolls a subject into a cohort group. Authorized for administrators and group creator.
+
+* **Method**: `POST`
+* **Request Payload (JSON)**:
+  ```json
+  {
+    "subjectUsername": "patient_003"
+  }
+  ```
+* **Response Status**: `200 OK`.
+* **Errors**: `400 Bad Request`, `403 Forbidden`, `404 Not Found`.
+
+---
+
+### `DELETE /api/subject-groups/{groupId}/members/{subjectUsername}`
+Removes an enrolled subject from a cohort group. Authorized for administrators and group creator.
+
+* **Method**: `DELETE`
+* **Response Status**: `200 OK`.
+* **Errors**: `403 Forbidden`, `404 Not Found`.
+
+---
+
+### `GET /api/subject-groups/{groupId}/grants`
+Lists researcher access grants allocated over the cohort group. Administrator only.
+
+* **Method**: `GET`
+* **Response Status**: `200 OK` — array of `SubjectGroupGrant`.
+
+---
+
+### `POST /api/subject-groups/{groupId}/grants`
+Grants a researcher access to all subjects enrolled in a cohort group. Administrator only.
+
+* **Method**: `POST`
+* **Request Payload (JSON)**:
+  ```json
+  {
+    "researcherUsername": "dr_watson",
+    "accessLevel": 2,
+    "notes": "Cohort oversight grant"
+  }
+  ```
+* **Response Status**: `201 Created` — `SubjectGroupGrant`.
+* **Errors**: `400 Bad Request`, `403 Forbidden`, `404 Not Found`.
+
+---
+
+### `DELETE /api/subject-groups/{groupId}/grants/{researcherUsername}`
+Revokes researcher access from a cohort group. Administrator only.
+
+* **Method**: `DELETE`
+* **Response Status**: `200 OK`.
+* **Errors**: `403 Forbidden`, `404 Not Found`.
+
+---
+
+## 16. Automated Test Suite Execution & Coverage Gate
 
 We mandate a 100% test pass rate and 100.00% line and branch code coverage across both .NET and JavaScript codebases.
 
@@ -1700,6 +1884,9 @@ This script executes:
 3. `dotnet test` (100% .NET unit and integration test pass rate)
 4. Cobertura coverage gate (100.00% Line and 100.00% Branch threshold)
 5. Markdown delimiter scan (Zero unescaped single-dollar LaTeX tokens)
+6. XML docblock completeness scanner (`scripts/check-docblocks.py`)
+7. Downward-only un-excluded coverage ratchet (`scripts/check-coverage-ratchet.py`)
+8. Vendored JavaScript & SRI integrity verification (`scripts/verify-vendored-js.sh`)
 
 ---
 

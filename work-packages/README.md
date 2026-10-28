@@ -9,12 +9,12 @@
 ### 1.1 Master Architecture & Design Documents
 - [`PHASES-v2.md`](PHASES-v2.md) — Master Remediation & Feature Phase Plan (`P1–P20` permanent historical audit reference)
 
-### 1.2 Active Work Packages (`P25: Subject Access & Cohort Management Closeout`)
-- [`p25-cohort-verification-and-closeout.md`](p25-cohort-verification-and-closeout.md) — Full pre-flight verification gate, documentation updates, and coverage ratchet closeout
+### 1.2 Active Work Packages
+*None — All phases P1 through P25 are fully completed and verified.*
 
 ---
 
-### 1.3 Completed & Ratified Work Packages (`P1–P24`)
+### 1.3 Completed & Ratified Work Packages (`P1–P25`)
 *Note: Individual completed work package instruction files have been cleaned up and consolidated into the repository audit trail and `PHASES-v2.md`.*
 
 | Phase | Package / Scope | Key Deliverables & Milestones | Verification Status |
@@ -44,6 +44,7 @@
 | **P22** | Access Control Service & Gating | `ISubjectAccessService`, `SubjectAccessService` effective tiered access resolution, cohort boundary enforcement, audit logging to `weaver_audit_ledger`, and route gating in minimal API pipeline (`ResolveSubjectRecordAccess`) | **COMPLETED** |
 | **P23** | Subject Access REST API | 14 minimal API endpoints for subject grants (`/api/subject-access/grants`), my-subjects (`/api/subject-access/my-subjects`), cohort group CRUD, group members, and group grants (`/api/subject-groups`) with OpenAPI documentation | **COMPLETED** |
 | **P24** | Sovereign Cohort Web UI | `CohortManagementModal` component, `UserManagement` grants management modal & cohort launcher, `DnaManagementPage` cohort filtering & zero-access alert banner, and bUnit test suite (`CohortManagementComponentTests`) | **COMPLETED** |
+| **P25** | Verification & Closeout | Full 8-gate pre-flight verification, comprehensive documentation across `compliance-and-security.md` and `api-reference.md`, and ratchet closeout | **COMPLETED** |
 
 ---
 
