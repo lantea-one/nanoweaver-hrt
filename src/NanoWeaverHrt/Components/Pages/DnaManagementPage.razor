@@ -8,10 +8,14 @@
 @using NanoWeaverHrt.Fabrication
 @using NanoWeaverHrt.Genomics
 @using NanoWeaverHrt.Models
+@using NanoWeaverHrt.Components.Cohorts
+@using NanoWeaverHrt.Security.Access
 @using NanoWeaverHrt.Security.Authentication
 @inject IPatientDnaRepository DnaRepo
 @inject IUserRepository UserRepo
 @inject IUserProfileRepository ProfileRepo
+@inject ISubjectAccessService AccessService
+@inject ISubjectAccessRepository AccessRepo
 @inject IFabricationService FabService
 @inject IPharmacogenomicsService GenomicsService
 @inject UserSessionState SessionState
@@ -55,19 +59,46 @@
         <!-- Patient Selection Toolbar (for Admins & Researchers) -->
         @if (SessionState.IsAdmin || SessionState.IsResearcher)
         {
-            <div class="card mb-3 d-flex justify-between align-center">
-                <div class="d-flex align-center gap-3">
-                    <label for="patientSelector" class="form-label mb-0 font-bold">Selected Patient:</label>
-                    <select id="patientSelector" class="form-control" style="max-width: 280px;" value="@_effectiveUsername" @onchange="OnPatientChanged">
-                        @foreach (var patient in _patients)
-                        {
-                            <option value="@patient.Username">@patient.Username (@patient.Role - @patient.AccessGate)</option>
-                        }
-                    </select>
+            <div class="card mb-3 d-flex justify-between align-center flex-wrap gap-2">
+                <div class="d-flex align-center gap-3 flex-wrap">
+                    <div class="d-flex align-center gap-2">
+                        <label for="cohortFilter" class="form-label mb-0 font-bold">Cohort:</label>
+                        <select id="cohortFilter" class="form-control" style="max-width: 220px;" value="@_selectedCohortId" @onchange="OnCohortFilterChanged">
+                            <option value="">All Cohorts (@_patients.Count)</option>
+                            @foreach (var cohort in _cohorts)
+                            {
+                                <option value="@cohort.Id">@cohort.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="d-flex align-center gap-2">
+                        <label for="patientSelector" class="form-label mb-0 font-bold">Selected Patient:</label>
+                        <select id="patientSelector" class="form-control" style="max-width: 280px;" value="@_effectiveUsername" @onchange="OnPatientChanged">
+                            @if (_filteredPatients.Count == 0)
+                            {
+                                <option value="">No patients available</option>
+                            }
+                            @foreach (var patient in _filteredPatients)
+                            {
+                                <option value="@patient.Username">@patient.Username (@patient.Role - @patient.AccessGate)</option>
+                            }
+                        </select>
+                    </div>
                 </div>
                 <div class="d-flex gap-2">
-                    <a href="@($"/profile/{_effectiveUsername}")" class="btn btn-outline btn-sm">👤 View Profile</a>
+                    <button class="btn btn-outline btn-sm" @onclick="() => _showCohortModal = true">👥 Manage Cohorts</button>
+                    @if (!string.IsNullOrWhiteSpace(_effectiveUsername))
+                    {
+                        <a href="@($"/profile/{_effectiveUsername}")" class="btn btn-outline btn-sm">👤 View Profile</a>
+                    }
                 </div>
+            </div>
+        }
+
+        @if (SessionState.IsResearcher && _patients.Count == 0)
+        {
+            <div class="alert alert-info mb-3">
+                <strong>No Patient Access Assigned:</strong> You do not currently have access to any patient records. Please contact an Administrator to be granted access to individual subjects or research cohorts.
             </div>
         }
 
@@ -645,6 +676,8 @@
     </div>
 }
 
+<CohortManagementModal @bind-IsOpen="_showCohortModal" OnCohortChanged="OnCohortsUpdatedAsync" />
+
 @code {
     /// <summary>
     /// Optional route parameter identifying the targeted patient username.
@@ -686,6 +719,26 @@
     /// All patient accounts available to Administrators and Researchers.
     /// </summary>
     private List<UserAccount> _patients = [];
+
+    /// <summary>
+    /// Indicates whether the cohort management modal is displayed.
+    /// </summary>
+    private bool _showCohortModal;
+
+    /// <summary>
+    /// Currently selected cohort identifier for patient filtering. Empty string represents all cohorts.
+    /// </summary>
+    private string _selectedCohortId = string.Empty;
+
+    /// <summary>
+    /// Accessible cohort groups available for filtering.
+    /// </summary>
+    private List<SubjectGroup> _cohorts = [];
+
+    /// <summary>
+    /// Filtered list of patient accounts matching the active cohort selection.
+    /// </summary>
+    private List<UserAccount> _filteredPatients = [];
 
     /// <summary>
     /// Collection of digitized DNA blueprints for the active patient.
@@ -783,23 +836,56 @@
             if (SessionState.IsAdmin || SessionState.IsResearcher)
             {
                 var allUsers = await UserRepo.ListUsersAsync();
-                _patients = allUsers.Where(u => u.Role == UserRole.Patient).ToList();
-                if (_patients.Count == 0)
+                var allPatients = allUsers.Where(u => u.Role == UserRole.Patient).ToList();
+                if (allPatients.Count == 0)
                 {
-                    _patients = allUsers.ToList();
+                    allPatients = allUsers.ToList();
                 }
 
-                if (!string.IsNullOrWhiteSpace(TargetUsername) && allUsers.Any(u => string.Equals(u.Username, TargetUsername, StringComparison.OrdinalIgnoreCase)))
+                if (SessionState.IsAdmin)
                 {
-                    _effectiveUsername = TargetUsername;
-                }
-                else if (_patients.Count > 0)
-                {
-                    _effectiveUsername = _patients[0].Username;
+                    _patients = allPatients;
+                    var groups = await AccessRepo.ListGroupsAsync(null);
+                    _cohorts = [.. groups.OrderBy(g => g.Name, StringComparer.Ordinal)];
                 }
                 else
                 {
-                    _effectiveUsername = SessionState.CurrentUser?.Username ?? string.Empty;
+                    string researcher = SessionState.CurrentUser?.Username ?? string.Empty;
+                    var accessibleUsernames = await AccessService.GetAccessibleSubjectUsernamesAsync(researcher, SessionState.CurrentUser?.Role ?? UserRole.Researcher);
+                    HashSet<string> accessibleSet = new(accessibleUsernames, StringComparer.OrdinalIgnoreCase);
+                    _patients = allPatients.Where(p => accessibleSet.Contains(p.Username)).ToList();
+
+                    var created = await AccessRepo.ListGroupsAsync(createdBy: researcher);
+                    var granted = await AccessRepo.ListGroupGrantsAsync(researcherUsername: researcher);
+                    HashSet<string> groupIds = new(created.Select(g => g.Id), StringComparer.OrdinalIgnoreCase);
+                    List<SubjectGroup> merged = [.. created];
+                    foreach (var g in granted)
+                    {
+                        if (groupIds.Add(g.GroupId))
+                        {
+                            var grp = await AccessRepo.GetGroupAsync(g.GroupId);
+                            if (grp != null) merged.Add(grp);
+                        }
+                    }
+                    _cohorts = [.. merged.OrderBy(g => g.Name, StringComparer.Ordinal)];
+                }
+
+                await ApplyCohortFilterAsync();
+
+                if (!string.IsNullOrWhiteSpace(TargetUsername) && _filteredPatients.Any(u => string.Equals(u.Username, TargetUsername, StringComparison.OrdinalIgnoreCase)))
+                {
+                    _effectiveUsername = TargetUsername;
+                }
+                else if (_filteredPatients.Count > 0)
+                {
+                    if (!_filteredPatients.Any(p => string.Equals(p.Username, _effectiveUsername, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        _effectiveUsername = _filteredPatients[0].Username;
+                    }
+                }
+                else
+                {
+                    _effectiveUsername = string.Empty;
                 }
             }
             else
@@ -818,6 +904,66 @@
         {
             _isLoading = false;
         }
+    }
+
+    /// <summary>
+    /// Filters the active patient list based on the selected cohort.
+    /// </summary>
+    /// <returns>A task tracking completion of the filter operation.</returns>
+    private async Task ApplyCohortFilterAsync()
+    {
+        // WHAT: Filters _patients to only members of _selectedCohortId if set.
+        // WHY:  Allows focusing on a specific cohort of subjects.
+        // HOW:  If _selectedCohortId is non-empty, queries AccessRepo.ListGroupMembersAsync and filters _patients.
+        if (string.IsNullOrWhiteSpace(_selectedCohortId))
+        {
+            _filteredPatients = [.. _patients];
+            return;
+        }
+
+        var memberUsernames = await AccessRepo.ListGroupMemberUsernamesAsync(_selectedCohortId);
+        HashSet<string> memberSet = new(memberUsernames, StringComparer.OrdinalIgnoreCase);
+        _filteredPatients = _patients.Where(p => memberSet.Contains(p.Username)).ToList();
+    }
+
+    /// <summary>
+    /// Handles changes in the cohort filter dropdown.
+    /// </summary>
+    /// <param name="e">Change event args containing new cohort id.</param>
+    /// <returns>A task tracking completion of filter application.</returns>
+    private async Task OnCohortFilterChanged(ChangeEventArgs e)
+    {
+        // WHAT: Updates the cohort filter and reloads patient records.
+        // WHY:  Enables switching between research cohorts.
+        // HOW:  Updates _selectedCohortId, applies filter, updates _effectiveUsername, and calls LoadPatientRecordsAsync.
+        _selectedCohortId = e.Value?.ToString() ?? string.Empty;
+        await ApplyCohortFilterAsync();
+
+        if (_filteredPatients.Count > 0)
+        {
+            if (!_filteredPatients.Any(p => string.Equals(p.Username, _effectiveUsername, StringComparison.OrdinalIgnoreCase)))
+            {
+                _effectiveUsername = _filteredPatients[0].Username;
+            }
+        }
+        else
+        {
+            _effectiveUsername = string.Empty;
+        }
+
+        await LoadPatientRecordsAsync();
+    }
+
+    /// <summary>
+    /// Synchronizes cohort and patient lists when cohorts are added, edited, or removed.
+    /// </summary>
+    /// <returns>A task tracking completion of view re-initialization.</returns>
+    private async Task OnCohortsUpdatedAsync()
+    {
+        // WHAT: Refreshes the view when cohorts change in the modal.
+        // WHY:  Keeps cohort dropdown and patient lists consistent.
+        // HOW:  Calls InitializeViewAsync.
+        await InitializeViewAsync();
     }
 
     /// <summary>

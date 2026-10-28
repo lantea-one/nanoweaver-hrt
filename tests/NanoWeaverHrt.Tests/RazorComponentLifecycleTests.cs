@@ -22,6 +22,7 @@ using NanoWeaverHrt.Endocrine;
 using NanoWeaverHrt.Fabrication;
 using NanoWeaverHrt.Genomics;
 using NanoWeaverHrt.Pipelines;
+using NanoWeaverHrt.Security.Access;
 using NanoWeaverHrt.Security.Authentication;
 using NanoWeaverHrt.Security.Cryptography;
 using NanoWeaverHrt.Security.KeyManagement;
@@ -114,6 +115,8 @@ public sealed class RazorComponentLifecycleTests : IDisposable
         sc.AddSingleton<DatabaseMigrationRunner>();
         sc.AddSingleton<IWeaverDbConnectionFactory, WeaverDbConnectionFactory>();
         sc.AddSingleton<IUserRepository, UserRepository>();
+        sc.AddSingleton<ISubjectAccessRepository, SubjectAccessRepository>();
+        sc.AddSingleton<ISubjectAccessService, SubjectAccessService>();
         sc.AddSingleton<IUserAuthenticationService, UserAuthenticationService>();
         sc.AddSingleton<IServerSessionActivityTracker>(_ => new ServerSessionActivityTracker());
         sc.AddScoped<UserSessionState>();

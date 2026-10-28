@@ -1,5 +1,9 @@
 @page "/users"
+@using NanoWeaverHrt.Components.Cohorts
+@using NanoWeaverHrt.Security.Access
 @inject IUserAuthenticationService AuthService
+@inject ISubjectAccessService AccessService
+@inject ISubjectAccessRepository AccessRepo
 @inject UserSessionState SessionState
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
@@ -10,9 +14,10 @@
             <h2>SOVEREIGN USER MANAGEMENT</h2>
             <p class="subtext">Manage asymmetric cryptographic identities, authorization roles, and access gating boundaries.</p>
         </div>
-        <div>
+        <div class="d-flex gap-2">
             @if (SessionState.IsAdmin)
             {
+                <button class="btn btn-secondary" @onclick="() => _showCohortModal = true">👥 Manage Cohorts</button>
                 <button class="btn btn-primary" @onclick="OpenCreateModal">+ Register New User</button>
             }
         </div>
@@ -99,6 +104,10 @@
                             <td>
                                 <a href="/profile/@user.Username" class="btn btn-sm btn-outline mr-1">Profile &amp; Contacts</a>
                                 <a href="/dna/@user.Username" class="btn btn-sm btn-outline mr-1">DNA &amp; Imports</a>
+                                @if (user.Role == UserRole.Researcher)
+                                {
+                                    <button class="btn btn-sm btn-outline text-primary mr-1" @onclick="() => OpenGrantsModal(user)">🔑 Grants</button>
+                                }
                                 <button class="btn btn-sm btn-outline text-danger" @onclick="() => ConfirmDelete(user)">Revoke</button>
                             </td>
                         </tr>
@@ -223,6 +232,185 @@
         </div>
     </div>
 }
+
+@if (_showGrantsModal && _selectedResearcher != null)
+{
+    <div class="modal-overlay">
+        <div class="modal-card" style="max-width: 850px; width: 95%;">
+            <div class="modal-header d-flex justify-between align-center">
+                <h3>🔑 Subject &amp; Cohort Access Grants: @_selectedResearcher.Username</h3>
+                <button class="btn-close" @onclick="CloseGrantsModal">&times;</button>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_grantsStatusMessage))
+            {
+                <div class="alert @(_isGrantsStatusError ? "alert-danger" : "alert-success") mt-2 mb-2">
+                    @_grantsStatusMessage
+                </div>
+            }
+
+            <div class="modal-body">
+                <!-- Section 1: Direct Subject Grants -->
+                <div class="card p-3 mb-3">
+                    <h4 class="mb-2">Direct Patient Access Grants</h4>
+                    <p class="text-muted small mb-2">Grant @_selectedResearcher.Username direct access to an individual patient.</p>
+
+                    <div class="grid grid-3 gap-2 align-center mb-3">
+                        <div class="form-group">
+                            <label class="form-label" for="grantSubjectSelect">Patient Subject</label>
+                            <select id="grantSubjectSelect" class="form-control" @bind="_newGrantSubjectUsername">
+                                <option value="">Select patient...</option>
+                                @foreach (var p in _allPatients.Where(p => !_researcherSubjectGrants.Any(g => string.Equals(g.SubjectUsername, p.Username, StringComparison.OrdinalIgnoreCase))))
+                                {
+                                    <option value="@p.Username">@p.Username</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="grantSubjectLevel">Access Level</label>
+                            <select id="grantSubjectLevel" class="form-control" @bind="_newGrantSubjectLevel">
+                                <option value="@SubjectAccessLevel.ReadAccess">ReadAccess (Basic Observations)</option>
+                                <option value="@SubjectAccessLevel.GenomicAccess">GenomicAccess (Blueprints &amp; Sequences)</option>
+                                <option value="@SubjectAccessLevel.FullReadAccess">FullReadAccess (Complete PHI)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="grantSubjectNotes">Notes</label>
+                            <input id="grantSubjectNotes" class="form-control" placeholder="Trial scope or authorization note..." @bind="_newGrantSubjectNotes" />
+                        </div>
+                    </div>
+                    <div class="d-flex justify-end mb-3">
+                        <button class="btn btn-sm btn-primary" @onclick="GrantSubjectAccessAsync" disabled="@string.IsNullOrWhiteSpace(_newGrantSubjectUsername)">
+                            ➕ Grant Direct Patient Access
+                        </button>
+                    </div>
+
+                    @if (_researcherSubjectGrants.Count == 0)
+                    {
+                        <div class="text-center p-3 text-muted border-dashed">No direct patient access grants assigned to this researcher.</div>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table w-100">
+                                <thead>
+                                    <tr>
+                                        <th>Patient Subject</th>
+                                        <th>Access Level</th>
+                                        <th>Granted By</th>
+                                        <th>Granted At</th>
+                                        <th>Notes</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var grant in _researcherSubjectGrants)
+                                    {
+                                        <tr>
+                                            <td class="font-mono font-bold">@grant.SubjectUsername</td>
+                                            <td><span class="badge badge-primary">@grant.AccessLevel</span></td>
+                                            <td class="font-mono">@grant.GrantedBy</td>
+                                            <td>@grant.GrantedAtUtc.ToString("yyyy-MM-dd HH:mm")</td>
+                                            <td class="text-muted">@(string.IsNullOrWhiteSpace(grant.Notes) ? "—" : grant.Notes)</td>
+                                            <td>
+                                                <button class="btn btn-sm btn-outline text-danger" @onclick="() => RevokeSubjectAccessAsync(grant.SubjectUsername)">
+                                                    Revoke
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+
+                <!-- Section 2: Cohort Group Grants -->
+                <div class="card p-3">
+                    <h4 class="mb-2">Cohort Group Access Grants</h4>
+                    <p class="text-muted small mb-2">Grant @_selectedResearcher.Username access to all subjects within a research cohort.</p>
+
+                    <div class="grid grid-3 gap-2 align-center mb-3">
+                        <div class="form-group">
+                            <label class="form-label" for="grantGroupSelect">Cohort Group</label>
+                            <select id="grantGroupSelect" class="form-control" @bind="_newGrantGroupId">
+                                <option value="">Select cohort...</option>
+                                @foreach (var g in _allCohortGroups.Where(g => !_researcherGroupGrants.Any(rg => string.Equals(rg.GroupId, g.Id, StringComparison.OrdinalIgnoreCase))))
+                                {
+                                    <option value="@g.Id">@g.Name</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="grantGroupLevel">Access Level</label>
+                            <select id="grantGroupLevel" class="form-control" @bind="_newGrantGroupLevel">
+                                <option value="@SubjectAccessLevel.ReadAccess">ReadAccess (Basic Observations)</option>
+                                <option value="@SubjectAccessLevel.GenomicAccess">GenomicAccess (Blueprints &amp; Sequences)</option>
+                                <option value="@SubjectAccessLevel.FullReadAccess">FullReadAccess (Complete PHI)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="grantGroupNotes">Notes</label>
+                            <input id="grantGroupNotes" class="form-control" placeholder="Trial scope or authorization note..." @bind="_grantGroupNotes" />
+                        </div>
+                    </div>
+                    <div class="d-flex justify-end mb-3">
+                        <button class="btn btn-sm btn-primary" @onclick="GrantCohortAccessAsync" disabled="@string.IsNullOrWhiteSpace(_newGrantGroupId)">
+                            ➕ Grant Cohort Group Access
+                        </button>
+                    </div>
+
+                    @if (_researcherGroupGrants.Count == 0)
+                    {
+                        <div class="text-center p-3 text-muted border-dashed">No cohort group access grants assigned to this researcher.</div>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table w-100">
+                                <thead>
+                                    <tr>
+                                        <th>Cohort Group</th>
+                                        <th>Access Level</th>
+                                        <th>Granted By</th>
+                                        <th>Granted At</th>
+                                        <th>Notes</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var grant in _researcherGroupGrants)
+                                    {
+                                        var groupObj = _allCohortGroups.FirstOrDefault(g => string.Equals(g.Id, grant.GroupId, StringComparison.OrdinalIgnoreCase));
+                                        string displayName = groupObj?.Name ?? grant.GroupId;
+                                        <tr>
+                                            <td class="font-bold">@displayName</td>
+                                            <td><span class="badge badge-primary">@grant.AccessLevel</span></td>
+                                            <td class="font-mono">@grant.GrantedBy</td>
+                                            <td>@grant.GrantedAtUtc.ToString("yyyy-MM-dd HH:mm")</td>
+                                            <td class="text-muted">@(string.IsNullOrWhiteSpace(grant.Notes) ? "—" : grant.Notes)</td>
+                                            <td>
+                                                <button class="btn btn-sm btn-outline text-danger" @onclick="() => RevokeCohortAccessAsync(grant.GroupId)">
+                                                    Revoke
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <div class="modal-footer d-flex justify-end p-2 mt-2">
+                <button class="btn btn-outline" @onclick="CloseGrantsModal">Done</button>
+            </div>
+        </div>
+    </div>
+}
+
+<CohortManagementModal @bind-IsOpen="_showCohortModal" OnCohortChanged="OnCohortsUpdatedAsync" />
 
 @code {
     private IReadOnlyList<UserAccount> _users = [];
@@ -420,5 +608,295 @@
             sb.Append(t);
         }
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Indicates whether the cohort management modal is open.
+    /// </summary>
+    private bool _showCohortModal;
+
+    /// <summary>
+    /// Indicates whether the researcher access grants modal is open.
+    /// </summary>
+    private bool _showGrantsModal;
+
+    /// <summary>
+    /// Currently selected researcher whose subject and cohort grants are being managed.
+    /// </summary>
+    private UserAccount? _selectedResearcher;
+
+    /// <summary>
+    /// Status message displayed inside the grants modal.
+    /// </summary>
+    private string? _grantsStatusMessage;
+
+    /// <summary>
+    /// Indicates whether the grants status message is an error.
+    /// </summary>
+    private bool _isGrantsStatusError;
+
+    /// <summary>
+    /// Active direct subject grants for the selected researcher.
+    /// </summary>
+    private List<SubjectGrant> _researcherSubjectGrants = [];
+
+    /// <summary>
+    /// Active cohort group grants for the selected researcher.
+    /// </summary>
+    private List<SubjectGroupGrant> _researcherGroupGrants = [];
+
+    /// <summary>
+    /// All patient user accounts available for direct subject grant assignment.
+    /// </summary>
+    private List<UserAccount> _allPatients = [];
+
+    /// <summary>
+    /// All cohort groups available for group grant assignment.
+    /// </summary>
+    private List<SubjectGroup> _allCohortGroups = [];
+
+    /// <summary>
+    /// Form field for patient username receiving direct subject access.
+    /// </summary>
+    private string _newGrantSubjectUsername = string.Empty;
+
+    /// <summary>
+    /// Form field for access level granted over a direct patient subject.
+    /// </summary>
+    private SubjectAccessLevel _newGrantSubjectLevel = SubjectAccessLevel.GenomicAccess;
+
+    /// <summary>
+    /// Form field for notes accompanying a direct subject grant.
+    /// </summary>
+    private string _newGrantSubjectNotes = string.Empty;
+
+    /// <summary>
+    /// Form field for cohort group receiving access delegation.
+    /// </summary>
+    private string _newGrantGroupId = string.Empty;
+
+    /// <summary>
+    /// Form field for access level granted over a cohort group.
+    /// </summary>
+    private SubjectAccessLevel _newGrantGroupLevel = SubjectAccessLevel.GenomicAccess;
+
+    /// <summary>
+    /// Form field for notes accompanying a cohort group grant.
+    /// </summary>
+    private string _grantGroupNotes = string.Empty;
+
+    /// <summary>
+    /// Opens the grants management modal for the specified researcher.
+    /// </summary>
+    /// <param name="researcher">The target researcher account.</param>
+    /// <returns>A task tracking completion of modal initialization.</returns>
+    private async Task OpenGrantsModal(UserAccount researcher)
+    {
+        // WHAT: Initializes and opens the grants modal for a researcher.
+        // WHY:  Allows administrators to review and modify direct patient and cohort grants.
+        // HOW:  Queries AccessRepo and UserRepo for grants and options.
+        _selectedResearcher = researcher;
+        _showGrantsModal = true;
+        _grantsStatusMessage = null;
+        _newGrantSubjectUsername = string.Empty;
+        _newGrantSubjectNotes = string.Empty;
+        _newGrantGroupId = string.Empty;
+        _grantGroupNotes = string.Empty;
+        await ReloadGrantsDataAsync();
+    }
+
+    /// <summary>
+    /// Closes the grants management modal.
+    /// </summary>
+    private void CloseGrantsModal()
+    {
+        // WHAT: Closes the grants modal.
+        // WHY:  Resets state when administration finishes.
+        // HOW:  Clears _showGrantsModal and _selectedResearcher.
+        _showGrantsModal = false;
+        _selectedResearcher = null;
+    }
+
+    /// <summary>
+    /// Reloads grants, patient accounts, and cohort groups for the grants modal.
+    /// </summary>
+    /// <returns>A task tracking completion of the reload.</returns>
+    private async Task ReloadGrantsDataAsync()
+    {
+        // WHAT: Fetches grants and candidate cohorts/patients from repositories.
+        // WHY:  Ensures dropdowns and grant tables reflect authoritative database state.
+        // HOW:  Queries AccessRepo and UserRepo.
+        if (_selectedResearcher == null) return;
+        try
+        {
+            var users = await AuthService.ListUsersAsync();
+            _allPatients = users.Where(u => u.Role == UserRole.Patient).ToList();
+            if (_allPatients.Count == 0) _allPatients = users.ToList();
+
+            var groups = await AccessRepo.ListGroupsAsync(null);
+            _allCohortGroups = [.. groups.OrderBy(g => g.Name, StringComparer.Ordinal)];
+
+            var subjectGrants = await AccessRepo.ListSubjectGrantsAsync(researcherUsername: _selectedResearcher.Username);
+            _researcherSubjectGrants = subjectGrants != null ? [.. subjectGrants.OrderBy(g => g.SubjectUsername, StringComparer.Ordinal)] : [];
+
+            var groupGrants = await AccessRepo.ListGroupGrantsAsync(researcherUsername: _selectedResearcher.Username);
+            _researcherGroupGrants = groupGrants != null ? [.. groupGrants.OrderBy(g => g.GroupId, StringComparer.Ordinal)] : [];
+        }
+        catch (Exception ex)
+        {
+            _grantsStatusMessage = "Failed to load grant data: " + ex.Message;
+            _isGrantsStatusError = true;
+        }
+    }
+
+    /// <summary>
+    /// Grants direct patient access to the selected researcher.
+    /// </summary>
+    /// <returns>A task tracking completion of the grant operation.</returns>
+    private async Task GrantSubjectAccessAsync()
+    {
+        // WHAT: Allocates direct patient access to the researcher.
+        // WHY:  Permits researcher access to individual patient records.
+        // HOW:  Invokes AccessService.GrantSubjectAccessAsync and reloads data.
+        if (_selectedResearcher == null || string.IsNullOrWhiteSpace(_newGrantSubjectUsername) || SessionState.CurrentUser == null) return;
+        try
+        {
+            var grant = await AccessService.GrantSubjectAccessAsync(
+                SessionState.CurrentUser.Username,
+                _selectedResearcher.Username,
+                _newGrantSubjectUsername.Trim(),
+                _newGrantSubjectLevel,
+                string.IsNullOrWhiteSpace(_newGrantSubjectNotes) ? null : _newGrantSubjectNotes.Trim());
+
+            _grantsStatusMessage = $"Direct access granted to '{grant.SubjectUsername}' ({grant.AccessLevel}).";
+            _isGrantsStatusError = false;
+            _newGrantSubjectUsername = string.Empty;
+            _newGrantSubjectNotes = string.Empty;
+            await ReloadGrantsDataAsync();
+        }
+        catch (Exception ex)
+        {
+            _grantsStatusMessage = "Grant failed: " + ex.Message;
+            _isGrantsStatusError = true;
+        }
+    }
+
+    /// <summary>
+    /// Revokes direct patient access from the selected researcher.
+    /// </summary>
+    /// <param name="subjectUsername">Target subject username.</param>
+    /// <returns>A task tracking completion of the revoke operation.</returns>
+    private async Task RevokeSubjectAccessAsync(string subjectUsername)
+    {
+        // WHAT: Revokes direct patient access.
+        // WHY:  Allows administrators to remove access when trials conclude.
+        // HOW:  Invokes AccessService.RevokeSubjectAccessAsync and reloads data.
+        if (_selectedResearcher == null || SessionState.CurrentUser == null) return;
+        try
+        {
+            bool ok = await AccessService.RevokeSubjectAccessAsync(
+                SessionState.CurrentUser.Username,
+                _selectedResearcher.Username,
+                subjectUsername);
+
+            if (ok)
+            {
+                _grantsStatusMessage = $"Direct access to '{subjectUsername}' revoked.";
+                _isGrantsStatusError = false;
+                await ReloadGrantsDataAsync();
+            }
+            else
+            {
+                _grantsStatusMessage = "Subject grant not found.";
+                _isGrantsStatusError = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            _grantsStatusMessage = "Revoke failed: " + ex.Message;
+            _isGrantsStatusError = true;
+        }
+    }
+
+    /// <summary>
+    /// Grants cohort-level access to the selected researcher.
+    /// </summary>
+    /// <returns>A task tracking completion of the cohort grant operation.</returns>
+    private async Task GrantCohortAccessAsync()
+    {
+        // WHAT: Allocates cohort group access to the researcher.
+        // WHY:  Allows batch access to all subjects enrolled in a cohort.
+        // HOW:  Invokes AccessService.GrantGroupAccessAsync and reloads data.
+        if (_selectedResearcher == null || string.IsNullOrWhiteSpace(_newGrantGroupId) || SessionState.CurrentUser == null) return;
+        try
+        {
+            var grant = await AccessService.GrantGroupAccessAsync(
+                SessionState.CurrentUser.Username,
+                _newGrantGroupId,
+                _selectedResearcher.Username,
+                _newGrantGroupLevel,
+                string.IsNullOrWhiteSpace(_grantGroupNotes) ? null : _grantGroupNotes.Trim());
+
+            _grantsStatusMessage = $"Cohort access granted ({grant.AccessLevel}).";
+            _isGrantsStatusError = false;
+            _newGrantGroupId = string.Empty;
+            _grantGroupNotes = string.Empty;
+            await ReloadGrantsDataAsync();
+        }
+        catch (Exception ex)
+        {
+            _grantsStatusMessage = "Cohort grant failed: " + ex.Message;
+            _isGrantsStatusError = true;
+        }
+    }
+
+    /// <summary>
+    /// Revokes cohort-level access from the selected researcher.
+    /// </summary>
+    /// <param name="groupId">Target cohort group identifier.</param>
+    /// <returns>A task tracking completion of the revoke operation.</returns>
+    private async Task RevokeCohortAccessAsync(string groupId)
+    {
+        // WHAT: Revokes cohort group access from the researcher.
+        // WHY:  Allows administrators to retract cohort permissions.
+        // HOW:  Invokes AccessService.RevokeGroupAccessAsync and reloads data.
+        if (_selectedResearcher == null || SessionState.CurrentUser == null) return;
+        try
+        {
+            bool ok = await AccessService.RevokeGroupAccessAsync(
+                SessionState.CurrentUser.Username,
+                groupId,
+                _selectedResearcher.Username);
+
+            if (ok)
+            {
+                _grantsStatusMessage = "Cohort access revoked.";
+                _isGrantsStatusError = false;
+                await ReloadGrantsDataAsync();
+            }
+            else
+            {
+                _grantsStatusMessage = "Cohort grant not found.";
+                _isGrantsStatusError = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            _grantsStatusMessage = "Cohort revoke failed: " + ex.Message;
+            _isGrantsStatusError = true;
+        }
+    }
+
+    /// <summary>
+    /// Handles updates from the cohort management modal.
+    /// </summary>
+    /// <returns>A task tracking completion of cohort data synchronization.</returns>
+    private async Task OnCohortsUpdatedAsync()
+    {
+        // WHAT: Refreshes cohort list after modifications in the cohort modal.
+        // WHY:  Ensures dropdowns reflect newly created or deleted cohorts.
+        // HOW:  Queries AccessRepo and updates _allCohortGroups.
+        var groups = await AccessRepo.ListGroupsAsync(null);
+        _allCohortGroups = [.. groups.OrderBy(g => g.Name, StringComparer.Ordinal)];
     }
 }

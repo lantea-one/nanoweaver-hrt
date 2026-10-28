@@ -1,0 +1,856 @@
+@using NanoWeaverHrt.Database.Access
+@using NanoWeaverHrt.Security.Access
+@using NanoWeaverHrt.Security.Authentication
+@inject ISubjectAccessService AccessService
+@inject ISubjectAccessRepository AccessRepo
+@inject IUserRepository UserRepo
+@inject UserSessionState SessionState
+
+@if (IsOpen)
+{
+    <div class="modal-overlay">
+        <div class="modal-card" style="max-width: 900px; width: 95%;">
+            <div class="modal-header d-flex justify-between align-center">
+                <h3>👥 Research Cohorts &amp; Patient Groups</h3>
+                <button class="btn-close" @onclick="CloseModal">&times;</button>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_statusMessage))
+            {
+                <div class="alert @(_isStatusError ? "alert-danger" : "alert-success") mt-2 mb-2">
+                    @_statusMessage
+                </div>
+            }
+
+            <div class="d-flex gap-2 mb-3 mt-2">
+                <button class="btn btn-sm @(_activeTab == "list" ? "btn-primary" : "btn-outline")" @onclick='() => SetActiveTab("list")'>
+                    📋 Cohort Groups (@_cohorts.Count)
+                </button>
+                <button class="btn btn-sm @(_activeTab == "create" ? "btn-primary" : "btn-outline")" @onclick='() => SetActiveTab("create")'>
+                    ➕ Create New Cohort
+                </button>
+                @if (_selectedGroup != null && _activeTab == "members")
+                {
+                    <button class="btn btn-sm btn-primary">
+                        👥 Members: @_selectedGroup.Name (@_selectedGroupMembers.Count)
+                    </button>
+                }
+                @if (SessionState.IsAdmin && _selectedGroup != null && _activeTab == "grants")
+                {
+                    <button class="btn btn-sm btn-primary">
+                        🔑 Group Grants: @_selectedGroup.Name (@_selectedGroupGrants.Count)
+                    </button>
+                }
+            </div>
+
+            <div class="modal-body">
+                @if (_activeTab == "list")
+                {
+                    @if (_isLoading)
+                    {
+                        <div class="text-center p-3 text-muted">Loading cohort groups...</div>
+                    }
+                    else if (_cohorts.Count == 0)
+                    {
+                        <div class="text-center p-4 text-muted border-dashed">
+                            <p class="mb-2">No cohort groups found.</p>
+                            <button class="btn btn-sm btn-primary" @onclick='() => SetActiveTab("create")'>Create First Cohort</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table w-100">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Description</th>
+                                        <th>Members</th>
+                                        <th>Created By</th>
+                                        <th>Updated</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var group in _cohorts)
+                                    {
+                                        <tr>
+                                            <td class="font-bold">@group.Name</td>
+                                            <td class="text-muted">@(string.IsNullOrWhiteSpace(group.Description) ? "—" : group.Description)</td>
+                                            <td>
+                                                <span class="badge badge-outline">
+                                                    @(_cohortMemberCounts.TryGetValue(group.Id, out int cnt) ? cnt : 0) subjects
+                                                </span>
+                                            </td>
+                                            <td class="font-mono">@group.CreatedBy</td>
+                                            <td>@group.UpdatedAtUtc.ToString("yyyy-MM-dd HH:mm")</td>
+                                            <td>
+                                                <button class="btn btn-sm btn-outline mr-1" @onclick="() => SelectGroupForMembers(group)">
+                                                    👥 Members
+                                                </button>
+                                                @if (CanManageGroup(group))
+                                                {
+                                                    <button class="btn btn-sm btn-outline text-danger mr-1" @onclick="() => DeleteCohortAsync(group)">
+                                                        Delete
+                                                    </button>
+                                                }
+                                                @if (SessionState.IsAdmin)
+                                                {
+                                                    <button class="btn btn-sm btn-outline text-primary" @onclick="() => SelectGroupForGrants(group)">
+                                                        🔑 Grants
+                                                    </button>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                }
+                else if (_activeTab == "create")
+                {
+                    <div class="card p-3">
+                        <h4 class="mb-2">Create New Patient Cohort</h4>
+                        <div class="form-group mb-2">
+                            <label class="form-label" for="cohortName">Cohort Name</label>
+                            <input id="cohortName" class="form-control" placeholder="e.g. MtF Micro-Dosing Trial 2026" @bind="_newCohortName" />
+                        </div>
+                        <div class="form-group mb-2">
+                            <label class="form-label" for="cohortDesc">Description</label>
+                            <textarea id="cohortDesc" class="form-control" rows="2" placeholder="Clinical scope, trial parameters, or delivery protocol..." @bind="_newCohortDescription"></textarea>
+                        </div>
+                        <div class="form-group mb-3">
+                            <label class="form-label">Enroll Accessible Subjects (@_selectedMemberUsernames.Count selected)</label>
+                            @if (_accessiblePatients.Count == 0)
+                            {
+                                <div class="text-muted small">No accessible subjects found to enroll.</div>
+                            }
+                            else
+                            {
+                                <div class="grid grid-2" style="max-height: 180px; overflow-y: auto; border: 1px solid var(--border-color, #333); padding: 8px; border-radius: 4px;">
+                                    @foreach (var patient in _accessiblePatients)
+                                    {
+                                        <label class="cursor-pointer d-flex align-center gap-1 font-mono small">
+                                            <input type="checkbox" checked="@_selectedMemberUsernames.Contains(patient.Username)" @onchange="(e) => ToggleMemberSelection(patient.Username, e.Value)" />
+                                            @patient.Username
+                                        </label>
+                                    }
+                                </div>
+                            }
+                        </div>
+                        <div class="d-flex justify-end gap-2">
+                            <button class="btn btn-secondary" @onclick='() => SetActiveTab("list")'>Cancel</button>
+                            <button class="btn btn-primary" @onclick="CreateCohortAsync" disabled="@string.IsNullOrWhiteSpace(_newCohortName)">
+                                💾 Create Cohort
+                            </button>
+                        </div>
+                    </div>
+                }
+                else if (_activeTab == "members" && _selectedGroup != null)
+                {
+                    <div class="card p-3">
+                        <div class="d-flex justify-between align-center mb-2">
+                            <h4 class="mb-0">Cohort Members: @_selectedGroup.Name</h4>
+                            <button class="btn btn-sm btn-outline" @onclick='() => SetActiveTab("list")'>Back to Cohorts</button>
+                        </div>
+                        <p class="text-muted small mb-3">@(string.IsNullOrWhiteSpace(_selectedGroup.Description) ? "No description provided." : _selectedGroup.Description)</p>
+
+                        @if (CanManageGroup(_selectedGroup))
+                        {
+                            <div class="d-flex gap-2 align-center mb-3">
+                                <select class="form-control" style="max-width: 250px;" @bind="_newMemberUsername">
+                                    <option value="">Select subject to add...</option>
+                                    @foreach (var p in _accessiblePatients.Where(p => !_selectedGroupMembers.Contains(p.Username, StringComparer.OrdinalIgnoreCase)))
+                                    {
+                                        <option value="@p.Username">@p.Username</option>
+                                    }
+                                </select>
+                                <button class="btn btn-sm btn-primary" @onclick="AddMemberAsync" disabled="@string.IsNullOrWhiteSpace(_newMemberUsername)">
+                                    ➕ Add Subject
+                                </button>
+                            </div>
+                        }
+
+                        @if (_selectedGroupMembers.Count == 0)
+                        {
+                            <div class="text-center p-3 text-muted border-dashed">No subjects currently enrolled in this cohort.</div>
+                        }
+                        else
+                        {
+                            <div class="table-responsive">
+                                <table class="table w-100">
+                                    <thead>
+                                        <tr>
+                                            <th>Subject Username</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var member in _selectedGroupMembers)
+                                        {
+                                            <tr>
+                                                <td class="font-mono font-bold">@member</td>
+                                                <td>
+                                                    @if (CanManageGroup(_selectedGroup))
+                                                    {
+                                                        <button class="btn btn-sm btn-outline text-danger" @onclick="() => RemoveMemberAsync(member)">
+                                                            Remove
+                                                        </button>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="text-muted small">Read-only</span>
+                                                    }
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
+                }
+                else if (SessionState.IsAdmin && _activeTab == "grants" && _selectedGroup != null)
+                {
+                    <div class="card p-3">
+                        <div class="d-flex justify-between align-center mb-2">
+                            <h4 class="mb-0">Researcher Access Grants: @_selectedGroup.Name</h4>
+                            <button class="btn btn-sm btn-outline" @onclick='() => SetActiveTab("list")'>Back to Cohorts</button>
+                        </div>
+                        <p class="text-muted small mb-3">Grant researchers access to all subjects enrolled in this cohort.</p>
+
+                        <div class="card p-2 mb-3 bg-subtle">
+                            <h5 class="mb-2">Grant Cohort Access to Researcher</h5>
+                            <div class="grid grid-3 gap-2">
+                                <div class="form-group">
+                                    <label class="form-label" for="resSelect">Researcher</label>
+                                    <select id="resSelect" class="form-control" @bind="_grantResearcherUsername">
+                                        <option value="">Select researcher...</option>
+                                        @foreach (var res in _allResearchers.Where(r => !_selectedGroupGrants.Any(g => string.Equals(g.ResearcherUsername, r.Username, StringComparison.OrdinalIgnoreCase))))
+                                        {
+                                            <option value="@res.Username">@res.Username</option>
+                                        }
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label" for="levelSelect">Access Level</label>
+                                    <select id="levelSelect" class="form-control" @bind="_grantAccessLevel">
+                                        <option value="@SubjectAccessLevel.ReadAccess">ReadAccess (Basic Observations)</option>
+                                        <option value="@SubjectAccessLevel.GenomicAccess">GenomicAccess (DNA Blueprints &amp; Sequences)</option>
+                                        <option value="@SubjectAccessLevel.FullReadAccess">FullReadAccess (Complete Clinical PHI)</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label" for="grantNotes">Notes</label>
+                                    <input id="grantNotes" class="form-control" placeholder="Trial purpose or IRB approval..." @bind="_grantNotes" />
+                                </div>
+                            </div>
+                            <div class="mt-2 text-right d-flex justify-end">
+                                <button class="btn btn-sm btn-primary" @onclick="GrantGroupAccessAsync" disabled="@string.IsNullOrWhiteSpace(_grantResearcherUsername)">
+                                    🔑 Grant Access
+                                </button>
+                            </div>
+                        </div>
+
+                        @if (_selectedGroupGrants.Count == 0)
+                        {
+                            <div class="text-center p-3 text-muted border-dashed">No researchers currently have access grants for this cohort.</div>
+                        }
+                        else
+                        {
+                            <div class="table-responsive">
+                                <table class="table w-100">
+                                    <thead>
+                                        <tr>
+                                            <th>Researcher</th>
+                                            <th>Access Level</th>
+                                            <th>Granted By</th>
+                                            <th>Granted At</th>
+                                            <th>Notes</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var grant in _selectedGroupGrants)
+                                        {
+                                            <tr>
+                                                <td class="font-mono font-bold">@grant.ResearcherUsername</td>
+                                                <td><span class="badge badge-primary">@grant.AccessLevel</span></td>
+                                                <td class="font-mono">@grant.GrantedBy</td>
+                                                <td>@grant.GrantedAtUtc.ToString("yyyy-MM-dd HH:mm")</td>
+                                                <td class="text-muted">@(string.IsNullOrWhiteSpace(grant.Notes) ? "—" : grant.Notes)</td>
+                                                <td>
+                                                    <button class="btn btn-sm btn-outline text-danger" @onclick="() => RevokeGroupAccessAsync(grant.ResearcherUsername)">
+                                                        Revoke
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+
+            <div class="modal-footer d-flex justify-end p-2 mt-2">
+                <button class="btn btn-outline" @onclick="CloseModal">Close</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>
+    /// Indicates whether the modal dialog is rendered and active.
+    /// </summary>
+    [Parameter]
+    public bool IsOpen { get; set; }
+
+    /// <summary>
+    /// Callback invoked when the modal visibility changes.
+    /// </summary>
+    [Parameter]
+    public EventCallback<bool> IsOpenChanged { get; set; }
+
+    /// <summary>
+    /// Callback invoked when cohorts or cohort memberships are modified.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnCohortChanged { get; set; }
+
+    /// <summary>
+    /// Active tab in the modal: "list", "create", "members", or "grants".
+    /// </summary>
+    private string _activeTab = "list";
+
+    /// <summary>
+    /// Indicates whether asynchronous data operations are in progress.
+    /// </summary>
+    private bool _isLoading;
+
+    /// <summary>
+    /// Status message displayed at the top of the dialog.
+    /// </summary>
+    private string _statusMessage = string.Empty;
+
+    /// <summary>
+    /// Indicates whether the status message represents an error.
+    /// </summary>
+    private bool _isStatusError;
+
+    /// <summary>
+    /// Accessible cohort groups for the current session user.
+    /// </summary>
+    private List<SubjectGroup> _cohorts = [];
+
+    /// <summary>
+    /// Member counts mapped by cohort identifier.
+    /// </summary>
+    private Dictionary<string, int> _cohortMemberCounts = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Currently selected group for member or grant inspection.
+    /// </summary>
+    private SubjectGroup? _selectedGroup;
+
+    /// <summary>
+    /// Member usernames enrolled in the selected group.
+    /// </summary>
+    private List<string> _selectedGroupMembers = [];
+
+    /// <summary>
+    /// Group grants active for the selected group.
+    /// </summary>
+    private List<SubjectGroupGrant> _selectedGroupGrants = [];
+
+    /// <summary>
+    /// Patients accessible to the caller for cohort enrollment.
+    /// </summary>
+    private List<UserAccount> _accessiblePatients = [];
+
+    /// <summary>
+    /// Registered researchers in the platform for group grant allocation.
+    /// </summary>
+    private List<UserAccount> _allResearchers = [];
+
+    /// <summary>
+    /// Form field for new cohort name.
+    /// </summary>
+    private string _newCohortName = string.Empty;
+
+    /// <summary>
+    /// Form field for new cohort description.
+    /// </summary>
+    private string _newCohortDescription = string.Empty;
+
+    /// <summary>
+    /// Selected member usernames for newly created cohort.
+    /// </summary>
+    private HashSet<string> _selectedMemberUsernames = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Form field for adding a new subject to an existing cohort.
+    /// </summary>
+    private string _newMemberUsername = string.Empty;
+
+    /// <summary>
+    /// Form field for researcher username receiving a group grant.
+    /// </summary>
+    private string _grantResearcherUsername = string.Empty;
+
+    /// <summary>
+    /// Form field for access level granted to a researcher over a cohort.
+    /// </summary>
+    private SubjectAccessLevel _grantAccessLevel = SubjectAccessLevel.GenomicAccess;
+
+    /// <summary>
+    /// Form field for audit notes accompanying a group grant.
+    /// </summary>
+    private string _grantNotes = string.Empty;
+
+    /// <inheritdoc/>
+    protected override async Task OnParametersSetAsync()
+    {
+        // WHAT: Reloads cohort state whenever the modal transitions from closed to open.
+        // WHY:  Guarantees that the modal displays up-to-date groups, subjects, and grants.
+        // HOW:  Invokes LoadCohortsAsync when IsOpen is true.
+        if (IsOpen)
+        {
+            await LoadCohortsAsync();
+        }
+    }
+
+    /// <summary>
+    /// Switches the active view tab within the cohort modal.
+    /// </summary>
+    /// <param name="tab">The target tab name.</param>
+    private void SetActiveTab(string tab)
+    {
+        // WHAT: Transitions the active tab.
+        // WHY:  Permits navigation between cohort listing, creation, and member inspection.
+        // HOW:  Updates _activeTab and clears transitory error messages.
+        _activeTab = tab;
+        _statusMessage = string.Empty;
+    }
+
+    /// <summary>
+    /// Closes the modal dialog and notifies the parent component.
+    /// </summary>
+    /// <returns>A task tracking completion of the close invocation.</returns>
+    private async Task CloseModal()
+    {
+        // WHAT: Closes the modal.
+        // WHY:  Hides the overlay and synchronizes parent binding state.
+        // HOW:  Invokes IsOpenChanged callback with false.
+        IsOpen = false;
+        await IsOpenChanged.InvokeAsync(false);
+    }
+
+    /// <summary>
+    /// Determines whether the current identity is authorized to manage the specified group.
+    /// </summary>
+    /// <param name="group">The subject group to evaluate.</param>
+    /// <returns><c>true</c> if the caller is an administrator or the creator; otherwise <c>false</c>.</returns>
+    private bool CanManageGroup(SubjectGroup group)
+    {
+        // WHAT: Evaluates management authorization for a cohort.
+        // WHY:  Administrators and original creators have update/delete and member management rights.
+        // HOW:  Checks Administrator role or case-insensitive username match on CreatedBy.
+        if (SessionState.IsAdmin)
+        {
+            return true;
+        }
+
+        return string.Equals(SessionState.CurrentUser?.Username, group.CreatedBy, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Loads all accessible cohort groups, member counts, and accessible subjects.
+    /// </summary>
+    /// <returns>A task tracking completion of the load operation.</returns>
+    private async Task LoadCohortsAsync()
+    {
+        // WHAT: Loads cohort groups, member counts, and accessible subjects.
+        // WHY:  Populates the view with accurate domain data based on caller role.
+        // HOW:  Queries AccessRepo and UserRepo based on SessionState identity.
+        if (!SessionState.IsAuthenticated)
+        {
+            return;
+        }
+
+        _isLoading = true;
+        _statusMessage = string.Empty;
+        try
+        {
+            string callerUsername = SessionState.CurrentUser?.Username ?? string.Empty;
+            var allUsers = await UserRepo.ListUsersAsync();
+            var allPatients = allUsers.Where(u => u.Role == UserRole.Patient).ToList();
+            if (allPatients.Count == 0)
+            {
+                allPatients = allUsers.ToList();
+            }
+
+            if (SessionState.IsAdmin)
+            {
+                _accessiblePatients = allPatients;
+                _allResearchers = allUsers.Where(u => u.Role == UserRole.Researcher).ToList();
+                var groups = await AccessRepo.ListGroupsAsync(null);
+                _cohorts = [.. groups.OrderBy(g => g.Name, StringComparer.Ordinal)];
+            }
+            else
+            {
+                var accessibleUsernames = await AccessService.GetAccessibleSubjectUsernamesAsync(callerUsername, SessionState.CurrentUser?.Role ?? UserRole.Researcher);
+                HashSet<string> accessibleSet = new(accessibleUsernames, StringComparer.OrdinalIgnoreCase);
+                _accessiblePatients = allPatients.Where(p => accessibleSet.Contains(p.Username)).ToList();
+
+                var created = await AccessRepo.ListGroupsAsync(createdBy: callerUsername);
+                var granted = await AccessRepo.ListGroupGrantsAsync(researcherUsername: callerUsername);
+                HashSet<string> groupIds = new(created.Select(g => g.Id), StringComparer.OrdinalIgnoreCase);
+                List<SubjectGroup> merged = [.. created];
+                foreach (var g in granted)
+                {
+                    if (groupIds.Add(g.GroupId))
+                    {
+                        var grp = await AccessRepo.GetGroupAsync(g.GroupId);
+                        if (grp != null)
+                        {
+                            merged.Add(grp);
+                        }
+                    }
+                }
+                _cohorts = [.. merged.OrderBy(g => g.Name, StringComparer.Ordinal)];
+            }
+
+            _cohortMemberCounts.Clear();
+            foreach (var group in _cohorts)
+            {
+                var members = await AccessRepo.ListGroupMemberUsernamesAsync(group.Id);
+                _cohortMemberCounts[group.Id] = members.Count;
+            }
+        }
+        catch (Exception ex)
+        {
+            _statusMessage = "Error loading cohorts: " + ex.Message;
+            _isStatusError = true;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    /// <summary>
+    /// Selects a group and switches to the member management tab.
+    /// </summary>
+    /// <param name="group">Target cohort group.</param>
+    /// <returns>A task tracking completion of the selection.</returns>
+    private async Task SelectGroupForMembers(SubjectGroup group)
+    {
+        // WHAT: Transitions to the members tab for the selected group.
+        // WHY:  Permits inspecting and modifying cohort enrollment.
+        // HOW:  Queries AccessRepo for member usernames.
+        _selectedGroup = group;
+        _activeTab = "members";
+        _statusMessage = string.Empty;
+        _newMemberUsername = string.Empty;
+        var members = await AccessRepo.ListGroupMemberUsernamesAsync(group.Id);
+        _selectedGroupMembers = members != null ? [.. members.OrderBy(m => m, StringComparer.Ordinal)] : [];
+    }
+
+    /// <summary>
+    /// Selects a group and switches to the researcher access grants tab.
+    /// </summary>
+    /// <param name="group">Target cohort group.</param>
+    /// <returns>A task tracking completion of the selection.</returns>
+    private async Task SelectGroupForGrants(SubjectGroup group)
+    {
+        // WHAT: Transitions to the group grants tab for the selected group.
+        // WHY:  Allows administrators to manage researcher access over the cohort.
+        // HOW:  Queries AccessRepo for active group grants.
+        _selectedGroup = group;
+        _activeTab = "grants";
+        _statusMessage = string.Empty;
+        _grantResearcherUsername = string.Empty;
+        _grantNotes = string.Empty;
+        var grants = await AccessRepo.ListGroupGrantsAsync(groupId: group.Id);
+        _selectedGroupGrants = grants != null ? [.. grants.OrderBy(g => g.ResearcherUsername, StringComparer.Ordinal)] : [];
+    }
+
+    /// <summary>
+    /// Toggles subject selection in the cohort creation checklist.
+    /// </summary>
+    /// <param name="username">Subject username.</param>
+    /// <param name="isChecked">Checkbox value.</param>
+    private void ToggleMemberSelection(string username, object? isChecked)
+    {
+        // WHAT: Adds or removes a subject from the pending cohort enrollment set.
+        // WHY:  Allows selecting multiple subjects when creating a cohort.
+        // HOW:  Modifies _selectedMemberUsernames based on boolean state.
+        if (isChecked is true || isChecked is bool b && b)
+        {
+            _selectedMemberUsernames.Add(username);
+        }
+        else
+        {
+            _selectedMemberUsernames.Remove(username);
+        }
+    }
+
+    /// <summary>
+    /// Creates a new patient cohort group and enrolls the selected subjects.
+    /// </summary>
+    /// <returns>A task tracking completion of the creation operation.</returns>
+    private async Task CreateCohortAsync()
+    {
+        // WHAT: Creates a new cohort and enrolls members.
+        // WHY:  Allows researchers and administrators to organize subjects into research cohorts.
+        // HOW:  Invokes AccessService.CreateGroupAsync and refreshes state.
+        if (string.IsNullOrWhiteSpace(_newCohortName) || SessionState.CurrentUser == null)
+        {
+            return;
+        }
+
+        try
+        {
+            var created = await AccessService.CreateGroupAsync(
+                SessionState.CurrentUser.Username,
+                SessionState.CurrentUser.Role,
+                _newCohortName.Trim(),
+                string.IsNullOrWhiteSpace(_newCohortDescription) ? null : _newCohortDescription.Trim(),
+                [.. _selectedMemberUsernames]);
+
+            _statusMessage = $"Cohort '{created.Name}' created successfully with {_selectedMemberUsernames.Count} enrolled subjects.";
+            _isStatusError = false;
+            _newCohortName = string.Empty;
+            _newCohortDescription = string.Empty;
+            _selectedMemberUsernames.Clear();
+            _activeTab = "list";
+            await LoadCohortsAsync();
+            await OnCohortChanged.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            _statusMessage = "Failed to create cohort: " + ex.Message;
+            _isStatusError = true;
+        }
+    }
+
+    /// <summary>
+    /// Deletes a cohort group after verification of authority.
+    /// </summary>
+    /// <param name="group">Cohort group to delete.</param>
+    /// <returns>A task tracking completion of the deletion operation.</returns>
+    private async Task DeleteCohortAsync(SubjectGroup group)
+    {
+        // WHAT: Deletes an existing cohort group.
+        // WHY:  Allows creators and administrators to retire defunct cohorts.
+        // HOW:  Invokes AccessService.DeleteGroupAsync and refreshes cohort list.
+        if (SessionState.CurrentUser == null)
+        {
+            return;
+        }
+
+        try
+        {
+            bool removed = await AccessService.DeleteGroupAsync(
+                SessionState.CurrentUser.Username,
+                SessionState.CurrentUser.Role,
+                group.Id);
+
+            if (removed)
+            {
+                _statusMessage = $"Cohort '{group.Name}' deleted.";
+                _isStatusError = false;
+                if (_selectedGroup?.Id == group.Id)
+                {
+                    _selectedGroup = null;
+                    _activeTab = "list";
+                }
+                await LoadCohortsAsync();
+                await OnCohortChanged.InvokeAsync();
+            }
+            else
+            {
+                _statusMessage = "Cohort could not be deleted.";
+                _isStatusError = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            _statusMessage = "Delete failed: " + ex.Message;
+            _isStatusError = true;
+        }
+    }
+
+    /// <summary>
+    /// Adds a selected subject to the active cohort group.
+    /// </summary>
+    /// <returns>A task tracking completion of the add member operation.</returns>
+    private async Task AddMemberAsync()
+    {
+        // WHAT: Enrolls a subject into the selected cohort.
+        // WHY:  Expands cohort membership.
+        // HOW:  Invokes AccessService.AddGroupMemberAsync and refreshes member list.
+        if (_selectedGroup == null || string.IsNullOrWhiteSpace(_newMemberUsername) || SessionState.CurrentUser == null)
+        {
+            return;
+        }
+
+        try
+        {
+            bool added = await AccessService.AddGroupMemberAsync(
+                SessionState.CurrentUser.Username,
+                SessionState.CurrentUser.Role,
+                _selectedGroup.Id,
+                _newMemberUsername.Trim());
+
+            if (added)
+            {
+                _statusMessage = $"Subject '{_newMemberUsername}' enrolled in cohort.";
+                _isStatusError = false;
+                _newMemberUsername = string.Empty;
+                var members = await AccessRepo.ListGroupMemberUsernamesAsync(_selectedGroup.Id);
+                _selectedGroupMembers = [.. members.OrderBy(m => m, StringComparer.Ordinal)];
+                _cohortMemberCounts[_selectedGroup.Id] = _selectedGroupMembers.Count;
+                await OnCohortChanged.InvokeAsync();
+            }
+            else
+            {
+                _statusMessage = "Subject is already enrolled in this cohort.";
+                _isStatusError = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            _statusMessage = "Failed to add member: " + ex.Message;
+            _isStatusError = true;
+        }
+    }
+
+    /// <summary>
+    /// Removes an enrolled subject from the active cohort group.
+    /// </summary>
+    /// <param name="memberUsername">Subject username to remove.</param>
+    /// <returns>A task tracking completion of the remove member operation.</returns>
+    private async Task RemoveMemberAsync(string memberUsername)
+    {
+        // WHAT: Disenrolls a subject from the selected cohort.
+        // WHY:  Allows maintaining accurate cohort rosters.
+        // HOW:  Invokes AccessService.RemoveGroupMemberAsync and refreshes member list.
+        if (_selectedGroup == null || SessionState.CurrentUser == null)
+        {
+            return;
+        }
+
+        try
+        {
+            bool removed = await AccessService.RemoveGroupMemberAsync(
+                SessionState.CurrentUser.Username,
+                SessionState.CurrentUser.Role,
+                _selectedGroup.Id,
+                memberUsername);
+
+            if (removed)
+            {
+                _statusMessage = $"Subject '{memberUsername}' removed from cohort.";
+                _isStatusError = false;
+                var members = await AccessRepo.ListGroupMemberUsernamesAsync(_selectedGroup.Id);
+                _selectedGroupMembers = [.. members.OrderBy(m => m, StringComparer.Ordinal)];
+                _cohortMemberCounts[_selectedGroup.Id] = _selectedGroupMembers.Count;
+                await OnCohortChanged.InvokeAsync();
+            }
+            else
+            {
+                _statusMessage = "Subject could not be removed from cohort.";
+                _isStatusError = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            _statusMessage = "Failed to remove member: " + ex.Message;
+            _isStatusError = true;
+        }
+    }
+
+    /// <summary>
+    /// Grants a researcher access over all subjects in the selected cohort group.
+    /// </summary>
+    /// <returns>A task tracking completion of the grant operation.</returns>
+    private async Task GrantGroupAccessAsync()
+    {
+        // WHAT: Allocates cohort-level access to a researcher.
+        // WHY:  Empowers researchers to study cohorts with tiered access.
+        // HOW:  Invokes AccessService.GrantGroupAccessAsync and updates grant list.
+        if (_selectedGroup == null || string.IsNullOrWhiteSpace(_grantResearcherUsername) || SessionState.CurrentUser == null)
+        {
+            return;
+        }
+
+        try
+        {
+            var grant = await AccessService.GrantGroupAccessAsync(
+                SessionState.CurrentUser.Username,
+                _selectedGroup.Id,
+                _grantResearcherUsername.Trim(),
+                _grantAccessLevel,
+                string.IsNullOrWhiteSpace(_grantNotes) ? null : _grantNotes.Trim());
+
+            _statusMessage = $"Granted '{grant.AccessLevel}' over '{_selectedGroup.Name}' to '{grant.ResearcherUsername}'.";
+            _isStatusError = false;
+            _grantResearcherUsername = string.Empty;
+            _grantNotes = string.Empty;
+            var grants = await AccessRepo.ListGroupGrantsAsync(groupId: _selectedGroup.Id);
+            _selectedGroupGrants = [.. grants.OrderBy(g => g.ResearcherUsername, StringComparer.Ordinal)];
+        }
+        catch (Exception ex)
+        {
+            _statusMessage = "Failed to grant cohort access: " + ex.Message;
+            _isStatusError = true;
+        }
+    }
+
+    /// <summary>
+    /// Revokes a researcher's access grant over the selected cohort group.
+    /// </summary>
+    /// <param name="researcherUsername">Researcher username whose grant to revoke.</param>
+    /// <returns>A task tracking completion of the revoke operation.</returns>
+    private async Task RevokeGroupAccessAsync(string researcherUsername)
+    {
+        // WHAT: Revokes cohort-level access from a researcher.
+        // WHY:  Allows administrators to retract research permissions.
+        // HOW:  Invokes AccessService.RevokeGroupAccessAsync and updates grant list.
+        if (_selectedGroup == null || SessionState.CurrentUser == null)
+        {
+            return;
+        }
+
+        try
+        {
+            bool revoked = await AccessService.RevokeGroupAccessAsync(
+                SessionState.CurrentUser.Username,
+                _selectedGroup.Id,
+                researcherUsername);
+
+            if (revoked)
+            {
+                _statusMessage = $"Access to '{_selectedGroup.Name}' revoked for '{researcherUsername}'.";
+                _isStatusError = false;
+                var grants = await AccessRepo.ListGroupGrantsAsync(groupId: _selectedGroup.Id);
+                _selectedGroupGrants = [.. grants.OrderBy(g => g.ResearcherUsername, StringComparer.Ordinal)];
+            }
+            else
+            {
+                _statusMessage = "Group grant could not be revoked.";
+                _isStatusError = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            _statusMessage = "Revoke failed: " + ex.Message;
+            _isStatusError = true;
+        }
+    }
+}
