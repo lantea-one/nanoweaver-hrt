@@ -5,6 +5,7 @@ using NanoWeaverHrt.Database.Access;
 using NanoWeaverHrt.Endocrine;
 using NanoWeaverHrt.Fabrication;
 using NanoWeaverHrt.Models;
+using NanoWeaverHrt.Security.Authentication;
 
 namespace NanoWeaverHrt.Storage;
 
@@ -30,12 +31,19 @@ public sealed class PatientDnaRepository : IPatientDnaRepository, IDisposable
     private readonly IWeaverDbConnectionFactory _connectionFactory;
 
     /// <summary>
+    /// Protector used to seal and unseal sensitive patient DNA regimen and notes columns.
+    /// </summary>
+    private readonly ProfileDataProtector _protector;
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="PatientDnaRepository"/> class.
     /// </summary>
     /// <param name="connectionFactory">Factory that opens connections to the selected backend.</param>
-    public PatientDnaRepository(IWeaverDbConnectionFactory connectionFactory)
+    /// <param name="protector">Protector used to seal and unseal sensitive patient DNA regimen and notes columns.</param>
+    public PatientDnaRepository(IWeaverDbConnectionFactory connectionFactory, ProfileDataProtector protector)
     {
         _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
+        _protector = protector ?? throw new ArgumentNullException(nameof(protector));
     }
 
     /// <inheritdoc/>
@@ -135,6 +143,10 @@ public sealed class PatientDnaRepository : IPatientDnaRepository, IDisposable
             string staplesJson = JsonSerializer.Serialize(record.Staples ?? []);
             string annealingJson = JsonSerializer.Serialize(record.AnnealingProtocol ?? []);
 
+            // WHY !: record.Regimen.ToString() is a non-null enum string, so EncryptField returns a non-null envelope string.
+            string encryptedRegimen = _protector.EncryptField(record.Regimen.ToString())!;
+            string? encryptedNotes = string.IsNullOrEmpty(record.Notes) ? record.Notes : _protector.EncryptField(record.Notes);
+
             await using DbCommand cmd = session.Connection.CreateCommand();
             cmd.CommandText = @"
                 INSERT INTO weaver_patient_dna_records (
@@ -167,7 +179,7 @@ public sealed class PatientDnaRepository : IPatientDnaRepository, IDisposable
             WeaverDbParameters.Add(cmd, "@id", record.Id);
             WeaverDbParameters.Add(cmd, "@u", record.Username);
             WeaverDbParameters.Add(cmd, "@tit", record.Title);
-            WeaverDbParameters.Add(cmd, "@reg", record.Regimen.ToString());
+            WeaverDbParameters.Add(cmd, "@reg", encryptedRegimen);
             WeaverDbParameters.Add(cmd, "@tt", record.TargetTissue);
             WeaverDbParameters.Add(cmd, "@al", record.ActiveLigand);
             WeaverDbParameters.Add(cmd, "@ng", record.NanocarrierGeometry);
@@ -179,7 +191,7 @@ public sealed class PatientDnaRepository : IPatientDnaRepository, IDisposable
             WeaverDbParameters.Add(cmd, "@ann", annealingJson);
             WeaverDbParameters.Add(cmd, "@sha", record.ProvenanceSha256);
             WeaverDbParameters.Add(cmd, "@cat", session.Dialect.TimestampValue(record.CreatedAtUtc));
-            WeaverDbParameters.AddNullable(cmd, "@not", record.Notes);
+            WeaverDbParameters.AddNullable(cmd, "@not", encryptedNotes);
 
             await cmd.ExecuteNonQueryAsync(ct);
         }
@@ -539,12 +551,13 @@ public sealed class PatientDnaRepository : IPatientDnaRepository, IDisposable
     /// </summary>
     /// <param name="reader">A reader positioned on the digital DNA row to read.</param>
     /// <returns>The stored nanocarrier design described by the current row.</returns>
-    internal static PatientDigitalDnaRecord MapDnaRecordFromReader(DbDataReader reader)
+    private PatientDigitalDnaRecord MapDnaRecordFromReader(DbDataReader reader)
     {
         string id = reader.GetString(0);
         string username = reader.GetString(1);
         string title = reader.GetString(2);
-        string regimenStr = reader.GetString(3);
+        string rawRegimen = _protector.DecryptDataUri(reader.GetString(3));
+        Enum.TryParse(rawRegimen, ignoreCase: true, out TherapeuticRegimen regimen);
         string targetTissue = reader.GetString(4);
         string activeLigand = reader.GetString(5);
         string nanocarrierGeometry = reader.GetString(6);
@@ -556,9 +569,8 @@ public sealed class PatientDnaRepository : IPatientDnaRepository, IDisposable
         string annealingJson = reader.GetString(12);
         string sha256 = reader.GetString(13);
         DateTimeOffset createdAt = WeaverDbValues.ReadTimestamp(reader, 14);
-        string? notes = reader.IsDBNull(15) ? null : reader.GetString(15);
-
-        Enum.TryParse(regimenStr, ignoreCase: true, out TherapeuticRegimen regimen);
+        string? rawNotes = reader.IsDBNull(15) ? null : reader.GetString(15);
+        string? notes = rawNotes is null ? null : _protector.DecryptDataUri(rawNotes);
 
         IReadOnlyList<StapleOligoRecord> staples = [];
         try

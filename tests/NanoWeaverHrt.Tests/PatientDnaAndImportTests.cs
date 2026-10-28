@@ -18,6 +18,7 @@ using NanoWeaverHrt.Fabrication;
 using NanoWeaverHrt.Genomics;
 using NanoWeaverHrt.Models;
 using NanoWeaverHrt.Security.Authentication;
+using NanoWeaverHrt.Security.Secrets;
 using NanoWeaverHrt.Storage;
 using Xunit;
 
@@ -319,12 +320,14 @@ public sealed class PatientDnaAndImportTests : IClassFixture<WebApplicationFacto
             var config = new ConfigurationBuilder()
                 .AddInMemoryCollection(new Dictionary<string, string?>
                 {
-                    ["TRAJECTORY_INCOMING_DIR"] = tempDir
+                    ["TRAJECTORY_INCOMING_DIR"] = tempDir,
+                    ["WEAVER_NODE_KEYS_DIR"] = Path.Combine(tempDir, "node-keys")
                 })
                 .Build();
 
+            ProfileDataProtector protector = new(new NodeSecretStore(config));
             SystemConfigurationStore configStore = new(WeaverTestDb.CreateFactory(config));
-            DatabaseMigrationRunner migrationRunner = new();
+            DatabaseMigrationRunner migrationRunner = new(protector: protector);
             UserRepository userRepo = new(WeaverTestDb.CreateFactory(config, migrationRunner));
             await userRepo.InitializeAsync();
 
@@ -338,7 +341,7 @@ public sealed class PatientDnaAndImportTests : IClassFixture<WebApplicationFacto
                 PublicKeyBase64 = "MCowBQYDK2VwAyEA1111111111111111111111111111111111111111111="
             });
 
-            using PatientDnaRepository repo = new(WeaverTestDb.CreateFactory(config, migrationRunner));
+            using PatientDnaRepository repo = new(WeaverTestDb.CreateFactory(config, migrationRunner), protector);
 
             // 1. DNA Records CRUD
             var initialDna = await repo.GetDnaRecordsAsync(username);
@@ -505,12 +508,14 @@ public sealed class PatientDnaAndImportTests : IClassFixture<WebApplicationFacto
             var config = new ConfigurationBuilder()
                 .AddInMemoryCollection(new Dictionary<string, string?>
                 {
-                    ["TRAJECTORY_INCOMING_DIR"] = tempDir
+                    ["TRAJECTORY_INCOMING_DIR"] = tempDir,
+                    ["WEAVER_NODE_KEYS_DIR"] = Path.Combine(tempDir, "node-keys")
                 })
                 .Build();
 
+            ProfileDataProtector protector = new(new NodeSecretStore(config));
             SystemConfigurationStore configStore = new(WeaverTestDb.CreateFactory(config));
-            DatabaseMigrationRunner migrationRunner = new();
+            DatabaseMigrationRunner migrationRunner = new(protector: protector);
             UserRepository userRepo = new(WeaverTestDb.CreateFactory(config, migrationRunner));
             await userRepo.InitializeAsync();
 
@@ -524,7 +529,7 @@ public sealed class PatientDnaAndImportTests : IClassFixture<WebApplicationFacto
                 PublicKeyBase64 = "MCowBQYDK2VwAyEA2222222222222222222222222222222222222222222="
             });
 
-            using PatientDnaRepository repo = new(WeaverTestDb.CreateFactory(config, migrationRunner));
+            using PatientDnaRepository repo = new(WeaverTestDb.CreateFactory(config, migrationRunner), protector);
 
             PatientDigitalDnaRecord dna = new()
             {
@@ -657,9 +662,14 @@ public sealed class PatientDnaAndImportTests : IClassFixture<WebApplicationFacto
         try
         {
             var config = new ConfigurationBuilder()
-                .AddInMemoryCollection(new Dictionary<string, string?> { ["TRAJECTORY_INCOMING_DIR"] = tempDir })
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["TRAJECTORY_INCOMING_DIR"] = tempDir,
+                    ["WEAVER_NODE_KEYS_DIR"] = Path.Combine(tempDir, "node-keys")
+                })
                 .Build();
-            using PatientDnaRepository repo = new(WeaverTestDb.CreateFactory(config, new DatabaseMigrationRunner()));
+            ProfileDataProtector protector = new(new NodeSecretStore(config));
+            using PatientDnaRepository repo = new(WeaverTestDb.CreateFactory(config, new DatabaseMigrationRunner(protector: protector)), protector);
             await AssertInvalidArgumentsRejectedAsync(repo);
         }
         finally
@@ -692,15 +702,21 @@ public sealed class PatientDnaAndImportTests : IClassFixture<WebApplicationFacto
     }
 
     /// <summary>
-    /// Verifies the constructor rejects a missing connection factory.
+    /// Verifies the constructor rejects missing required dependencies.
     /// </summary>
     [Fact]
     public void PatientDnaRepository_NullConnectionFactory_Throws()
     {
         // WHAT: Tests the constructor precondition.
-        // WHY:  Fail fast when the connection seam is missing.
-        // HOW:  Passes null and asserts ArgumentNullException.
-        Assert.Throws<ArgumentNullException>(() => new PatientDnaRepository(null!));
+        // WHY:  Fail fast when required dependencies are missing.
+        // HOW:  Passes null for connection factory or protector and asserts ArgumentNullException.
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["WEAVER_NODE_KEYS_DIR"] = Path.GetTempPath() })
+            .Build();
+        ProfileDataProtector protector = new(new NodeSecretStore(config));
+        IWeaverDbConnectionFactory factory = WeaverTestDb.CreateFactory(config);
+        Assert.Throws<ArgumentNullException>(() => new PatientDnaRepository(null!, protector));
+        Assert.Throws<ArgumentNullException>(() => new PatientDnaRepository(factory, null!));
     }
 
     /// <summary>
@@ -888,5 +904,231 @@ public sealed class PatientDnaAndImportTests : IClassFixture<WebApplicationFacto
         Assert.Equal(HttpStatusCode.OK, deleteDnaRes.StatusCode);
         var deleteDnaNotFound = await _client.DeleteAsync($"/api/patients/{patientUser}/dna/{createdDna.Id}");
         Assert.Equal(HttpStatusCode.NotFound, deleteDnaNotFound.StatusCode);
+    }
+
+    /// <summary>
+    /// Verifies patient DNA regimen and notes columns are encrypted at rest with AES-256-GCM.
+    /// </summary>
+    /// <returns>A task that completes when the test finishes.</returns>
+    [Fact]
+    public async Task PatientDnaRepository_EncryptsRegimenAndNotesAtRest()
+    {
+        // WHAT: Upserts a digital DNA record and asserts that raw database columns hold encrypted envelopes.
+        // WHY:  Protects sensitive medical regimen and clinical notes as special-category PHI under GDPR Article 9.
+        // HOW:  Writes through repository and reads back via direct SQL command, verifying envelope format and absence of plaintext.
+        string tempDir = Path.Combine(Path.GetTempPath(), "weaver_phi_dna_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var config = new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["TRAJECTORY_INCOMING_DIR"] = tempDir,
+                    ["WEAVER_NODE_KEYS_DIR"] = Path.Combine(tempDir, "node-keys")
+                })
+                .Build();
+
+            ProfileDataProtector protector = new(new NodeSecretStore(config));
+            DatabaseMigrationRunner migrationRunner = new(protector: protector);
+            IWeaverDbConnectionFactory factory = WeaverTestDb.CreateFactory(config, migrationRunner);
+
+            using UserRepository userRepo = new(factory);
+            await userRepo.InitializeAsync();
+            await userRepo.CreateUserAsync(new UserAccount
+            {
+                Username = "phi_patient",
+                Role = UserRole.Patient,
+                AccessGate = AccessGate.ApiWeb,
+                Algorithm = KeyAlgorithm.Ed25519,
+                PublicKeyBase64 = "MCowBQYDK2VwAyEA9999999999999999999999999999999999999999999="
+            });
+
+            using PatientDnaRepository repo = new(factory, protector);
+            PatientDigitalDnaRecord record = new()
+            {
+                Id = "dna_phi_01",
+                Username = "phi_patient",
+                Title = "Origami Switch",
+                Regimen = TherapeuticRegimen.FemaleToMale,
+                Notes = "Sensitive clinical note"
+            };
+
+            await repo.UpsertDnaRecordAsync(record);
+
+            // Read back via repository: decrypted
+            PatientDigitalDnaRecord? fetched = await repo.GetDnaRecordByIdAsync("dna_phi_01");
+            Assert.NotNull(fetched);
+            Assert.Equal(TherapeuticRegimen.FemaleToMale, fetched.Regimen);
+            Assert.Equal("Sensitive clinical note", fetched.Notes);
+
+            // Read back via raw SQL: encrypted envelope
+            await using WeaverDbSession session = await factory.OpenAsync();
+            await using DbCommand cmd = session.CreateCommand("SELECT regimen, notes FROM weaver_patient_dna_records WHERE id = @id;");
+            WeaverDbParameters.Add(cmd, "@id", "dna_phi_01");
+            await using DbDataReader reader = await cmd.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync());
+
+            string rawRegimen = reader.GetString(0);
+            string rawNotes = reader.GetString(1);
+
+            Assert.StartsWith("data:application/encrypted;base64,", rawRegimen);
+            Assert.True(ProfileDataProtector.IsEncrypted(rawRegimen));
+            Assert.DoesNotContain("FemaleToMale", rawRegimen);
+
+            Assert.StartsWith("data:application/encrypted;base64,", rawNotes);
+            Assert.True(ProfileDataProtector.IsEncrypted(rawNotes));
+            Assert.DoesNotContain("Sensitive", rawNotes);
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, recursive: true); } catch { }
+        }
+    }
+
+    /// <summary>
+    /// Verifies Migration 010 encrypts legacy plaintext rows and is idempotent across repeated runs.
+    /// </summary>
+    /// <returns>A task that completes when the test finishes.</returns>
+    [Fact]
+    public async Task Migration010_EncryptPatientDnaPhi_IsIdempotentAndSealsPlaintextRows()
+    {
+        // WHAT: Injects plaintext regimen and notes rows and drives Migration010 twice.
+        // WHY:  Ensures historical unencrypted data is safely sealed without double-encryption on repeat runs.
+        // HOW:  Runs migrations 1-4, inserts plaintext row, executes Migration010 UpAsync twice, and asserts ciphertext remains stable.
+        string tempDir = Path.Combine(Path.GetTempPath(), "weaver_mig010_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var config = new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["TRAJECTORY_INCOMING_DIR"] = tempDir,
+                    ["WEAVER_NODE_KEYS_DIR"] = Path.Combine(tempDir, "node-keys")
+                })
+                .Build();
+
+            ProfileDataProtector protector = new(new NodeSecretStore(config));
+            // Run only migrations 1 through 4 to get weaver_patient_dna_records table with unencrypted schema
+            DatabaseMigrationRunner baseRunner = new(
+            [
+                new Migration001_InitialSchema(),
+                new Migration002_UserAuditAndIndexes(),
+                new Migration003_UserProfileAddressesAndContacts(),
+                new Migration004_PatientDnaImportsAndResults()
+            ]);
+
+            IWeaverDbConnectionFactory factory = WeaverTestDb.CreateFactory(config, baseRunner);
+            using UserRepository userRepo = new(factory);
+            await userRepo.InitializeAsync();
+            await userRepo.CreateUserAsync(new UserAccount
+            {
+                Username = "legacy_patient",
+                Role = UserRole.Patient,
+                AccessGate = AccessGate.ApiWeb,
+                Algorithm = KeyAlgorithm.Ed25519,
+                PublicKeyBase64 = "MCowBQYDK2VwAyEA8888888888888888888888888888888888888888888="
+            });
+
+            // Insert plaintext row directly into weaver_patient_dna_records
+            await using (WeaverDbSession insertSession = await factory.OpenAsync())
+            await using (DbCommand insertCmd = insertSession.CreateCommand(@"
+                INSERT INTO weaver_patient_dna_records (
+                    id, username, title, regimen, target_tissue, active_ligand,
+                    nanocarrier_geometry, target_aptamer_kd_nm, scaffold_fasta,
+                    gc_percentage, estimated_mw_kda, staples_json, annealing_protocol_json,
+                    provenance_sha256, created_at_utc, notes
+                ) VALUES (
+                    'legacy_dna_1', 'legacy_patient', 'Legacy Blueprint', 'FemaleToMale', 'Liver', 'E2',
+                    'Box', 3.5, 'ATGC', 50.0, 100.0, '[]', '[]', 'sha256', '2026-01-01 00:00:00', 'Confidential doctor notes'
+                ), (
+                    'legacy_dna_2', 'legacy_patient', 'Legacy Blueprint 2', 'MaleToFemale', 'Kidney', 'T',
+                    'Tube', 4.0, 'CGTA', 45.0, 80.0, '[]', '[]', 'sha256_2', '2026-01-01 00:00:00', NULL
+                );"))
+            {
+                await insertCmd.ExecuteNonQueryAsync();
+            }
+
+            // Also assert that Migration010 throws if protector is null when plaintext exists
+            Migration010_EncryptPatientDnaPhi nullProtectorMigration = new(null);
+            await using (WeaverDbSession sessionNull = await factory.OpenAsync())
+            {
+                await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                    nullProtectorMigration.UpAsync(sessionNull.Connection, null, sessionNull.Dialect.Name, default));
+            }
+
+            // Apply Migration 010 first time
+            Migration010_EncryptPatientDnaPhi migration = new(protector);
+            await using (WeaverDbSession session1 = await factory.OpenAsync())
+            {
+                await migration.UpAsync(session1.Connection, null, session1.Dialect.Name, default);
+            }
+
+            // Inspect ciphertext after first run
+            string ciphertextRegimen1;
+            string ciphertextNotes1;
+            await using (WeaverDbSession checkSession1 = await factory.OpenAsync())
+            await using (DbCommand checkCmd = checkSession1.CreateCommand("SELECT regimen, notes FROM weaver_patient_dna_records WHERE id = 'legacy_dna_1';"))
+            await using (DbDataReader reader = await checkCmd.ExecuteReaderAsync())
+            {
+                Assert.True(await reader.ReadAsync());
+                ciphertextRegimen1 = reader.GetString(0);
+                ciphertextNotes1 = reader.GetString(1);
+            }
+
+            Assert.StartsWith("data:application/encrypted;base64,", ciphertextRegimen1);
+            Assert.StartsWith("data:application/encrypted;base64,", ciphertextNotes1);
+            Assert.Equal("FemaleToMale", protector.DecryptField(ciphertextRegimen1));
+            Assert.Equal("Confidential doctor notes", protector.DecryptField(ciphertextNotes1));
+
+            await using (WeaverDbSession checkSessionNull = await factory.OpenAsync())
+            await using (DbCommand checkCmdNull = checkSessionNull.CreateCommand("SELECT regimen, notes FROM weaver_patient_dna_records WHERE id = 'legacy_dna_2';"))
+            await using (DbDataReader readerNull = await checkCmdNull.ExecuteReaderAsync())
+            {
+                Assert.True(await readerNull.ReadAsync());
+                Assert.StartsWith("data:application/encrypted;base64,", readerNull.GetString(0));
+                Assert.True(readerNull.IsDBNull(1));
+            }
+
+            // Apply Migration 010 second time (idempotence verification)
+            await using (WeaverDbSession session2 = await factory.OpenAsync())
+            {
+                await migration.UpAsync(session2.Connection, null, session2.Dialect.Name, default);
+            }
+
+            // Inspect ciphertext after second run: MUST NOT double-encrypt (values should be identical)
+            await using (WeaverDbSession checkSession2 = await factory.OpenAsync())
+            await using (DbCommand checkCmd2 = checkSession2.CreateCommand("SELECT regimen, notes FROM weaver_patient_dna_records WHERE id = 'legacy_dna_1';"))
+            await using (DbDataReader reader2 = await checkCmd2.ExecuteReaderAsync())
+            {
+                Assert.True(await reader2.ReadAsync());
+                string ciphertextRegimen2 = reader2.GetString(0);
+                string ciphertextNotes2 = reader2.GetString(1);
+
+                Assert.Equal(ciphertextRegimen1, ciphertextRegimen2);
+                Assert.Equal(ciphertextNotes1, ciphertextNotes2);
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, recursive: true); } catch { }
+        }
+    }
+
+    /// <summary>
+    /// Verifies Migration 010 SQL generation for PostgreSQL and SQLite.
+    /// </summary>
+    [Fact]
+    public void Migration010_GetSql_GeneratesDialectSpecificDdl()
+    {
+        // WHAT: Tests GetSql for dialect-specific DDL scripts and null validation.
+        // WHY:  Guarantees valid DDL on PostgreSQL and graceful no-op on SQLite.
+        // HOW:  Invokes GetSql with "postgresql", "sqlite", and null.
+        Migration010_EncryptPatientDnaPhi migration = new();
+        Assert.Equal(10, migration.Version);
+        Assert.Equal("010_EncryptPatientDnaPhi", migration.Name);
+        Assert.Throws<ArgumentNullException>(() => migration.GetSql(null!));
+        Assert.Equal(string.Empty, migration.GetSql("sqlite"));
+        string pgSql = migration.GetSql("postgresql");
+        Assert.Contains("ALTER TABLE weaver_patient_dna_records ALTER COLUMN regimen TYPE TEXT;", pgSql);
     }
 }

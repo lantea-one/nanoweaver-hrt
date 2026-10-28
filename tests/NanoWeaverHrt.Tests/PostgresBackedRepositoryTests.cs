@@ -81,6 +81,18 @@ public sealed class PostgresBackedRepositoryTests : IDisposable
     }
 
     /// <summary>
+    /// Creates a test profile data protector backed by a temporary node keys directory.
+    /// </summary>
+    /// <returns>A new <see cref="ProfileDataProtector"/> instance.</returns>
+    private ProfileDataProtector CreateProtector()
+    {
+        IConfiguration keys = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["WEAVER_NODE_KEYS_DIR"] = Path.Combine(_tempDir, "node-keys") })
+            .Build();
+        return new ProfileDataProtector(new NodeSecretStore(keys));
+    }
+
+    /// <summary>
     /// Creates an account value for the scenarios.
     /// </summary>
     /// <param name="username">Account name.</param>
@@ -147,15 +159,16 @@ public sealed class PostgresBackedRepositoryTests : IDisposable
     /// Runs the DNA-record, import and result scenario against any engine.
     /// </summary>
     /// <param name="factory">A factory bound to the engine under test.</param>
+    /// <param name="protector">The profile data protector used for encrypting patient DNA data.</param>
     /// <returns>A task that completes once every assertion has run.</returns>
-    private static async Task RunPatientDataScenarioAsync(WeaverDbConnectionFactory factory)
+    private static async Task RunPatientDataScenarioAsync(WeaverDbConnectionFactory factory, ProfileDataProtector protector)
     {
         // WHAT: Round-trips one DNA record, one import and one result, then deletes them.
         // WHY:  PatientDnaRepository's twelve methods share one connection path that used to fall back silently.
         // HOW:  Upserts twice (insert then update), reads back by id and by owner, then deletes each row.
         using UserRepository users = new(factory);
         await users.CreateUserAsync(Account("dana", UserRole.Patient));
-        using PatientDnaRepository repo = new(factory);
+        using PatientDnaRepository repo = new(factory, protector);
 
         PatientDigitalDnaRecord dna = new() { Id = "dna1", Username = "dana", Title = "Tube", TargetAptamerKdNm = 3.5, Notes = "n" };
         await repo.UpsertDnaRecordAsync(dna);
@@ -200,7 +213,7 @@ public sealed class PostgresBackedRepositoryTests : IDisposable
     [Fact]
     public async Task Sqlite_PatientDnaRepository_Scenario()
     {
-        await RunPatientDataScenarioAsync(CreateFactory(string.Empty));
+        await RunPatientDataScenarioAsync(CreateFactory(string.Empty), CreateProtector());
     }
 
     /// <summary>
@@ -271,7 +284,7 @@ public sealed class PostgresBackedRepositoryTests : IDisposable
             return;
         }
 
-        await RunPatientDataScenarioAsync(CreateFactory(await _postgres.CreateIsolatedDatabaseAsync()));
+        await RunPatientDataScenarioAsync(CreateFactory(await _postgres.CreateIsolatedDatabaseAsync()), CreateProtector());
         Assert.False(File.Exists(Path.Combine(_tempDir, "weaver_config.db")));
     }
 
@@ -547,7 +560,7 @@ public sealed class PostgresBackedRepositoryTests : IDisposable
         // WHY:  The old bare catch let a dead PostgreSQL split data into a local file while the gate stayed green.
         // HOW:  Selects PostgreSQL at a dead port, calls a read, expects WeaverDatabaseUnavailableException, and
         //       asserts weaver_config.db was never created.
-        using PatientDnaRepository repo = new(CreateFactory(UnreachablePostgres));
+        using PatientDnaRepository repo = new(CreateFactory(UnreachablePostgres), CreateProtector());
 
         await Assert.ThrowsAsync<WeaverDatabaseUnavailableException>(() => repo.GetDnaRecordsAsync("some_user"));
         Assert.False(File.Exists(Path.Combine(_tempDir, "weaver_config.db")));
@@ -675,7 +688,7 @@ public sealed class PostgresBackedRepositoryTests : IDisposable
         }
 
         (WeaverDbConnectionFactory factory, _) = await _postgres.CreateUnavailableAfterResolutionAsync(_tempDir);
-        using PatientDnaRepository repo = new(factory);
+        using PatientDnaRepository repo = new(factory, CreateProtector());
 
         await Assert.ThrowsAsync<WeaverDatabaseUnavailableException>(() => repo.GetDnaRecordsAsync("some_user"));
         Assert.False(File.Exists(Path.Combine(_tempDir, "weaver_config.db")));
