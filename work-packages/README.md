@@ -9,8 +9,7 @@
 ### 1.1 Master Architecture & Design Documents
 - [`PHASES-v2.md`](PHASES-v2.md) — Master Remediation & Feature Phase Plan (`P1–P20` permanent historical audit reference)
 
-### 1.2 Active Work Packages (`P21–P25: Subject Access & Cohort Management`)
-- [`p21-subject-access-schema-and-repository.md`](p21-subject-access-schema-and-repository.md) — Database schema migration (`Migration011`) and `ISubjectAccessRepository` for subject/group access and tiered permissions
+### 1.2 Active Work Packages (`P22–P25: Subject Access & Cohort Management`)
 - [`p22-subject-access-service-and-gating.md`](p22-subject-access-service-and-gating.md) — Access control service (`ISubjectAccessService`), middleware route gating, and cryptographic audit ledger persistence
 - [`p23-subject-access-api-endpoints.md`](p23-subject-access-api-endpoints.md) — REST API minimal endpoints for subject grants, cohort group CRUD, group membership, and group grants
 - [`p24-cohort-web-ui.md`](p24-cohort-web-ui.md) — Sovereign Web UI unified cohort & access management across `DnaManagementPage` and `UserManagement`
@@ -18,7 +17,7 @@
 
 ---
 
-### 1.3 Completed & Ratified Work Packages (`P1–P20`)
+### 1.3 Completed & Ratified Work Packages (`P1–P21`)
 *Note: Individual completed work package instruction files have been cleaned up and consolidated into the repository audit trail and `PHASES-v2.md`.*
 
 | Phase | Package / Scope | Key Deliverables & Milestones | Verification Status |
@@ -44,6 +43,7 @@
 | **P18** | Coverage Ratchet Closeout | Reached 100.00% line & branch coverage on non-compiler code, ratified baseline at 99.51% line / 96.38% branch across all state machines | **COMPLETED** |
 | **P19** | Multi-Container & E2E Verification | Multi-container Docker Compose validation (strict 127.0.0.1 bindings, 0600 keys, health probes, clean migrations), Playwright 390px mobile & interactive Ed25519/ML-DSA-65 sign-in | **COMPLETED** |
 | **P20** | In-Browser Key Generation & SRI | Pure client-side Ed25519 & ML-DSA-65 keypair derivation and AES-GCM envelope sealing in browser memory, removal of server-side key generation endpoints (`POST /api/setup/generate-keypair`, `POST /api/users/generate-keypair`), and server-side dynamic .NET W3C Subresource Integrity (SRI) SHA-384 generation for all authored scripts and styles via `IAssetIntegrityService`. | **COMPLETED** |
+| **P21** | Subject Access Schema & Repo | `Migration011_SubjectAccessAndGroups`, `ISubjectAccessRepository`, `SubjectGrant`, `SubjectGroup`, `SubjectGroupMember`, `SubjectGroupGrant`, tiered access levels (`ReadAccess: 1`, `GenomicAccess: 2`, `FullReadAccess: 3`) | **COMPLETED** |
 
 ---
 

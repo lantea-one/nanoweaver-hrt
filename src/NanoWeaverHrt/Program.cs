@@ -40,6 +40,7 @@ using NanoWeaverHrt.Events.Models;
 using NanoWeaverHrt.Caching;
 using NanoWeaverHrt.Bridges;
 using NanoWeaverHrt.Security.Integrity;
+using NanoWeaverHrt.Security.Access;
 
 namespace NanoWeaverHrt;
 
@@ -127,6 +128,7 @@ public class Program
         builder.Services.AddSingleton<IUserProfileRepository, UserProfileRepository>();
         builder.Services.AddSingleton<IPatientDnaRepository, PatientDnaRepository>();
         builder.Services.AddSingleton<IAssetIntegrityService, AssetIntegrityService>();
+        builder.Services.AddSingleton<ISubjectAccessRepository, SubjectAccessRepository>();
         // WHAT: Registers the authentication service behind the server-side idle expiration decorator.
         // WHY:  Prime Directive 12 requires idle sign-out to be validated server-side. The idle clock
         //       therefore lives in a singleton registry that no browser can touch, and every token

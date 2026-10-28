@@ -165,22 +165,22 @@ public sealed class SecurityHardeningAndMigrationsTests
         await conn.OpenAsync();
 
         using DatabaseMigrationRunner runner = new();
-        Assert.Equal(10, runner.RegisteredMigrations.Count);
+        Assert.Equal(11, runner.RegisteredMigrations.Count);
 
         // Initial state: no applied migrations
         IReadOnlyList<long> initialApplied = await runner.GetAppliedVersionsAsync(conn, "sqlite");
         Assert.Empty(initialApplied);
 
         IReadOnlyList<IDatabaseMigration> initialPending = await runner.GetPendingMigrationsAsync(conn, "sqlite");
-        Assert.Equal(10, initialPending.Count);
+        Assert.Equal(11, initialPending.Count);
 
         // Apply migrations
         int appliedCount = await runner.ApplyPendingMigrationsAsync(conn, "sqlite");
-        Assert.Equal(10, appliedCount);
+        Assert.Equal(11, appliedCount);
 
         // Post-migration verification
         IReadOnlyList<long> postApplied = await runner.GetAppliedVersionsAsync(conn, "sqlite");
-        Assert.Equal(new long[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 }, postApplied);
+        Assert.Equal(new long[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 }, postApplied);
 
         IReadOnlyList<IDatabaseMigration> postPending = await runner.GetPendingMigrationsAsync(conn, "sqlite");
         Assert.Empty(postPending);
