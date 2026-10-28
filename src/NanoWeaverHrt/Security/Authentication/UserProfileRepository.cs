@@ -49,24 +49,27 @@ public sealed class UserProfileRepository : IUserProfileRepository, IDisposable
         await _lock.WaitAsync(ct);
         try
         {
-            await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
-            await using DbCommand cmd = session.CreateCommand(@"
-                SELECT username, first_name, last_name, preferred_name, email_address,
-                       phone_number, date_of_birth, picture, regimen, gender_assigned_at_birth,
-                       pronouns_json, emergency_medical_notes, bio, language_preference,
-                       created_at_utc, updated_at_utc
-                FROM weaver_user_profiles
-                WHERE username = @u;");
-
-            WeaverDbParameters.Add(cmd, "@u", username);
-
-            await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct);
-            if (await reader.ReadAsync(ct))
+            UserProfile? result = null;
             {
-                return MapProfileFromReader(reader, _protector);
+                await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+                await using DbCommand cmd = session.CreateCommand(@"
+                    SELECT username, first_name, last_name, preferred_name, email_address,
+                           phone_number, date_of_birth, picture, regimen, gender_assigned_at_birth,
+                           pronouns_json, emergency_medical_notes, bio, language_preference,
+                           created_at_utc, updated_at_utc
+                    FROM weaver_user_profiles
+                    WHERE username = @u;");
+
+                WeaverDbParameters.Add(cmd, "@u", username);
+
+                await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct);
+                if (await reader.ReadAsync(ct))
+                {
+                    result = MapProfileFromReader(reader, _protector);
+                }
             }
 
-            return null;
+            return result;
         }
         finally
         {
@@ -157,22 +160,24 @@ public sealed class UserProfileRepository : IUserProfileRepository, IDisposable
         await _lock.WaitAsync(ct);
         try
         {
-            await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
-            await using DbCommand cmd = session.CreateCommand(@"
-                SELECT id, username, address_type, address_line1, address_line2,
-                       city, state_or_province, postal_code, country, is_primary,
-                       created_at_utc, updated_at_utc
-                FROM weaver_patient_addresses
-                WHERE username = @u
-                ORDER BY is_primary DESC, created_at_utc ASC;");
-
-            WeaverDbParameters.Add(cmd, "@u", username);
-
             List<PatientAddress> list = new();
-            await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct);
-            while (await reader.ReadAsync(ct))
             {
-                list.Add(MapAddressFromReader(reader, _protector));
+                await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+                await using DbCommand cmd = session.CreateCommand(@"
+                    SELECT id, username, address_type, address_line1, address_line2,
+                           city, state_or_province, postal_code, country, is_primary,
+                           created_at_utc, updated_at_utc
+                    FROM weaver_patient_addresses
+                    WHERE username = @u
+                    ORDER BY is_primary DESC, created_at_utc ASC;");
+
+                WeaverDbParameters.Add(cmd, "@u", username);
+
+                await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct);
+                while (await reader.ReadAsync(ct))
+                {
+                    list.Add(MapAddressFromReader(reader, _protector));
+                }
             }
 
             return list;
@@ -251,13 +256,18 @@ public sealed class UserProfileRepository : IUserProfileRepository, IDisposable
         await _lock.WaitAsync(ct);
         try
         {
-            await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
-            await using DbCommand cmd = session.CreateCommand("DELETE FROM weaver_patient_addresses WHERE id = @id AND username = @u;");
-            WeaverDbParameters.Add(cmd, "@id", id);
-            WeaverDbParameters.Add(cmd, "@u", username);
+            bool result;
+            {
+                await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+                await using DbCommand cmd = session.CreateCommand("DELETE FROM weaver_patient_addresses WHERE id = @id AND username = @u;");
+                WeaverDbParameters.Add(cmd, "@id", id);
+                WeaverDbParameters.Add(cmd, "@u", username);
 
-            int affected = await cmd.ExecuteNonQueryAsync(ct);
-            return affected > 0;
+                int affected = await cmd.ExecuteNonQueryAsync(ct);
+                result = affected > 0;
+            }
+
+            return result;
         }
         finally
         {
@@ -276,22 +286,24 @@ public sealed class UserProfileRepository : IUserProfileRepository, IDisposable
         await _lock.WaitAsync(ct);
         try
         {
-            await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
-            await using DbCommand cmd = session.CreateCommand(@"
-                SELECT id, username, contact_name, relationship, phone_number,
-                       email_address, priority_order, can_discuss_medical_info, notes,
-                       created_at_utc, updated_at_utc
-                FROM weaver_patient_contacts
-                WHERE username = @u
-                ORDER BY priority_order ASC, created_at_utc ASC;");
-
-            WeaverDbParameters.Add(cmd, "@u", username);
-
             List<PatientContact> list = new();
-            await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct);
-            while (await reader.ReadAsync(ct))
             {
-                list.Add(MapContactFromReader(reader, _protector));
+                await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+                await using DbCommand cmd = session.CreateCommand(@"
+                    SELECT id, username, contact_name, relationship, phone_number,
+                           email_address, priority_order, can_discuss_medical_info, notes,
+                           created_at_utc, updated_at_utc
+                    FROM weaver_patient_contacts
+                    WHERE username = @u
+                    ORDER BY priority_order ASC, created_at_utc ASC;");
+
+                WeaverDbParameters.Add(cmd, "@u", username);
+
+                await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct);
+                while (await reader.ReadAsync(ct))
+                {
+                    list.Add(MapContactFromReader(reader, _protector));
+                }
             }
 
             return list;
@@ -368,13 +380,18 @@ public sealed class UserProfileRepository : IUserProfileRepository, IDisposable
         await _lock.WaitAsync(ct);
         try
         {
-            await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
-            await using DbCommand cmd = session.CreateCommand("DELETE FROM weaver_patient_contacts WHERE id = @id AND username = @u;");
-            WeaverDbParameters.Add(cmd, "@id", id);
-            WeaverDbParameters.Add(cmd, "@u", username);
+            bool result;
+            {
+                await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+                await using DbCommand cmd = session.CreateCommand("DELETE FROM weaver_patient_contacts WHERE id = @id AND username = @u;");
+                WeaverDbParameters.Add(cmd, "@id", id);
+                WeaverDbParameters.Add(cmd, "@u", username);
 
-            int affected = await cmd.ExecuteNonQueryAsync(ct);
-            return affected > 0;
+                int affected = await cmd.ExecuteNonQueryAsync(ct);
+                result = affected > 0;
+            }
+
+            return result;
         }
         finally
         {

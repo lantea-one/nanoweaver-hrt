@@ -319,4 +319,20 @@ public sealed class ChannelEventBus : IInternalEventBus
             action?.Invoke();
         }
     }
+
+    /// <summary>
+    /// Injects a pre-existing channel stream entry for deterministic unit testing of closed or full stream branches.
+    /// </summary>
+    /// <typeparam name="TEvent">The event type handled by the stream.</typeparam>
+    /// <param name="channel">The channel instance to attach.</param>
+    internal void RegisterCompletedStreamForTesting<TEvent>(System.Threading.Channels.Channel<TEvent> channel) where TEvent : notnull
+    {
+        // WHAT: Registers a channel directly into _channelStreams without subscribing through an async enumerator.
+        // WHY:  Allows deterministic testing of ChannelClosedException and OperationCanceledException handling in PublishAsync.
+        // HOW:  Gets or creates the stream dictionary for TEvent and inserts a new ChannelStreamEntry.
+        System.Collections.Concurrent.ConcurrentDictionary<Guid, IChannelStreamEntry> typeStreams = _channelStreams.GetOrAdd(
+            typeof(TEvent),
+            _ => new System.Collections.Concurrent.ConcurrentDictionary<Guid, IChannelStreamEntry>());
+        typeStreams[Guid.NewGuid()] = new ChannelStreamEntry<TEvent>(channel);
+    }
 }

@@ -227,7 +227,7 @@ public sealed class StackServiceManager : IStackServiceManager
     /// <param name="defaultAccelerator">Fallback accelerator name.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The resolved accelerator backend description.</returns>
-    private static async Task<string> ExtractAcceleratorAsync(HttpResponseMessage response, string defaultAccelerator, CancellationToken ct)
+    internal static async Task<string> ExtractAcceleratorAsync(HttpResponseMessage response, string defaultAccelerator, CancellationToken ct)
     {
         // WHAT: Reads and parses the JSON response payload from the simulation daemon.
         // WHY:  Displays the dynamic hardware accelerator (e.g., Level Zero or OpenCL) in telemetry.

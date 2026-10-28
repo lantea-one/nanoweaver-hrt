@@ -151,7 +151,7 @@ public sealed class ValkeyEventBridge : BackgroundService, IValkeyEventBridge
     /// <summary>
     /// Registers local in-memory event subscriptions that serialize and forward events to Valkey.
     /// </summary>
-    private void RegisterLocalOutboundForwarders()
+    internal void RegisterLocalOutboundForwarders()
     {
         // WHAT: Listens to typed events on the local bus and dispatches them outbound to Valkey.
         // WHY:  Broadcasts node progress and security audits to peer nodes across the cluster.
@@ -203,7 +203,7 @@ public sealed class ValkeyEventBridge : BackgroundService, IValkeyEventBridge
     /// Registers subscriptions to Valkey pub/sub channels to receive events from remote nodes.
     /// </summary>
     /// <returns>A <see cref="Task"/> representing the asynchronous subscription setup.</returns>
-    private async Task RegisterInboundClusterListenersAsync()
+    internal async Task RegisterInboundClusterListenersAsync()
     {
         // WHAT: Subscribes to Valkey channels and republishes received payloads into the local bus.
         // WHY:  Allows local UI and workers to react to actions taken on other cluster nodes.
@@ -248,7 +248,7 @@ public sealed class ValkeyEventBridge : BackgroundService, IValkeyEventBridge
     /// <typeparam name="TEvent">The event contract type.</typeparam>
     /// <param name="message">The raw message payload from Valkey.</param>
     /// <returns>A <see cref="ValueTask"/> representing the republishing operation.</returns>
-    private async ValueTask ProcessInboundMessageAsync<TEvent>(RedisValue message) where TEvent : class, IWeaverEvent
+    internal async ValueTask ProcessInboundMessageAsync<TEvent>(RedisValue message) where TEvent : class, IWeaverEvent
     {
         // WHAT: Deserializes the message and republishes it locally if not produced by this node.
         // WHY:  Delivers cluster events to local subscribers without infinite recursion loops.
@@ -340,5 +340,17 @@ public sealed class ValkeyEventBridge : BackgroundService, IValkeyEventBridge
         }
 
         return removed;
+    }
+
+    /// <summary>
+    /// Records an event ID in the locally-produced events cache for deterministic testing of echo suppression.
+    /// </summary>
+    /// <param name="eventId">The event ID to register.</param>
+    internal void RecordLocalEventForTesting(Guid eventId)
+    {
+        // WHAT: Directly inserts an event ID into _locallyProducedEvents.
+        // WHY:  Allows deterministic unit testing of inbound echo suppression.
+        // HOW:  Sets dictionary entry with UtcNow timestamp.
+        _locallyProducedEvents[eventId] = DateTimeOffset.UtcNow;
     }
 }
