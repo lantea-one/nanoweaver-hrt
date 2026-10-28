@@ -39,10 +39,11 @@ Execute these packages in exact numerical order so migrations (`009`, `010`) and
 | **8** | **P16 (Stages A & B)** | [`c8-remove-oracle.md`](c8-remove-oracle.md) | `flash` / Haiku / Sonnet | Stage A: `TestChallengeHelper.cs` & migrate integration test call sites to `/api/auth/challenge` + `/api/auth/web-token`. Stage B: Delete `POST /api/auth/login-key`, `AuthenticateWithPrivateKeyAsync`, `SignEphemeralNonce`, `ExtractPrivateKeyDerFromPem`, `DecryptPrivateKeyBytes`, and `KeyLoginRequest` | **COMPLETED (8/8)** |
 | **9** | **P17 (Stages A & B)** | [`p17-bunit-security-components.md`](p17-bunit-security-components.md) | `flash` / Haiku / Sonnet | Stage A: Add `bunit` `1.38.5`, cover `Login.razor` & `SetupWizard.razor` at 100%. Stage B: Cover `MainLayout.razor` route guard & idle sign-out, un-exclude `MainLayout`, `Login`, and `SetupWizard` in `coverlet.runsettings` & `coverage-full.runsettings` | **COMPLETED (8/8)** |
 | **10** | **P18 (Stages A & B)** | [`p18-coverage-baseline-closeout.md`](p18-coverage-baseline-closeout.md) | `flash` / Haiku / Sonnet | Stage A: Cover reachable `Program.cs` minimal-API endpoint lambda branches. Stage B: Cover reachable service state machines, ratify `coverage-baseline.json`, and document any remaining compiler-generated lines honestly | **COMPLETED (8/8)** |
+| **11** | **P19** | [`PHASES-v2.md`](PHASES-v2.md) (§3 P19) | Parent / Architect | Release verification across live Docker compose (base + infra + clean volume), Playwright browser verification (390px mobile, Ed25519 & ML-DSA-65 interactive sign-in, idle timeout), and Directive 5 ratification | **COMPLETED (8/8)** |
 
 ---
 
-## 2. Summary of Recorded User Decisions (`P10–P18`)
+## 2. Summary of Recorded User Decisions (`P10–P19`)
 
 All architectural and scoping questions were presented via interactive forms and resolved as follows:
 1. **Repository Tracking**: Track [`work-packages/PHASES-v2.md`](PHASES-v2.md) and [`work-packages/c8-challenge-response-proposal.md`](c8-challenge-response-proposal.md) in git alongside `P10–P18`.
@@ -58,6 +59,10 @@ All architectural and scoping questions were presented via interactive forms and
 7. **[P17 & P18] bUnit & Coverage Ratchet Closeout**:
    - Use `bunit` `1.38.5`, un-exclude `MainLayout`, `Login`, and `SetupWizard` in `coverlet.runsettings` & `coverage-full.runsettings` while keeping the remaining 14 non-security `.razor` files excluded.
    - In `P18`, test real reachable branches using SQLite/in-memory services (never mocking `DbConnection`), ratify the reduced `coverage-baseline.json`, and document any remaining compiler-generated state-machine lines honestly.
+8. **[P19 Decisions] Release Verification, Directive 5 & In-Browser Key Generation**:
+   - **Directive 5 Ratification**: Updated `AGENTS.md` Directive 5 to name the exact measured scope: 100.00% line and branch coverage across developer-authored code and security Razor components (Step 4), and a downward-only ratchet baseline for compiler-generated code (Step 7).
+   - **In-Browser Key Generation (Phase P20)**: Scheduled follow-up work package [`p20-in-browser-key-generation.md`](p20-in-browser-key-generation.md) for pure client-side key generation in the browser (WebCrypto for Ed25519 and Noble for ML-DSA-65) so private keys never touch the server even during `/setup` or onboarding.
+   - **Forgejo CI Runner Flakes**: Recorded user disposition treating intermittent simulation-image build timeouts on `heimdall` as known host infrastructure latency to be re-run on demand.
 
 ---
 

@@ -28,17 +28,11 @@
    - Explain domain concepts in plain English. Assume the reader is a talented junior software engineer with zero chemistry background, or a molecular biologist with basic scripting skills.
 
 5. **Mandatory 100.00% Line & Branch Code Coverage Threshold**:
-   - Gate step 4 enforces zero uncovered lines and zero uncovered branches across the measured scope
-     defined by `coverlet.runsettings`, which excludes compiler-generated code (minimal-API endpoint
-     lambdas and async state machines), `.razor` components and generated code.
-   - Gate step 7 measures the same solution with compiler-generated code included and enforces the
-     committed `coverage-baseline.json`: no rate may fall, no class's uncovered-line count may rise,
-     and the baseline may only ever be revised downward — until it reaches 100.00%, at which point
-     the exclusion, the second runsettings file and the baseline are deleted and step 4 alone
-     enforces the real number.
+   - Gate step 4 enforces 100.00% line and branch coverage across all developer-authored C# code and security-critical Razor components (defined by `coverlet.runsettings`).
+   - Gate step 7 tracks all compiler-generated state machines against a committed downward-only ratchet baseline (`coverage-baseline.json`, currently 99.51% line / 96.38% branch with 59 uncovered lines across 29 classes), prohibiting any regression until 100.00% is reached.
    - Any new method, logic branch (`if`, `switch`, `catch`, ternary operators), or boundary condition MUST have comprehensive unit tests in `tests/NanoWeaverHrt.Tests`.
    - Never use `[ExcludeFromCodeCoverage]` as a shortcut to avoid writing tests.
-   - Client-side JavaScript (`weaver-visualizer.js`) MUST maintain 100% line, branch, and function coverage via `npm test`.
+   - Client-side JavaScript (`weaver-visualizer.js`, `weaver-session.js`, `weaver-auth.js`) MUST maintain 100% line, branch, and function coverage via `npm test`.
 
 6. **100% Deterministic Accuracy & Zero Flakiness**:
    - Calculations (endocrine kinetics, FASTA GC content, coordinate parsing, cryptographic manifests) must be 100% mathematically and physically accurate.
