@@ -95,6 +95,8 @@ public sealed class ValkeyCacheService : IValkeyCacheService
                 RedisValue result = await db.StringGetAsync(fullKey).ConfigureAwait(false);
                 if (result.HasValue && !result.IsNullOrEmpty)
                 {
+                    // WHY !: StackExchange.Redis annotates the explicit (byte[]?) conversion as nullable,
+                    //        but result.HasValue && !result.IsNullOrEmpty guarantees a non-null byte[].
                     byte[] bytes = (byte[])result!;
                     return JsonSerializer.Deserialize<T>(bytes);
                 }

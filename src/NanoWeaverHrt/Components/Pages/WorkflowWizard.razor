@@ -359,15 +359,8 @@
                     </div>
 
                     <div class="mt-3">
-                        <button class="btn btn-accent w-100" disabled="@_isSimulating" @onclick="RunSimulationAsync">
-                            @if (_isSimulating)
-                            {
-                                <span>Simulating on OpenCL Accelerator... (@_simProgress%)</span>
-                            }
-                            else
-                            {
-                                <span>🚀 Execute In-Silico Simulation</span>
-                            }
+                        <button class="btn btn-accent w-100" @onclick="RunSimulationAsync">
+                            <span>🚀 Execute In-Silico Simulation</span>
                         </button>
                     </div>
 
@@ -425,28 +418,14 @@
                     </div>
 
                     <div class="mt-3">
-                        <button class="btn btn-primary w-100" disabled="@_isParsing" @onclick="RunStreamParseAsync">
-                            @if (_isParsing)
-                            {
-                                <span>Streaming via System.IO.Pipelines...</span>
-                            }
-                            else
-                            {
-                                <span>⚡ Trigger Zero-Allocation Stream Parser</span>
-                            }
+                        <button class="btn btn-primary w-100" @onclick="RunStreamParseAsync">
+                            <span>⚡ Trigger Zero-Allocation Stream Parser</span>
                         </button>
                     </div>
 
                     <div class="mt-2">
-                        <button class="btn btn-outline w-100" disabled="@_isExportingParquet" @onclick="RunParquetExportAsync">
-                            @if (_isExportingParquet)
-                            {
-                                <span>Serializing Columnar Parquet...</span>
-                            }
-                            else
-                            {
-                                <span>📦 Convert to Columnar Parquet (pg_duckdb)</span>
-                            }
+                        <button class="btn btn-outline w-100" @onclick="RunParquetExportAsync">
+                            <span>📦 Convert to Columnar Parquet (pg_duckdb)</span>
                         </button>
                     </div>
                 </div>
@@ -991,10 +970,6 @@
     /// </summary>
     private string SelectedSteps { get; set; } = "50000";
 
-    /// <summary>
-    /// Simulation execution flag.
-    /// </summary>
-    private bool _isSimulating;
 
     /// <summary>
     /// Simulation completion percentage.
@@ -1011,15 +986,6 @@
     /// </summary>
     private string SelectedTrajectoryFile { get; set; } = "dna_nanotube_sample.xyz";
 
-    /// <summary>
-    /// Parser running flag.
-    /// </summary>
-    private bool _isParsing;
-
-    /// <summary>
-    /// Parquet export running flag.
-    /// </summary>
-    private bool _isExportingParquet;
 
     /// <summary>
     /// Total frames parsed in the active run.
@@ -1245,7 +1211,6 @@
         //       to the stylesheet. The .progress-bar-fill rule animates the width change instead.
         // HOW:  Appends every progress line in one pass, then returns an already-completed task so
         //       the markup's @onclick handler and the method signature stay unchanged.
-        _isSimulating = true;
         _simProgress = 0;
         _simLog = $"[SIMULATION] Launching {SelectedSimEngine} engine...\n"
             + $"  - Model: Coarse-grained DNA origami relaxation\n"
@@ -1261,7 +1226,6 @@
         _simLog += $"[COMPLETED] Trajectory coordinates saved to /workspace/data/{SelectedTrajectoryFile}\n"
             + $"  - RMSD Convergence: 1.42 Å (Equilibrium reached)\n"
             + $"  - Pocket Structural Integrity: 99.1%\n";
-        _isSimulating = false;
         return Task.CompletedTask;
     }
 
@@ -1273,7 +1237,6 @@
     {
         // WHY: The Task.Delay that used to sit here only paced the spinner. Showing and hiding the
         //      busy state is a presentation concern handled by CSS, so the delay is gone.
-        _isParsing = true;
         _parseOutputLog = $"[PIPELINE] Initializing zero-allocation PipeReader for {SelectedTrajectoryFile}...\n";
 
         _parsedFramesCount = 500;
@@ -1286,7 +1249,6 @@
             + $"  - Elapsed Time: {_parseElapsedMs} ms\n"
             + $"  - Processing Throughput: {(_parsedFramesCount / (_parseElapsedMs / 1000.0)):F0} frames/sec\n"
             + $"  - Heap Garbage Allocated: 0 Bytes (Strict ArrayPool<T>.Shared rental)\n";
-        _isParsing = false;
         return Task.CompletedTask;
     }
 
@@ -1297,10 +1259,8 @@
     private Task RunParquetExportAsync()
     {
         // WHY: As above, the removed Task.Delay was pure animation pacing, now left to CSS.
-        _isExportingParquet = true;
         _parseOutputLog += $"[PARQUET] Serializing columnar DuckDB Parquet file...\n";
         _parseOutputLog += $"[PARQUET] Created {Path.GetFileNameWithoutExtension(SelectedTrajectoryFile)}.parquet with SIMD acceleration.\n";
-        _isExportingParquet = false;
         return Task.CompletedTask;
     }
 

@@ -88,7 +88,7 @@ RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/simulation_daemon.py
 #       and a supplementary GID matching it lets this user open them. Compose sets
 #       the real UID/GID and GPU GIDs from .env (see example.env).
 RUN mkdir -p /workspace/configs /workspace/data /workspace/exports \
-    && chown 1000:1000 /workspace /workspace/data /workspace/exports
+    && chown 1000:1000 /workspace /workspace/configs /workspace/data /workspace/exports
 USER 1000:1000
 
 EXPOSE 8080

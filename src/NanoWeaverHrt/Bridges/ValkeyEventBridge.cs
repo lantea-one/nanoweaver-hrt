@@ -260,6 +260,8 @@ public sealed class ValkeyEventBridge : BackgroundService, IValkeyEventBridge
 
         try
         {
+            // WHY !: StackExchange.Redis annotates the explicit (byte[]?) conversion as nullable,
+            //        but the preceding message.IsNullOrEmpty guard guarantees a non-null byte[].
             byte[] bytes = (byte[])message!;
             TEvent? parsed = JsonSerializer.Deserialize<TEvent>(bytes);
 

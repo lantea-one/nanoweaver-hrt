@@ -1,4 +1,5 @@
 using System.Data.Common;
+using System.Globalization;
 
 namespace NanoWeaverHrt.Database.Access;
 
@@ -26,7 +27,7 @@ public static class WeaverDbValues
     public static DateTimeOffset ReadTimestamp(DbDataReader reader, int ordinal) =>
         reader.GetFieldType(ordinal) == typeof(DateTime)
             ? new DateTimeOffset(reader.GetDateTime(ordinal), TimeSpan.Zero)
-            : DateTimeOffset.Parse(reader.GetString(ordinal));
+            : DateTimeOffset.Parse(reader.GetString(ordinal), CultureInfo.InvariantCulture);
 
     /// <summary>
     /// Reads a timestamp column that may be NULL.

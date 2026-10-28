@@ -798,7 +798,7 @@ public sealed class ApiRoleGatingAndDisclosureTests : IClassFixture<WebApplicati
         // HOW:  Calls SanitizeDetail at status 400 and asserts none of the sensitive substrings survive.
         string hostileMessage =
             "Query failed: SELECT public_key_base64, role FROM weaver_users WHERE username = 'admin'; " +
-            "store /home/fabigail/simulations/shared-data/weaver_config.db on \\\\fileserver\\weaver-data\\patients " +
+            "store /home/operator/simulations/shared-data/weaver_config.db on \\\\fileserver\\weaver-data\\patients " +
             "using Host=db.internal;Port=5432;Database=weaver_hrt;Username=weaver;Password=SuperSecretDbPassword123! " +
             "signed by -----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIKey\n-----END PRIVATE KEY-----";
 
@@ -806,7 +806,7 @@ public sealed class ApiRoleGatingAndDisclosureTests : IClassFixture<WebApplicati
 
         Assert.DoesNotContain("weaver_users", sanitized);
         Assert.DoesNotContain("SELECT", sanitized, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("/home/fabigail", sanitized);
+        Assert.DoesNotContain("/home/operator", sanitized);
         Assert.DoesNotContain("fileserver", sanitized);
         Assert.DoesNotContain("weaver-data", sanitized);
         Assert.DoesNotContain("SuperSecretDbPassword123!", sanitized);
@@ -864,7 +864,7 @@ public sealed class ApiRoleGatingAndDisclosureTests : IClassFixture<WebApplicati
         NullLogger<SecureExceptionHandlerMiddleware> logger = NullLogger<SecureExceptionHandlerMiddleware>.Instance;
 
         SecureExceptionHandlerMiddleware middleware = new(_ =>
-            throw new InvalidOperationException("Razor render failed reading /home/fabigail/simulations/shared-data/weaver_config.db"), logger);
+            throw new InvalidOperationException("Razor render failed reading /home/operator/simulations/shared-data/weaver_config.db"), logger);
 
         DefaultHttpContext pageContext = new();
         pageContext.Request.Path = "/dashboard";
@@ -882,7 +882,7 @@ public sealed class ApiRoleGatingAndDisclosureTests : IClassFixture<WebApplicati
         string pageText = await pageReader.ReadToEndAsync();
 
         Assert.Equal("An internal error occurred during request processing. Correlation ID: TRACE-NONAPI.", pageText);
-        Assert.DoesNotContain("/home/fabigail", pageText);
+        Assert.DoesNotContain("/home/operator", pageText);
         Assert.DoesNotContain("InvalidOperationException", pageText);
         Assert.DoesNotContain("   at ", pageText);
 
