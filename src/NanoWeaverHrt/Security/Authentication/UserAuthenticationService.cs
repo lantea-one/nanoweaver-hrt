@@ -99,6 +99,11 @@ public sealed class UserAuthenticationService : IUserAuthenticationService
     /// Registers an explicit authentication challenge for testing expiration workflows.
     /// </summary>
     /// <param name="challenge">The challenge instance to register.</param>
+    /// <remarks>
+    /// Test-only surface reachable exclusively via <c>InternalsVisibleTo("NanoWeaverHrt.Tests")</c> so unit tests
+    /// can deterministically inject pre-expired challenge nonces without <c>Thread.Sleep</c> (Directive 6).
+    /// Never called by production code.
+    /// </remarks>
     internal void RegisterChallengeForTesting(AuthChallenge challenge)
     {
         _activeChallenges[challenge.ChallengeId] = challenge;
@@ -132,7 +137,7 @@ public sealed class UserAuthenticationService : IUserAuthenticationService
 
         UserAccount adminAccount = new()
         {
-            Username = adminUsername.Trim(),
+            Username = NormalizeUsername(adminUsername),
             Role = UserRole.Administrator,
             AccessGate = accessGate,
             Algorithm = algorithm,
@@ -205,7 +210,7 @@ public sealed class UserAuthenticationService : IUserAuthenticationService
 
         return new GeneratedKeyBundle
         {
-            Username = username.Trim(),
+            Username = NormalizeUsername(username),
             Role = role,
             AccessGate = gate,
             Algorithm = algorithm,
@@ -238,7 +243,7 @@ public sealed class UserAuthenticationService : IUserAuthenticationService
         AuthChallenge challenge = new()
         {
             ChallengeId = challengeId,
-            Username = username.Trim(),
+            Username = NormalizeUsername(username),
             NonceBase64 = Convert.ToBase64String(nonce),
             ExpiresAtUtc = now.Add(ChallengeLifetime)
         };
@@ -274,12 +279,13 @@ public sealed class UserAuthenticationService : IUserAuthenticationService
             return (false, "Authentication challenge has expired.", null, null);
         }
 
-        if (!string.Equals(challenge.Username, username.Trim(), StringComparison.OrdinalIgnoreCase))
+        string normalizedUsername = NormalizeUsername(username);
+        if (!string.Equals(challenge.Username, normalizedUsername, StringComparison.Ordinal))
         {
             return (false, "Challenge username mismatch.", null, null);
         }
 
-        UserAccount? user = await _userRepository.GetUserAsync(username.Trim(), ct);
+        UserAccount? user = await _userRepository.GetUserAsync(normalizedUsername, ct);
         if (user == null || !user.IsActive)
         {
             return (false, "User account not found or deactivated.", null, null);
@@ -336,7 +342,7 @@ public sealed class UserAuthenticationService : IUserAuthenticationService
         ArgumentException.ThrowIfNullOrWhiteSpace(username);
         ArgumentException.ThrowIfNullOrWhiteSpace(privateKeyPem);
 
-        UserAccount? user = await _userRepository.GetUserAsync(username.Trim(), ct);
+        UserAccount? user = await _userRepository.GetUserAsync(NormalizeUsername(username), ct);
         if (user == null || !user.IsActive)
         {
             return (false, "User account not found or deactivated.", null, null);
@@ -397,14 +403,18 @@ public sealed class UserAuthenticationService : IUserAuthenticationService
             return (false, null, "Bearer token is missing or empty.");
         }
 
-        string[] parts = token.Split('.');
-        if (parts.Length != 2)
+        // WHAT: Splits the bearer token around its single '.' delimiter using ReadOnlySpan<char>.
+        // WHY:  ValidateTokenAsync runs on every authenticated HTTP request; string.Split('.') allocates a string[] on the hot path.
+        // HOW:  Checks IndexOf('.') and LastIndexOf('.') to ensure exactly one separator exists before slicing payload and signature.
+        ReadOnlySpan<char> tokenSpan = token.AsSpan();
+        int dotIndex = tokenSpan.IndexOf('.');
+        if (dotIndex < 0 || dotIndex != tokenSpan.LastIndexOf('.'))
         {
             return (false, null, "Malformed bearer token format.");
         }
 
-        string payloadBase64 = parts[0];
-        string signatureBase64 = parts[1];
+        string payloadBase64 = tokenSpan[..dotIndex].ToString();
+        string signatureBase64 = tokenSpan[(dotIndex + 1)..].ToString();
 
         // Verify HMAC-SHA256 signature
         byte[] payloadBytes = Convert.FromBase64String(Base64UrlDecode(payloadBase64));
@@ -466,7 +476,7 @@ public sealed class UserAuthenticationService : IUserAuthenticationService
 
         UserAccount user = new()
         {
-            Username = username.Trim(),
+            Username = NormalizeUsername(username),
             Role = role,
             AccessGate = gate,
             Algorithm = algorithm,
@@ -500,7 +510,7 @@ public sealed class UserAuthenticationService : IUserAuthenticationService
 
         UserAccount user = new()
         {
-            Username = username.Trim(),
+            Username = NormalizeUsername(username),
             Role = role,
             AccessGate = gate,
             Algorithm = algorithm,
@@ -531,8 +541,9 @@ public sealed class UserAuthenticationService : IUserAuthenticationService
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(username);
 
+        string normalizedUsername = NormalizeUsername(username);
         IReadOnlyList<UserAccount> allUsers = await _userRepository.ListUsersAsync(ct);
-        UserAccount? target = allUsers.FirstOrDefault(u => string.Equals(u.Username, username.Trim(), StringComparison.OrdinalIgnoreCase));
+        UserAccount? target = allUsers.FirstOrDefault(u => string.Equals(u.Username, normalizedUsername, StringComparison.Ordinal));
 
         if (target == null)
         {
@@ -549,13 +560,13 @@ public sealed class UserAuthenticationService : IUserAuthenticationService
             }
         }
 
-        bool deleted = await _userRepository.DeleteUserAsync(username.Trim(), ct);
+        bool deleted = await _userRepository.DeleteUserAsync(target.Username, ct);
         if (deleted)
         {
             _auditService.LogAction(
                 "USER_MANAGEMENT",
                 "UserDeleted",
-                $"user:{username.Trim()}",
+                $"user:{target.Username}",
                 $"{{\"role\":\"{target.Role}\"}}");
         }
 
@@ -872,4 +883,11 @@ public sealed class UserAuthenticationService : IUserAuthenticationService
         }
         return s;
     }
+
+    /// <summary>
+    /// Normalizes a username by trimming whitespace and converting to lowercase invariant characters.
+    /// </summary>
+    /// <param name="username">The raw username string.</param>
+    /// <returns>The normalized lowercase username.</returns>
+    private static string NormalizeUsername(string username) => username.Trim().ToLowerInvariant();
 }

@@ -335,9 +335,18 @@ public sealed class AuthEndpointsIntegrationTests : IClassFixture<WebApplication
         // ---------------------------------------------------------------------
         // STEP 10: Patient Digital DNA Generation & Download
         // ---------------------------------------------------------------------
-        // WHAT: Calls GET /api/patient/dna.
-        // WHY:  Allows Patients to retrieve their personalized DNA origami nanocarrier sequences.
-        // HOW:  Queries with MtF regimen parameters and validates returned PatientDigitalDnaPackage.
+        // WHAT: Calls GET /api/patient/dna with omitted, self, invalid, cross-subject, and administrator scoping.
+        // WHY:  Allows Patients to retrieve their personalized DNA origami nanocarrier sequences while preventing
+        //       unauthorized subject enumeration or malformed identifier injection.
+        // HOW:  Queries with omitted ID (defaults to self), valid self ID, invalid IDs, cross-subject (404), and Admin access.
+        // 10a. Omitted patientId defaults to currentUser.Username
+        HttpResponseMessage defaultDnaRes = await patientClient.GetAsync("/api/patient/dna");
+        Assert.Equal(HttpStatusCode.OK, defaultDnaRes.StatusCode);
+        PatientDigitalDnaPackage? defaultPackage = await defaultDnaRes.Content.ReadFromJsonAsync<PatientDigitalDnaPackage>();
+        Assert.NotNull(defaultPackage);
+        Assert.Equal("patient_007", defaultPackage.PatientId);
+
+        // 10b. Explicit self patientId with custom parameters
         HttpResponseMessage dnaRes = await patientClient.GetAsync("/api/patient/dna?patientId=patient_007&regimen=MaleToFemale&geometry=Hexagonal%20Nanotube%20(6HB)&targetKd=3.5");
         Assert.Equal(HttpStatusCode.OK, dnaRes.StatusCode);
         PatientDigitalDnaPackage? dnaPackage = await dnaRes.Content.ReadFromJsonAsync<PatientDigitalDnaPackage>();
@@ -347,6 +356,33 @@ public sealed class AuthEndpointsIntegrationTests : IClassFixture<WebApplication
         Assert.NotEmpty(dnaPackage.Staples);
         Assert.NotEmpty(dnaPackage.AnnealingProtocol);
         Assert.False(string.IsNullOrEmpty(dnaPackage.ProvenanceSha256));
+
+        // 10c. Invalid patientId formats return 400 Bad Request
+        HttpResponseMessage badIdRes = await patientClient.GetAsync("/api/patient/dna?patientId=bad/id!");
+        Assert.Equal(HttpStatusCode.BadRequest, badIdRes.StatusCode);
+        Assert.Equal("application/problem+json", badIdRes.Content.Headers.ContentType?.MediaType);
+
+        HttpResponseMessage longIdRes = await patientClient.GetAsync($"/api/patient/dna?patientId={new string('a', 65)}");
+        Assert.Equal(HttpStatusCode.BadRequest, longIdRes.StatusCode);
+        Assert.Equal("application/problem+json", longIdRes.Content.Headers.ContentType?.MediaType);
+
+        // 10d. Non-Admin (Patient or Researcher) requesting someone else returns 404 Not Found problem details
+        HttpResponseMessage patientSomeoneElse = await patientClient.GetAsync("/api/patient/dna?patientId=someone_else");
+        Assert.Equal(HttpStatusCode.NotFound, patientSomeoneElse.StatusCode);
+        Assert.Equal("application/problem+json", patientSomeoneElse.Content.Headers.ContentType?.MediaType);
+        string notFoundBody = await patientSomeoneElse.Content.ReadAsStringAsync();
+        Assert.Contains("The requested patient record was not found.", notFoundBody, StringComparison.Ordinal);
+
+        HttpResponseMessage researcherSomeoneElse = await researcherClient.GetAsync("/api/patient/dna?patientId=someone_else");
+        Assert.Equal(HttpStatusCode.NotFound, researcherSomeoneElse.StatusCode);
+        Assert.Equal("application/problem+json", researcherSomeoneElse.Content.Headers.ContentType?.MediaType);
+
+        // 10e. Administrator requesting another user's patientId succeeds with 200 OK
+        HttpResponseMessage adminDnaRes = await adminClient.GetAsync("/api/patient/dna?patientId=patient_007");
+        Assert.Equal(HttpStatusCode.OK, adminDnaRes.StatusCode);
+        PatientDigitalDnaPackage? adminDnaPkg = await adminDnaRes.Content.ReadFromJsonAsync<PatientDigitalDnaPackage>();
+        Assert.NotNull(adminDnaPkg);
+        Assert.Equal("patient_007", adminDnaPkg.PatientId);
 
         // ---------------------------------------------------------------------
         // STEP 11: Sole Administrator Protection

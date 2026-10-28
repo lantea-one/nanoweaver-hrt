@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
+using NanoWeaverHrt.Compliance;
 using NanoWeaverHrt.Models;
 using NanoWeaverHrt.Security.Authentication;
 using Xunit;
@@ -414,6 +415,21 @@ public sealed class UserProvisioningEndpointTests : IClassFixture<WebApplication
         Assert.Contains("urn:weaver:error:conflict", body, StringComparison.Ordinal);
         Assert.Contains("already exists", body, StringComparison.Ordinal);
 
+        HttpResponseMessage third = await adminClient.PostAsJsonAsync("/api/users", new CreateUserRequest
+        {
+            Username = "PROV_REBOUND",
+            Role = UserRole.Administrator,
+            AccessGate = AccessGate.ApiWeb,
+            Algorithm = KeyAlgorithm.Ed25519,
+            PublicKeyBase64 = secondKey
+        });
+
+        Assert.Equal(HttpStatusCode.Conflict, third.StatusCode);
+        Assert.Equal("application/problem+json", third.Content.Headers.ContentType?.MediaType);
+        string thirdBody = await third.Content.ReadAsStringAsync();
+        Assert.Contains("urn:weaver:error:conflict", thirdBody, StringComparison.Ordinal);
+        Assert.Contains("already exists", thirdBody, StringComparison.Ordinal);
+
         UserAccount[]? users = await adminClient.GetFromJsonAsync<UserAccount[]>("/api/users");
         Assert.NotNull(users);
         Assert.Single(users, u => u.Username == "prov_rebound");
@@ -422,6 +438,15 @@ public sealed class UserProvisioningEndpointTests : IClassFixture<WebApplication
         Assert.Equal(UserRole.Patient, stored.Role);
         Assert.Equal(AccessGate.Web, stored.AccessGate);
         Assert.Equal(firstKey, stored.PublicKeyBase64);
+
+        using IServiceScope scope = _factory.Services.CreateScope();
+        IComplianceAuditService audit = scope.ServiceProvider.GetRequiredService<IComplianceAuditService>();
+        IReadOnlyList<AuditRecord> auditRecords = audit.GetAuditRecords(limit: 1000);
+        var createdRecords = auditRecords
+            .Where(r => r.Action == "UserCreated" && string.Equals(r.Resource, "user:prov_rebound", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        Assert.Single(createdRecords);
+        Assert.Equal("user:prov_rebound", createdRecords[0].Resource);
     }
 
     /// <summary>

@@ -2422,9 +2422,31 @@ public class Program
             // WHY:  Allows Patients, Researchers, and Administrators to download digital DNA blueprints.
             // HOW:  Generates nanocarrier sequences, staple routing tables, annealing schedule, and SHA-256 provenance.
             UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            string effectivePatientId = !string.IsNullOrWhiteSpace(patientId)
-                ? patientId
-                : (currentUser?.Username ?? "PATIENT-SOVEREIGN-01");
+            string effectivePatientId;
+            if (!string.IsNullOrWhiteSpace(patientId))
+            {
+                string trimmedId = patientId.Trim().ToLowerInvariant();
+                if (!IsValidPatientIdentifier(trimmedId))
+                {
+                    return SecureProblemResult(
+                        context,
+                        StatusCodes.Status400BadRequest,
+                        "The requested patient identifier format is invalid.");
+                }
+
+                if (currentUser == null
+                    || (currentUser.Role != UserRole.Administrator
+                        && !string.Equals(currentUser.Username, trimmedId, StringComparison.OrdinalIgnoreCase)))
+                {
+                    return SecureProblemResult(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
+                }
+
+                effectivePatientId = trimmedId;
+            }
+            else
+            {
+                effectivePatientId = currentUser?.Username ?? "patient-sovereign-01";
+            }
 
             TherapeuticRegimen effectiveRegimen = regimen ?? TherapeuticRegimen.MaleToFemale;
             string effectiveGeometry = !string.IsNullOrWhiteSpace(geometry) ? geometry : "Hexagonal Nanotube (6HB)";
@@ -2460,7 +2482,9 @@ public class Program
         .WithSummary("Generates and downloads a complete patient-specific Digital DNA package.")
         .WithDescription("Synthesizes staple oligos, annealing ramps, and cryptographic provenance for patient hormone delivery (Accessible by Patient, Researcher, and Administrator).")
         .Produces<PatientDigitalDnaPackage>(StatusCodes.Status200OK)
-        .Produces(StatusCodes.Status401Unauthorized);
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status404NotFound);
 
         // ---------------------------------------------------------------------
         // REST API: Patient Digitized DNA Blueprints
@@ -3968,6 +3992,33 @@ public class Program
     /// <returns>The formatted client-safe message.</returns>
     internal static string ShredUnknownMessage(string subjectId) =>
         $"This node holds no stored key for subject '{subjectId}'; nothing was erased.";
+
+    /// <summary>
+    /// Validates that a supplied patient identifier is non-empty, at most 64 characters, and contains only safe ASCII identifier characters.
+    /// </summary>
+    /// <param name="patientId">The candidate patient identifier to validate.</param>
+    /// <returns><c>true</c> if the identifier is syntactically valid; otherwise <c>false</c>.</returns>
+    internal static bool IsValidPatientIdentifier(string patientId)
+    {
+        // WHAT: Checks length and character set of a patient identifier query parameter.
+        // WHY:  Prevents log/manifest injection or path-like characters in synthesized DNA package metadata.
+        // HOW:  Enforces 1..64 characters drawn from ASCII letters, digits, '-', '_', or '.'.
+        if (patientId.Length == 0 || patientId.Length > 64)
+        {
+            return false;
+        }
+
+        foreach (char c in patientId)
+        {
+            bool allowed = char.IsAsciiLetterOrDigit(c) || c == '-' || c == '_' || c == '.';
+            if (!allowed)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 }
 
 /// <summary>

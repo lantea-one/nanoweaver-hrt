@@ -88,7 +88,7 @@ public sealed class UserRepository : IUserRepository, IDisposable
         {
             await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
             await using DbCommand cmd = session.CreateCommand($"SELECT {UserColumns} FROM weaver_users WHERE username = @u");
-            WeaverDbParameters.Add(cmd, "@u", username);
+            WeaverDbParameters.Add(cmd, "@u", NormalizeUsername(username));
             await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct);
             found = await reader.ReadAsync(ct) ? MapUserFromReader(reader) : null;
         }
@@ -196,7 +196,7 @@ public sealed class UserRepository : IUserRepository, IDisposable
             await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
             await using DbCommand cmd = session.CreateCommand("UPDATE weaver_users SET last_login_utc = @l WHERE username = @u");
             WeaverDbParameters.Add(cmd, "@l", session.Dialect.TimestampValue(loginTimeUtc));
-            WeaverDbParameters.Add(cmd, "@u", username);
+            WeaverDbParameters.Add(cmd, "@u", NormalizeUsername(username));
             await cmd.ExecuteNonQueryAsync(ct);
         }
         finally
@@ -215,7 +215,7 @@ public sealed class UserRepository : IUserRepository, IDisposable
         {
             await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
             await using DbCommand cmd = session.CreateCommand("DELETE FROM weaver_users WHERE username = @u");
-            WeaverDbParameters.Add(cmd, "@u", username);
+            WeaverDbParameters.Add(cmd, "@u", NormalizeUsername(username));
             result = await cmd.ExecuteNonQueryAsync(ct) > 0;
         }
         finally
@@ -237,7 +237,7 @@ public sealed class UserRepository : IUserRepository, IDisposable
         // WHAT: Attaches the user's columns as named parameters.
         // WHY:  Both INSERT statements take identical parameters; one binder keeps them from drifting apart.
         // HOW:  Text columns bind directly; the two timestamps and the active flag go through the dialect.
-        WeaverDbParameters.Add(cmd, "@u", user.Username);
+        WeaverDbParameters.Add(cmd, "@u", NormalizeUsername(user.Username));
         WeaverDbParameters.Add(cmd, "@r", user.Role.ToString());
         WeaverDbParameters.Add(cmd, "@g", user.AccessGate.ToString());
         WeaverDbParameters.Add(cmd, "@a", user.Algorithm.ToString());
@@ -284,5 +284,18 @@ public sealed class UserRepository : IUserRepository, IDisposable
     public void Dispose()
     {
         _lock.Dispose();
+    }
+
+    /// <summary>
+    /// Normalizes an account username by trimming surrounding whitespace and converting to lowercase invariant form.
+    /// </summary>
+    /// <param name="username">The raw username supplied by the caller.</param>
+    /// <returns>The trimmed, lowercase-normalized username string.</returns>
+    private static string NormalizeUsername(string username)
+    {
+        // WHAT: Trims whitespace and normalizes the username to lowercase invariant characters.
+        // WHY:  Prevents mixed-case duplicate accounts (e.g. "Admin" and "admin") from coexisting or shadowing each other.
+        // HOW:  Calls Trim().ToLowerInvariant() on the validated non-empty string.
+        return username.Trim().ToLowerInvariant();
     }
 }

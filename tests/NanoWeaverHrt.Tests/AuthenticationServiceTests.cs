@@ -698,10 +698,14 @@ public sealed class AuthenticationServiceTests : IDisposable
         Assert.False(emptyValid);
         Assert.NotNull(emptyReason);
 
-        // 2. Malformed token without dot separator
+        // 2. Malformed token without dot separator and with multiple dot separators
         var (malformedValid, _, malformedReason) = await _authService.ValidateTokenAsync("this_is_not_a_valid_token");
         Assert.False(malformedValid);
         Assert.NotNull(malformedReason);
+
+        var (multiDotValid, _, multiDotReason) = await _authService.ValidateTokenAsync("part1.part2.part3");
+        Assert.False(multiDotValid);
+        Assert.Equal("Malformed bearer token format.", multiDotReason);
 
         // 3. Valid token then tampered signature
         GeneratedKeyBundle bundle = _authService.GenerateSecureKeyBundle(
@@ -921,5 +925,101 @@ public sealed class AuthenticationServiceTests : IDisposable
         SystemConfigurationStore configStore = new(WeaverTestDb.CreateFactory(emptyConfig));
         using UserRepository defaultRepo = new(WeaverTestDb.CreateFactory(emptyConfig, new DatabaseMigrationRunner()));
         Assert.NotNull(defaultRepo);
+    }
+
+    /// <summary>
+    /// Verifies that username normalization converts usernames to lowercase invariant across creation,
+    /// duplicate prevention, challenge verification, and deletion.
+    /// </summary>
+    [Fact]
+    public async Task UsernameNormalization_MixedCase_PreventsShadowingAndNormalizesLifecycle()
+    {
+        // WHAT: Tests that creating "MixedCaseUser" normalizes to lowercase, rejects duplicates, and deletes cleanly.
+        // WHY:  Prevents mixed-case duplicate accounts (e.g., "Admin" and "admin") from coexisting or shadowing each other.
+        // HOW:  Calls CompleteInitialSetupAsync, CreateUserAsync, TryCreateUserAsync, CreateChallenge, VerifyChallengeAndIssueTokenAsync, and DeleteUserAsync.
+        GeneratedKeyBundle adminBundle = _authService.GenerateSecureKeyBundle(
+            "Admin_Master",
+            UserRole.Administrator,
+            AccessGate.ApiWeb,
+            KeyAlgorithm.Ed25519);
+
+        await _authService.CompleteInitialSetupAsync(
+            "Admin_Master",
+            adminBundle.PublicKeyBase64,
+            KeyAlgorithm.Ed25519);
+
+        GeneratedKeyBundle bundle = _authService.GenerateSecureKeyBundle(
+            "MixedCaseUser",
+            UserRole.Researcher,
+            AccessGate.ApiWeb,
+            KeyAlgorithm.Ed25519);
+
+        UserAccount created = await _authService.CreateUserAsync(
+            "MixedCaseUser",
+            UserRole.Researcher,
+            AccessGate.ApiWeb,
+            bundle.PublicKeyBase64,
+            KeyAlgorithm.Ed25519);
+
+        Assert.Equal("mixedcaseuser", created.Username);
+
+        // TryCreateUserAsync with uppercase cannot shadow or coexist
+        UserAccount? duplicate = await _authService.TryCreateUserAsync(
+            "MIXEDCASEUSER",
+            UserRole.Researcher,
+            AccessGate.ApiWeb,
+            bundle.PublicKeyBase64,
+            KeyAlgorithm.Ed25519);
+        Assert.Null(duplicate);
+
+        // Challenge and verify with mixed case
+        AuthChallenge challenge = _authService.CreateChallenge("MixedCaseUser");
+        Assert.Equal("mixedcaseuser", challenge.Username);
+
+        byte[] nonceBytes = Convert.FromBase64String(challenge.NonceBase64);
+        string signatureBase64 = SignEd25519(bundle.PrivateKeyPem, nonceBytes);
+
+        var (success, errorMsg, token, user) = await _authService.VerifyChallengeAndIssueTokenAsync(
+            "MixedCaseUser",
+            challenge.ChallengeId,
+            signatureBase64,
+            isWebRequest: false);
+
+        Assert.True(success);
+        Assert.Null(errorMsg);
+        Assert.NotNull(token);
+        Assert.NotNull(user);
+        Assert.Equal("mixedcaseuser", user.Username);
+
+        // Deletion with uppercase removes the lowercase account
+        bool deleted = await _authService.DeleteUserAsync("MIXEDCASEUSER");
+        Assert.True(deleted);
+
+        // Account is gone
+        IReadOnlyList<UserAccount> remaining = await _authService.ListUsersAsync();
+        Assert.DoesNotContain(remaining, u => u.Username == "mixedcaseuser");
+    }
+
+    /// <summary>
+    /// Verifies that patient identifier syntactic validation properly accepts allowed characters and rejects invalid characters or lengths.
+    /// </summary>
+    [Fact]
+    public void IsValidPatientIdentifier_ValidatesFormatAndLengths()
+    {
+        // WHAT: Tests syntactic validation on patient identifiers across allowed/disallowed characters and lengths.
+        // WHY:  Prevents log/manifest injection and ensures clean patient-scaffold routing.
+        // HOW:  Validates empty strings, boundary lengths, valid characters (letters, digits, '-', '_', '.'), and invalid characters.
+        Assert.False(Program.IsValidPatientIdentifier(""));
+        Assert.False(Program.IsValidPatientIdentifier(new string('a', 65)));
+        Assert.False(Program.IsValidPatientIdentifier("bad/id!"));
+        Assert.False(Program.IsValidPatientIdentifier("id with spaces"));
+
+        Assert.True(Program.IsValidPatientIdentifier("a"));
+        Assert.True(Program.IsValidPatientIdentifier("0"));
+        Assert.True(Program.IsValidPatientIdentifier("-"));
+        Assert.True(Program.IsValidPatientIdentifier("_"));
+        Assert.True(Program.IsValidPatientIdentifier("."));
+        Assert.True(Program.IsValidPatientIdentifier("patient-007_test.v1"));
+        Assert.True(Program.IsValidPatientIdentifier(new string('b', 64)));
     }
 }
