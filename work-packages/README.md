@@ -9,14 +9,13 @@
 ### 1.1 Master Architecture & Design Documents
 - [`PHASES-v2.md`](PHASES-v2.md) — Master Remediation & Feature Phase Plan (`P1–P20` permanent historical audit reference)
 
-### 1.2 Active Work Packages (`P23–P25: Subject Access & Cohort Management`)
-- [`p23-subject-access-api-endpoints.md`](p23-subject-access-api-endpoints.md) — REST API minimal endpoints for subject grants, cohort group CRUD, group membership, and group grants
+### 1.2 Active Work Packages (`P24–P25: Subject Access & Cohort Management`)
 - [`p24-cohort-web-ui.md`](p24-cohort-web-ui.md) — Sovereign Web UI unified cohort & access management across `DnaManagementPage` and `UserManagement`
 - [`p25-cohort-verification-and-closeout.md`](p25-cohort-verification-and-closeout.md) — Full pre-flight verification gate, documentation updates, and coverage ratchet closeout
 
 ---
 
-### 1.3 Completed & Ratified Work Packages (`P1–P22`)
+### 1.3 Completed & Ratified Work Packages (`P1–P23`)
 *Note: Individual completed work package instruction files have been cleaned up and consolidated into the repository audit trail and `PHASES-v2.md`.*
 
 | Phase | Package / Scope | Key Deliverables & Milestones | Verification Status |
@@ -44,6 +43,7 @@
 | **P20** | In-Browser Key Generation & SRI | Pure client-side Ed25519 & ML-DSA-65 keypair derivation and AES-GCM envelope sealing in browser memory, removal of server-side key generation endpoints (`POST /api/setup/generate-keypair`, `POST /api/users/generate-keypair`), and server-side dynamic .NET W3C Subresource Integrity (SRI) SHA-384 generation for all authored scripts and styles via `IAssetIntegrityService`. | **COMPLETED** |
 | **P21** | Subject Access Schema & Repo | `Migration011_SubjectAccessAndGroups`, `ISubjectAccessRepository`, `SubjectGrant`, `SubjectGroup`, `SubjectGroupMember`, `SubjectGroupGrant`, tiered access levels (`ReadAccess: 1`, `GenomicAccess: 2`, `FullReadAccess: 3`) | **COMPLETED** |
 | **P22** | Access Control Service & Gating | `ISubjectAccessService`, `SubjectAccessService` effective tiered access resolution, cohort boundary enforcement, audit logging to `weaver_audit_ledger`, and route gating in minimal API pipeline (`ResolveSubjectRecordAccess`) | **COMPLETED** |
+| **P23** | Subject Access REST API | 14 minimal API endpoints for subject grants (`/api/subject-access/grants`), my-subjects (`/api/subject-access/my-subjects`), cohort group CRUD, group members, and group grants (`/api/subject-groups`) with OpenAPI documentation | **COMPLETED** |
 
 ---
 

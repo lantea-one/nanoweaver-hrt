@@ -3158,6 +3158,617 @@ public class Program
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status403Forbidden);
 
+        // ---------------------------------------------------------------------
+        // REST API: Subject Access Grants (Administrator Only)
+        // ---------------------------------------------------------------------
+        app.MapGet("/api/subject-access/grants", async (
+            string? researcher,
+            string? subject,
+            ISubjectAccessRepository repo,
+            CancellationToken ct) =>
+        {
+            // WHAT: Lists active direct subject access grants with optional researcher or subject filters.
+            // WHY:  Allows administrators to audit and inspect all direct patient access grants.
+            // HOW:  Queries ISubjectAccessRepository with optional filter criteria.
+            IReadOnlyList<SubjectGrant> grants = await repo.ListSubjectGrantsAsync(researcher, subject, ct);
+            return Results.Ok(grants);
+        })
+        .WithName("ListSubjectGrants")
+        .WithTags("Subject Access & Cohort Management")
+        .WithSummary("Lists direct researcher access grants for patients or subjects.")
+        .WithDescription("Returns direct subject access grants filtered optionally by researcher username or subject username (Administrator role required).")
+        .Produces<IReadOnlyList<SubjectGrant>>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden);
+
+        app.MapPost("/api/subject-access/grants", async (
+            GrantSubjectAccessRequest request,
+            ISubjectAccessService accessService,
+            IUserRepository userRepo,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Grants a researcher tiered direct access over a target patient or subject.
+            // WHY:  Enables administrators to establish clinical trial or genomic review permissions.
+            // HOW:  Validates caller role, checks researcher and subject existence, and persists grant via ISubjectAccessService.
+            if (string.IsNullOrWhiteSpace(request.ResearcherUsername) || string.IsNullOrWhiteSpace(request.SubjectUsername))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "researcherUsername and subjectUsername are required.");
+            }
+
+            UserAccount? caller = (UserAccount)context.Items["CurrentUser"]!;
+            UserAccount? researcher = await userRepo.GetUserAsync(request.ResearcherUsername.Trim().ToLowerInvariant(), ct);
+            if (researcher == null || researcher.Role != UserRole.Researcher)
+            {
+                return Results.NotFound(new { error = $"Researcher '{request.ResearcherUsername}' does not exist or does not hold the Researcher role." });
+            }
+
+            UserAccount? subject = await userRepo.GetUserAsync(request.SubjectUsername.Trim().ToLowerInvariant(), ct);
+            if (subject == null || subject.Role != UserRole.Patient)
+            {
+                return Results.NotFound(new { error = $"Patient '{request.SubjectUsername}' does not exist or does not hold the Patient role." });
+            }
+
+            SubjectGrant grant = await accessService.GrantSubjectAccessAsync(
+                caller.Username,
+                request.ResearcherUsername,
+                request.SubjectUsername,
+                request.AccessLevel,
+                request.Notes,
+                ct);
+
+            return Results.Created($"/api/subject-access/grants/{grant.ResearcherUsername}/{grant.SubjectUsername}", grant);
+        })
+        .WithName("GrantSubjectAccess")
+        .WithTags("Subject Access & Cohort Management")
+        .WithSummary("Grants a researcher tiered direct access to a patient or subject.")
+        .WithDescription("Persists a direct grant and emits a cryptographically chained audit record (Administrator role required).")
+        .Accepts<GrantSubjectAccessRequest>("application/json")
+        .Produces<SubjectGrant>(StatusCodes.Status201Created)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status404NotFound);
+
+        app.MapDelete("/api/subject-access/grants/{researcherUsername}/{subjectUsername}", async (
+            string researcherUsername,
+            string subjectUsername,
+            ISubjectAccessService accessService,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Revokes a researcher's direct access to a patient.
+            // WHY:  Allows administrators to revoke access when clinical oversight or trials conclude.
+            // HOW:  Calls ISubjectAccessService.RevokeSubjectAccessAsync and records audit action.
+            UserAccount? caller = (UserAccount)context.Items["CurrentUser"]!;
+            bool revoked = await accessService.RevokeSubjectAccessAsync(caller.Username, researcherUsername, subjectUsername, ct);
+            if (!revoked)
+            {
+                return Results.NotFound(new { error = $"Grant for researcher '{researcherUsername}' on subject '{subjectUsername}' not found." });
+            }
+
+            return Results.Ok(new { message = $"Grant for researcher '{researcherUsername}' on subject '{subjectUsername}' successfully revoked." });
+        })
+        .WithName("RevokeSubjectAccess")
+        .WithTags("Subject Access & Cohort Management")
+        .WithSummary("Revokes a researcher's direct access to a patient.")
+        .WithDescription("Removes the grant from the registry and records revocation in the audit ledger (Administrator role required).")
+        .Produces(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status404NotFound);
+
+        app.MapGet("/api/subject-access/my-subjects", async (
+            ISubjectAccessService accessService,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Lists all subjects accessible to the authenticated caller with effective access tiers.
+            // WHY:  Powers dropdown selectors and cohort views across Web UI and API clients.
+            // HOW:  Queries accessible usernames and resolves effective tier per subject.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            IReadOnlyList<string> subjects = await accessService.GetAccessibleSubjectUsernamesAsync(caller.Username, caller.Role, SubjectAccessLevel.ReadAccess, ct);
+            List<AccessibleSubjectItem> items = new(subjects.Count);
+            foreach (string subj in subjects)
+            {
+                SubjectAccessLevel lvl = caller.Role == UserRole.Administrator
+                    ? SubjectAccessLevel.FullReadAccess
+                    : (await accessService.GetEffectiveAccessLevelAsync(caller.Username, subj, ct) ?? SubjectAccessLevel.ReadAccess);
+                items.Add(new AccessibleSubjectItem
+                {
+                    SubjectUsername = subj,
+                    EffectiveLevel = lvl
+                });
+            }
+
+            return Results.Ok(items);
+        })
+        .WithName("GetMyAccessibleSubjects")
+        .WithTags("Subject Access & Cohort Management")
+        .WithSummary("Lists all subjects accessible to the caller with effective access tiers.")
+        .WithDescription("Returns accessible patients for dropdown selectors and cohort views (Administrator or Researcher role required).")
+        .Produces<IReadOnlyList<AccessibleSubjectItem>>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden);
+
+        // ---------------------------------------------------------------------
+        // REST API: Patient Cohort Groups (Administrator & Researcher)
+        // ---------------------------------------------------------------------
+        app.MapGet("/api/subject-groups", async (
+            ISubjectAccessRepository repo,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Lists patient cohort groups accessible to the calling identity.
+            // WHY:  Administrators see all groups; Researchers see created cohorts and granted cohorts.
+            // HOW:  Queries repository based on caller role and aggregates unique groups.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            if (caller.Role == UserRole.Administrator)
+            {
+                var allGroups = await repo.ListGroupsAsync(null, ct);
+                return Results.Ok(allGroups);
+            }
+
+            var created = await repo.ListGroupsAsync(createdBy: caller.Username, ct);
+            var granted = await repo.ListGroupGrantsAsync(researcherUsername: caller.Username, ct: ct);
+            HashSet<string> groupIds = new(created.Select(g => g.Id), StringComparer.OrdinalIgnoreCase);
+            List<SubjectGroup> result = [.. created];
+            foreach (var g in granted)
+            {
+                if (groupIds.Add(g.GroupId))
+                {
+                    SubjectGroup? grp = await repo.GetGroupAsync(g.GroupId, ct);
+                    if (grp != null)
+                    {
+                        result.Add(grp);
+                    }
+                }
+            }
+
+            return Results.Ok(result.OrderBy(g => g.Name, StringComparer.Ordinal).ToList());
+        })
+        .WithName("ListSubjectGroups")
+        .WithTags("Subject Access & Cohort Management")
+        .WithSummary("Lists patient cohort groups accessible to the caller.")
+        .WithDescription("Returns all cohort groups for Administrators, or created/granted cohorts for Researchers.")
+        .Produces<IReadOnlyList<SubjectGroup>>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden);
+
+        app.MapPost("/api/subject-groups", async (
+            CreateSubjectGroupRequest request,
+            ISubjectAccessService accessService,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Creates a new patient cohort group.
+            // WHY:  Enables organizing patients for study cohorts and delivery trials.
+            // HOW:  Validates group name, enforces subject accessibility for researchers, and saves group.
+            if (string.IsNullOrWhiteSpace(request.Name))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Group name is required.");
+            }
+
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            try
+            {
+                SubjectGroup group = await accessService.CreateGroupAsync(
+                    caller.Username,
+                    caller.Role,
+                    request.Name,
+                    request.Description,
+                    request.SubjectUsernames ?? [],
+                    ct);
+
+                return Results.Created($"/api/subject-groups/{group.Id}", group);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return SecureProblemResult(context, StatusCodes.Status403Forbidden, ex.Message);
+            }
+        })
+        .WithName("CreateSubjectGroup")
+        .WithTags("Subject Access & Cohort Management")
+        .WithSummary("Creates a new patient cohort group.")
+        .WithDescription("Creates a cohort group header and enrolls initial members (validating subject accessibility for Researchers).")
+        .Accepts<CreateSubjectGroupRequest>("application/json")
+        .Produces<SubjectGroup>(StatusCodes.Status201Created)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden);
+
+        app.MapGet("/api/subject-groups/{groupId}", async (
+            string groupId,
+            ISubjectAccessRepository repo,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Retrieves cohort group details by ID.
+            // WHY:  Provides group metadata and enrollment numbers for cohort detail inspection.
+            // HOW:  Validates caller access (Admin, group creator, or active group grant) and queries repository.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            SubjectGroup? group = await repo.GetGroupAsync(groupId, ct);
+            if (group == null)
+            {
+                return Results.NotFound(new { error = $"Group '{groupId}' not found." });
+            }
+
+            if (caller.Role == UserRole.Researcher)
+            {
+                bool isCreator = string.Equals(group.CreatedBy, caller.Username, StringComparison.OrdinalIgnoreCase);
+                SubjectGroupGrant? grant = await repo.GetGroupGrantAsync(groupId, caller.Username, ct);
+                if (!isCreator && grant == null)
+                {
+                    return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: You do not have access to this cohort group.");
+                }
+            }
+
+            return Results.Ok(group);
+        })
+        .WithName("GetSubjectGroupById")
+        .WithTags("Subject Access & Cohort Management")
+        .WithSummary("Retrieves cohort group details by ID.")
+        .WithDescription("Returns group metadata if the caller is an Administrator or an authorized Researcher.")
+        .Produces<SubjectGroup>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status404NotFound);
+
+        app.MapPut("/api/subject-groups/{groupId}", async (
+            string groupId,
+            UpdateSubjectGroupRequest request,
+            ISubjectAccessService accessService,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Updates cohort group name and description.
+            // WHY:  Allows maintaining study cohort information.
+            // HOW:  Validates permissions via ISubjectAccessService.UpdateGroupAsync and persists updates.
+            if (string.IsNullOrWhiteSpace(request.Name))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Group name is required.");
+            }
+
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            try
+            {
+                bool updated = await accessService.UpdateGroupAsync(
+                    caller.Username,
+                    caller.Role,
+                    groupId,
+                    request.Name,
+                    request.Description,
+                    ct);
+
+                if (!updated)
+                {
+                    return Results.NotFound(new { error = $"Group '{groupId}' not found." });
+                }
+
+                return Results.Ok(new { message = $"Group '{groupId}' successfully updated." });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return SecureProblemResult(context, StatusCodes.Status403Forbidden, ex.Message);
+            }
+        })
+        .WithName("UpdateSubjectGroup")
+        .WithTags("Subject Access & Cohort Management")
+        .WithSummary("Updates cohort group name and description.")
+        .WithDescription("Updates group metadata (Administrator or cohort creator only).")
+        .Accepts<UpdateSubjectGroupRequest>("application/json")
+        .Produces(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status404NotFound);
+
+        app.MapDelete("/api/subject-groups/{groupId}", async (
+            string groupId,
+            ISubjectAccessService accessService,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Permanently deletes a cohort group.
+            // WHY:  Retires superseded study groups and cascades member/grant cleanup.
+            // HOW:  Validates caller ownership and executes deletion via ISubjectAccessService.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            try
+            {
+                bool deleted = await accessService.DeleteGroupAsync(
+                    caller.Username,
+                    caller.Role,
+                    groupId,
+                    ct);
+
+                if (!deleted)
+                {
+                    return Results.NotFound(new { error = $"Group '{groupId}' not found." });
+                }
+
+                return Results.Ok(new { message = $"Group '{groupId}' successfully deleted." });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return SecureProblemResult(context, StatusCodes.Status403Forbidden, ex.Message);
+            }
+        })
+        .WithName("DeleteSubjectGroup")
+        .WithTags("Subject Access & Cohort Management")
+        .WithSummary("Permanently deletes a cohort group.")
+        .WithDescription("Deletes the cohort and cascades removal of members and group grants (Administrator or cohort creator only).")
+        .Produces(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status404NotFound);
+
+        app.MapGet("/api/subject-groups/{groupId}/members", async (
+            string groupId,
+            ISubjectAccessRepository repo,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Lists enrolled subject usernames for a cohort group.
+            // WHY:  Supplies membership lists for cohort analysis and trial delivery.
+            // HOW:  Validates caller permissions and queries member usernames from repository.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            SubjectGroup? group = await repo.GetGroupAsync(groupId, ct);
+            if (group == null)
+            {
+                return Results.NotFound(new { error = $"Group '{groupId}' not found." });
+            }
+
+            if (caller.Role == UserRole.Researcher)
+            {
+                bool isCreator = string.Equals(group.CreatedBy, caller.Username, StringComparison.OrdinalIgnoreCase);
+                SubjectGroupGrant? grant = await repo.GetGroupGrantAsync(groupId, caller.Username, ct);
+                if (!isCreator && grant == null)
+                {
+                    return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: You do not have access to this cohort group.");
+                }
+            }
+
+            var members = await repo.ListGroupMemberUsernamesAsync(groupId, ct);
+            return Results.Ok(members);
+        })
+        .WithName("ListGroupMembers")
+        .WithTags("Subject Access & Cohort Management")
+        .WithSummary("Lists enrolled subject usernames for a cohort group.")
+        .WithDescription("Returns all enrolled patient usernames for an accessible cohort group.")
+        .Produces<IReadOnlyList<string>>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status404NotFound);
+
+        app.MapPost("/api/subject-groups/{groupId}/members", async (
+            string groupId,
+            AddGroupMemberRequest request,
+            ISubjectAccessService accessService,
+            ISubjectAccessRepository repo,
+            IUserRepository userRepo,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Enrolls a patient or subject into a cohort group.
+            // WHY:  Expands cohort enrollment with strict boundary checks.
+            // HOW:  Verifies target existence, enforces that researchers have active access to the candidate, and adds member.
+            if (string.IsNullOrWhiteSpace(request.SubjectUsername))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Subject username is required.");
+            }
+
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            SubjectGroup? group = await repo.GetGroupAsync(groupId, ct);
+            if (group == null)
+            {
+                return Results.NotFound(new { error = $"Group '{groupId}' not found." });
+            }
+
+            UserAccount? target = await userRepo.GetUserAsync(request.SubjectUsername.Trim().ToLowerInvariant(), ct);
+            if (target == null || target.Role != UserRole.Patient)
+            {
+                return Results.NotFound(new { error = $"Patient '{request.SubjectUsername}' does not exist or does not hold the Patient role." });
+            }
+
+            try
+            {
+                bool added = await accessService.AddGroupMemberAsync(
+                    caller.Username,
+                    caller.Role,
+                    groupId,
+                    request.SubjectUsername,
+                    ct);
+
+                if (!added)
+                {
+                    return Results.Conflict(new { error = $"Subject '{request.SubjectUsername}' is already enrolled in group '{groupId}'." });
+                }
+
+                return Results.Created($"/api/subject-groups/{groupId}/members/{request.SubjectUsername.Trim().ToLowerInvariant()}", new { message = $"Subject '{request.SubjectUsername}' successfully enrolled in group '{groupId}'." });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return SecureProblemResult(context, StatusCodes.Status403Forbidden, ex.Message);
+            }
+        })
+        .WithName("AddGroupMember")
+        .WithTags("Subject Access & Cohort Management")
+        .WithSummary("Enrolls a patient into a cohort group.")
+        .WithDescription("Enrolls an accessible patient into a cohort (Administrator or cohort creator only).")
+        .Accepts<AddGroupMemberRequest>("application/json")
+        .Produces(StatusCodes.Status201Created)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status404NotFound)
+        .Produces(StatusCodes.Status409Conflict);
+
+        app.MapDelete("/api/subject-groups/{groupId}/members/{subjectUsername}", async (
+            string groupId,
+            string subjectUsername,
+            ISubjectAccessService accessService,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Removes a patient from a cohort group.
+            // WHY:  Allows pruning patients who discontinue trials or transfer cohorts.
+            // HOW:  Validates permissions and removes member via ISubjectAccessService.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            try
+            {
+                bool removed = await accessService.RemoveGroupMemberAsync(
+                    caller.Username,
+                    caller.Role,
+                    groupId,
+                    subjectUsername,
+                    ct);
+
+                if (!removed)
+                {
+                    return Results.NotFound(new { error = $"Subject '{subjectUsername}' is not enrolled in group '{groupId}'." });
+                }
+
+                return Results.Ok(new { message = $"Subject '{subjectUsername}' successfully removed from group '{groupId}'." });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return SecureProblemResult(context, StatusCodes.Status403Forbidden, ex.Message);
+            }
+        })
+        .WithName("RemoveGroupMember")
+        .WithTags("Subject Access & Cohort Management")
+        .WithSummary("Removes a patient from a cohort group.")
+        .WithDescription("Un-enrolls a patient from a cohort group (Administrator or cohort creator only).")
+        .Produces(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status404NotFound);
+
+        // ---------------------------------------------------------------------
+        // REST API: Cohort Group Grants (Administrator Only)
+        // ---------------------------------------------------------------------
+        app.MapGet("/api/subject-groups/{groupId}/grants", async (
+            string groupId,
+            ISubjectAccessRepository repo,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Lists active researcher access grants for a cohort group.
+            // WHY:  Allows administrators to audit permissions granted over an entire cohort.
+            // HOW:  Validates Administrator role, checks group existence, and queries group grants.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            if (caller.Role != UserRole.Administrator)
+            {
+                return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: Administrator role required for cohort group grants.");
+            }
+
+            SubjectGroup? group = await repo.GetGroupAsync(groupId, ct);
+            if (group == null)
+            {
+                return Results.NotFound(new { error = $"Group '{groupId}' not found." });
+            }
+
+            var grants = await repo.ListGroupGrantsAsync(groupId: groupId, ct: ct);
+            return Results.Ok(grants);
+        })
+        .WithName("ListGroupGrants")
+        .WithTags("Subject Access & Cohort Management")
+        .WithSummary("Lists all researcher access grants for a cohort group.")
+        .WithDescription("Returns active group access grants (Administrator role required).")
+        .Produces<IReadOnlyList<SubjectGroupGrant>>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status404NotFound);
+
+        app.MapPost("/api/subject-groups/{groupId}/grants", async (
+            string groupId,
+            GrantGroupAccessRequest request,
+            ISubjectAccessService accessService,
+            ISubjectAccessRepository repo,
+            IUserRepository userRepo,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Grants a researcher tiered access over an entire cohort group.
+            // WHY:  Allows administrators to assign study cohorts to researchers.
+            // HOW:  Validates Administrator role, checks group and researcher existence, and saves group grant.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            if (caller.Role != UserRole.Administrator)
+            {
+                return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: Administrator role required for cohort group grants.");
+            }
+
+            if (string.IsNullOrWhiteSpace(request.ResearcherUsername))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Researcher username is required.");
+            }
+
+            SubjectGroup? group = await repo.GetGroupAsync(groupId, ct);
+            if (group == null)
+            {
+                return Results.NotFound(new { error = $"Group '{groupId}' not found." });
+            }
+
+            UserAccount? researcher = await userRepo.GetUserAsync(request.ResearcherUsername.Trim().ToLowerInvariant(), ct);
+            if (researcher == null || researcher.Role != UserRole.Researcher)
+            {
+                return Results.NotFound(new { error = $"Researcher '{request.ResearcherUsername}' does not exist or does not hold the Researcher role." });
+            }
+
+            SubjectGroupGrant grant = await accessService.GrantGroupAccessAsync(
+                caller.Username,
+                groupId,
+                request.ResearcherUsername,
+                request.AccessLevel,
+                request.Notes,
+                ct);
+
+            return Results.Created($"/api/subject-groups/{groupId}/grants/{grant.ResearcherUsername}", grant);
+        })
+        .WithName("GrantGroupAccess")
+        .WithTags("Subject Access & Cohort Management")
+        .WithSummary("Grants a researcher tiered access over an entire cohort group.")
+        .WithDescription("Assigns cohort group access to a researcher and records audit entry (Administrator role required).")
+        .Accepts<GrantGroupAccessRequest>("application/json")
+        .Produces<SubjectGroupGrant>(StatusCodes.Status201Created)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status404NotFound);
+
+        app.MapDelete("/api/subject-groups/{groupId}/grants/{researcherUsername}", async (
+            string groupId,
+            string researcherUsername,
+            ISubjectAccessService accessService,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Revokes a researcher's access to a cohort group.
+            // WHY:  Allows administrators to revoke cohort access when study rotations conclude.
+            // HOW:  Validates Administrator role, calls ISubjectAccessService.RevokeGroupAccessAsync, and logs audit record.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            if (caller.Role != UserRole.Administrator)
+            {
+                return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: Administrator role required for cohort group grants.");
+            }
+
+            bool revoked = await accessService.RevokeGroupAccessAsync(caller.Username, groupId, researcherUsername, ct);
+            if (!revoked)
+            {
+                return Results.NotFound(new { error = $"Group grant for researcher '{researcherUsername}' on group '{groupId}' not found." });
+            }
+
+            return Results.Ok(new { message = $"Group grant for researcher '{researcherUsername}' on group '{groupId}' successfully revoked." });
+        })
+        .WithName("RevokeGroupAccess")
+        .WithTags("Subject Access & Cohort Management")
+        .WithSummary("Revokes a researcher's access to a cohort group.")
+        .WithDescription("Removes the group grant and records audit entry (Administrator role required).")
+        .Produces(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status404NotFound);
+
         app.Run();
     }
 
@@ -3352,7 +3963,9 @@ public class Program
         new("/api/compliance/status", MatchDescendants: false),
         new("/api/compliance/audit-ledger", MatchDescendants: false),
         // Trust anchors for peer dataset verification are cluster oversight under Prime Directive 12.
-        new("/api/peer-keys", MatchDescendants: true)
+        new("/api/peer-keys", MatchDescendants: true),
+        // Direct subject access grants are cluster oversight under Prime Directive 12.
+        new("/api/subject-access/grants", MatchDescendants: true)
     ];
 
     /// <summary>
@@ -3396,7 +4009,9 @@ public class Program
         new("/api/datasets/exports", MatchDescendants: true),
         new("/api/datasets/download", MatchDescendants: true),
         new("/api/trajectories/download", MatchDescendants: true),
-        new("/api/compliance/verify-ledger", MatchDescendants: false)
+        new("/api/compliance/verify-ledger", MatchDescendants: false),
+        new("/api/subject-access/my-subjects", MatchDescendants: false),
+        new("/api/subject-groups", MatchDescendants: true)
     ];
 
     /// <summary>
