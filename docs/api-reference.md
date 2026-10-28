@@ -665,6 +665,7 @@ Analyzes molecular dynamics coordinates to calculate aptamer binding pocket dime
 Inspects health status, process memory, and ping latencies across all registered microservice containers.
 
 * **Method**: `GET`
+* **Authorization**: Requires `Administrator` or `Researcher` role (`Patient` receives `403 Forbidden`).
 * **Response Status**: `200 OK`
 
 ---
@@ -673,6 +674,7 @@ Inspects health status, process memory, and ping latencies across all registered
 Executes an immediate round-trip latency probe against a target service (`oxdna`, `lammps`, `database`, `proxy`).
 
 * **Method**: `POST`
+* **Authorization**: Requires `Administrator` or `Researcher` role (`Patient` receives `403 Forbidden`).
 * **Response Status**: `200 OK`
 
 ---

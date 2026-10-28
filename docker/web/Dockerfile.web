@@ -57,11 +57,11 @@ ENV ASPNETCORE_URLS=http://+:5000 \
 # WHY:  The service will run as non-root; Docker discards ownership changes made
 #       after the VOLUME instruction, so this must come first.
 # HOW:  mkdir + chown here. /app stays root-owned so the service cannot rewrite its own code.
-RUN mkdir -p /workspace/data /workspace/exports /workspace/parquet \
-    && chown 1000:1000 /workspace /workspace/data /workspace/exports /workspace/parquet
+RUN mkdir -p /workspace/data /workspace/exports /workspace/parquet /workspace/node-keys \
+    && chown 1000:1000 /workspace /workspace/data /workspace/exports /workspace/parquet /workspace/node-keys
 
-# Mount points for shared simulation streams and cryptographic dataset exports
-VOLUME ["/workspace/data", "/workspace/exports"]
+# Mount points for shared simulation streams, cryptographic dataset exports, and isolated node keys
+VOLUME ["/workspace/data", "/workspace/exports", "/workspace/node-keys"]
 
 EXPOSE 5000
 

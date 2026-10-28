@@ -949,6 +949,9 @@ simulations/parquet/*
 !simulations/parquet/.gitkeep
 !simulations/parquet/README.md
 
+simulations/node-keys/*
+!simulations/node-keys/.gitkeep
+
 # General trajectory and columnar data files
 *.parquet
 *.dcd

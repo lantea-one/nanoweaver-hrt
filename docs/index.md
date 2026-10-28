@@ -125,6 +125,8 @@ Explore the comprehensive guides and references below:
     * Full endpoint catalog, request/response JSON schemas, and test suite execution.
 14. [**Scientific Research & Legal Disclaimer**](disclaimer.md)
     * Formal scientific research scope, medical non-advice, and BSL-1 biosafety declarations.
+15. [**Release Notes & Architecture Evolution**](release-notes.md)
+    * Phase 2 post-quantum cryptographic upgrades, transport boundary enforcement, column-level PHI encryption, and RFC 7807 contracts.
 
 ---
 

@@ -10,7 +10,7 @@ To safeguard patient sovereignty against future quantum computing threats ("Harv
 
 ## 1. Threat Landscape: "Harvest Now, Decrypt Later"
 
-Conventional healthcare infrastructure relies heavily on classical public-key cryptography (RSA-2048, ECDSA P-256, Diffie-Hellman). Shor's algorithm, running on a sufficiently powerful Cryptanalytically Relevant Quantum Computer (CRQC), will render these classical mathematical primitives solvable in polynomial time.
+Conventional healthcare infrastructure relies heavily on classical public-key cryptography (RSA-2048, ECDSA, Diffie-Hellman). Shor's algorithm, running on a sufficiently powerful Cryptanalytically Relevant Quantum Computer (CRQC), will render these classical mathematical primitives solvable in polynomial time.
 
 Hostile state actors and adversarial organizations currently intercept and hoard encrypted patient genomic and endocrine data. When CRQCs become operational, archived data will be decrypted retroactively.
 
@@ -75,9 +75,12 @@ Whenever ephemeral symmetric keys or shared secrets are derived during key encap
 
 The platform implements per-subject key derivation and multi-tier cryptographic isolation via `IKeyManagementService`:
 
-1. **Node Master KEM Key (`node_storage_master`)**: Used for system configuration, node telemetry, and shared cluster state.
-2. **Node Master Signing Key (`node_signing_master`)**: Authoritative ML-DSA-65 key used to sign the FDA 21 CFR Part 11 audit ledger and dataset export manifests.
-3. **Subject Key Profiles (`sub_...`)**: Dedicated, isolated ML-KEM-768 key pairs generated for each patient or research subject upon onboarding.
+1. **Node Secret Files (`WEAVER_NODE_KEYS_DIR`)**: Owner-only (`0600`) persisted secrets generated on first launch:
+   - `token_signing.key`: 256-bit HMAC-SHA256 bearer token signing key.
+   - `phi_master.key`: 256-bit AES-256-GCM master key sealing patient PHI and the subject key vault.
+   - `node_signing_mldsa65.key`: 32-byte FIPS 204 ML-DSA-65 seed signing the FDA 21 CFR Part 11 audit ledger (`KeyId` = lowercase hex SHA-256 of the 1,952-byte public key).
+   - `dataset_signing_ed25519.key`: 32-byte Ed25519 seed signing `.tar.gz` dataset export manifests (`KeyId` = lowercase hex SHA-256 of the 32-byte public key).
+2. **Persisted Subject Key Profiles (`weaver_subject_keys` & `.weaver-subject-erasure.jsonl`)**: Dedicated ML-KEM-768 key pairs generated per subject (`sub_...`), sealed at rest under `phi_master.key` with HKDF-SHA256 and subject-ID AAD binding, and tracked by an append-only fsynced GDPR Article 17 erasure journal.
 
 ### GDPR Article 17: Right to Erasure via Crypto-Shredding
 In distributed computing and peer-to-peer synthetic biology environments, physically deleting raw trajectory coordinates or multi-gigabyte logs across immutable backups or peer nodes is often practically impossible.
@@ -240,7 +243,7 @@ Authenticated administrators manage cryptographic identities directly via the Us
 
 Features include:
 * Real-time user catalog displaying usernames, assigned roles, transport access gates, algorithm types, and truncated public key fingerprints.
-* In-browser keypair generation generating high-entropy Ed25519 or NIST P-256 keys with immediate `.pem` download.
+* In-browser keypair generation generating high-entropy Ed25519 or NIST FIPS 204 ML-DSA-65 keys with immediate `.pem` download.
 * Immediate cryptographic identity revocation with audit ledger event logging.
 
 ### Automatic Browser Idle Session Expiration

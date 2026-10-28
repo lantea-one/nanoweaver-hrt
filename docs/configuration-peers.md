@@ -111,7 +111,7 @@ Researchers connect remote nodes using the **Sovereign Peer Connect Dialog**:
 4. Paste the single-use share key (`nanoweaver_hrt_...`).
 5. Click **Verify & Link Peer**.
 
-The local node verifies the remote certificate, performs the atomic key exchange, and establishes an encrypted federated link. Both nodes can now stream trajectory analytics and exchange dataset bundles whose Ed25519 or ML-DSA-65 manifest signatures are verified against the Peer Key Registry (`weaver_peer_keys`) without transferring multi-gigabyte raw trajectory files over public networks.
+The local node verifies the remote certificate, performs the atomic key exchange, and establishes an encrypted federated link. Both nodes can now stream trajectory analytics and exchange dataset bundles whose Ed25519 manifest signatures are verified against the Peer Key Registry (`weaver_peer_keys`) without transferring multi-gigabyte raw trajectory files over public networks.
 
 ---
 
