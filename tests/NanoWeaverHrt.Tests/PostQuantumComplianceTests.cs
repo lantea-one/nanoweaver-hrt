@@ -173,23 +173,26 @@ public sealed class PostQuantumComplianceTests : IClassFixture<WebApplicationFac
     /// Verifies key management lifecycle, subject isolation, and GDPR Article 17 crypto-shredding.
     /// </summary>
     [Fact]
-    public void KeyManagementService_CryptoShredding_PermanentlyDestroysDecryptionCapability()
+    public async Task KeyManagementService_CryptoShredding_PermanentlyDestroysDecryptionCapability()
     {
         PostQuantumCryptoProvider provider = new();
-        Assert.Throws<ArgumentNullException>(() => new KeyManagementService(null!));
-        KeyManagementService keyMgmt = new(provider);
+        using SubjectKeyTestHost host = await SubjectKeyTestHost.CreateLoadedAsync(Path.Combine(_testRoot, "kms_unit"));
+        Assert.Throws<ArgumentNullException>(() => new KeyManagementService(null!, host.Vault, host.SecretStore));
+        Assert.Throws<ArgumentNullException>(() => new KeyManagementService(provider, null!, host.SecretStore));
+        Assert.Throws<ArgumentNullException>(() => new KeyManagementService(provider, host.Vault, null!));
+        KeyManagementService keyMgmt = host.KeyManagement;
 
         Assert.NotNull(keyMgmt.GetNodeSigningKey());
-        Assert.NotNull(keyMgmt.GetNodeMasterKey());
+        Assert.Null(keyMgmt.GetNodeSigningKey().PrivateKeyBase64);
 
         string subjectId = "sub_patient_alpha";
-        SubjectKeyProfile profile = keyMgmt.GetOrCreateSubjectKey(subjectId);
+        SubjectKeyProfile profile = await keyMgmt.GetOrCreateSubjectKeyAsync(subjectId);
         Assert.Equal(subjectId, profile.SubjectId);
         Assert.False(profile.IsShredded);
         Assert.NotNull(profile.KeyMaterial.PrivateKeyBase64);
 
         // Same call returns existing profile
-        SubjectKeyProfile profile2 = keyMgmt.GetOrCreateSubjectKey(subjectId);
+        SubjectKeyProfile profile2 = await keyMgmt.GetOrCreateSubjectKeyAsync(subjectId);
         Assert.Equal(profile.KeyMaterial.PublicKeyBase64, profile2.KeyMaterial.PublicKeyBase64);
 
         // GetSubjectKey lookup
@@ -197,22 +200,24 @@ public sealed class PostQuantumComplianceTests : IClassFixture<WebApplicationFac
         Assert.Null(keyMgmt.GetSubjectKey("non_existent_subject"));
         Assert.Null(keyMgmt.GetSubjectKey(""));
 
-        // Boundary tests for GetOrCreateSubjectKey
-        Assert.Throws<ArgumentException>(() => keyMgmt.GetOrCreateSubjectKey(""));
+        // Boundary tests for GetOrCreateSubjectKeyAsync
+        await Assert.ThrowsAsync<ArgumentException>(() => keyMgmt.GetOrCreateSubjectKeyAsync(""));
 
         // Execute Crypto-Shredding
-        bool shredded = keyMgmt.CryptoShredSubjectKey(subjectId);
-        Assert.True(shredded);
+        Assert.Equal(SubjectErasureOutcome.Erased, await keyMgmt.CryptoShredSubjectKeyAsync(subjectId));
 
         SubjectKeyProfile shreddedProfile = keyMgmt.GetSubjectKey(subjectId)!;
         Assert.True(shreddedProfile.IsShredded);
         Assert.Null(shreddedProfile.KeyMaterial.PrivateKeyBase64);
         Assert.NotNull(shreddedProfile.ShreddedAtUtc);
 
-        // Second shred returns false
-        Assert.False(keyMgmt.CryptoShredSubjectKey(subjectId));
-        Assert.False(keyMgmt.CryptoShredSubjectKey("non_existent"));
-        Assert.False(keyMgmt.CryptoShredSubjectKey(""));
+        var ex = await Assert.ThrowsAsync<SubjectKeyUnavailableException>(() => keyMgmt.GetOrCreateSubjectKeyAsync(subjectId));
+        Assert.Equal(SubjectKeyUnavailableReason.Erased, ex.Reason);
+
+        // Second shred returns AlreadyErased; unknown or whitespace returns UnknownSubject
+        Assert.Equal(SubjectErasureOutcome.AlreadyErased, await keyMgmt.CryptoShredSubjectKeyAsync(subjectId));
+        Assert.Equal(SubjectErasureOutcome.UnknownSubject, await keyMgmt.CryptoShredSubjectKeyAsync("non_existent"));
+        Assert.Equal(SubjectErasureOutcome.UnknownSubject, await keyMgmt.CryptoShredSubjectKeyAsync(""));
 
         // Verify profiles list contains subject
         var all = keyMgmt.GetAllSubjectProfiles();
@@ -226,8 +231,11 @@ public sealed class PostQuantumComplianceTests : IClassFixture<WebApplicationFac
     public void ComplianceAuditService_LedgerIntegrityAndTamperDetection_WorksCorrectly()
     {
         PostQuantumCryptoProvider provider = new();
-        Assert.Throws<ArgumentNullException>(() => new KeyManagementService(null!));
-        KeyManagementService keyMgmt = new(provider);
+        using SubjectKeyTestHost host = SubjectKeyTestHost.CreateLoaded(Path.Combine(_testRoot, "ledger_unit"));
+        Assert.Throws<ArgumentNullException>(() => new KeyManagementService(null!, host.Vault, host.SecretStore));
+        Assert.Throws<ArgumentNullException>(() => new KeyManagementService(provider, null!, host.SecretStore));
+        Assert.Throws<ArgumentNullException>(() => new KeyManagementService(provider, host.Vault, null!));
+        KeyManagementService keyMgmt = host.KeyManagement;
         Assert.Throws<ArgumentNullException>(() => new ComplianceAuditService(null!, provider));
         Assert.Throws<ArgumentNullException>(() => new ComplianceAuditService(keyMgmt, null!));
         ComplianceAuditService audit = new(keyMgmt, provider);
@@ -308,8 +316,11 @@ public sealed class PostQuantumComplianceTests : IClassFixture<WebApplicationFac
     public void ComplianceAuditService_DeIdentifySubject_EnforcesSafeHarborAndConsent()
     {
         PostQuantumCryptoProvider provider = new();
-        Assert.Throws<ArgumentNullException>(() => new KeyManagementService(null!));
-        KeyManagementService keyMgmt = new(provider);
+        using SubjectKeyTestHost host = SubjectKeyTestHost.CreateLoaded(Path.Combine(_testRoot, "deid_unit"));
+        Assert.Throws<ArgumentNullException>(() => new KeyManagementService(null!, host.Vault, host.SecretStore));
+        Assert.Throws<ArgumentNullException>(() => new KeyManagementService(provider, null!, host.SecretStore));
+        Assert.Throws<ArgumentNullException>(() => new KeyManagementService(provider, host.Vault, null!));
+        KeyManagementService keyMgmt = host.KeyManagement;
         Assert.Throws<ArgumentNullException>(() => new ComplianceAuditService(null!, provider));
         Assert.Throws<ArgumentNullException>(() => new ComplianceAuditService(keyMgmt, null!));
         ComplianceAuditService audit = new(keyMgmt, provider);
@@ -348,8 +359,11 @@ public sealed class PostQuantumComplianceTests : IClassFixture<WebApplicationFac
     public async Task EncryptedStorageService_RecordAndDatasetEncryption_Succeeds()
     {
         PostQuantumCryptoProvider provider = new();
-        Assert.Throws<ArgumentNullException>(() => new KeyManagementService(null!));
-        KeyManagementService keyMgmt = new(provider);
+        using SubjectKeyTestHost host = await SubjectKeyTestHost.CreateLoadedAsync(Path.Combine(_testRoot, "storage_unit"));
+        Assert.Throws<ArgumentNullException>(() => new KeyManagementService(null!, host.Vault, host.SecretStore));
+        Assert.Throws<ArgumentNullException>(() => new KeyManagementService(provider, null!, host.SecretStore));
+        Assert.Throws<ArgumentNullException>(() => new KeyManagementService(provider, host.Vault, null!));
+        KeyManagementService keyMgmt = host.KeyManagement;
         Assert.Throws<ArgumentNullException>(() => new ComplianceAuditService(null!, provider));
         Assert.Throws<ArgumentNullException>(() => new ComplianceAuditService(keyMgmt, null!));
         ComplianceAuditService audit = new(keyMgmt, provider);
@@ -388,7 +402,7 @@ public sealed class PostQuantumComplianceTests : IClassFixture<WebApplicationFac
         string subjectId = "sub_storage_test";
         var record = new { Treatment = "MtF", TargetE2 = 550, TargetT = 1.2 };
 
-        EncryptedEnvelope envelope = storage.EncryptSubjectRecord(subjectId, record);
+        EncryptedEnvelope envelope = await storage.EncryptSubjectRecordAsync(subjectId, record);
         Assert.Equal("ML-KEM-768+AES-256-GCM", envelope.Algorithm);
 
         var decrypted = storage.DecryptSubjectRecord<JsonElement>(subjectId, envelope);
@@ -400,17 +414,26 @@ public sealed class PostQuantumComplianceTests : IClassFixture<WebApplicationFac
         Assert.EndsWith(".enc.tar.gz", bundlePath);
 
         // Crypto-Shred subject and verify decryption is permanently blocked
-        keyMgmt.CryptoShredSubjectKey(subjectId);
-        Assert.Throws<CryptographicException>(() => storage.EncryptSubjectRecord(subjectId, record));
-        Assert.Throws<CryptographicException>(() => storage.DecryptSubjectRecord<JsonElement>(subjectId, envelope));
-        await Assert.ThrowsAsync<CryptographicException>(() => storage.ExportEncryptedDatasetBundleAsync("dna_nanotube_sample.xyz", subjectId, _exportDir));
+        Assert.Equal(SubjectErasureOutcome.Erased, await keyMgmt.CryptoShredSubjectKeyAsync(subjectId));
+        var encErased = await Assert.ThrowsAsync<SubjectKeyUnavailableException>(() => storage.EncryptSubjectRecordAsync(subjectId, record));
+        Assert.Equal(SubjectKeyUnavailableReason.Erased, encErased.Reason);
+        var decErased = Assert.Throws<SubjectKeyUnavailableException>(() => storage.DecryptSubjectRecord<JsonElement>(subjectId, envelope));
+        Assert.Equal(SubjectKeyUnavailableReason.Erased, decErased.Reason);
+        // Erased always carries the timestamp.
+        Assert.Equal(SubjectKeyUnavailableException.ErasedMessage(subjectId, decErased.ShreddedAtUtc!.Value), decErased.Message);
+        var expErased = await Assert.ThrowsAsync<SubjectKeyUnavailableException>(() => storage.ExportEncryptedDatasetBundleAsync("dna_nanotube_sample.xyz", subjectId, _exportDir));
+        Assert.Equal(SubjectKeyUnavailableReason.Erased, expErased.Reason);
 
         // Boundary tests
-        Assert.Throws<ArgumentException>(() => storage.EncryptSubjectRecord<object>("", record));
-        Assert.Throws<ArgumentNullException>(() => storage.EncryptSubjectRecord<object>("valid", null!));
+        await Assert.ThrowsAsync<ArgumentException>(() => storage.EncryptSubjectRecordAsync<object>("", record));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => storage.EncryptSubjectRecordAsync<object>("valid", null!));
         Assert.Throws<ArgumentException>(() => storage.DecryptSubjectRecord<object>("", envelope));
         Assert.Throws<ArgumentNullException>(() => storage.DecryptSubjectRecord<object>("valid", null!));
-        Assert.Throws<CryptographicException>(() => storage.DecryptSubjectRecord<object>("unknown_subj", envelope));
+        var unknownEx = Assert.Throws<SubjectKeyUnavailableException>(() => storage.DecryptSubjectRecord<object>("unknown_subj", envelope));
+        Assert.Equal(SubjectKeyUnavailableReason.UnknownSubject, unknownEx.Reason);
+        Assert.DoesNotContain("Article 17", unknownEx.Message);
+        Assert.DoesNotContain("shred", unknownEx.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("destroy", unknownEx.Message, StringComparison.OrdinalIgnoreCase);
 
         await Assert.ThrowsAsync<ArgumentException>(() => storage.ExportEncryptedDatasetBundleAsync("", "sub", _exportDir));
         await Assert.ThrowsAsync<ArgumentException>(() => storage.ExportEncryptedDatasetBundleAsync("dna_nanotube_sample.xyz", "", _exportDir));
@@ -539,11 +562,14 @@ public sealed class PostQuantumComplianceTests : IClassFixture<WebApplicationFac
     /// Verifies the Blazor UI ComplianceSecurity razor component lifecycle and action methods.
     /// </summary>
     [Fact]
-    public void ComplianceSecurityRazorComponent_MethodsAndLifecycle_ExecuteCleanly()
+    public async Task ComplianceSecurityRazorComponent_MethodsAndLifecycle_ExecuteCleanly()
     {
         PostQuantumCryptoProvider provider = new();
-        Assert.Throws<ArgumentNullException>(() => new KeyManagementService(null!));
-        KeyManagementService keyMgmt = new(provider);
+        using SubjectKeyTestHost host = SubjectKeyTestHost.CreateLoaded(Path.Combine(_testRoot, "razor_unit"));
+        Assert.Throws<ArgumentNullException>(() => new KeyManagementService(null!, host.Vault, host.SecretStore));
+        Assert.Throws<ArgumentNullException>(() => new KeyManagementService(provider, null!, host.SecretStore));
+        Assert.Throws<ArgumentNullException>(() => new KeyManagementService(provider, host.Vault, null!));
+        KeyManagementService keyMgmt = host.KeyManagement;
         Assert.Throws<ArgumentNullException>(() => new ComplianceAuditService(null!, provider));
         Assert.Throws<ArgumentNullException>(() => new ComplianceAuditService(keyMgmt, null!));
         ComplianceAuditService audit = new(keyMgmt, provider);
@@ -589,11 +615,13 @@ public sealed class PostQuantumComplianceTests : IClassFixture<WebApplicationFac
         executeDeId.Invoke(page, null);
 
         MethodInfo executeShred = typeof(ComplianceSecurity).GetMethod("ExecuteCryptoShred", BindingFlags.NonPublic | BindingFlags.Instance)!;
-        executeShred.Invoke(page, null);
+        // ExecuteCryptoShred returns Task, so Invoke returns non-null.
+        await (Task)executeShred.Invoke(page, null)!;
 
         // Test shredding empty string
         typeof(ComplianceSecurity).GetField("_targetShredSubjectId", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(page, "");
-        executeShred.Invoke(page, null);
+        // ExecuteCryptoShred returns Task, so Invoke returns non-null.
+        await (Task)executeShred.Invoke(page, null)!;
 
         // Test exception branch in DeIdentification
         typeof(ComplianceSecurity).GetField("_consentGdpr", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(page, false);

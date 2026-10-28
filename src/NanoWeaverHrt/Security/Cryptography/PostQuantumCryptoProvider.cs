@@ -292,4 +292,48 @@ public sealed class PostQuantumCryptoProvider : IPostQuantumCryptoProvider
             return false;
         }
     }
+
+    /// <summary>
+    /// Deterministically expands a 32-byte FIPS 204 seed into an ML-DSA-65 signing key pair.
+    /// </summary>
+    /// <param name="seed">The 32-byte FIPS 204 internal key-generation seed (ξ).</param>
+    /// <returns>
+    /// A <see cref="PqcKeyMaterial"/> with <c>KeyId</c> set to <see cref="PublicKeyFingerprint.ComputeKeyId"/> of the
+    /// public key's SubjectPublicKeyInfo DER, <c>Algorithm</c> set to <c>"ML-DSA-65"</c>, and <c>CreatedAtUtc</c> set
+    /// to the UTC time when the key pair was derived.
+    /// </returns>
+    /// <exception cref="ArgumentException"><paramref name="seed"/> is not exactly 32 bytes long.</exception>
+    public PqcKeyMaterial DeriveSigningKeyPairFromSeed(ReadOnlySpan<byte> seed)
+    {
+        if (seed.Length != 32)
+        {
+            throw new ArgumentException("The ML-DSA-65 seed must be exactly 32 bytes.", nameof(seed));
+        }
+
+        // WHAT: Expand the 32-byte FIPS 204 seed into a deterministic ML-DSA-65 key pair and zero the seed copy.
+        // WHY:  Allows the node's persistent 32-byte signing key file to reconstruct the exact same ML-DSA-65 key pair across restarts.
+        // HOW:  Copies the seed span to a temporary array for BouncyCastle MLDsaPrivateKeyParameters.FromSeed, encodes SPKI and PKCS#8 DER, and zeroes the copy in finally.
+        byte[] seedCopy = seed.ToArray();
+        try
+        {
+            MLDsaPrivateKeyParameters privateKey = MLDsaPrivateKeyParameters.FromSeed(MLDsaParameters.ml_dsa_65, seedCopy);
+            MLDsaPublicKeyParameters publicKey = privateKey.GetPublicKey();
+
+            byte[] pubDer = SubjectPublicKeyInfoFactory.CreateSubjectPublicKeyInfo(publicKey).GetDerEncoded();
+            byte[] privDer = PrivateKeyInfoFactory.CreatePrivateKeyInfo(privateKey).GetDerEncoded();
+
+            return new PqcKeyMaterial
+            {
+                KeyId = PublicKeyFingerprint.ComputeKeyId(pubDer),
+                Algorithm = "ML-DSA-65",
+                PublicKeyBase64 = Convert.ToBase64String(pubDer),
+                PrivateKeyBase64 = Convert.ToBase64String(privDer),
+                CreatedAtUtc = DateTimeOffset.UtcNow
+            };
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(seedCopy);
+        }
+    }
 }

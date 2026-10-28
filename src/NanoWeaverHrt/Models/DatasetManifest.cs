@@ -10,12 +10,15 @@ namespace NanoWeaverHrt.Models;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <strong>What is this:</strong> A machine-readable certificate that records the cryptographic signature, 
-/// origin timestamp, file size, and contents of a simulation trajectory bundle.
+/// <strong>What is this:</strong> A machine-readable provenance certificate that records the archive SHA-256 digest,
+/// dataset identifier, archive file name, byte size, origin UTC timestamp, packaged file list, and optional
+/// detached digital signature metadata for a simulation trajectory bundle.
 /// </para>
 /// <para>
-/// <strong>Why this design:</strong> In decentralized and open-source science, peer laboratories must be able to 
-/// verify that simulation datasets have not been corrupted in transit, truncated, or tampered with.
+/// <strong>Why this design:</strong> In decentralized and open-source science, peer laboratories must be able to
+/// verify both that simulation datasets were not corrupted in transit (via the SHA-256 archive digest) and that the
+/// manifest itself was cryptographically signed by a trusted peer node over a deterministic length-prefixed binary
+/// encoding of every manifest field except the signature value itself.
 /// </para>
 /// </remarks>
 [SwaggerSchema(Title = "DatasetManifest", Description = "Cryptographic provenance manifest recording SHA-256 hashes, timestamps, and files within an archive.")]
@@ -62,6 +65,38 @@ public sealed record DatasetManifest : IExamplesProvider<DatasetManifest>
     [Description("List of trajectory and configuration files packaged inside this archive.")]
     [JsonPropertyName("includedFiles")]
     public string[] IncludedFiles { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Schema version of the manifest (<c>null</c> for legacy unsigned v1 manifests; <c>2</c> for signed manifests).
+    /// </summary>
+    [Description("Schema version of the manifest (null for legacy unsigned v1 manifests; 2 for signed manifests).")]
+    [JsonPropertyName("manifestVersion")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? ManifestVersion { get; init; }
+
+    /// <summary>
+    /// Digital signature algorithm identifier (<c>"Ed25519"</c> or <c>"MlDsa65"</c>) when the manifest is signed.
+    /// </summary>
+    [Description("Digital signature algorithm identifier ('Ed25519' or 'MlDsa65') when the manifest is signed.")]
+    [JsonPropertyName("signatureAlgorithm")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? SignatureAlgorithm { get; init; }
+
+    /// <summary>
+    /// Lowercase 64-character hexadecimal SHA-256 fingerprint of the signer's SubjectPublicKeyInfo DER public key.
+    /// </summary>
+    [Description("Lowercase 64-character hexadecimal SHA-256 fingerprint of the signer's SubjectPublicKeyInfo DER public key.")]
+    [JsonPropertyName("signerKeyId")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? SignerKeyId { get; init; }
+
+    /// <summary>
+    /// Standard padded Base64 encoding of the raw digital signature over the canonical manifest bytes.
+    /// </summary>
+    [Description("Standard padded Base64 encoding of the raw digital signature over the canonical manifest bytes.")]
+    [JsonPropertyName("signature")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? SignatureBase64 { get; init; }
 
     /// <summary>
     /// Generates a representative example instance of <see cref="DatasetManifest"/> for OpenAPI documentation.

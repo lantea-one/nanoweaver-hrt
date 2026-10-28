@@ -22,13 +22,17 @@ namespace NanoWeaverHrt.Security.Storage;
 public interface IEncryptedStorageService
 {
     /// <summary>
-    /// Encrypts an arbitrary strongly-typed health or genomic record using the subject's ML-KEM-768 key.
+    /// Encrypts an arbitrary strongly-typed health or genomic record using the subject's persisted ML-KEM-768 key.
     /// </summary>
     /// <typeparam name="T">The record payload type.</typeparam>
     /// <param name="subjectId">The pseudonymized subject identifier.</param>
     /// <param name="record">The record instance to serialize and encrypt.</param>
+    /// <param name="ct">Cancellation token.</param>
     /// <returns>An authenticated <see cref="EncryptedEnvelope"/> ready for storage.</returns>
-    EncryptedEnvelope EncryptSubjectRecord<T>(string subjectId, T record);
+    /// <exception cref="NanoWeaverHrt.Security.KeyManagement.SubjectKeyUnavailableException">
+    /// Thrown if the subject's key was previously crypto-shredded.
+    /// </exception>
+    Task<EncryptedEnvelope> EncryptSubjectRecordAsync<T>(string subjectId, T record, CancellationToken ct = default);
 
     /// <summary>
     /// Decrypts an authenticated <see cref="EncryptedEnvelope"/> using the subject's private ML-KEM-768 key.
@@ -37,8 +41,11 @@ public interface IEncryptedStorageService
     /// <param name="subjectId">The pseudonymized subject identifier.</param>
     /// <param name="envelope">The encrypted envelope.</param>
     /// <returns>The deserialized record, or default if deserialization fails.</returns>
+    /// <exception cref="NanoWeaverHrt.Security.KeyManagement.SubjectKeyUnavailableException">
+    /// Thrown if no key is stored on this node for the subject or if the subject's key was crypto-shredded.
+    /// </exception>
     /// <exception cref="System.Security.Cryptography.CryptographicException">
-    /// Thrown if the subject has been crypto-shredded or the envelope ciphertext is corrupted.
+    /// Thrown if the envelope ciphertext or authentication tag is corrupted.
     /// </exception>
     T? DecryptSubjectRecord<T>(string subjectId, EncryptedEnvelope envelope);
 

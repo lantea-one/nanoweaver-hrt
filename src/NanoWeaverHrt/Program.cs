@@ -23,6 +23,7 @@ using NanoWeaverHrt.Security.Cryptography;
 using NanoWeaverHrt.Security.KeyManagement;
 using NanoWeaverHrt.Security.Models;
 using NanoWeaverHrt.Security.Secrets;
+using NanoWeaverHrt.Security.Signing;
 using NanoWeaverHrt.Security.Storage;
 using NanoWeaverHrt.Services;
 using NanoWeaverHrt.Services.Stack;
@@ -105,10 +106,17 @@ public class Program
         //       before that key material exists.
         // HOW:  A singleton whose constructor performs the whole generate-or-load sequence.
         builder.Services.AddSingleton<INodeSecretStore, NodeSecretStore>();
+        builder.Services.AddSingleton<INodeDatasetSigner, NodeDatasetSigner>();
+        builder.Services.AddSingleton<DatasetManifestSignatureVerifier>();
+        builder.Services.AddSingleton<IPeerKeyRegistry, PeerKeyRepository>();
+        builder.Services.AddSingleton<VerifiedDatasetImporter>();
         builder.Services.AddSingleton<IPostQuantumCryptoProvider, PostQuantumCryptoProvider>();
         builder.Services.AddSingleton<IKeyManagementService, KeyManagementService>();
         builder.Services.AddSingleton<IComplianceAuditService, ComplianceAuditService>();
         builder.Services.AddSingleton<IEncryptedStorageService, EncryptedStorageService>();
+        builder.Services.AddSingleton<ISubjectKeyRepository, SubjectKeyRepository>();
+        builder.Services.AddSingleton<SubjectErasureJournal>();
+        builder.Services.AddSingleton<SubjectKeyVault>();
         builder.Services.AddSingleton<ISimulationCampaignService, SimulationCampaignService>();
         builder.Services.AddSingleton<DatabaseMigrationRunner>();
         builder.Services.AddSingleton<IWeaverDbConnectionFactory, WeaverDbConnectionFactory>();
@@ -219,6 +227,24 @@ public class Program
             nodeSecrets.TokenSigningKeyOrigin,
             nodeSecrets.PhiMasterKeyOrigin);
 
+        // WHAT: Eagerly resolves the node's persistent ML-DSA-65 signing key at startup and logs its public fingerprint.
+        // WHY:  A corrupted or unreadable signing key seed file must abort startup immediately rather than failing on the first audit log or export hours later, and the public fingerprint lets auditors match ledger signatures to this node.
+        // HOW:  Resolves IKeyManagementService (whose constructor loads or creates node_signing_mldsa65.key) and logs Origin and KeyId.
+        IKeyManagementService nodeKeys = app.Services.GetRequiredService<IKeyManagementService>();
+        app.Logger.LogInformation(
+            "Node audit signing key ready. Algorithm: ML-DSA-65. Origin: {Origin}. Fingerprint: {KeyId}.",
+            nodeKeys.NodeSigningKeyOrigin,
+            nodeKeys.GetNodeSigningKey().KeyId);
+
+        // WHAT: Eagerly resolves this node's persistent Ed25519 dataset manifest signer and logs its public fingerprint.
+        // WHY:  A damaged dataset_signing_ed25519.key file must fail startup immediately rather than on a later export, and the fingerprint lets operators register this node in peer key registries out of band.
+        // HOW:  Resolves INodeDatasetSigner and logs KeyOrigin and KeyId.
+        INodeDatasetSigner datasetSigner = app.Services.GetRequiredService<INodeDatasetSigner>();
+        app.Logger.LogInformation(
+            "Dataset signing key ready. Origin: {Origin}. Fingerprint: {KeyId}.",
+            datasetSigner.KeyOrigin,
+            datasetSigner.KeyId);
+
         // WHAT: Initializes authoritative database tables for configuration and single-use share keys.
         // WHY:  Guarantees that database-first precedence is active before requests arrive.
         // HOW:  Executes table verification via IConfigurationRepository.
@@ -243,6 +269,25 @@ public class Program
         app.Logger.LogInformation(
             "Legacy patient profile re-encryption pass complete. Profiles upgraded to the node PHI master key: {UpgradedProfileCount}.",
             reEncryptedProfiles);
+
+        // WHAT: Eagerly loads and verifies every stored subject ML-KEM-768 key and erasure tombstone.
+        // WHY:  A lost or replaced PHI master key, or a tampered subject key row, must stop the service at
+        //       startup rather than surfacing as failed decryption on a patient request hours later.
+        // HOW:  Resolves SubjectKeyVault and awaits InitializeAsync, which opens every active row with the
+        //       current node PHI key and throws SubjectKeyStoreLoadException if any row fails verification.
+        SubjectKeyVault subjectKeyVault = app.Services.GetRequiredService<SubjectKeyVault>();
+        SubjectKeyLoadReport subjectKeyReport = await subjectKeyVault.InitializeAsync();
+        app.Logger.LogInformation(
+            "Subject key store loaded. Active subject keys: {ActiveCount}. Crypto-shredded subjects: {ErasedCount}.",
+            subjectKeyReport.ActiveCount,
+            subjectKeyReport.ErasedCount);
+        if (subjectKeyReport.ReappliedErasureCount + subjectKeyReport.RebuiltTombstoneCount > 0)
+        {
+            app.Logger.LogWarning(
+                "Subject erasure reconciliation re-applied {ReappliedCount} erasures and restored {RebuiltCount} erasure records that the database did not contain. A database restored from a backup taken before those erasures is the usual cause.",
+                subjectKeyReport.ReappliedErasureCount,
+                subjectKeyReport.RebuiltTombstoneCount);
+        }
 
         // WHAT: Enables content negotiation and multi-format transcoding (JSON, XML, YAML).
         // WHY:  Allows callers to request or submit XML or YAML payloads transparently.
@@ -623,8 +668,11 @@ public class Program
         // ---------------------------------------------------------------------
         // REST API: Dataset Import & Cryptographic Verification
         // ---------------------------------------------------------------------
-        app.MapPost("/api/datasets/import", async (IFormFile archive, IFormFile manifest, IDatasetManager manager, CancellationToken ct) =>
+        app.MapPost("/api/datasets/import", async (IFormFile archive, IFormFile manifest, VerifiedDatasetImporter importer, HttpContext context, CancellationToken ct) =>
         {
+            // WHAT: Authenticates dataset provenance and verifies archive integrity before extracting into active storage.
+            // WHY:  Enforces peer key trust, signature verification, strict-mode policy, and SHA-256/size integrity.
+            // HOW:  Parses the manifest JSON, delegates provenance and integrity checks to VerifiedDatasetImporter, and returns RFC 7807 on rejection.
             if (archive == null || manifest == null)
             {
                 return Results.BadRequest(new { error = "Both archive (.tar.gz) and manifest (.json) files are required." });
@@ -646,23 +694,34 @@ public class Program
                 return Results.BadRequest(new { error = "Failed to parse the uploaded manifest JSON." });
             }
 
+            DatasetImportResult result;
             using (Stream archiveStream = archive.OpenReadStream())
             {
-                bool success = await manager.ImportDatasetAsync(archiveStream, parsedManifest, ct);
-                if (!success)
-                {
-                    return Results.BadRequest(new { error = "Cryptographic integrity check failed. SHA-256 hash mismatch." });
-                }
+                result = await importer.ImportAsync(archiveStream, parsedManifest, ct);
             }
 
-            return Results.Ok(new { message = "Dataset successfully verified and imported.", manifest = parsedManifest });
+            if (result.Outcome != DatasetImportOutcome.ImportedSigned && result.Outcome != DatasetImportOutcome.ImportedUnsigned)
+            {
+                (int status, string detail) = VerifiedDatasetImporter.DescribeRejection(result.Outcome);
+                return SecureProblemResult(context, status, detail);
+            }
+
+            string provenance = result.Outcome == DatasetImportOutcome.ImportedSigned ? "signed" : "unsigned";
+            return Results.Ok(new
+            {
+                message = "Dataset successfully verified and imported.",
+                manifest = parsedManifest,
+                provenance,
+                signerKeyId = result.SignerKeyId
+            });
         })
         .WithName("ImportDataset")
         .WithTags("Datasets & Trajectories")
-        .WithSummary("Verifies cryptographic SHA-256 integrity and imports a dataset archive into the active volume.")
-        .WithDescription("Validates the uploaded archive against the accompanying SHA-256 checksum manifest and extracts it into active storage.")
+        .WithSummary("Verifies manifest digital signatures, cryptographic SHA-256 integrity, and imports a dataset archive into the active volume.")
+        .WithDescription("Validates the uploaded manifest signature against this node's key and the peer key registry, enforces strict-mode policy for unsigned bundles, verifies the archive SHA-256 checksum and byte size, and extracts verified files into active storage.")
         .Produces(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status403Forbidden)
         .DisableAntiforgery();
 
         // ---------------------------------------------------------------------
@@ -1411,17 +1470,22 @@ public class Program
         .WithName("DeIdentifySubject")
         .WithSummary("Applies HIPAA Safe Harbor de-identification and GINA/GDPR Article 9 consent validation.");
 
-        app.MapPost("/api/compliance/crypto-shred", (CryptoShredRequest req, IKeyManagementService keyMgmt, IComplianceAuditService compliance) =>
+        app.MapPost("/api/compliance/crypto-shred", async (CryptoShredRequest req, IKeyManagementService keyMgmt, IComplianceAuditService compliance, CancellationToken ct) =>
         {
             if (string.IsNullOrWhiteSpace(req.SubjectId))
             {
                 return Results.BadRequest(new { error = "SubjectId cannot be empty." });
             }
 
-            bool shredded = keyMgmt.CryptoShredSubjectKey(req.SubjectId);
-            if (!shredded)
+            SubjectErasureOutcome outcome = await keyMgmt.CryptoShredSubjectKeyAsync(req.SubjectId, ct);
+            if (outcome != SubjectErasureOutcome.Erased)
             {
-                return Results.NotFound(new { error = $"Subject '{req.SubjectId}' not found or already crypto-shredded." });
+                return Results.NotFound(new
+                {
+                    error = outcome == SubjectErasureOutcome.AlreadyErased
+                        ? ShredAlreadyMessage(req.SubjectId)
+                        : ShredUnknownMessage(req.SubjectId)
+                });
             }
 
             compliance.LogAction(
@@ -1434,7 +1498,7 @@ public class Program
             {
                 subject_id = req.SubjectId,
                 status = "Crypto-Shredded",
-                message = "Subject private decryption keys permanently destroyed pursuant to GDPR Article 17."
+                message = ShredOkMessage
             });
         })
         .WithName("CryptoShredSubject")
@@ -1445,7 +1509,7 @@ public class Program
         .Produces(StatusCodes.Status400BadRequest)
         .Produces(StatusCodes.Status404NotFound);
 
-        app.MapPost("/api/compliance/encrypt-record", (EncryptRecordRequest req, IEncryptedStorageService storage, HttpContext context) =>
+        app.MapPost("/api/compliance/encrypt-record", async (EncryptRecordRequest req, IEncryptedStorageService storage, HttpContext context, CancellationToken ct) =>
         {
             if (string.IsNullOrWhiteSpace(req.SubjectId) || req.Payload == null)
             {
@@ -1457,20 +1521,23 @@ public class Program
                     "SubjectId and Payload cannot be empty.");
             }
 
+            IResult response;
             try
             {
-                EncryptedEnvelope envelope = storage.EncryptSubjectRecord(req.SubjectId, req.Payload);
-                return Results.Ok(envelope);
+                EncryptedEnvelope envelope = await storage.EncryptSubjectRecordAsync(req.SubjectId, req.Payload, ct);
+                response = Results.Ok(envelope);
             }
             catch (CryptographicException ex)
             {
                 // WHY: As above -- a hand-rolled '{ error = ex.Message }' returns normally and so never
                 //      reaches the middleware's sanitizer, publishing raw exception text to the client.
-                return SecureProblemResult(
+                response = SecureProblemResult(
                     context,
                     StatusCodes.Status400BadRequest,
                     SecureExceptionSanitizer.SanitizeDetail(ex.Message, StatusCodes.Status400BadRequest, context.TraceIdentifier));
             }
+
+            return response;
         })
         .WithName("EncryptSubjectRecord")
         .WithTags("Post-Quantum Cryptography & Compliance")
@@ -2968,6 +3035,131 @@ public class Program
         .Produces(StatusCodes.Status403Forbidden)
         .Produces(StatusCodes.Status404NotFound);
 
+        // ---------------------------------------------------------------------
+        // REST API: Peer Key Registry (Administrator Only)
+        // ---------------------------------------------------------------------
+        app.MapPost("/api/peer-keys", async (
+            RegisterPeerKeyRequest request,
+            IPeerKeyRegistry registry,
+            INodeDatasetSigner localSigner,
+            IComplianceAuditService audit,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Validates and registers a trusted peer laboratory's dataset-signing public key.
+            // WHY:  Establishes an out-of-band trust anchor for verifying imported dataset manifests.
+            // HOW:  Normalizes the label and SubjectPublicKeyInfo DER, rejects self-keys and duplicates, stores the record, and logs to the compliance ledger.
+            if (!PeerKeyValidation.TryNormalizeLabel(request.Label, out string label))
+            {
+                return SecureProblemResult(
+                    context,
+                    StatusCodes.Status400BadRequest,
+                    "label must be 1 to 128 characters with no control characters.");
+            }
+
+            if (!PeerKeyValidation.TryNormalizePublicKey(request.Algorithm, request.PublicKeyBase64, out string publicKeyBase64, out string keyId))
+            {
+                return SecureProblemResult(
+                    context,
+                    StatusCodes.Status400BadRequest,
+                    "publicKeyBase64 must be a Base64 SubjectPublicKeyInfo public key matching the declared algorithm.");
+            }
+
+            const string conflictDetail = "That key is already registered, has been revoked, or is this node's own dataset signing key.";
+            if (string.Equals(keyId, localSigner.KeyId, StringComparison.Ordinal))
+            {
+                return SecureProblemResult(context, StatusCodes.Status409Conflict, conflictDetail);
+            }
+
+            // WHY `!`: AdministratorRoutes guarantees an authenticated Administrator session populated CurrentUser before the handler runs.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            PeerKeyRecord record = new()
+            {
+                KeyId = keyId,
+                Label = label,
+                Algorithm = request.Algorithm,
+                PublicKeyBase64 = publicKeyBase64,
+                RegisteredBy = caller.Username,
+                RegisteredAtUtc = DateTimeOffset.UtcNow
+            };
+
+            if (!await registry.TryRegisterAsync(record, ct))
+            {
+                return SecureProblemResult(context, StatusCodes.Status409Conflict, conflictDetail);
+            }
+
+            audit.LogAction(
+                caller.Username,
+                "RegisterPeerKey",
+                $"peer-key:{keyId}",
+                JsonSerializer.Serialize(new { algorithm = request.Algorithm, label }));
+
+            return Results.Created($"/api/peer-keys/{keyId}", record);
+        })
+        .WithName("RegisterPeerKey")
+        .WithTags("Peer Key Registry")
+        .WithSummary("Registers a trusted peer laboratory's dataset-signing public key.")
+        .WithDescription("Validates and stores an Ed25519 or ML-DSA-65 SubjectPublicKeyInfo public key in the peer key registry after out-of-band fingerprint verification. Requires Administrator role.")
+        .Accepts<RegisterPeerKeyRequest>("application/json", "application/xml", "application/x-yaml")
+        .Produces<PeerKeyRecord>(StatusCodes.Status201Created)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status409Conflict);
+
+        app.MapGet("/api/peer-keys", async (
+            IPeerKeyRegistry registry,
+            INodeDatasetSigner localSigner,
+            CancellationToken ct) =>
+        {
+            // WHAT: Lists this node's own dataset-signing public key alongside all registered peer keys.
+            // WHY:  Allows administrators to export this node's public key out of band and audit active and revoked peers.
+            // HOW:  Reads localSigner identity and queries registry.ListAsync.
+            IReadOnlyList<PeerKeyRecord> peers = await registry.ListAsync(ct);
+            return Results.Ok(new PeerKeyListResponse
+            {
+                LocalNode = new(localSigner.KeyId, localSigner.Algorithm, localSigner.PublicKeyBase64),
+                Peers = peers
+            });
+        })
+        .WithName("ListPeerKeys")
+        .WithTags("Peer Key Registry")
+        .WithSummary("Lists this node's dataset-signing public key and all registered peer keys.")
+        .WithDescription("Returns this node's public dataset signing identity alongside all active and revoked peer laboratory keys. Requires Administrator role.")
+        .Produces<PeerKeyListResponse>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden);
+
+        app.MapPost("/api/peer-keys/{keyId}/revoke", async (
+            string keyId,
+            IPeerKeyRegistry registry,
+            IComplianceAuditService audit,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Permanently revokes an active peer dataset-signing public key.
+            // WHY:  Stops trusting datasets signed by a compromised or decommissioned peer while preserving the revocation audit trail.
+            // HOW:  Calls registry.RevokeAsync, returns 404 when no active key matches, and records the action in the compliance ledger.
+            // WHY `!`: AdministratorRoutes guarantees an authenticated Administrator session populated CurrentUser before the handler runs.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            PeerKeyRecord? revoked = await registry.RevokeAsync(keyId, caller.Username, DateTimeOffset.UtcNow, ct);
+            if (revoked is null)
+            {
+                return SecureProblemResult(context, StatusCodes.Status404NotFound, "No active peer key has that identifier.");
+            }
+
+            audit.LogAction(caller.Username, "RevokePeerKey", $"peer-key:{keyId}", "{}");
+            return Results.Ok(revoked);
+        })
+        .WithName("RevokePeerKey")
+        .WithTags("Peer Key Registry")
+        .WithSummary("Permanently revokes an active peer dataset-signing public key.")
+        .WithDescription("Marks an active peer key as permanently revoked so datasets signed by it are no longer trusted. Revoked keys remain in the registry for audit history and can never be reactivated. Requires Administrator role.")
+        .Produces<PeerKeyRecord>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status404NotFound);
+
         app.Run();
     }
 
@@ -3160,7 +3352,9 @@ public class Program
         new("/api/compliance/encrypt-record", MatchDescendants: false),
         new("/api/compliance/decrypt-record", MatchDescendants: false),
         new("/api/compliance/status", MatchDescendants: false),
-        new("/api/compliance/audit-ledger", MatchDescendants: false)
+        new("/api/compliance/audit-ledger", MatchDescendants: false),
+        // Trust anchors for peer dataset verification are cluster oversight under Prime Directive 12.
+        new("/api/peer-keys", MatchDescendants: true)
     ];
 
     /// <summary>
@@ -3752,6 +3946,28 @@ public class Program
 
         return Results.Ok(granular);
     }
+
+    /// <summary>
+    /// Client-safe confirmation message returned when a subject's private decryption key is destroyed.
+    /// </summary>
+    internal const string ShredOkMessage =
+        "Subject private decryption key destroyed in this node's key store (GDPR Article 17 erasure). Sealed copies remain in any backup taken before this moment until that backup is expired.";
+
+    /// <summary>
+    /// Formats the client-safe message returned when a crypto-shred request targets an already-shredded subject.
+    /// </summary>
+    /// <param name="subjectId">The subject identifier.</param>
+    /// <returns>The formatted client-safe message.</returns>
+    internal static string ShredAlreadyMessage(string subjectId) =>
+        $"Subject '{subjectId}' was already crypto-shredded; nothing further was destroyed.";
+
+    /// <summary>
+    /// Formats the client-safe message returned when a crypto-shred request targets an unknown subject.
+    /// </summary>
+    /// <param name="subjectId">The subject identifier.</param>
+    /// <returns>The formatted client-safe message.</returns>
+    internal static string ShredUnknownMessage(string subjectId) =>
+        $"This node holds no stored key for subject '{subjectId}'; nothing was erased.";
 }
 
 /// <summary>

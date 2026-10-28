@@ -109,6 +109,20 @@ public sealed record ComplianceStatusReport : IExamplesProvider<ComplianceStatus
     public DateTimeOffset GeneratedAtUtc { get; init; } = DateTimeOffset.UtcNow;
 
     /// <summary>
+    /// Gets the 64-character lowercase SHA-256 fingerprint of this node's active ML-DSA-65 audit signing public key.
+    /// </summary>
+    [Description("64-character lowercase hexadecimal SHA-256 fingerprint of this node's ML-DSA-65 audit signing public key.")]
+    [JsonPropertyName("auditSigningKeyId")]
+    public string AuditSigningKeyId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets the Base64-encoded SubjectPublicKeyInfo DER bytes of this node's active ML-DSA-65 audit signing public key.
+    /// </summary>
+    [Description("Base64-encoded SubjectPublicKeyInfo DER of this node's ML-DSA-65 audit signing public key.")]
+    [JsonPropertyName("auditSigningPublicKeyBase64")]
+    public string AuditSigningPublicKeyBase64 { get; init; } = string.Empty;
+
+    /// <summary>
     /// Generates a representative example instance of <see cref="ComplianceStatusReport"/> for OpenAPI documentation.
     /// </summary>
     /// <returns>A populated compliance status report example.</returns>
@@ -125,6 +139,8 @@ public sealed record ComplianceStatusReport : IExamplesProvider<ComplianceStatus
         TotalSubjectsRegistered = 18,
         CryptoShreddedSubjectCount = 2,
         OverallStatus = "Compliant",
-        GeneratedAtUtc = new DateTimeOffset(2026, 10, 20, 18, 0, 0, TimeSpan.Zero)
+        GeneratedAtUtc = new DateTimeOffset(2026, 10, 20, 18, 0, 0, TimeSpan.Zero),
+        AuditSigningKeyId = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        AuditSigningPublicKeyBase64 = "<base64-encoded-ml-dsa-65-spki-public-key-placeholder>"
     };
 }

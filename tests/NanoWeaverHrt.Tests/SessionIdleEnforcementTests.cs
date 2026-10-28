@@ -85,19 +85,24 @@ public sealed class SessionIdleEnforcementTests : IDisposable
         SystemConfigurationStore configStore = new(WeaverTestDb.CreateFactory(configuration));
         configStore.InitializeAsync().GetAwaiter().GetResult();
 
-        PostQuantumCryptoProvider pqcProvider = new();
-        KeyManagementService keyManagement = new(pqcProvider);
-        ComplianceAuditService auditService = new(keyManagement, pqcProvider);
-
-        _userRepository = new UserRepository(WeaverTestDb.CreateFactory(configuration, new DatabaseMigrationRunner()));
-        _userRepository.InitializeAsync().GetAwaiter().GetResult();
-
         // WHAT: Provisions this test instance's own bearer-token signing key inside its temp directory.
         // WHY:  The signing key is no longer derived from a constant published in the source; the service now
         //       takes it from INodeSecretStore, and deriving the directory from TRAJECTORY_INCOMING_DIR keeps
         //       the generated key files isolated per test class.
         // HOW:  NodeSecretStore resolves '<temp>/node-keys' from the configuration built above.
         NodeSecretStore secretStore = new(configuration);
+
+        PostQuantumCryptoProvider pqcProvider = new();
+        ProfileDataProtector protector = new(secretStore);
+        SubjectKeyRepository subjectKeyRepo = new(WeaverTestDb.CreateFactory(configuration));
+        SubjectErasureJournal journal = new(secretStore);
+        using SubjectKeyVault subjectKeyVault = new(subjectKeyRepo, protector, pqcProvider, journal);
+        subjectKeyVault.InitializeAsync().GetAwaiter().GetResult();
+        KeyManagementService keyManagement = new(pqcProvider, subjectKeyVault, secretStore);
+        ComplianceAuditService auditService = new(keyManagement, pqcProvider);
+
+        _userRepository = new UserRepository(WeaverTestDb.CreateFactory(configuration, new DatabaseMigrationRunner()));
+        _userRepository.InitializeAsync().GetAwaiter().GetResult();
 
         _authService = new UserAuthenticationService(_userRepository, pqcProvider, auditService, secretStore);
     }

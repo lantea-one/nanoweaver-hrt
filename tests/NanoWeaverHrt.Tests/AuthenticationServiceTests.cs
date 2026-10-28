@@ -40,6 +40,11 @@ public sealed class AuthenticationServiceTests : IDisposable
     private readonly PostQuantumCryptoProvider _pqcProvider;
 
     /// <summary>
+    /// Durable subject key vault.
+    /// </summary>
+    private readonly SubjectKeyVault _subjectKeyVault;
+
+    /// <summary>
     /// Node key management service.
     /// </summary>
     private readonly KeyManagementService _keyManagement;
@@ -78,18 +83,23 @@ public sealed class AuthenticationServiceTests : IDisposable
         SystemConfigurationStore configStore = new(WeaverTestDb.CreateFactory(configuration));
         configStore.InitializeAsync().GetAwaiter().GetResult();
 
-        _pqcProvider = new PostQuantumCryptoProvider();
-        _keyManagement = new KeyManagementService(_pqcProvider);
-        _auditService = new ComplianceAuditService(_keyManagement, _pqcProvider);
-
-        _userRepository = new UserRepository(WeaverTestDb.CreateFactory(configuration, new DatabaseMigrationRunner()));
-        _userRepository.InitializeAsync().GetAwaiter().GetResult();
-
         // WHAT: Provisions this test instance's own token signing key inside its isolated temp directory.
         // WHY:  The signing key is no longer derived from a constant, so the service needs a real key store;
         //       keeping it under _tempDir keeps every test class cryptographically and filesystem independent.
         // HOW:  NodeSecretStore derives its directory from the TRAJECTORY_INCOMING_DIR already configured above.
         _secretStore = new NodeSecretStore(configuration);
+
+        _pqcProvider = new PostQuantumCryptoProvider();
+        ProfileDataProtector protector = new(_secretStore);
+        SubjectKeyRepository subjectKeyRepo = new(WeaverTestDb.CreateFactory(configuration));
+        SubjectErasureJournal journal = new(_secretStore);
+        _subjectKeyVault = new SubjectKeyVault(subjectKeyRepo, protector, _pqcProvider, journal);
+        _subjectKeyVault.InitializeAsync().GetAwaiter().GetResult();
+        _keyManagement = new KeyManagementService(_pqcProvider, _subjectKeyVault, _secretStore);
+        _auditService = new ComplianceAuditService(_keyManagement, _pqcProvider);
+
+        _userRepository = new UserRepository(WeaverTestDb.CreateFactory(configuration, new DatabaseMigrationRunner()));
+        _userRepository.InitializeAsync().GetAwaiter().GetResult();
 
         _authService = new UserAuthenticationService(
             _userRepository,
@@ -101,6 +111,7 @@ public sealed class AuthenticationServiceTests : IDisposable
     /// <inheritdoc/>
     public void Dispose()
     {
+        _subjectKeyVault.Dispose();
         _userRepository.Dispose();
         if (Directory.Exists(_tempDir))
         {

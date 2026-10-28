@@ -104,6 +104,10 @@ public sealed class RazorComponentLifecycleTests : IDisposable
         // directory from the TRAJECTORY_INCOMING_DIR above, which keeps the generated files in this test
         // instance's temporary directory.
         sc.AddSingleton<INodeSecretStore, NodeSecretStore>();
+        sc.AddSingleton<ProfileDataProtector>();
+        sc.AddSingleton<ISubjectKeyRepository, SubjectKeyRepository>();
+        sc.AddSingleton<SubjectErasureJournal>();
+        sc.AddSingleton<SubjectKeyVault>();
         sc.AddSingleton<IPostQuantumCryptoProvider, PostQuantumCryptoProvider>();
         sc.AddSingleton<IKeyManagementService, KeyManagementService>();
         sc.AddSingleton<IComplianceAuditService, ComplianceAuditService>();
@@ -127,6 +131,7 @@ public sealed class RazorComponentLifecycleTests : IDisposable
 
         IUserRepository userRepo = _services.GetRequiredService<IUserRepository>();
         userRepo.InitializeAsync().GetAwaiter().GetResult();
+        _services.GetRequiredService<SubjectKeyVault>().InitializeAsync().GetAwaiter().GetResult();
     }
 
     /// <inheritdoc/>

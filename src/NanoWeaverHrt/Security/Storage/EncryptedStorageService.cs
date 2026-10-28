@@ -85,25 +85,22 @@ public sealed class EncryptedStorageService : IEncryptedStorageService
     }
 
     /// <summary>
-    /// Encrypts an arbitrary strongly-typed health or genomic record using the subject's ML-KEM-768 key.
+    /// Encrypts an arbitrary strongly-typed health or genomic record using the subject's persisted ML-KEM-768 key.
     /// </summary>
     /// <typeparam name="T">The record payload type.</typeparam>
     /// <param name="subjectId">The pseudonymized subject identifier.</param>
     /// <param name="record">The record instance to serialize and encrypt.</param>
+    /// <param name="ct">Cancellation token.</param>
     /// <returns>An authenticated <see cref="EncryptedEnvelope"/> ready for storage.</returns>
-    public EncryptedEnvelope EncryptSubjectRecord<T>(string subjectId, T record)
+    public async Task<EncryptedEnvelope> EncryptSubjectRecordAsync<T>(string subjectId, T record, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(subjectId);
         ArgumentNullException.ThrowIfNull(record);
 
-        // WHAT: Retrieve subject key profile and verify crypto-shredding status.
-        // WHY:  Prevent storing data for a subject whose keys have been erased pursuant to GDPR Article 17.
-        // HOW:  GetOrCreateSubjectKey checks IsShredded flag.
-        SubjectKeyProfile profile = _keyManagement.GetOrCreateSubjectKey(subjectId);
-        if (profile.IsShredded)
-        {
-            throw new CryptographicException($"Cannot encrypt record for subject '{subjectId}': Profile was permanently crypto-shredded pursuant to GDPR Article 17.");
-        }
+        // WHAT: Retrieve or persist the subject's active key profile, refusing if previously crypto-shredded.
+        // WHY:  Prevents encrypting data to an unpersisted key or re-issuing a key after GDPR Article 17 erasure.
+        // HOW:  Awaits IKeyManagementService.GetOrCreateSubjectKeyAsync, which throws SubjectKeyUnavailableException if erased.
+        SubjectKeyProfile profile = await _keyManagement.GetOrCreateSubjectKeyAsync(subjectId, ct).ConfigureAwait(false);
 
         // WHAT: Serialize record to UTF-8 JSON bytes.
         // WHY:  Provides a standardized byte representation for encryption.
@@ -136,19 +133,15 @@ public sealed class EncryptedStorageService : IEncryptedStorageService
         ArgumentException.ThrowIfNullOrWhiteSpace(subjectId);
         ArgumentNullException.ThrowIfNull(envelope);
 
-        // WHAT: Verify subject key availability and crypto-shredding status.
-        // WHY:  If the subject's private key was destroyed, decryption is mathematically impossible (GDPR Art. 17).
-        // HOW:  Inspects profile and private key existence.
-        SubjectKeyProfile? profile = _keyManagement.GetSubjectKey(subjectId);
-        if (profile == null || profile.IsShredded || string.IsNullOrWhiteSpace(profile.KeyMaterial.PrivateKeyBase64))
-        {
-            throw new CryptographicException($"Decryption refused for subject '{subjectId}': Private key has been permanently destroyed (Crypto-Shredded pursuant to GDPR Article 17).");
-        }
+        // WHAT: Resolve the subject's unsealed private decryption key from the vault.
+        // WHY:  Distinguishes between an unknown subject and a deliberately crypto-shredded subject.
+        // HOW:  Calls GetSubjectPrivateKeyForDecryption, which throws SubjectKeyUnavailableException with the exact reason.
+        string privateKey = _keyManagement.GetSubjectPrivateKeyForDecryption(subjectId);
 
         // WHAT: Decrypt payload using ML-KEM-768 decapsulation and AES-256-GCM.
         // WHY:  Verifies authenticity tag and recovers plaintext.
         // HOW:  Calls IPostQuantumCryptoProvider.DecryptEnvelope.
-        byte[] plaintextBytes = _cryptoProvider.DecryptEnvelope(envelope, profile.KeyMaterial.PrivateKeyBase64);
+        byte[] plaintextBytes = _cryptoProvider.DecryptEnvelope(envelope, privateKey);
 
         _auditService.LogAction(
             "ENCRYPTED_STORAGE",
@@ -177,11 +170,7 @@ public sealed class EncryptedStorageService : IEncryptedStorageService
         ArgumentException.ThrowIfNullOrWhiteSpace(subjectId);
         ArgumentException.ThrowIfNullOrWhiteSpace(exportDirectory);
 
-        SubjectKeyProfile profile = _keyManagement.GetOrCreateSubjectKey(subjectId);
-        if (profile.IsShredded)
-        {
-            throw new CryptographicException($"Cannot export bundle for subject '{subjectId}': Subject has been crypto-shredded.");
-        }
+        SubjectKeyProfile profile = await _keyManagement.GetOrCreateSubjectKeyAsync(subjectId, cancellationToken).ConfigureAwait(false);
 
         // WHAT: Sanitize trajectory file name to prevent directory traversal.
         // WHY:  Ensures that callers cannot reference arbitrary files outside the shared data volume.
@@ -224,11 +213,8 @@ public sealed class EncryptedStorageService : IEncryptedStorageService
         byte[] envelopeHash = SHA256.HashData(envelopeBytes);
         string envelopeHashHex = Convert.ToHexString(envelopeHash).ToLowerInvariant();
 
-        PqcKeyMaterial nodeSigningKey = _keyManagement.GetNodeSigningKey();
-        PqcSignature manifestSignature = _cryptoProvider.SignData(
-            Encoding.UTF8.GetBytes(envelopeHashHex),
-            nodeSigningKey.PrivateKeyBase64 ?? string.Empty,
-            nodeSigningKey.KeyId);
+        PqcSignature manifestSignature = _keyManagement.SignWithNodeSigningKey(
+            Encoding.UTF8.GetBytes(envelopeHashHex));
 
         string timestamp = DateTimeOffset.UtcNow.ToString("yyyyMMdd_HHmmss");
         string bundleFileName = $"{Path.GetFileNameWithoutExtension(trajectoryFileName)}_{subjectId}_{timestamp}.enc.tar.gz";

@@ -141,7 +141,8 @@ public sealed class NodeSecretIsolationAndPhiMigrationTests : IDisposable
         await configStore.InitializeAsync();
 
         PostQuantumCryptoProvider pqc = new();
-        KeyManagementService keyManagement = new(pqc);
+        using SubjectKeyTestHost subjectKeyHost = await SubjectKeyTestHost.CreateLoadedAsync(Path.Combine(_tempDir, "subject-keys"));
+        KeyManagementService keyManagement = subjectKeyHost.KeyManagement;
         ComplianceAuditService audit = new(keyManagement, pqc);
 
         using UserRepository userRepository = new(WeaverTestDb.CreateFactory(configuration, new DatabaseMigrationRunner()));

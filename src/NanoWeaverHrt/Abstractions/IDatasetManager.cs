@@ -33,12 +33,17 @@ public interface IDatasetManager
     Task<DatasetManifest> ExportDatasetAsync(string datasetName, IEnumerable<string>? fileNames = null, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Verifies the SHA-256 hash of an uploaded archive against its manifest and unpacks it into the active data volume.
+    /// Verifies the SHA-256 hash and byte size of an uploaded archive against its manifest and unpacks it into the active data volume.
     /// </summary>
+    /// <remarks>
+    /// This method checks archive integrity (SHA-256 digest and <see cref="DatasetManifest.SizeInBytes"/>) only and does not
+    /// evaluate manifest digital signatures or peer trust policy. Its single production caller is
+    /// <see cref="NanoWeaverHrt.Services.VerifiedDatasetImporter"/>; it must never be called directly from an HTTP endpoint.
+    /// </remarks>
     /// <param name="archiveStream">The readable stream containing the .tar.gz archive bytes.</param>
     /// <param name="manifest">The cryptographic provenance manifest accompanying the archive.</param>
     /// <param name="cancellationToken">Cancellation token to abort the import.</param>
-    /// <returns>True if the SHA-256 checksum matched and files were successfully extracted; otherwise false.</returns>
+    /// <returns>True if the SHA-256 checksum and byte size matched and files were successfully extracted; otherwise false.</returns>
     Task<bool> ImportDatasetAsync(Stream archiveStream, DatasetManifest manifest, CancellationToken cancellationToken = default);
 
     /// <summary>

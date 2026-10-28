@@ -1,9 +1,11 @@
 using System.Formats.Tar;
+using System.Globalization;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text.Json;
 using NanoWeaverHrt.Abstractions;
 using NanoWeaverHrt.Models;
+using NanoWeaverHrt.Security.Signing;
 
 namespace NanoWeaverHrt.Services;
 
@@ -49,6 +51,11 @@ public sealed class DatasetTransferService : IDatasetManager
     private readonly long _maxImportExpandedBytes;
 
     /// <summary>
+    /// Optional per-node Ed25519 signer used to sign exported dataset manifests.
+    /// </summary>
+    private readonly INodeDatasetSigner? _signer;
+
+    /// <summary>
     /// Default ceiling on archive member count when <c>DATASET_IMPORT_MAX_ENTRIES</c> is not configured.
     /// </summary>
     /// <remarks>
@@ -73,10 +80,15 @@ public sealed class DatasetTransferService : IDatasetManager
     /// </summary>
     /// <param name="configuration">Application configuration containing directory path settings.</param>
     /// <param name="logger">Telemetry logger.</param>
-    public DatasetTransferService(IConfiguration configuration, ILogger<DatasetTransferService> logger)
+    /// <param name="signer">Optional per-node Ed25519 dataset manifest signer.</param>
+    public DatasetTransferService(
+        IConfiguration configuration,
+        ILogger<DatasetTransferService> logger,
+        INodeDatasetSigner? signer = null)
     {
         ArgumentNullException.ThrowIfNull(configuration);
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _signer = signer;
 
         // WHAT: Resolves the archive member-count and expanded-size ceilings applied during import.
         // WHY:  Both bound the damage a hostile or merely broken bundle can do; operators running unusually large
@@ -222,12 +234,14 @@ public sealed class DatasetTransferService : IDatasetManager
         DatasetManifest manifest = new()
         {
             DatasetName = safeDatasetName,
-            TimestampUtc = DateTime.UtcNow.ToString("o"),
+            TimestampUtc = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture),
             ArchiveFileName = archiveFileName,
             Sha256Checksum = hexHash,
             SizeInBytes = totalBytesWritten,
             IncludedFiles = includedFiles.ToArray()
         };
+
+        manifest = ApplySignature(manifest, _signer);
 
         // Write the machine-readable manifest JSON file alongside the archive
         string jsonContent = JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true });
@@ -256,6 +270,7 @@ public sealed class DatasetTransferService : IDatasetManager
         try
         {
             byte[] actualHashBytes;
+            long totalBytesWritten = 0;
             using (FileStream tempFile = File.Create(tempArchivePath))
             using (IncrementalHash sha256 = IncrementalHash.CreateHash(HashAlgorithmName.SHA256))
             {
@@ -265,6 +280,7 @@ public sealed class DatasetTransferService : IDatasetManager
                 {
                     sha256.AppendData(buffer, 0, bytesRead);
                     await tempFile.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken);
+                    totalBytesWritten += bytesRead;
                 }
                 actualHashBytes = sha256.GetHashAndReset();
             }
@@ -274,6 +290,12 @@ public sealed class DatasetTransferService : IDatasetManager
             if (!string.Equals(actualHexHash, manifest.Sha256Checksum, StringComparison.OrdinalIgnoreCase))
             {
                 _logger.LogError("Cryptographic mismatch! Expected {Expected}, got {Actual}", manifest.Sha256Checksum, actualHexHash);
+                return false;
+            }
+
+            if (totalBytesWritten != manifest.SizeInBytes)
+            {
+                _logger.LogError("Archive size mismatch! Expected {Expected} bytes, got {Actual} bytes", manifest.SizeInBytes, totalBytesWritten);
                 return false;
             }
 
@@ -522,4 +544,13 @@ public sealed class DatasetTransferService : IDatasetManager
         }
         return $"{len:0.##} {suffixes[order]}";
     }
+
+    /// <summary>
+    /// Signs <paramref name="manifest"/> when <paramref name="signer"/> is present, or returns it unchanged when <c>null</c>.
+    /// </summary>
+    /// <param name="manifest">Unsigned dataset manifest built during export.</param>
+    /// <param name="signer">Optional node dataset signer.</param>
+    /// <returns>The signed manifest when <paramref name="signer"/> is non-null; otherwise, <paramref name="manifest"/>.</returns>
+    private static DatasetManifest ApplySignature(DatasetManifest manifest, INodeDatasetSigner? signer) =>
+        signer is null ? manifest : signer.Sign(manifest);
 }

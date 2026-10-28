@@ -58,6 +58,20 @@ public sealed record AuditLedgerVerificationResult : IExamplesProvider<AuditLedg
     public DateTimeOffset VerifiedAtUtc { get; init; } = DateTimeOffset.UtcNow;
 
     /// <summary>
+    /// Gets the classified outcome of the verification pass, distinguishing tampering from unverifiable or invalid signatures.
+    /// </summary>
+    [Description("Classified outcome of the ledger verification pass.")]
+    [JsonPropertyName("violationKind")]
+    public AuditLedgerViolationKind ViolationKind { get; init; } = AuditLedgerViolationKind.None;
+
+    /// <summary>
+    /// Gets the 64-character lowercase SHA-256 fingerprint of the node audit signing key against which the ledger was checked.
+    /// </summary>
+    [Description("64-character lowercase hexadecimal SHA-256 fingerprint of the node audit signing key checked during verification.")]
+    [JsonPropertyName("signingKeyId")]
+    public string SigningKeyId { get; init; } = string.Empty;
+
+    /// <summary>
     /// Generates a representative example instance of <see cref="AuditLedgerVerificationResult"/> for OpenAPI documentation.
     /// </summary>
     /// <returns>A populated audit ledger verification report example.</returns>
@@ -67,6 +81,8 @@ public sealed record AuditLedgerVerificationResult : IExamplesProvider<AuditLedg
         TotalRecordsVerified = 142,
         FirstViolationSequence = null,
         Message = "Audit ledger cryptographically verified: 142 records intact, zero hash-chain or signature violations detected.",
-        VerifiedAtUtc = new DateTimeOffset(2026, 10, 20, 18, 0, 0, TimeSpan.Zero)
+        VerifiedAtUtc = new DateTimeOffset(2026, 10, 20, 18, 0, 0, TimeSpan.Zero),
+        ViolationKind = AuditLedgerViolationKind.None,
+        SigningKeyId = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
     };
 }

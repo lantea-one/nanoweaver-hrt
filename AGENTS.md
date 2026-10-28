@@ -124,7 +124,7 @@
    - Built from `docker/simulation/Dockerfile.simulation`.
    - `configs/`: Simulation parameters for oxDNA and LAMMPS.
    - `shared-data/`: Shared volume where simulation engines output coordinates and the .NET parser reads them.
-   - `exports/`: Cryptographically signed `.tar.gz` dataset bundles with SHA-256 manifests.
+   - `exports/`: `.tar.gz` dataset bundles with SHA-256 manifests. Manifests exported by the web service are Ed25519-signed with the node's persisted dataset signing key; `POST /api/datasets/import` verifies a signed manifest against this node's key and the peer key registry (`weaver_peer_keys`), and accepts unsigned manifests unless `Peer:RequireSignedDatasets` is `true`.
 3. **`compose/` & `docker-compose.yml`**:
    - Self-contained container stack. Default is CPU/Intel iGPU via `/dev/dri`.
    - Overrides provided for Arc A770 (`docker-compose.arc.yml`), NVIDIA (`docker-compose.nvidia.yml`), AMD Radeon (`docker-compose.radeon.yml`), and public reverse proxies (Caddy, Nginx, Cloudflare).

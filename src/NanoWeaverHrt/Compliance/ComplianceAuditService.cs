@@ -25,6 +25,14 @@ namespace NanoWeaverHrt.Compliance;
 /// <para>
 /// <strong>How it works:</strong> Chains every audit event into a Merkle-like SHA-384 hash sequence, signed by NIST FIPS 204 ML-DSA-65.
 /// </para>
+/// <para>
+/// <strong>Pre-persistence signatures:</strong> Before the persistent node signing key design landed, each process start
+/// generated an in-memory ML-DSA-65 key pair identified by <see cref="LegacyEphemeralSigningKeyId"/> and discarded both
+/// halves of that key when the process exited. Because the public half of those ephemeral keys was never saved anywhere,
+/// any audit record or export manifest carrying <see cref="LegacyEphemeralSigningKeyId"/> can never be cryptographically
+/// verified by anyone. Verification therefore classifies those records as
+/// <see cref="AuditLedgerViolationKind.LegacyEphemeralSigningKey"/> rather than conflating them with tampered signatures.
+/// </para>
 /// </remarks>
 public sealed class ComplianceAuditService : IComplianceAuditService
 {
@@ -85,13 +93,11 @@ public sealed class ComplianceAuditService : IComplianceAuditService
         {
             DateTimeOffset genesisTime = DateTimeOffset.UtcNow;
             string previousHash = new('0', 96);
-            string currentHash = ComputeHash(0, genesisTime, previousHash, "SYSTEM", "GenesisAuditLedger", "NodeLedger", "{\"genesis\":true}");
-
             PqcKeyMaterial signingKey = _keyManagement.GetNodeSigningKey();
-            PqcSignature signature = _cryptoProvider.SignData(
-                Encoding.UTF8.GetBytes(currentHash),
-                signingKey.PrivateKeyBase64!, // Justification: Node signing key is generated at startup and contains non-null private key material.
-                signingKey.KeyId);
+            string genesisDetailsJson = $"{{\"genesis\":true,\"signingKeyId\":\"{signingKey.KeyId}\",\"signingKeyOrigin\":\"{_keyManagement.NodeSigningKeyOrigin}\"}}";
+            string currentHash = ComputeHash(0, genesisTime, previousHash, "SYSTEM", "GenesisAuditLedger", "NodeLedger", genesisDetailsJson);
+
+            PqcSignature signature = _keyManagement.SignWithNodeSigningKey(Encoding.UTF8.GetBytes(currentHash));
 
             _records.Add(new AuditRecord
             {
@@ -102,7 +108,7 @@ public sealed class ComplianceAuditService : IComplianceAuditService
                 OperatorId = "SYSTEM",
                 Action = "GenesisAuditLedger",
                 Resource = "NodeLedger",
-                DetailsJson = "{\"genesis\":true}",
+                DetailsJson = genesisDetailsJson,
                 Signature = signature
             });
         }
@@ -136,11 +142,7 @@ public sealed class ComplianceAuditService : IComplianceAuditService
 
             string currentHash = ComputeHash(sequenceNumber, timestamp, previousHash, operatorId, action, resource, safeDetails);
 
-            PqcKeyMaterial signingKey = _keyManagement.GetNodeSigningKey();
-            PqcSignature signature = _cryptoProvider.SignData(
-                Encoding.UTF8.GetBytes(currentHash),
-                signingKey.PrivateKeyBase64!, // Justification: Node signing key is generated at startup and contains non-null private key material.
-                signingKey.KeyId);
+            PqcSignature signature = _keyManagement.SignWithNodeSigningKey(Encoding.UTF8.GetBytes(currentHash));
 
             AuditRecord record = new()
             {
@@ -196,7 +198,9 @@ public sealed class ComplianceAuditService : IComplianceAuditService
                         IsValid = false,
                         TotalRecordsVerified = i,
                         FirstViolationSequence = record.SequenceNumber,
-                        Message = $"Sequence discontinuity at index {i}: expected sequence {i}, got {record.SequenceNumber}."
+                        Message = $"Sequence discontinuity at index {i}: expected sequence {i}, got {record.SequenceNumber}.",
+                        ViolationKind = AuditLedgerViolationKind.SequenceDiscontinuity,
+                        SigningKeyId = signingKey.KeyId
                     };
                 }
 
@@ -211,7 +215,9 @@ public sealed class ComplianceAuditService : IComplianceAuditService
                             IsValid = false,
                             TotalRecordsVerified = i,
                             FirstViolationSequence = record.SequenceNumber,
-                            Message = $"Broken hash link at sequence {record.SequenceNumber}: PreviousHash does not match record {previousRecord.SequenceNumber} CurrentHash."
+                            Message = $"Broken hash link at sequence {record.SequenceNumber}: PreviousHash does not match record {previousRecord.SequenceNumber} CurrentHash.",
+                            ViolationKind = AuditLedgerViolationKind.BrokenHashLink,
+                            SigningKeyId = signingKey.KeyId
                         };
                     }
                 }
@@ -233,15 +239,47 @@ public sealed class ComplianceAuditService : IComplianceAuditService
                         IsValid = false,
                         TotalRecordsVerified = i,
                         FirstViolationSequence = record.SequenceNumber,
-                        Message = $"Tampered audit payload at sequence {record.SequenceNumber}: computed hash does not match committed CurrentHash."
+                        Message = $"Tampered audit payload at sequence {record.SequenceNumber}: computed hash does not match committed CurrentHash.",
+                        ViolationKind = AuditLedgerViolationKind.TamperedPayload,
+                        SigningKeyId = signingKey.KeyId
                     };
                 }
 
-                // 4. Verify post-quantum ML-DSA-65 digital signature
+                // 4. Classify signer key and verify post-quantum ML-DSA-65 digital signature
+                // WHAT: Classify the record's signer key identifier before attempting ML-DSA-65 cryptographic verification.
+                // WHY:  Separates records signed by the pre-persistence ephemeral key (whose public key was never stored) and
+                //       records signed by a different node's key from genuine cryptographic signature failures against this node's key.
+                // HOW:  Compares SignerKeyId against LegacyEphemeralSigningKeyId and TryGetVerificationKey before calling VerifySignature.
+                if (string.Equals(record.Signature.SignerKeyId, LegacyEphemeralSigningKeyId, StringComparison.Ordinal))
+                {
+                    return new AuditLedgerVerificationResult
+                    {
+                        IsValid = false,
+                        TotalRecordsVerified = i,
+                        FirstViolationSequence = record.SequenceNumber,
+                        Message = $"Audit record {record.SequenceNumber} carries a signature from the pre-persistence ephemeral node key '{LegacyEphemeralSigningKeyId}'. That key was never stored, so this signature can never be verified. This is not evidence of tampering.",
+                        ViolationKind = AuditLedgerViolationKind.LegacyEphemeralSigningKey,
+                        SigningKeyId = signingKey.KeyId
+                    };
+                }
+
+                if (!TryGetVerificationKey(record.Signature.SignerKeyId, out string verificationPublicKeyBase64))
+                {
+                    return new AuditLedgerVerificationResult
+                    {
+                        IsValid = false,
+                        TotalRecordsVerified = i,
+                        FirstViolationSequence = record.SequenceNumber,
+                        Message = $"Audit record {record.SequenceNumber} is signed by a key that is not this node's audit signing key, so its signature cannot be verified here.",
+                        ViolationKind = AuditLedgerViolationKind.UnknownSigningKey,
+                        SigningKeyId = signingKey.KeyId
+                    };
+                }
+
                 bool signatureValid = _cryptoProvider.VerifySignature(
                     Encoding.UTF8.GetBytes(record.CurrentHash),
                     record.Signature.SignatureBase64,
-                    signingKey.PublicKeyBase64);
+                    verificationPublicKeyBase64);
 
                 if (!signatureValid)
                 {
@@ -250,7 +288,9 @@ public sealed class ComplianceAuditService : IComplianceAuditService
                         IsValid = false,
                         TotalRecordsVerified = i,
                         FirstViolationSequence = record.SequenceNumber,
-                        Message = $"Invalid ML-DSA-65 signature on audit record {record.SequenceNumber}."
+                        Message = $"Invalid ML-DSA-65 signature on audit record {record.SequenceNumber}.",
+                        ViolationKind = AuditLedgerViolationKind.InvalidSignature,
+                        SigningKeyId = signingKey.KeyId
                     };
                 }
             }
@@ -260,7 +300,9 @@ public sealed class ComplianceAuditService : IComplianceAuditService
                 IsValid = true,
                 TotalRecordsVerified = _records.Count,
                 FirstViolationSequence = null,
-                Message = $"All {_records.Count} audit records verified cleanly with valid hash chains and ML-DSA-65 signatures."
+                Message = $"All {_records.Count} audit records verified cleanly with valid hash chains and ML-DSA-65 signatures.",
+                ViolationKind = AuditLedgerViolationKind.None,
+                SigningKeyId = signingKey.KeyId
             };
         }
     }
@@ -366,6 +408,7 @@ public sealed class ComplianceAuditService : IComplianceAuditService
     public ComplianceStatusReport GetComplianceStatus()
     {
         AuditLedgerVerificationResult verification = VerifyLedgerIntegrity();
+        PqcKeyMaterial signingKey = _keyManagement.GetNodeSigningKey();
         IReadOnlyList<SubjectKeyProfile> subjectProfiles = _keyManagement.GetAllSubjectProfiles();
         int totalSubjects = subjectProfiles.Count;
         int shreddedCount = subjectProfiles.Count(p => p.IsShredded);
@@ -385,7 +428,9 @@ public sealed class ComplianceAuditService : IComplianceAuditService
             TotalSubjectsRegistered = totalSubjects,
             CryptoShreddedSubjectCount = shreddedCount,
             OverallStatus = overallStatus,
-            GeneratedAtUtc = DateTimeOffset.UtcNow
+            GeneratedAtUtc = DateTimeOffset.UtcNow,
+            AuditSigningKeyId = signingKey.KeyId,
+            AuditSigningPublicKeyBase64 = signingKey.PublicKeyBase64
         };
     }
 
@@ -412,5 +457,29 @@ public sealed class ComplianceAuditService : IComplianceAuditService
         string raw = $"{sequenceNumber}|{timestamp:O}|{previousHash}|{operatorId}|{action}|{resource}|{detailsJson}";
         byte[] hash = SHA384.HashData(Encoding.UTF8.GetBytes(raw));
         return Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// Fixed key identifier used by pre-persistence ephemeral node signing keys, whose public half was never saved.
+    /// </summary>
+    public const string LegacyEphemeralSigningKeyId = "node_signing_master";
+
+    /// <summary>
+    /// Resolves the Base64-encoded SubjectPublicKeyInfo DER public key for a given audit record signer key identifier.
+    /// </summary>
+    /// <param name="signerKeyId">The signer key identifier recorded on the audit record.</param>
+    /// <param name="publicKeyBase64">When this method returns <c>true</c>, contains the matching Base64 public key; otherwise, <see cref="string.Empty"/>.</param>
+    /// <returns><c>true</c> if <paramref name="signerKeyId"/> matches this node's active audit signing key; otherwise, <c>false</c>.</returns>
+    private bool TryGetVerificationKey(string signerKeyId, out string publicKeyBase64)
+    {
+        PqcKeyMaterial currentKey = _keyManagement.GetNodeSigningKey();
+        if (string.Equals(signerKeyId, currentKey.KeyId, StringComparison.Ordinal))
+        {
+            publicKeyBase64 = currentKey.PublicKeyBase64;
+            return true;
+        }
+
+        publicKeyBase64 = string.Empty;
+        return false;
     }
 }

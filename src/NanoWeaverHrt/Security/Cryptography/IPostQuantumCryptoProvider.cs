@@ -68,4 +68,16 @@ public interface IPostQuantumCryptoProvider
     /// <param name="signerPublicKeyBase64">The signer's Base64-encoded ML-DSA-65 public key.</param>
     /// <returns><c>true</c> if the signature is cryptographically valid and matches the data; otherwise, <c>false</c>.</returns>
     bool VerifySignature(ReadOnlySpan<byte> data, string signatureBase64, string signerPublicKeyBase64);
+
+    /// <summary>
+    /// Deterministically expands a 32-byte FIPS 204 seed into an ML-DSA-65 signing key pair.
+    /// </summary>
+    /// <param name="seed">The 32-byte FIPS 204 internal key-generation seed (ξ).</param>
+    /// <returns>
+    /// A <see cref="PqcKeyMaterial"/> with <c>KeyId</c> set to <see cref="PublicKeyFingerprint.ComputeKeyId"/> of the
+    /// public key's SubjectPublicKeyInfo DER, <c>Algorithm</c> set to <c>"ML-DSA-65"</c>, and <c>CreatedAtUtc</c> set
+    /// to the UTC time when the key pair was derived.
+    /// </returns>
+    /// <exception cref="ArgumentException"><paramref name="seed"/> is not exactly 32 bytes long.</exception>
+    PqcKeyMaterial DeriveSigningKeyPairFromSeed(ReadOnlySpan<byte> seed);
 }

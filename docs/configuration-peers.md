@@ -43,6 +43,7 @@ In containerized microservice architectures (Docker Compose, Kubernetes, Podman)
 | `ParquetCompressionCodec`| `string` | `Zstandard` | Compression algorithm for columnar frame archives: `Snappy`, `Zstandard`, or `Gzip`. |
 | `MaxConcurrentStreamCount`| `int` | `8` | Maximum simultaneous trajectory streaming parsers allowed. |
 | `PeerFederationEnabled` | `bool` | `true` | Allows remote trusted research nodes to link via single-use share keys. |
+| `Peer:RequireSignedDatasets` (`PEER_REQUIRE_SIGNED_DATASETS`) | `bool` | `false` | When `true`, `POST /api/datasets/import` refuses every dataset whose manifest is not signed by this node or by an active registered peer key in `weaver_peer_keys`. Unparseable values fail closed (`true`). |
 
 ---
 
@@ -110,7 +111,23 @@ Researchers connect remote nodes using the **Sovereign Peer Connect Dialog**:
 4. Paste the single-use share key (`nanoweaver_hrt_...`).
 5. Click **Verify & Link Peer**.
 
-The local node verifies the remote certificate, performs the atomic key exchange, and establishes an encrypted federated link. Both nodes can now stream trajectory analytics and exchange signed DNA origami manifests without transferring multi-gigabyte raw trajectory files over public networks.
+The local node verifies the remote certificate, performs the atomic key exchange, and establishes an encrypted federated link. Both nodes can now stream trajectory analytics and exchange dataset bundles whose Ed25519 or ML-DSA-65 manifest signatures are verified against the Peer Key Registry (`weaver_peer_keys`) without transferring multi-gigabyte raw trajectory files over public networks.
+
+---
+
+## 5. Peer Key Registry & Signed Dataset Imports
+
+Single-use share keys (`weaver_share_keys`) authorize collaborative UI sessions; they do not sign or verify dataset archives. Dataset provenance is governed by the **Peer Key Registry** (`weaver_peer_keys`) and the `Peer:RequireSignedDatasets` configuration setting.
+
+> **With strict mode off (the default), signing tells you who sent a bundle. It does not protect you from an uploader who omits the signature.** An unsigned bundle is imported exactly as before. Turn on `Peer:RequireSignedDatasets` to make signatures mandatory.
+
+### Establishing Peer Trust Out of Band
+1. **Export your node's public key**: Call `GET /api/peer-keys` as an Administrator and read the `localNode` object (`keyId`, `algorithm`, `publicKeyBase64`). The 64-character lowercase hexadecimal SHA-256 fingerprint (`keyId`) is also written to the node log at startup.
+2. **Verify the fingerprint out of band**: Confirm the peer laboratory's `keyId` directly with its operator over an independent authenticated channel. Never copy a public key out of a dataset bundle you received.
+3. **Register the peer key**: Submit the peer's `label`, `algorithm` (`Ed25519` or `MlDsa65`), and SubjectPublicKeyInfo `publicKeyBase64` to `POST /api/peer-keys`.
+4. **Enforce strict mode (optional)**: Set `Peer:RequireSignedDatasets` to `true` via `POST /api/configuration/override` (or `PEER_REQUIRE_SIGNED_DATASETS=true` when no database override exists) so unsigned dataset imports are rejected with `403 Forbidden`.
+5. **Revoking a peer key**: Call `POST /api/peer-keys/{keyId}/revoke`. Revocation is **permanent**: the row stays in `weaver_peer_keys` with `isActive: false` to preserve the audit trail, and that key can never be reactivated or re-registered.
+6. **Self-trust and key rotation**: A node always trusts its own `dataset_signing_ed25519.key` (and still verifies the cryptographic signature in full). Deleting `dataset_signing_ed25519.key` rotates the node's key on the next start; bundles signed by the previous key will then return `403 Forbidden` on import unless the old public key is registered as a peer in `weaver_peer_keys`.
 
 ---
 

@@ -135,12 +135,13 @@ Add those four `export` lines to your shell profile to make the behaviour perman
 
 ### Node key material (generated on first launch)
 
-Nothing to configure. The first time the parser starts it generates two 256-bit secrets of its own and stores them in `./simulations/shared-data/node-keys/`:
+Nothing to configure. The first time the parser starts it generates persistent 256-bit node secrets of its own and stores them in `./simulations/shared-data/node-keys/`:
 
 | File | Protects | If you lose it |
 | :--- | :--- | :--- |
 | `token_signing.key` | Seals login tokens so they cannot be forged | Everybody is signed out and signs in again |
 | `phi_master.key` | Encrypts patient profile data at rest | Patient data already encrypted with it is unrecoverable |
+| `dataset_signing_ed25519.key` | Signs exported dataset provenance manifests with Ed25519 (`POST /api/datasets/export`) | A new key is generated on next start; bundles signed by the old key return `403 Forbidden` on import here and on peers unless the old public key is registered in `weaver_peer_keys` |
 
 Both files are written with mode `0600` (readable by the account that runs the container and nobody else), are 32 bytes long, and are git-ignored twice over, so they can never be committed. They are generated with the operating system's cryptographic random number generator, which means **every node's keys are unique to that node** — no key ships in the source code.
 
@@ -278,7 +279,7 @@ nanoweaver-hrt/
 │   └── index.md                          # Portal home
 ├── simulations/                          # Simulation input, output, and shared data
 │   ├── configs/                          # oxDNA and LAMMPS input parameter files
-│   ├── exports/                          # SHA-256 signed dataset export bundles
+│   ├── exports/                          # Ed25519-signed .tar.gz dataset bundles and SHA-256 manifests
 │   └── shared-data/                      # Shared mount volume for trajectory streams
 ├── src/
 │   └── NanoWeaverHrt/ # ASP.NET Core & Blazor trajectory service

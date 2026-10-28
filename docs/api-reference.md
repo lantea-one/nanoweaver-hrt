@@ -400,7 +400,7 @@ Lists all available trajectory and simulation files staged in the shared storage
 ---
 
 ### `POST /api/datasets/export`
-Packages trajectories and signed provenance manifests into a cryptographically verified `.tar.gz` archive.
+Packages trajectories into a `.tar.gz` archive and signs its SHA-256 provenance manifest with this node's persisted Ed25519 dataset signing key (`dataset_signing_ed25519.key`).
 
 * **Method**: `POST`
 * **Request Headers**: `Content-Type: application/json` (also accepts `application/xml`, `application/x-yaml`)
@@ -419,14 +419,19 @@ Packages trajectories and signed provenance manifests into a cryptographically v
     "timestamp": "2026-10-20T20:00:00Z",
     "archive": "nanotube-folding-run.tar.gz",
     "sha256": "4b9e28f7...a812",
-    "sizeBytes": 14205849
+    "sizeBytes": 14205849,
+    "includedFiles": ["dna_nanotube_sample.xyz"],
+    "manifestVersion": 2,
+    "signatureAlgorithm": "Ed25519",
+    "signerKeyId": "1ee7bc6377fc1f2befef5a5a324d86df31df832a27f9d9bd37846d313db1a5a2",
+    "signature": "qCFc7GNE8Owwm6cOY1U0q1WX4QJML7AiLDe0x3JMajF+mBtJIC6gZFP/Og4VViRWuVSfEYd4J0BgyU1idVBJBg=="
   }
   ```
 
 ---
 
 ### `GET /api/datasets/exports`
-Lists the signed `.tar.gz` export bundles currently present in the export directory.
+Lists the `.tar.gz` export bundles and signed provenance manifests currently present in the export directory.
 
 * **Method**: `GET`
 * **Response Status**: `200 OK` — array of `ExportFileItem`.
@@ -452,7 +457,7 @@ Streams a raw trajectory file (`.xyz`, `.dcd` or `.dump`) from the incoming traj
 ---
 
 ### `GET /api/datasets/download/{fileName}`
-Directly downloads a signed dataset archive from the exports directory.
+Directly downloads an exported dataset archive or provenance manifest from the exports directory.
 
 * **Method**: `GET`
 * **Response Headers**: `Content-Type: application/gzip`
@@ -460,16 +465,102 @@ Directly downloads a signed dataset archive from the exports directory.
 ---
 
 ### `POST /api/datasets/import`
-Streams an uploaded archive and its accompanying manifest into memory, performing byte-by-byte SHA-256 integrity verification.
+Authenticates manifest provenance and verifies archive SHA-256 and byte-size integrity before unpacking verified trajectory files into active storage. Provenance is evaluated before a single byte of the uploaded archive stream is read.
+
+> **With strict mode off (the default), signing tells you who sent a bundle. It does not protect you from an uploader who omits the signature.** An unsigned bundle is imported exactly as before. Turn on `Peer:RequireSignedDatasets` to make signatures mandatory.
 
 * **Method**: `POST`
+* **Role Requirement**: `Administrator` or `Researcher`
 * **Request Headers**: `Content-Type: multipart/form-data`
 * **Form Fields**:
   * `archive`: The compressed `.tar.gz` bundle.
   * `manifest`: The accompanying `manifest.json`.
 * **Response Status**:
-  * `200 OK`: Manifest verified; dataset staged.
-  * `422 Unprocessable Entity`: Checksum mismatch or corrupted archive.
+  * `200 OK`: Manifest provenance and archive integrity verified; dataset extracted. Returns `{ message, manifest, provenance: "signed" | "unsigned", signerKeyId }`.
+  * `400 Bad Request`:
+    1. Missing `archive` or `manifest` multipart file.
+    2. Unparseable manifest JSON.
+    3. Malformed signature block or cryptographic signature does not verify (`"Dataset import rejected: the manifest signature is malformed or does not verify."`).
+    4. Archive SHA-256 checksum or byte size (`sizeBytes`) does not match the manifest (`"Dataset import rejected: the archive does not match the checksum or size recorded in its manifest."`).
+    5. Hostile archive member (path traversal, symbolic/hard link, or disallowed entry).
+  * `403 Forbidden`:
+    1. Caller role is not `Administrator` or `Researcher`.
+    2. Manifest is signed by a key that is neither this node's own key nor an active key in `weaver_peer_keys`, including revoked keys (`"Dataset import rejected: the manifest is signed by a key this node does not trust."`).
+    3. Manifest is unsigned while `Peer:RequireSignedDatasets` is `true` (or set to an unparseable value, which fails closed) (`"Dataset import rejected: this node accepts only signed datasets from trusted peers."`).
+
+---
+
+### Peer Key Registry (`Administrator` Only)
+
+The Peer Key Registry manages long-lived public keys (`weaver_peer_keys`) used by `POST /api/datasets/import` to authenticate signed dataset manifests from collaborating laboratories.
+
+* **Self-trust**: This node always trusts its own dataset signing key (`localNode.keyId`), while still verifying the cryptographic signature in full.
+* **Out-of-band verification**: Always verify a peer's 64-character SHA-256 fingerprint (`keyId`) with the peer operator out of band (for example, from their `GET /api/peer-keys` -> `localNode` output or startup log line) before registering it — never copy a public key from a bundle you received.
+* **Permanent revocation**: Revoking a peer key is permanent; revoked rows remain in the registry for audit history and a revoked key can never be re-registered.
+* **Key rotation consequence**: Deleting `dataset_signing_ed25519.key` causes a fresh key to be generated on next start, so bundles signed by the old key will return `403 Forbidden` here unless the old public key is registered as a peer key.
+
+#### `POST /api/peer-keys`
+Registers a trusted peer laboratory's `Ed25519` or `MlDsa65` SubjectPublicKeyInfo public key and records a `RegisterPeerKey` entry in the compliance audit ledger.
+
+* **Method**: `POST`
+* **Role Requirement**: `Administrator`
+* **Request Payload (`RegisterPeerKeyRequest`)**:
+  ```json
+  {
+    "label": "Partner Lab Zurich — Molecular Dynamics Node",
+    "algorithm": "Ed25519",
+    "publicKeyBase64": "MCowBQYDK2VwAyEA19fc992f76edd94695a2690497f26853ab73f29a8f0c86d78e0a7bc9619b04ad"
+  }
+  ```
+* **Response Status**:
+  * `201 Created`: Key registered (`Location: /api/peer-keys/{keyId}`); body is the created `PeerKeyRecord` with `isActive: true`.
+  * `400 Bad Request`: `label` is not 1 to 128 printable characters, or `publicKeyBase64` is not a valid Base64 SubjectPublicKeyInfo DER public key matching `algorithm`.
+  * `401 Unauthorized`: Missing or invalid bearer token.
+  * `403 Forbidden`: Caller is not an `Administrator`.
+  * `409 Conflict`: Key is already registered (active or revoked) or equals this node's own dataset signing key.
+
+#### `GET /api/peer-keys`
+Returns this node's own dataset-signing public key (`localNode`) and all registered peer keys (`peers`, ordered by `registeredAtUtc, keyId`, including revoked keys with `isActive: false`).
+
+* **Method**: `GET`
+* **Role Requirement**: `Administrator`
+* **Response Status**:
+  * `200 OK`: Returns `PeerKeyListResponse`:
+    ```json
+    {
+      "localNode": {
+        "keyId": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        "algorithm": "Ed25519",
+        "publicKeyBase64": "MCowBQYDK2VwAyEA..."
+      },
+      "peers": [
+        {
+          "keyId": "1ee7bc6377fc1f2befef5a5a324d86df31df832a27f9d9bd37846d313db1a5a2",
+          "label": "Partner Lab Zurich — Molecular Dynamics Node",
+          "algorithm": "Ed25519",
+          "publicKeyBase64": "MCowBQYDK2VwAyEA...",
+          "registeredBy": "admin",
+          "registeredAtUtc": "2026-10-23T12:00:00+00:00",
+          "revokedBy": null,
+          "revokedAtUtc": null,
+          "isActive": true
+        }
+      ]
+    }
+    ```
+  * `401 Unauthorized`: Missing or invalid bearer token.
+  * `403 Forbidden`: Caller is not an `Administrator`.
+
+#### `POST /api/peer-keys/{keyId}/revoke`
+Permanently revokes an active peer key and records a `RevokePeerKey` entry in the compliance audit ledger.
+
+* **Method**: `POST`
+* **Role Requirement**: `Administrator`
+* **Response Status**:
+  * `200 OK`: Returns the updated `PeerKeyRecord` with `revokedBy`, `revokedAtUtc`, and `isActive: false`.
+  * `401 Unauthorized`: Missing or invalid bearer token.
+  * `403 Forbidden`: Caller is not an `Administrator`.
+  * `404 Not Found`: No active peer key has that identifier (unknown, already revoked, or this node's own `localNode.keyId`).
 
 ---
 

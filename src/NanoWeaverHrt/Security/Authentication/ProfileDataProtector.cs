@@ -393,4 +393,59 @@ public sealed class ProfileDataProtector
             return false;
         }
     }
+
+    /// <summary>
+    /// Opens an authenticated AES-256-GCM envelope using the current node PHI master key only, refusing the
+    /// historic legacy fallback key.
+    /// </summary>
+    /// <param name="storedValue">The encrypted envelope string to open.</param>
+    /// <returns>The authenticated UTF-8 plaintext string.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="storedValue"/> is <c>null</c>.</exception>
+    /// <exception cref="CryptographicException">
+    /// <paramref name="storedValue"/> does not carry the encrypted envelope prefix, is empty, has invalid Base64,
+    /// is shorter than a nonce plus authentication tag, or fails authentication under the current node key.
+    /// </exception>
+    /// <remarks>
+    /// Subject private keys must never fall back to the published historic legacy key, because anyone with
+    /// database write access could otherwise plant a subject key row sealed under that public constant.
+    /// </remarks>
+    public string DecryptRequiredFieldWithCurrentKeyOnly(string storedValue)
+    {
+        // WHAT: Opens an encrypted field envelope strictly with the active node PHI master key.
+        // WHY:  Prevents attackers from planting subject key rows sealed under the world-known legacy key.
+        // HOW:  Validates the envelope prefix and length, then runs AES-256-GCM decryption against _encryptionKey only.
+        ArgumentNullException.ThrowIfNull(storedValue);
+
+        if (!storedValue.StartsWith(EncryptedPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new CryptographicException(UnprotectedFieldMessage);
+        }
+
+        byte[] payload;
+        try
+        {
+            payload = Convert.FromBase64String(storedValue[EncryptedPrefix.Length..]);
+        }
+        catch (FormatException ex)
+        {
+            throw new CryptographicException(MalformedEnvelopeMessage, ex);
+        }
+
+        if (payload.Length < NonceSizeBytes + TagSizeBytes)
+        {
+            throw new CryptographicException(MalformedEnvelopeMessage);
+        }
+
+        ReadOnlySpan<byte> nonce = payload.AsSpan(0, NonceSizeBytes);
+        ReadOnlySpan<byte> tag = payload.AsSpan(NonceSizeBytes, TagSizeBytes);
+        ReadOnlySpan<byte> cipherBytes = payload.AsSpan(NonceSizeBytes + TagSizeBytes);
+        byte[] plainBytes = new byte[cipherBytes.Length];
+
+        if (!TryDecrypt(_encryptionKey.Span, nonce, cipherBytes, tag, plainBytes))
+        {
+            throw new CryptographicException("Protected field could not be decrypted with the current node key.");
+        }
+
+        return Encoding.UTF8.GetString(plainBytes);
+    }
 }

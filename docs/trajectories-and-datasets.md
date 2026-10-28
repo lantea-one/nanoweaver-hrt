@@ -117,34 +117,41 @@ ORDER BY frame_index ASC;
 
 Scientific reproducibility requires that datasets, simulation configs, and synthesis parameters remain immutable and verifiable across decentralized nodes.
 
-### Cryptographically Signed Bundles
-The platform packages trajectories into self-contained `.tar.gz` export bundles accompanied by a cryptographically signed `manifest.json`.
+### Ed25519-Signed Provenance Manifests
+When a dataset is exported via `POST /api/datasets/export`, the platform packages the selected trajectories into a `.tar.gz` archive, computes its SHA-256 digest and exact byte length, and signs the canonical binary representation of the manifest using the node's persistent 32-byte Ed25519 key (`dataset_signing_ed25519.key`):
 
 ```json
 {
-  "dataset_id": "ds_oxdna_origami_v2",
-  "created_at": "2026-10-20T16:00:00Z",
-  "generator": "NanoWeaverHrt v1.0.0",
-  "files": [
-    {
-      "path": "trajectories/nanotube_folding.parquet",
-      "size_bytes": 14205849,
-      "sha256": "4b9e28f7...a812"
-    },
-    {
-      "path": "configs/oxdna_simulation.input",
-      "size_bytes": 2841,
-      "sha256": "9f1c7d23...338b"
-    }
-  ]
+  "dataset": "dna-origami-tile-step500k",
+  "timestamp": "2026-10-20T16:00:00.0000000Z",
+  "archive": "dna-origami-tile-step500k_20261020_160000.tar.gz",
+  "sha256": "5486c9a5a26eb53bc9fa2191fe900e7e5f7c218d5fe5be61a0e9a1a2ab8475a6",
+  "sizeBytes": 14205849,
+  "includedFiles": [
+    "dna_nanotube_sample.xyz"
+  ],
+  "manifestVersion": 2,
+  "signatureAlgorithm": "Ed25519",
+  "signerKeyId": "1ee7bc6377fc1f2befef5a5a324d86df31df832a27f9d9bd37846d313db1a5a2",
+  "signature": "qCFc7GNE8Owwm6cOY1U0q1WX4QJML7AiLDe0x3JMajF+mBtJIC6gZFP/Og4VViRWuVSfEYd4J0BgyU1idVBJBg=="
 }
 ```
 
-### Deterministic Integrity Verification
-When an archive is uploaded via `/api/datasets/import` or the web dashboard:
-1. The stream is decompressed in memory.
-2. Every constituent file's SHA-256 hash is computed and compared against the manifest.
-3. If a single byte has been altered, corrupted, or tampered with, the import is rejected with an integrity fault error.
+### Provenance Verification & Strict Mode (`Peer:RequireSignedDatasets`)
+> **With strict mode off (the default), signing tells you who sent a bundle. It does not protect you from an uploader who omits the signature.** An unsigned bundle is imported exactly as before. Turn on `Peer:RequireSignedDatasets` to make signatures mandatory.
+
+When an archive and manifest are uploaded to `POST /api/datasets/import`:
+1. **Provenance First (Zero-Read Rejection)**: Before reading a single byte of the archive stream, `VerifiedDatasetImporter` inspects the manifest's signature block:
+   * A partially populated or malformed signature block is immediately rejected with `400 Bad Request`.
+   * An **unsigned** manifest is accepted when `Peer:RequireSignedDatasets` is `false` (default) and rejected with `403 Forbidden` when `Peer:RequireSignedDatasets` is `true` (or set to an unparseable value, which fails closed).
+   * A **signed** manifest is checked against this node's own dataset signing key (`INodeDatasetSigner.KeyId`) and active entries in the peer key registry (`weaver_peer_keys`). If the signer is unknown or revoked, the import is rejected with `403 Forbidden`. If the signer is trusted, the Ed25519 or ML-DSA-65 signature over the canonical manifest bytes is verified in full (including for self-signed bundles); any tamper with `dataset`, `sha256`, `sizeBytes`, `includedFiles`, or the signature itself returns `400 Bad Request`.
+2. **Archive Integrity**: Once provenance succeeds, the archive stream is hashed and measured. Both the SHA-256 checksum and the exact byte count (`sizeBytes`) must match the manifest before files are extracted.
+
+### Managing Peer Trust Anchors
+* **Reading this node's public key**: Query `GET /api/peer-keys` as an Administrator (the `localNode` object contains `keyId`, `algorithm`, and `publicKeyBase64`), or read the fingerprint logged at startup (`Dataset manifest signing key ready (KeyId={KeyId}, ...)`).
+* **Registering a peer**: Confirm the peer's 64-character SHA-256 `keyId` with the peer operator **out of band**, then register their SubjectPublicKeyInfo public key via `POST /api/peer-keys`. Never copy a public key out of an untrusted bundle you received.
+* **Permanent revocation**: Revoking a key via `POST /api/peer-keys/{keyId}/revoke` is permanent; a revoked key can never be reactivated or re-registered.
+* **Key rotation**: Deleting `dataset_signing_ed25519.key` causes this node to generate a new key on next start. Bundles signed by the old key will then return `403 Forbidden` on import unless the old public key is registered as a peer in `weaver_peer_keys`.
 
 ---
 

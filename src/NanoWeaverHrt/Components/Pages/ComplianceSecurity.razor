@@ -350,11 +350,11 @@
     /// <summary>
     /// Executes GDPR Article 17 Crypto-Shredding for the target subject.
     /// </summary>
-    private void ExecuteCryptoShred()
+    private async Task ExecuteCryptoShred()
     {
         // WHAT: Permanently erase the subject's private ML-KEM decryption keys.
         // WHY:  Implements GDPR Article 17 "Right to Erasure" via cryptographic destruction.
-        // HOW:  Calls KeyManagementService.CryptoShredSubjectKey and logs to audit ledger.
+        // HOW:  Calls KeyManagementService.CryptoShredSubjectKeyAsync and logs to audit ledger.
         if (string.IsNullOrWhiteSpace(_targetShredSubjectId))
         {
             _shredStatusMessage = "Please specify a valid subject identifier to crypto-shred.";
@@ -362,8 +362,8 @@
             return;
         }
 
-        bool result = KeyManagementService.CryptoShredSubjectKey(_targetShredSubjectId);
-        if (result)
+        SubjectErasureOutcome outcome = await KeyManagementService.CryptoShredSubjectKeyAsync(_targetShredSubjectId);
+        if (outcome == SubjectErasureOutcome.Erased)
         {
             ComplianceService.LogAction(
                 "USER_CONSOLE",
@@ -371,13 +371,15 @@
                 _targetShredSubjectId,
                 $"{{\"status\":\"destroyed\",\"standard\":\"GDPR_Article_17\"}}");
 
-            _shredStatusMessage = $"Subject '{_targetShredSubjectId}' has been permanently Crypto-Shredded pursuant to GDPR Article 17. Private decryption key was purged.";
+            _shredStatusMessage = Program.ShredOkMessage;
             _shredSuccess = true;
             RefreshStatus();
         }
         else
         {
-            _shredStatusMessage = $"Unable to shred subject '{_targetShredSubjectId}': Subject not found or already shredded.";
+            _shredStatusMessage = outcome == SubjectErasureOutcome.AlreadyErased
+                ? Program.ShredAlreadyMessage(_targetShredSubjectId)
+                : Program.ShredUnknownMessage(_targetShredSubjectId);
             _shredSuccess = false;
         }
     }
