@@ -45,7 +45,8 @@ public sealed class DatabaseMigrationRunner : IDisposable
                 new Migration005_EncryptPatientPhi(protector),
                 new Migration006_EncryptGenderIdentity(protector),
                 new Migration007_PeerKeyRegistry(),
-                new Migration008_SubjectKeyStore()
+                new Migration008_SubjectKeyStore(),
+                new Migration009_AuditLedgerStore()
             }.OrderBy(m => m.Version).ToList();
         }
     }

@@ -119,14 +119,14 @@ public sealed class SubjectKeyPersistenceTests : IDisposable
         }
 
         using DatabaseMigrationRunner runner = new();
-        Assert.Equal(8, runner.RegisteredMigrations.Count);
-        Assert.IsType<Migration008_SubjectKeyStore>(runner.RegisteredMigrations[^1]);
+        Assert.Equal(9, runner.RegisteredMigrations.Count);
+        Assert.Contains(runner.RegisteredMigrations, m => m is Migration008_SubjectKeyStore);
 
         await using SqliteConnection conn = new("Data Source=:memory:");
         await conn.OpenAsync();
         int firstApply = await runner.ApplyPendingMigrationsAsync(conn, "sqlite");
-        Assert.Equal(8, firstApply);
-        Assert.Equal(new long[] { 1, 2, 3, 4, 5, 6, 7, 8 }, await runner.GetAppliedVersionsAsync(conn, "sqlite"));
+        Assert.Equal(9, firstApply);
+        Assert.Equal(new long[] { 1, 2, 3, 4, 5, 6, 7, 8, 9 }, await runner.GetAppliedVersionsAsync(conn, "sqlite"));
         Assert.Equal(0, await runner.ApplyPendingMigrationsAsync(conn, "sqlite"));
     }
 

@@ -52,6 +52,11 @@ public sealed class ComplianceAuditService : IComplianceAuditService
     private readonly IInternalEventBus? _eventBus;
 
     /// <summary>
+    /// Optional persistent database repository storing audit ledger entries.
+    /// </summary>
+    private readonly IAuditLedgerRepository? _repository;
+
+    /// <summary>
     /// Thread synchronization lock ensuring atomic ledger append operations.
     /// </summary>
     private readonly object _ledgerLock = new();
@@ -74,10 +79,12 @@ public sealed class ComplianceAuditService : IComplianceAuditService
     /// <param name="keyManagement">The key management service.</param>
     /// <param name="cryptoProvider">The post-quantum cryptographic algorithm provider.</param>
     /// <param name="eventBus">Optional event bus instance for real-time compliance broadcasting.</param>
+    /// <param name="repository">Optional persistent repository storing audit records across restarts.</param>
     public ComplianceAuditService(
         IKeyManagementService keyManagement,
         IPostQuantumCryptoProvider cryptoProvider,
-        IInternalEventBus? eventBus = null)
+        IInternalEventBus? eventBus = null,
+        IAuditLedgerRepository? repository = null)
     {
         ArgumentNullException.ThrowIfNull(keyManagement);
         ArgumentNullException.ThrowIfNull(cryptoProvider);
@@ -85,12 +92,23 @@ public sealed class ComplianceAuditService : IComplianceAuditService
         _keyManagement = keyManagement;
         _cryptoProvider = cryptoProvider;
         _eventBus = eventBus;
+        _repository = repository;
 
-        // WHAT: Initialize the Genesis record (Sequence 0) of the FDA 21 CFR Part 11 audit ledger.
-        // WHY:  Provides a deterministic, cryptographic origin for the unbroken hash chain.
-        // HOW:  Computes SHA-384 digest of genesis parameters with 96-zero previous hash and signs with node ML-DSA-65 key.
+        // WHAT: Initializes or restores the FDA 21 CFR Part 11 audit ledger.
+        // WHY:  Provides a deterministic, cryptographic origin for the unbroken hash chain, restored across restarts.
+        // HOW:  Loads existing records from the repository if present; mints Genesis only when the store is empty.
         lock (_ledgerLock)
         {
+            if (_repository != null)
+            {
+                IReadOnlyList<AuditRecord> existing = _repository.LoadAll();
+                if (existing.Count > 0)
+                {
+                    _records.AddRange(existing);
+                    return;
+                }
+            }
+
             DateTimeOffset genesisTime = DateTimeOffset.UtcNow;
             string previousHash = new('0', 96);
             PqcKeyMaterial signingKey = _keyManagement.GetNodeSigningKey();
@@ -99,7 +117,7 @@ public sealed class ComplianceAuditService : IComplianceAuditService
 
             PqcSignature signature = _keyManagement.SignWithNodeSigningKey(Encoding.UTF8.GetBytes(currentHash));
 
-            _records.Add(new AuditRecord
+            AuditRecord genesisRecord = new()
             {
                 SequenceNumber = 0,
                 TimestampUtc = genesisTime,
@@ -110,7 +128,10 @@ public sealed class ComplianceAuditService : IComplianceAuditService
                 Resource = "NodeLedger",
                 DetailsJson = genesisDetailsJson,
                 Signature = signature
-            });
+            };
+
+            _records.Add(genesisRecord);
+            _repository?.Append(genesisRecord);
         }
     }
 
@@ -158,6 +179,7 @@ public sealed class ComplianceAuditService : IComplianceAuditService
             };
 
             _records.Add(record);
+            _repository?.Append(record);
 
             if (_eventBus != null)
             {

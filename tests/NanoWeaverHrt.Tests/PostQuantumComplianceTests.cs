@@ -5,9 +5,12 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using NanoWeaverHrt.Compliance;
 using NanoWeaverHrt.Components.Pages;
+using NanoWeaverHrt.Database.Access;
+using NanoWeaverHrt.Database.Migrations;
 using NanoWeaverHrt.Security.Cryptography;
 using NanoWeaverHrt.Security.KeyManagement;
 using NanoWeaverHrt.Security.Models;
@@ -626,5 +629,103 @@ public sealed class PostQuantumComplianceTests : IClassFixture<WebApplicationFac
         // Test exception branch in DeIdentification
         typeof(ComplianceSecurity).GetField("_consentGdpr", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(page, false);
         executeDeId.Invoke(page, null);
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="Migration009_AuditLedgerStore"/> emits correct DDL for SQLite and PostgreSQL,
+    /// adheres to Version 9 naming conventions, and enforces argument validation.
+    /// </summary>
+    [Fact]
+    public void Migration009_MetadataAndDialectEmission_AreDeterministic()
+    {
+        // WHAT: Checks Migration009_AuditLedgerStore metadata and SQL dialect emission.
+        // WHY:  Guarantees version 9 is registered, idempotent, and produces dialect-compatible DDL.
+        // HOW:  Inspects Version, Name, ArgumentNullException on null, and dialect strings for SQLite and PostgreSQL.
+        Migration009_AuditLedgerStore migration = new();
+        Assert.Equal(9L, migration.Version);
+        Assert.Equal("009_AuditLedgerStore", migration.Name);
+        Assert.Throws<ArgumentNullException>(() => migration.GetSql(null!));
+
+        string sqliteSql = migration.GetSql("sqlite");
+        string pgSql = migration.GetSql("postgresql");
+
+        Assert.Contains("CREATE TABLE IF NOT EXISTS weaver_audit_ledger", sqliteSql, StringComparison.Ordinal);
+        Assert.Contains("sequence_number", sqliteSql, StringComparison.Ordinal);
+        Assert.Contains("CREATE TABLE IF NOT EXISTS weaver_audit_ledger", pgSql, StringComparison.Ordinal);
+        Assert.Contains("TIMESTAMPTZ", pgSql, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="AuditLedgerRepository"/> enforces constructor and argument null checks.
+    /// </summary>
+    [Fact]
+    public void AuditLedgerRepository_ValidationAndNullGuards_ThrowExpectedExceptions()
+    {
+        // WHAT: Tests null guards on AuditLedgerRepository constructor and Append method.
+        // WHY:  Protects against improper DI configuration or null argument propagation.
+        // HOW:  Invokes constructor with null, and Append with null record and null signature.
+        Assert.Throws<ArgumentNullException>(() => new AuditLedgerRepository(null!));
+
+        IConfiguration config = new ConfigurationBuilder().Build();
+        IWeaverDbConnectionFactory factory = WeaverTestDb.CreateFactory(config);
+        AuditLedgerRepository repo = new(factory);
+
+        Assert.Throws<ArgumentNullException>(() => repo.Append(null!));
+        Assert.Throws<ArgumentNullException>(() => repo.Append(new AuditRecord { Signature = null! }));
+    }
+
+    /// <summary>
+    /// Verifies that audit ledger records and their cryptographic hash chain persist across service instances
+    /// when backed by a real <see cref="AuditLedgerRepository"/>.
+    /// </summary>
+    [Fact]
+    public void AuditLedger_PersistsAcrossRestarts_AndMaintainsIntegrity()
+    {
+        // WHAT: Tests that ComplianceAuditService restores committed records across restarts using AuditLedgerRepository.
+        // WHY:  Mandated by FDA 21 CFR Part 11 so audit history survives service restarts without losing hash-chain continuity.
+        // HOW:  Creates a SQLite database, logs 2 actions in instance 1, instantiates instance 2 against the same DB, logs 1 action,
+        //       and asserts the restored ledger contains 4 records (Genesis + 3 actions) with valid hash chain and ML-DSA-65 signatures.
+        string testDbDir = Path.Combine(_testRoot, "audit_restart_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(testDbDir);
+
+        IConfiguration config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["TRAJECTORY_INCOMING_DIR"] = testDbDir,
+                ["POSTGRES_CONNECTION_STRING"] = string.Empty
+            })
+            .Build();
+
+        DatabaseMigrationRunner runner = new();
+        IWeaverDbConnectionFactory connectionFactory = WeaverTestDb.CreateFactory(config, runner);
+        AuditLedgerRepository repository = new(connectionFactory);
+
+        PostQuantumCryptoProvider provider = new();
+        using SubjectKeyTestHost host = SubjectKeyTestHost.CreateLoaded(Path.Combine(testDbDir, "keys"));
+        KeyManagementService keyMgmt = host.KeyManagement;
+
+        // Instance 1: Initial creation mints Genesis (0) and persists it, then logs actions 1 and 2
+        ComplianceAuditService service1 = new(keyMgmt, provider, repository: repository);
+        AuditRecord rec1 = service1.LogAction("op1", "Action1", "Resource1", "{\"step\":1}");
+        Assert.Equal(1L, rec1.SequenceNumber);
+        AuditRecord rec2 = service1.LogAction("op2", "Action2", "Resource2", "{\"step\":2}");
+        Assert.Equal(2L, rec2.SequenceNumber);
+
+        Assert.Equal(3, service1.GetAuditRecords(100).Count);
+        Assert.True(service1.VerifyLedgerIntegrity().IsValid);
+
+        // Instance 2: Restarts against the same repository without re-minting Genesis
+        ComplianceAuditService service2 = new(keyMgmt, provider, repository: repository);
+        Assert.Equal(3, service2.GetAuditRecords(100).Count);
+
+        AuditRecord rec3 = service2.LogAction("op3", "Action3", "Resource3", "{\"step\":3}");
+        Assert.Equal(3L, rec3.SequenceNumber);
+
+        IReadOnlyList<AuditRecord> records = service2.GetAuditRecords(100);
+        Assert.Equal(4, records.Count);
+
+        AuditLedgerVerificationResult verification = service2.VerifyLedgerIntegrity();
+        Assert.True(verification.IsValid);
+        Assert.Equal(4, verification.TotalRecordsVerified);
     }
 }

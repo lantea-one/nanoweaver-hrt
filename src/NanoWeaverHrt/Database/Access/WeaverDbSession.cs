@@ -6,7 +6,7 @@ namespace NanoWeaverHrt.Database.Access;
 /// An open database connection paired with the <see cref="ISqlDialect"/> of the engine it talks to.
 /// Replaces the former (connection, dialect string) tuple.
 /// </summary>
-public sealed class WeaverDbSession : IAsyncDisposable
+public sealed class WeaverDbSession : IAsyncDisposable, IDisposable
 {
     /// <summary>
     /// Initializes a new instance of the <see cref="WeaverDbSession"/> class.
@@ -43,4 +43,9 @@ public sealed class WeaverDbSession : IAsyncDisposable
     /// </summary>
     /// <returns>A task that completes when the connection has been released.</returns>
     public ValueTask DisposeAsync() => Connection.DisposeAsync();
+
+    /// <summary>
+    /// Synchronously disposes the underlying connection. Safe to call more than once.
+    /// </summary>
+    public void Dispose() => Connection.Dispose();
 }

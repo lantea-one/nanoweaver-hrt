@@ -120,6 +120,7 @@ public class Program
         builder.Services.AddSingleton<ISimulationCampaignService, SimulationCampaignService>();
         builder.Services.AddSingleton<DatabaseMigrationRunner>();
         builder.Services.AddSingleton<IWeaverDbConnectionFactory, WeaverDbConnectionFactory>();
+        builder.Services.AddSingleton<IAuditLedgerRepository, AuditLedgerRepository>();
         builder.Services.AddSingleton<IUserRepository, UserRepository>();
         builder.Services.AddSingleton<ProfileDataProtector>();
         builder.Services.AddSingleton<IUserProfileRepository, UserProfileRepository>();
