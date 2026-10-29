@@ -48,22 +48,25 @@ echo "Packaging Android package: nanoweaver-hrt-mobile-android.apk..."
 
 python3 -c "
 import os, zipfile, struct, hashlib, zlib
-from PIL import Image, ImageDraw
 
 apk_path = '${APK_TARGET}'
 staging_dir = '${STAGING_DIR}'
 
-# Create app icon
-icon_img = Image.new('RGBA', (192, 192), (15, 23, 42, 255))
-draw = ImageDraw.Draw(icon_img)
-draw.ellipse([32, 24, 160, 152], outline=(56, 189, 248, 255), width=8)
-draw.ellipse([32, 40, 160, 168], outline=(244, 63, 94, 255), width=8)
+# Create app icon (pure standard library PNG)
+def make_png(width=192, height=192):
+    raw_row = bytes([0] + [15, 23, 42, 255] * width)
+    raw_data = raw_row * height
+    compress = zlib.compress(raw_data)
+    ihdr_data = struct.pack('>II', width, height) + b'\x08\x06\x00\x00\x00'
+    ihdr_crc = zlib.crc32(b'IHDR' + ihdr_data)
+    ihdr = struct.pack('>I', len(ihdr_data)) + b'IHDR' + ihdr_data + struct.pack('>I', ihdr_crc)
+    idat_crc = zlib.crc32(b'IDAT' + compress)
+    idat = struct.pack('>I', len(compress)) + b'IDAT' + compress + struct.pack('>I', idat_crc)
+    iend_crc = zlib.crc32(b'IEND')
+    iend = struct.pack('>I', 0) + b'IEND' + struct.pack('>I', iend_crc)
+    return b'\x89PNG\r\n\x1a\n' + ihdr + idat + iend
 
-icon_bytes = bytearray()
-import io
-buf = io.BytesIO()
-icon_img.save(buf, format='PNG')
-icon_bytes = buf.getvalue()
+icon_bytes = make_png(192, 192)
 
 # Create DEX header (112 bytes)
 dex_hdr = bytearray(112)
@@ -170,14 +173,24 @@ with open('${app_dir}/NanoWeaverHrt', 'wb') as f:
     # Copy assemblies from staging
     cp -r "${STAGING_DIR}"/* "${app_dir}/"
 
-    # Generate app icon
+    # Generate app icon (pure standard library PNG)
     python3 -c "
-from PIL import Image, ImageDraw
-img = Image.new('RGBA', (180, 180), (15, 23, 42, 255))
-draw = ImageDraw.Draw(img)
-draw.ellipse([30, 20, 150, 140], outline=(56, 189, 248, 255), width=8)
-draw.ellipse([30, 40, 150, 160], outline=(244, 63, 94, 255), width=8)
-img.save('${app_dir}/${icon_filename}')
+import struct, zlib
+def make_png(width=180, height=180):
+    raw_row = bytes([0] + [15, 23, 42, 255] * width)
+    raw_data = raw_row * height
+    compress = zlib.compress(raw_data)
+    ihdr_data = struct.pack('>II', width, height) + b'\x08\x06\x00\x00\x00'
+    ihdr_crc = zlib.crc32(b'IHDR' + ihdr_data)
+    ihdr = struct.pack('>I', len(ihdr_data)) + b'IHDR' + ihdr_data + struct.pack('>I', ihdr_crc)
+    idat_crc = zlib.crc32(b'IDAT' + compress)
+    idat = struct.pack('>I', len(compress)) + b'IDAT' + compress + struct.pack('>I', idat_crc)
+    iend_crc = zlib.crc32(b'IEND')
+    iend = struct.pack('>I', 0) + b'IEND' + struct.pack('>I', iend_crc)
+    return b'\x89PNG\r\n\x1a\n' + ihdr + idat + iend
+
+with open('${app_dir}/${icon_filename}', 'wb') as f:
+    f.write(make_png(180, 180))
 "
 
     # Generate Info.plist
