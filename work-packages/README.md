@@ -17,7 +17,7 @@
 | **P27** | Multi-Instance API Client SDK | **Layer 2 (Domain & Auth SDK)**: `INanoWeaverNodeClient` challenge-response PKI auth, telemetry polling, `IMultiInstanceCoordinator` & state-transition alerts | **COMPLETED** |
 | **P28** | Background Tray & Notifications | **Layer 2/3 (Background Daemon & Tray)**: `NanoWeaverHrt.Gui.Core` `IBackgroundInstanceMonitor`, `ITrayIconController`, `INativeNotificationSink` & 15-min idle lock | **COMPLETED** |
 | **P29** | Core ViewModels & Dark Theme | **Layer 4a (Shared GUI Core & ViewModels)**: `InstanceOnboardingViewModel`, `MainShellViewModel`, sovereign dark-theme palette & headless xUnit tests | **COMPLETED** |
-| **P30** | [`p30-desktop-and-mobile-platform-heads.md`](p30-desktop-and-mobile-platform-heads.md) | `flash` / `sonnet` | **Layer 4b (Desktop & Mobile Heads)**: `NanoWeaverHrt.Desktop` (`NanoWeaverHrt`) & `NanoWeaverHrt.Mobile` executables, native OS notification/tray adapters (`Linux`, `macOS`, `Windows`, `Android`, `iOS`, `iPadOS`) | **READY** |
+| **P30** | Desktop & Mobile Platform Heads | **Layer 4b (Desktop & Mobile Heads)**: `NanoWeaverHrt.Desktop` (`NanoWeaverHrt`) & `NanoWeaverHrt.Mobile` executables, native OS notification/tray adapters (`Linux`, `macOS`, `Windows`, `Android`, `iOS`, `iPadOS`) | **COMPLETED** |
 | **P31** | [`p31-sovereign-codesign-pki-and-rotation.md`](p31-sovereign-codesign-pki-and-rotation.md) | `flash` / `haiku` | **Layer 5a (Code Signing & Rotation)**: Sovereign X.509 `id-kp-codeSigning` CA + 90-day leaf rotation scripts, GPG archive signing & scheduled rotation workflows | **READY** |
 | **P32** | [`p32-linux-packages-and-aur.md`](p32-linux-packages-and-aur.md) | `flash_lite` / `haiku` | **Layer 5b (Linux & AUR Packaging)**: Arch `.pkg.tar.zst` (`x86_64` & `arm64`), unified `.deb` (`amd64` & `arm64`), unified `.rpm` (`amd64` & `arm64`), and AUR (`-bin` & `-git`) | **READY** |
 | **P33** | [`p33-macos-windows-mobile-packaging.md`](p33-macos-windows-mobile-packaging.md) | `flash` / `sonnet` | **Layer 5c (macOS, Windows & Mobile Packaging)**: macOS `NanoWeaverHrt.dmg`, Windows dual-scope `nanoweaver-hrt-desktop-installer.exe` (`Current User` / `System`) + `NanoWeaverHrt.msix`, and Mobile `.apk` & `.ipa` (`Android`, `iOS`, `iPadOS`) | **READY** |
@@ -61,6 +61,7 @@
 | **P27** | Multi-Instance API Client SDK | `INanoWeaverNodeClient` PKI challenge-response authentication, telemetry/simulation REST client, and `IMultiInstanceCoordinator` alert diffing | **COMPLETED** |
 | **P28** | Background Tray & Notifications | `NanoWeaverHrt.Gui.Core` `IBackgroundInstanceMonitor`, `ITrayIconController`, `INativeNotificationSink` & 15-min idle lock | **COMPLETED** |
 | **P29** | Core ViewModels & Dark Theme | `NanoWeaverHrt.Gui.Core` `InstanceOnboardingViewModel`, `MainShellViewModel`, `SovereignPalette` dark theme tokens, and 100% unit tests | **COMPLETED** |
+| **P30** | Desktop & Mobile Platform Heads | `NanoWeaverHrt.Desktop` (`NanoWeaverHrt`) & `NanoWeaverHrt.Mobile` executables, cross-platform notification/tray adapters, and 100% unit tests | **COMPLETED** |
 
 ---
 

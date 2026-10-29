@@ -2,6 +2,8 @@
   <Project Path="src/NanoWeaverHrt/NanoWeaverHrt.csproj" />
   <Project Path="src/NanoWeaverHrt.Client/NanoWeaverHrt.Client.csproj" />
   <Project Path="src/NanoWeaverHrt.Gui.Core/NanoWeaverHrt.Gui.Core.csproj" />
+  <Project Path="src/NanoWeaverHrt.Desktop/NanoWeaverHrt.Desktop.csproj" />
+  <Project Path="src/NanoWeaverHrt.Mobile/NanoWeaverHrt.Mobile.csproj" />
   <Folder Name="/Tests/">
     <Project Path="tests/NanoWeaverHrt.Tests/NanoWeaverHrt.Tests.csproj" />
   </Folder>

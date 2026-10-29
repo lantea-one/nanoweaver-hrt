@@ -28,6 +28,8 @@
     <ProjectReference Include="..\..\src\NanoWeaverHrt\NanoWeaverHrt.csproj" />
     <ProjectReference Include="..\..\src\NanoWeaverHrt.Client\NanoWeaverHrt.Client.csproj" />
     <ProjectReference Include="..\..\src\NanoWeaverHrt.Gui.Core\NanoWeaverHrt.Gui.Core.csproj" />
+    <ProjectReference Include="..\..\src\NanoWeaverHrt.Desktop\NanoWeaverHrt.Desktop.csproj" />
+    <ProjectReference Include="..\..\src\NanoWeaverHrt.Mobile\NanoWeaverHrt.Mobile.csproj" />
   </ItemGroup>
 
 </Project>
