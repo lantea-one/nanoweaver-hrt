@@ -77,6 +77,7 @@ REQUIRED_ARTIFACTS=(
     "${PACKAGES_DIR}/macos/NanoWeaverHrt-macos-universal.app.tar.gz"
     # Windows
     "${PACKAGES_DIR}/windows/nanoweaver-hrt-desktop-installer.exe"
+    "${PACKAGES_DIR}/windows/nanoweaver-hrt-desktop-portable-x64.exe"
     "${PACKAGES_DIR}/windows/NanoWeaverHrt.msix"
     # Mobile
     "${PACKAGES_DIR}/mobile/nanoweaver-hrt-mobile-android.apk"

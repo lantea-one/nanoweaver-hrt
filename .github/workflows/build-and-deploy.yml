@@ -227,10 +227,11 @@ jobs:
   build-and-publish-gui-artifacts:
     # WHAT: Builds, signs, and attaches standalone desktop and mobile application packages on GitHub Actions.
     # WHY:  Mirrors the Forgejo artifact matrix so GitHub mirrors host identical release assets.
-    # HOW:  Installs SDKs, runs scripts/packaging/build-all-packages.sh, and uploads 5 discrete artifact bundles.
+    # HOW:  Installs SDKs, runs scripts/packaging/build-all-packages.sh, uploads 5 discrete artifact bundles,
+    #       and attaches direct binary downloads to GitHub Releases.
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4
@@ -292,3 +293,40 @@ jobs:
             artifacts/packages/SHA256SUMS*
             docs/assets/keys/*
           if-no-files-found: error
+
+      - name: Publish Direct Binary Release Assets
+        # WHAT: Publishes standalone executables and release packages directly to GitHub Releases.
+        # WHY:  Provides users direct .exe, .dmg, .deb, and mobile package downloads without zip archives.
+        # HOW:  Uses softprops/action-gh-release to create/update rolling 'nightly' release or tag-based releases.
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'nightly' }}
+          name: ${{ startsWith(github.ref, 'refs/tags/v') && format('NanoWeaver HRT {0}', github.ref_name) || 'NanoWeaver HRT Continuous Rolling Release (Nightly)' }}
+          prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+          draft: false
+          target_commitish: main
+          files: |
+            artifacts/packages/windows/nanoweaver-hrt-desktop-installer.exe
+            artifacts/packages/windows/nanoweaver-hrt-desktop-portable-x64.exe
+            artifacts/packages/windows/NanoWeaverHrt.exe
+            artifacts/packages/windows/NanoWeaverHrt.msix
+            artifacts/packages/linux/nanoweaver-hrt-desktop-amd64.deb
+            artifacts/packages/linux/nanoweaver-hrt-desktop-arm64.deb
+            artifacts/packages/linux/nanoweaver-hrt-desktop-amd64.rpm
+            artifacts/packages/linux/nanoweaver-hrt-desktop-arm64.rpm
+            artifacts/packages/linux/nanoweaver-hrt-desktop-x86_64.pkg.tar.zst
+            artifacts/packages/linux/nanoweaver-hrt-desktop-arm64.pkg.tar.zst
+            artifacts/packages/macos/NanoWeaverHrt-macos-amd64.dmg
+            artifacts/packages/macos/NanoWeaverHrt-macos-arm64.dmg
+            artifacts/packages/macos/NanoWeaverHrt.dmg
+            artifacts/packages/macos/NanoWeaverHrt-macos-universal.app.tar.gz
+            artifacts/packages/mobile/nanoweaver-hrt-mobile-android.apk
+            artifacts/packages/mobile/nanoweaver-hrt-mobile-ios.ipa
+            artifacts/packages/mobile/nanoweaver-hrt-mobile-ipados.ipa
+            artifacts/packages/SHA256SUMS
+            artifacts/packages/SHA256SUMS.asc
+            artifacts/packages/SHA256SUMS.sig
+            artifacts/packages/SHA256SUMS.p7s
+            docs/assets/keys/nanoweaver-codesign-root-ca.crt
+            docs/assets/keys/nanoweaver-archive-keyring.asc

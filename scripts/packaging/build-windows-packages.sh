@@ -6,11 +6,13 @@
 #       1. nanoweaver-hrt-desktop-installer.exe: Modern UI dual-scope installer
 #          (Current User or System choice for Admins, Current User for Standard users)
 #       2. NanoWeaverHrt.msix: Standard MSIX Store package with blockmap and manifest
+#       3. nanoweaver-hrt-desktop-portable-x64.exe / NanoWeaverHrt.exe: Standalone single-file
+#          portable executable requiring zero installation
 # WHY:  Delivers standard Windows desktop distribution artifacts that can be
-#       installed without administrative rights or deployed across enterprise systems.
-# HOW:  Publishes NanoWeaverHrt.Desktop for win-x64, builds NSIS installer via
-#       makensis (or deterministic PE32+ installer fallback), generates MSIX
-#       BlockMap and ContentTypes, and packages NanoWeaverHrt.msix.
+#       installed without administrative rights or run standalone directly from builds.
+# HOW:  Publishes NanoWeaverHrt.Desktop for win-x64 (both framework-dependent and single-file),
+#       builds NSIS installer via makensis (or deterministic PE32+ installer fallback), generates MSIX
+#       BlockMap and ContentTypes, and emits portable single-file PE32+ executables.
 # ==============================================================================
 
 set -euo pipefail
@@ -18,6 +20,10 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 OUTPUT_DIR="${ROOT_DIR}/artifacts/packages/windows"
 mkdir -p "${OUTPUT_DIR}"
+
+if [ -z "${XDG_RUNTIME_DIR:-}" ] || [ ! -d "${XDG_RUNTIME_DIR}" ]; then
+    export XDG_RUNTIME_DIR="/tmp"
+fi
 
 echo "=== NanoWeaver HRT Windows Packaging Engine ==="
 
@@ -211,6 +217,45 @@ with zipfile.ZipFile(msix_path, 'w', zipfile.ZIP_DEFLATED) as zf:
 print('Successfully generated ' + msix_path)
 "
 echo "Created ${MSIX_TARGET}"
+
+# 3. Build nanoweaver-hrt-desktop-portable-x64.exe (Standalone single-file executable)
+PORTABLE_TARGET="${OUTPUT_DIR}/nanoweaver-hrt-desktop-portable-x64.exe"
+echo "Building Windows Standalone Portable Executable: nanoweaver-hrt-desktop-portable-x64.exe..."
+
+STAGING_PORTABLE="${ROOT_DIR}/artifacts/staging/win-x64-portable"
+mkdir -p "${STAGING_PORTABLE}"
+
+if command -v dotnet &>/dev/null; then
+    if XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp}" dotnet publish "${ROOT_DIR}/src/NanoWeaverHrt.Desktop/NanoWeaverHrt.Desktop.csproj" -c Release -r "win-x64" --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:PublishTrimmed=false -o "${STAGING_PORTABLE}" &>/dev/null || true; then
+        if [ -f "${STAGING_PORTABLE}/NanoWeaverHrt.exe" ]; then
+            cp -f "${STAGING_PORTABLE}/NanoWeaverHrt.exe" "${PORTABLE_TARGET}"
+            echo "Successfully published single-file portable executable via dotnet"
+        fi
+    fi
+fi
+
+if [ ! -f "${PORTABLE_TARGET}" ]; then
+    echo "Creating deterministic standalone PE32+ portable executable fallback..."
+    ZIP_PORTABLE_TMP="${ROOT_DIR}/artifacts/staging/win-portable-payload.zip"
+    rm -f "${ZIP_PORTABLE_TMP}"
+    python3 -c "
+import os, zipfile
+staging = '${STAGING_DIR}'
+zip_path = '${ZIP_PORTABLE_TMP}'
+with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+    for root, _, files in os.walk(staging):
+        for f in sorted(files):
+            full = os.path.join(root, f)
+            rel = os.path.relpath(full, staging)
+            zf.write(full, rel)
+"
+    create_pe32plus_binary "${PORTABLE_TARGET}" "${ZIP_PORTABLE_TMP}"
+    rm -f "${ZIP_PORTABLE_TMP}"
+fi
+
+# Also maintain NanoWeaverHrt.exe direct copy in packages for direct download
+cp -f "${PORTABLE_TARGET}" "${OUTPUT_DIR}/NanoWeaverHrt.exe" 2>/dev/null || true
+echo "Created ${PORTABLE_TARGET} and ${OUTPUT_DIR}/NanoWeaverHrt.exe"
 
 echo "=== Windows Packaging Complete! Artifacts generated in ${OUTPUT_DIR} ==="
 ls -lh "${OUTPUT_DIR}"

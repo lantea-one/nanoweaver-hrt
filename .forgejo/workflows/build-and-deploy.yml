@@ -266,10 +266,11 @@ jobs:
   build-and-publish-gui-artifacts:
     # WHAT: Builds, signs, and attaches standalone desktop and mobile application packages.
     # WHY:  Enforces P34 multi-platform packaging pipeline across Linux, macOS, Windows, and Mobile.
-    # HOW:  Runs scripts/packaging/build-all-packages.sh and uploads 5 discrete artifact bundles.
+    # HOW:  Runs scripts/packaging/build-all-packages.sh, uploads discrete artifact bundles,
+    #       and attaches direct binary downloads to Forgejo continuous and tagged releases.
     runs-on: archlinux-multi-platform
     permissions:
-      contents: read
+      contents: write
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4
@@ -315,3 +316,12 @@ jobs:
             artifacts/packages/SHA256SUMS*
             docs/assets/keys/*
           if-no-files-found: error
+
+      - name: Publish Direct Binary Release Assets
+        # WHAT: Publishes standalone executables and release packages directly to Forgejo Releases.
+        # WHY:  Enables 1-click direct file downloads of Windows .exe, macOS .dmg, Linux and mobile packages without zip wrappers.
+        # HOW:  Executes publish-forgejo-release.sh communicating with Forgejo REST API.
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+        env:
+          FORGEJO_TOKEN: ${{ secrets.PACKAGE_TOKEN || secrets.GITHUB_TOKEN }}
+        run: ./scripts/packaging/publish-forgejo-release.sh

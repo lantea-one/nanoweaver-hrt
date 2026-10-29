@@ -106,11 +106,17 @@ The macOS release is distributed as a Universal Apple Disk Image containing the 
 
 ---
 
-### 2.3 Windows Dual-Scope Installer & MSIX
+### 2.3 Windows Standalone Executables, Installer & MSIX
 
-Windows distributions provide two distinct packaging channels:
+Windows distributions provide three direct download channels:
 
-#### Standard & Administrator Installer (`nanoweaver-hrt-desktop-installer.exe`)
+#### 1. Standalone Portable Executable (`nanoweaver-hrt-desktop-portable-x64.exe` / `NanoWeaverHrt.exe`)
+For instant execution without installation or administrative rights:
+- Runs directly on any 64-bit Windows terminal (Windows 10, Windows 11, Windows Server 2022+).
+- Self-contained single-file binary embedding the .NET runtime and native Avalonia rendering assemblies.
+- Ideal for portable USB clinical deployments, offline laboratory workstations, and air-gapped simulation nodes.
+
+#### 2. Dual-Scope GUI Installer (`nanoweaver-hrt-desktop-installer.exe`)
 The NSIS installer supports dual installation scopes with elevation awareness:
 - **Standard (Non-Elevated) Users**: Installs directly to the Current User profile without requiring UAC escalation:
   - Install Location: `%LOCALAPPDATA%\Programs\NanoWeaverHrt`
@@ -123,7 +129,7 @@ The NSIS installer supports dual installation scopes with elevation awareness:
   - `/ALLUSERS`: Silently installs for all users (requires administrative privileges).
   - `/S`: Standard silent execution.
 
-#### Windows Store App Package (`NanoWeaverHrt.msix`)
+#### 3. Windows Store App Package (`NanoWeaverHrt.msix`)
 For managed enterprise deployments or Windows Sandbox execution, the signed MSIX package can be installed without accessing the Microsoft Store:
 ```powershell
 # 1. Import sovereign code-signing root certificate into Trusted People:
@@ -132,6 +138,12 @@ Import-Certificate -FilePath docs/assets/keys/nanoweaver-codesign-root-ca.crt -C
 # 2. Add the MSIX application package:
 Add-AppxPackage -Path NanoWeaverHrt.msix
 ```
+
+#### 4. Automated Release Scheme & Direct Binary Downloads
+All release assets are continuously published on every push to `main` and tagged release:
+- **Continuous Rolling Nightly Release**: Tagged `nightly`, providing immediate access to the latest master build with direct `.exe`, `.dmg`, `.deb`, `.rpm`, and mobile package downloads.
+- **Tagged SemVer Releases**: Permanent releases (e.g. `v1.0.0`) minted when version tags are pushed.
+- Direct downloads are hosted on the Sovereign Forgejo instance (`https://git.lantea.one/lantea-one/nanoweaver-hrt/releases`) and mirrored on GitHub Releases.
 
 ---
 

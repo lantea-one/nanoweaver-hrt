@@ -13,10 +13,15 @@
 
 set -euo pipefail
 
+if [ -z "${XDG_RUNTIME_DIR:-}" ] || [ ! -d "${XDG_RUNTIME_DIR}" ]; then
+    export XDG_RUNTIME_DIR="/tmp"
+fi
+
 echo "=============================================================================="
 echo ">> Step 1/8: Verifying .NET Code Formatting..."
 echo "=============================================================================="
-XDG_RUNTIME_DIR=/tmp dotnet format NanoWeaverHrt.slnx --no-restore --verify-no-changes --verbosity normal
+XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp}" dotnet restore NanoWeaverHrt.slnx --verbosity quiet
+XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp}" dotnet format NanoWeaverHrt.slnx --no-restore --verify-no-changes --verbosity normal
 echo "✓ .NET code formatting verified cleanly."
 
 echo ""
