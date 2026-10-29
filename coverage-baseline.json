@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
-  "seeded_from_commit": "ea561706ee536c0bba316d3bf4b6e0bd7d91d3b9",
+  "seeded_from_commit": "37b9c9add91dd90cc8824467dabe9f2488ab0c4b",
   "seeded_on_utc": "2026-10-29",
   "measurement": {
     "runsettings": "coverage-full.runsettings",
     "weaver_test_postgres": "unset"
   },
-  "line_rate": 99.65,
-  "branch_rate": 97.56,
+  "line_rate": 99.66,
+  "branch_rate": 97.63,
   "uncovered_lines_total": 54,
   "classes": {
     "NanoWeaverHrt.Components.Layout.MainLayout": 21,

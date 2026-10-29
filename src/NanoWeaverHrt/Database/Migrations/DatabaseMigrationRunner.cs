@@ -62,7 +62,7 @@ public sealed class DatabaseMigrationRunner : IDisposable
     /// Ensures that the schema migrations tracking table exists in the target database.
     /// </summary>
     /// <param name="conn">Open database connection.</param>
-    /// <param name="dialect">Database engine dialect ("postgresql" or "sqlite").</param>
+    /// <param name="dialect">Database engine dialect ("postgresql", "sqlite", "duckdb", "mysql", or "mariadb").</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>A task that completes once the tracking table is guaranteed to exist.</returns>
     public async Task EnsureTrackingTableAsync(DbConnection conn, string dialect, CancellationToken ct = default)
@@ -73,17 +73,42 @@ public sealed class DatabaseMigrationRunner : IDisposable
         ArgumentNullException.ThrowIfNull(conn);
         ArgumentNullException.ThrowIfNull(dialect);
 
-        string sql = dialect.StartsWith("postgres", StringComparison.OrdinalIgnoreCase)
-            ? @"CREATE TABLE IF NOT EXISTS weaver_schema_migrations (
+        // WHAT: Resolves the dialect-specific DDL statement for the migrations tracking table.
+        // WHY:  Each database engine uses distinct data types for 64-bit integer keys and timestamps.
+        // HOW:  Branches on dialect prefix for PostgreSQL, DuckDB, MySQL/MariaDB, defaulting to SQLite.
+        string sql;
+        if (dialect.StartsWith("postgres", StringComparison.OrdinalIgnoreCase))
+        {
+            sql = @"CREATE TABLE IF NOT EXISTS weaver_schema_migrations (
                    version BIGINT PRIMARY KEY,
                    name VARCHAR(255) NOT NULL,
                    applied_at_utc TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-               );"
-            : @"CREATE TABLE IF NOT EXISTS weaver_schema_migrations (
+               );";
+        }
+        else if (dialect.StartsWith("duckdb", StringComparison.OrdinalIgnoreCase))
+        {
+            sql = @"CREATE TABLE IF NOT EXISTS weaver_schema_migrations (
+                   version BIGINT PRIMARY KEY,
+                   name VARCHAR(255) NOT NULL,
+                   applied_at_utc TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+               );";
+        }
+        else if (dialect.StartsWith("mysql", StringComparison.OrdinalIgnoreCase) || dialect.StartsWith("mariadb", StringComparison.OrdinalIgnoreCase))
+        {
+            sql = @"CREATE TABLE IF NOT EXISTS weaver_schema_migrations (
+                   version BIGINT PRIMARY KEY,
+                   name VARCHAR(255) NOT NULL,
+                   applied_at_utc DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
+               );";
+        }
+        else
+        {
+            sql = @"CREATE TABLE IF NOT EXISTS weaver_schema_migrations (
                    version INTEGER PRIMARY KEY,
                    name TEXT NOT NULL,
                    applied_at_utc TEXT NOT NULL
                );";
+        }
 
         using DbCommand cmd = conn.CreateCommand();
         cmd.CommandText = sql;
@@ -162,6 +187,33 @@ public sealed class DatabaseMigrationRunner : IDisposable
                 return 0;
             }
 
+            // WHAT: Resolves dialect-specific upsert SQL and timestamp coercion for migration recording.
+            // WHY:  PostgreSQL/DuckDB use ON CONFLICT, MySQL uses ON DUPLICATE KEY, SQLite uses INSERT OR REPLACE;
+            //       timestamp representations differ across database engines.
+            // HOW:  Branches on dialect prefix to select the exact SQL text and ISqlDialect instance.
+            string upsertSql;
+            ISqlDialect sqlDialect;
+            if (dialect.StartsWith("postgres", StringComparison.OrdinalIgnoreCase))
+            {
+                upsertSql = "INSERT INTO weaver_schema_migrations (version, name, applied_at_utc) VALUES (@v, @n, @t) ON CONFLICT (version) DO NOTHING";
+                sqlDialect = PostgreSqlDialect.Instance;
+            }
+            else if (dialect.StartsWith("duckdb", StringComparison.OrdinalIgnoreCase))
+            {
+                upsertSql = "INSERT INTO weaver_schema_migrations (version, name, applied_at_utc) VALUES (@v, @n, @t) ON CONFLICT (version) DO NOTHING";
+                sqlDialect = DuckDbDialect.Instance;
+            }
+            else if (dialect.StartsWith("mysql", StringComparison.OrdinalIgnoreCase) || dialect.StartsWith("mariadb", StringComparison.OrdinalIgnoreCase))
+            {
+                upsertSql = "INSERT INTO weaver_schema_migrations (version, name, applied_at_utc) VALUES (@v, @n, @t) ON DUPLICATE KEY UPDATE version = version";
+                sqlDialect = MySqlDialect.Instance;
+            }
+            else
+            {
+                upsertSql = "INSERT OR REPLACE INTO weaver_schema_migrations (version, name, applied_at_utc) VALUES (@v, @n, @t)";
+                sqlDialect = SqliteDialect.Instance;
+            }
+
             int appliedCount = 0;
             foreach (IDatabaseMigration migration in pending)
             {
@@ -172,10 +224,7 @@ public sealed class DatabaseMigrationRunner : IDisposable
 
                     using DbCommand recordCmd = conn.CreateCommand();
                     recordCmd.Transaction = tx;
-                    bool isPostgres = dialect.StartsWith("postgres", StringComparison.OrdinalIgnoreCase);
-                    recordCmd.CommandText = isPostgres
-                        ? "INSERT INTO weaver_schema_migrations (version, name, applied_at_utc) VALUES (@v, @n, @t) ON CONFLICT (version) DO NOTHING"
-                        : "INSERT OR REPLACE INTO weaver_schema_migrations (version, name, applied_at_utc) VALUES (@v, @n, @t)";
+                    recordCmd.CommandText = upsertSql;
 
                     DbParameter pVersion = recordCmd.CreateParameter();
                     pVersion.ParameterName = "@v";
@@ -190,11 +239,10 @@ public sealed class DatabaseMigrationRunner : IDisposable
                     DbParameter pTime = recordCmd.CreateParameter();
                     pTime.ParameterName = "@t";
                     // WHAT: Binds the applied-at timestamp in the form each engine's column expects.
-                    // WHY:  PostgreSQL declares applied_at_utc as TIMESTAMPTZ and rejects text for it (42804),
-                    //       which made every migration fail on PostgreSQL; SQLite declares TEXT and its existing
-                    //       rows hold ISO-8601 round-trip strings, so it must keep receiving that format.
+                    // WHY:  PostgreSQL declares applied_at_utc as TIMESTAMPTZ, DuckDB as TIMESTAMP, MySQL as DATETIME(6),
+                    //       and SQLite as TEXT (ISO-8601 round-trip string).
                     // HOW:  Asks the engine's dialect to coerce the timestamp instead of formatting it here.
-                    pTime.Value = (isPostgres ? PostgreSqlDialect.Instance : SqliteDialect.Instance).TimestampValue(DateTimeOffset.UtcNow);
+                    pTime.Value = sqlDialect.TimestampValue(DateTimeOffset.UtcNow);
                     recordCmd.Parameters.Add(pTime);
 
                     await recordCmd.ExecuteNonQueryAsync(ct);
