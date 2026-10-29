@@ -15,21 +15,18 @@ All 46 development phases have concluded:
 - **Phases P13–P20**: Zero-private-key-transmission PKI authentication (Ed25519 & ML-DSA-65), in-browser cryptographic signing, bUnit component security test suite, and Subresource Integrity (SRI) dynamic pipeline.
 - **Phases P21–P25**: Tiered researcher access control (`ReadAccess`, `GenomicAccess`, `FullReadAccess`), cohort management UI, and OpenAPI contracts.
 - **Phases P26–P35**: Standalone cross-platform desktop and mobile GUI applications (Avalonia UI 11 / .NET 10) for Linux, macOS, Windows, Android, iOS, iPadOS, sovereign code-signing PKI rotation, multi-platform packaging, and continuous release pipelines (shipped in `v2026.10.29.1`).
-- **Phases P36–P39**: Hardening and distribution enhancements (shipped in `v2026.10.29.2`):
-  - **P36**: Windows single-file portable executable packaging & universal macOS dynamic 4096-byte page-aligned fat Mach-O slice synthesis.
-  - **P37**: Universal package version synchronization (`2026.10.29.2`) across Linux (.deb, .rpm, .pkg.tar.zst, AUR), Windows (MSIX, NSIS), macOS (.dmg, .app), and Mobile (.apk, .ipa).
-  - **P38**: Standalone interactive windowed desktop GUI shell (`IDesktopUiHost`, `DefaultDesktopUiHost`) with tray controller, single-instance mutex gating, and 100.00% line & branch test coverage.
-  - **P39**: Master cross-platform packaging validation, 8-gate pre-flight verification, release documentation, and dual-pipeline publishing.
-- **Phases P40–P46**: Wet-Lab Automation & Community Localization (shipped in `v2026.10.29.3`):
-  - **P40**: Opentrons Python Protocol API v2 liquid handler generator engine (`IOpentronsProtocolGenerator`, OT-2 and Flex support, stoichiometric dispensing, on-deck thermocycling).
-  - **P41**: Opentrons REST API endpoints (`POST /api/fabrication/opentrons/generate` & `/download`) with role gating and RFC 7807 problem details.
-  - **P42**: Guided DNA Origami Workflow Wizard UI integration (Stages 5 & 6 hardware cards, visual deck layout, preview/download modal).
-  - **P43**: Localization domain architecture (`IWeaverLocalizer`, `WeaverLocalizer`) with 10 native embedded JSON catalogs (`en-US`, `es-ES`, `fr-FR`, `de-DE`, `pt-BR`, `it-IT`, `ja-JP`, `zh-CN`, `nl-NL`, `pl-PL`).
-  - **P44**: Multi-platform desktop & ViewModel localization (`MainShellViewModel`, `DesktopTrayIconController`, `LanguagePreferenceService` with dual-engine SQLite/PostgreSQL support).
-  - **P45**: Sovereign Web UI language switcher (`LanguageSelector.razor`, `MainLayout.razor`, `EndocrineDashboard.razor`, `weaver_lang` SameSite=Strict cookies).
-  - **P46**: Pre-flight verification (1,162 tests, 100% line & branch coverage), downward ratchet improvement (97.56% branch, 99.65% line), Docsify documentation guides, and release ratification.
-
-There are currently **0 active work packages**. All planned initiatives for `v2026.10.29.3` have concluded cleanly.
+- **Phases P36–P39**: Hardening and distribution enhancements (shipped in `v2026.10.29.2`).
+- **Phases P40–P46**: Wet-Lab Automation & Community Localization (shipped in `v2026.10.29.3`).
+- **Phases P47–P55**: Milestone `v2026.10.29.4` (Community Languages, Dual Engine Persistence, DuckDB Analytics, & Accelerator Benchmarking):
+  - **P47**: Expanded Catalogs & Domain Enum (`WeaverLanguage` 10 → 18, 8 embedded JSON catalogs) — *Completed & Merged* ([`17695f8`](https://git.lantea.one/lantea-one/nanoweaver-hrt/commit/17695f8efb28b5c16d3a5d09e0242077b55a4ca5))
+  - **P48**: UI Language Selector & RTL Directional Support (`LanguageSelector.razor`, `MainLayout.razor`) — *Completed & Merged* ([`27e5967`](https://git.lantea.one/lantea-one/nanoweaver-hrt/commit/27e596781216dca1eeff705664168cbb0c5d5d67))
+  - **P49**: RDBMS Dialects & Migration Engine (`DuckDbDialect.cs`, `MySqlDialect.cs`, `DatabaseMigrationRunner.cs`) — *Completed & Merged* ([`910e857`](https://git.lantea.one/lantea-one/nanoweaver-hrt/commit/910e85775c9eb2647cba8b1cfa6b940e7d58a8a6))
+  - **P50**: Multi-Engine Connection Factory & Preferences (`WeaverDbConnectionFactory.cs`, `LanguagePreferenceService.cs`) — *Completed & Merged* ([`cbb7f25`](https://git.lantea.one/lantea-one/nanoweaver-hrt/commit/cbb7f25adfa9219b1626a575a2f58e45d610fa70))
+  - **P51**: DuckDB In-Process Analytical Engine Core (`ITrajectoryAnalyticsService`, `DuckDbTrajectoryAnalyticsService`) — *Published* ([`p51-duckdb-analytical-engine.md`](./p51-duckdb-analytical-engine.md))
+  - **P52**: Trajectory Analytics REST API & UI Query Drawer (`POST /api/trajectories/analytics/query`) — *Published* ([`p52-analytics-rest-and-ui.md`](./p52-analytics-rest-and-ui.md))
+  - **P53**: Hardware Accelerator Benchmark Engine Core (`IAcceleratorBenchmarkService`, FP32/FP64 GFLOPS & Bandwidth) — *Published* ([`p53-accelerator-benchmark-core.md`](./p53-accelerator-benchmark-core.md))
+  - **P54**: Hardware Accelerator Benchmark REST API & Diagnostic UI (`POST /api/system/benchmark/run`) — *Published* ([`p54-accelerator-benchmark-rest-ui.md`](./p54-accelerator-benchmark-rest-ui.md))
+  - **P55**: Verification, Documentation & Release Milestone `v2026.10.29.4` — *Published* ([`p55-release-closeout.md`](./p55-release-closeout.md))
 
 ---
 

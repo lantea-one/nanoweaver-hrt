@@ -44,6 +44,7 @@ using NanoWeaverHrt.Bridges;
 using NanoWeaverHrt.Security.Integrity;
 using NanoWeaverHrt.Security.Access;
 using NanoWeaverHrt.Localization;
+using NanoWeaverHrt.Analytics;
 
 namespace NanoWeaverHrt;
 
@@ -167,6 +168,11 @@ public class Program
         // WHY:  Transforms DNA origami fabrication packages into executable Opentrons Protocol API v2 Python scripts.
         // HOW:  Registers OpentronsProtocolGenerator as singleton IOpentronsProtocolGenerator into the DI container.
         builder.Services.AddSingleton<IOpentronsProtocolGenerator, OpentronsProtocolGenerator>();
+
+        // WHAT: Registers in-process DuckDB columnar analytical query engine for trajectory Parquet analysis.
+        // WHY:  Enables zero-copy analytical queries and structural summary metric computation across molecular trajectories.
+        // HOW:  Registers DuckDbTrajectoryAnalyticsService as singleton ITrajectoryAnalyticsService into the DI container.
+        builder.Services.AddSingleton<ITrajectoryAnalyticsService, DuckDbTrajectoryAnalyticsService>();
 
         // WHAT: Configures Swagger & OpenAPI generation with XML comments and Swashbuckle annotations.
         // WHY:  Provides interactive API exploration (/swagger) and ReDoc documentation (/documentation).
