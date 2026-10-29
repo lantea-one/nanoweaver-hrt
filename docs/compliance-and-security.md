@@ -338,3 +338,78 @@ $$
 2. **Cohort Enrollment Scoping**: Researchers and Administrators can create research cohorts (`SubjectGroup`), but Researchers can only enroll subjects they already possess authorized access to (`GenomicAccess` or higher).
 3. **Immutable Creator Binding**: The `created_by` field on cohort groups is cryptographically immutable and verified against the caller's session token to prevent creator spoofing or elevation of privilege.
 4. **Tamper-Evident Audit Logging**: Every grant allocation, revocation, cohort creation, update, deletion, and member mutation is recorded in `weaver_audit_ledger` with cryptographic hash chain continuity.
+
+---
+
+## 13. Sovereign Code-Signing PKI & Automated 90-Day Rotation
+
+To guarantee binary integrity, authenticity, and tamper-resistance for all distributed release artifacts without relying on centralized commercial certificate authority vendor lock-in, NanoWeaverHrt implements a sovereign X.509 Code-Signing Public Key Infrastructure (PKI) combined with an OpenPGP/GPG archive signing keyring.
+
+```mermaid
+flowchart TD
+    subgraph SovereignPKI ["Sovereign Code-Signing PKI Hierarchy"]
+        RootCA["Sovereign Root CA<br>(ECDSA P-384 / 10-Year Validity)<br>docs/assets/keys/nanoweaver-codesign-root-ca.crt"]
+        LeafCert["Leaf Code-Signing Certificate<br>(ECDSA P-384 / 90-Day Validity)<br>EKU: critical, 1.3.6.1.5.5.7.3.3<br>docs/assets/keys/nanoweaver-codesign-leaf.crt"]
+        GPGKey["OpenPGP Archive Key<br>(Ed25519 / 90-Day Validity)<br>docs/assets/keys/nanoweaver-archive-keyring.asc"]
+        RootCA --> LeafCert
+    end
+
+    subgraph Automation ["Automated 90-Day Rotation (CI / CD)"]
+        Cron["Monthly Scheduled Trigger<br>cron: '0 3 1 * *'"]
+        CheckExpiry["Check Leaf Expiration<br>openssl x509 -checkend 2592000"]
+        Rotate["Mint Fresh 90-Day Leaf Certificate<br>& OpenPGP Keypair"]
+        Publish["Update docs/assets/keys/<br>& Commit Anchors"]
+        Cron --> CheckExpiry
+        CheckExpiry -->|< 30 Days Remaining| Rotate
+        Rotate --> Publish
+    end
+
+    subgraph PackageSigner ["Release Package Signing Engine (scripts/pki/sign-packages.sh)"]
+        Binaries["Binaries & Archives<br>(.deb, .rpm, .pkg.tar.zst, .exe, .msix, .dmg, .apk)"]
+        CMS["Detached X.509 CMS Signatures (.p7s)<br>openssl cms -sign -binary"]
+        GpgSig["Detached OpenPGP Signatures (.asc & .sig)<br>gpg --detach-sign"]
+        Manifest["Master SHA256SUMS Manifest<br>SHA256SUMS.p7s / SHA256SUMS.asc"]
+        Binaries --> CMS
+        Binaries --> GpgSig
+        Binaries --> Manifest
+    end
+
+    LeafCert --> PackageSigner
+    GPGKey --> PackageSigner
+```
+
+### Let's Encrypt & ACME Architectural Boundary
+Public ACME certificate authorities such as Let's Encrypt strictly issue **TLS Server Authentication (`id-kp-serverAuth`, OID `1.3.6.1.5.5.7.3.1`)** certificates and intentionally reject the **Code Signing Extended Key Usage (`id-kp-codeSigning`, OID `1.3.6.1.5.5.7.3.3`)** required by operating system package verifiers (Windows Authenticode, macOS Gatekeeper, Android Package Manager, and Linux package signers).
+
+To achieve the exact same automated, short-lived 90-day renewal security properties popularized by ACME, the platform maintains an internal sovereign code-signing authority.
+
+### Certificate Hierarchy & File Contracts
+All public trust anchors are version-controlled in the repository under `docs/assets/keys/`:
+
+1. **Root CA Certificate (`docs/assets/keys/nanoweaver-codesign-root-ca.crt`)**:
+   - **Subject**: `CN=NanoWeaver HRT Sovereign Code Signing Root CA, O=Lantea Sovereign Research, C=US`
+   - **Algorithm**: ECDSA P-384 (`secp384r1`), 10-year validity.
+   - **Key Usage**: `critical, keyCertSign, cRLSign`
+   - **Basic Constraints**: `critical, CA:TRUE, pathlen:0`
+2. **Leaf Code-Signing Certificate (`docs/assets/keys/nanoweaver-codesign-leaf.crt`)**:
+   - **Subject**: `CN=NanoWeaver HRT Release Engineering, O=Lantea Sovereign Research, C=US`
+   - **Algorithm**: ECDSA P-384 (`secp384r1`), 90-day validity.
+   - **Key Usage**: `critical, digitalSignature`
+   - **Extended Key Usage**: `critical, codeSigning (1.3.6.1.5.5.7.3.3)`
+   - **Basic Constraints**: `critical, CA:FALSE`
+3. **OpenPGP Public Keyring (`docs/assets/keys/nanoweaver-archive-keyring.asc`)**:
+   - **Identity**: `NanoWeaver HRT Archive Signing Key <release@lantea.one>`
+   - **Algorithm**: Ed25519 signing key with cv25519 encryption subkey, 90-day validity.
+
+### Secret Hygiene & Keystore Formats
+Private keys (`*.key`, `*.pfx`, `*.p12`, `*.jks`, `*.keystore`) are strictly quarantined under `artifacts/pki-private/` (enforced by `.gitignore`) and never checked into version control:
+- **PKCS#12 Bundle (`artifacts/pki-private/codesign-leaf.pfx`)**: Password-protected archive bundle combining leaf key, leaf certificate, and root CA for Windows Authenticode (`osslsigncode`) and macOS (`rcodesign`).
+- **Android Signing Keystore (`artifacts/pki-private/codesign-android.keystore`)**: Standard PKCS#12 Android keystore for `apksigner` and `jarsigner`.
+- **OpenPGP Isolated Keyring (`artifacts/pki-private/gnupg/`)**: Dedicated GnuPG directory isolating private release keys from developer host keyrings.
+
+### Automated 90-Day Rotation Lifecycle
+The scheduled CI workflows (`.forgejo/workflows/rotate-codesign-certs.yml` and `.github/workflows/rotate-codesign-certs.yml`) run on the 1st of every month at 03:00 UTC:
+1. Executes `scripts/pki/provision-or-rotate-codesign.sh --check-expiry-seconds 2592000`.
+2. If remaining validity is less than 30 days (`2,592,000` seconds), generates a fresh 90-day leaf certificate signed by the Sovereign Root CA and a fresh 90-day OpenPGP signing keypair.
+3. Automatically commits updated public trust anchors in `docs/assets/keys/` and publishes them to documentation wiki mirrors.
+

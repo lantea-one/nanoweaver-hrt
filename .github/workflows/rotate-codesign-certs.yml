@@ -1,0 +1,91 @@
+name: Rotate Sovereign Code-Signing Certificates & Keys
+
+on:
+  schedule:
+    # WHAT: Automated monthly trigger at 03:00 UTC on the 1st of every month.
+    # WHY:  Leaf certificates have 90-day validity and are rotated whenever < 30 days remain.
+    # HOW:  Cron schedule triggering monthly checks.
+    - cron: '0 3 1 * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Force immediate certificate rotation regardless of remaining validity'
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: "pki-rotation"
+  cancel-in-progress: false
+
+jobs:
+  rotate-certs:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Source Code
+        # WHAT: Checks out the repository to inspect and rotate public trust anchors.
+        # WHY:  The workflow updates docs/assets/keys/ with freshly minted public anchors.
+        # HOW:  Uses standard actions/checkout with complete history for commit pushing.
+        uses: actions/checkout@v4
+
+      - name: Execute Sovereign Code-Signing PKI Provisioning & Rotation
+        # WHAT: Inspects remaining validity of nanoweaver-codesign-leaf.crt and rotates if needed.
+        # WHY:  Maintains continuous 90-day validity without relying on commercial ACME CAs.
+        # HOW:  Executes scripts/pki/provision-or-rotate-codesign.sh with CA secrets if configured.
+        env:
+          CODESIGN_CA_PRIVATE_KEY_PEM: ${{ secrets.CODESIGN_CA_PRIVATE_KEY_PEM }}
+          CODESIGN_PFX_PASSWORD: ${{ secrets.CODESIGN_PFX_PASSWORD || 'nanoweaver-hrt' }}
+        run: |
+          ROTATION_ARGS=()
+          if [ "${{ inputs.force || github.event.inputs.force }}" = "true" ]; then
+            ROTATION_ARGS+=("--force")
+          fi
+          ./scripts/pki/provision-or-rotate-codesign.sh "${ROTATION_ARGS[@]}"
+
+      - name: Verify Rotated Public Trust Anchors
+        # WHAT: Cryptographically verifies the leaf certificate against the sovereign root CA.
+        # WHY:  Ensures the generated trust anchors satisfy the Code Signing EKU requirement.
+        # HOW:  Executes openssl verify and inspects extendedKeyUsage extension.
+        run: |
+          openssl verify -CAfile docs/assets/keys/nanoweaver-codesign-root-ca.crt docs/assets/keys/nanoweaver-codesign-leaf.crt
+          openssl verify -purpose codesign -CAfile docs/assets/keys/nanoweaver-codesign-root-ca.crt docs/assets/keys/nanoweaver-codesign-leaf.crt
+          openssl x509 -in docs/assets/keys/nanoweaver-codesign-leaf.crt -noout -ext extendedKeyUsage | grep -q "Code Signing"
+          echo "✓ Rotated certificates verified cleanly."
+
+      - name: Check for Updated Public Trust Anchors
+        # WHAT: Detects if docs/assets/keys/ has newly generated public certificates or keyrings.
+        # WHY:  Avoids creating empty commits when certificates are still within valid lifetime.
+        # HOW:  Inspects porcelain git status output for changes under docs/assets/keys/.
+        id: check_diff
+        run: |
+          if [ -n "$(git status --porcelain docs/assets/keys)" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo ">> Public trust anchors were updated."
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo ">> No certificate rotation occurred; public anchors unchanged."
+          fi
+
+      - name: Commit & Push Rotated Public Trust Anchors
+        # WHAT: Persists updated public certificates to the tracking branch.
+        # WHY:  Downstream packaging workflows and documentation require up-to-date trust anchors.
+        # HOW:  Stages docs/assets/keys/ and pushes signed commit with [skip ci] tag.
+        if: steps.check_diff.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/assets/keys/
+          git commit -m "chore(pki): rotate 90-day sovereign code-signing certificates [skip ci]"
+          git push
+
+      - name: Archive Public Trust Anchors
+        # WHAT: Attaches public verification artifacts to the workflow run.
+        # WHY:  Provides direct download of updated public keys for release engineers and audit logs.
+        # HOW:  Uses upload-artifact to bundle docs/assets/keys/.
+        uses: actions/upload-artifact@v4
+        with:
+          name: sovereign-public-trust-anchors
+          path: docs/assets/keys/

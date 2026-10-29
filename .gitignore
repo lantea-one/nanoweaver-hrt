@@ -975,6 +975,7 @@ simulations/node-keys/*
 # Key material must never reach the sovereign Forgejo remote. Authentication is
 # public-key challenge-response, and the app offers downloads such as
 # {username}_private_key.pem. Never add a bare *.txt rule here; it would hide ordinary text files.
+artifacts/pki-private/
 *.pem
 *.key
 *.pub
@@ -999,6 +1000,10 @@ id_rsa*
 keys/
 .keys/
 secrets/
+
+# Public trust anchors for code-signing and package verification
+!docs/assets/keys/
+!docs/assets/keys/*
 
 # Agent worktrees: isolated checkouts created for concurrent sub-agent work.
 # These are full copies of the repository and must never be committed.
