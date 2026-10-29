@@ -21,7 +21,7 @@
 | **P31** | Sovereign Code Signing & Rotation | `scripts/pki/provision-or-rotate-codesign.sh`, `sign-packages.sh`, 90-day leaf cert rotation, public trust anchors in `docs/assets/keys/`, Forgejo & GitHub Actions rotation workflows | **COMPLETED** |
 | **P32** | Linux & AUR Packaging | `packaging/linux/`, `packaging/aur/`, Arch `.pkg.tar.zst` (`x86_64` & `arm64`), unified `.deb` (`amd64` & `arm64`), unified `.rpm` (`amd64` & `arm64`), and AUR (`-bin` & `-git`) | **COMPLETED** |
 | **P33** | macOS, Windows & Mobile Packaging | `flash` / `sonnet` | **Layer 5c (macOS, Windows & Mobile Packaging)**: macOS `NanoWeaverHrt.dmg`, Windows dual-scope `nanoweaver-hrt-desktop-installer.exe` (`Current User` / `System`) + `NanoWeaverHrt.msix`, and Mobile `.apk` & `.ipa` (`Android`, `iOS`, `iPadOS`) | **COMPLETED** |
-| **P34** | [`p34-ci-cd-artifact-workflows.md`](p34-ci-cd-artifact-workflows.md) | `flash_lite` / `haiku` | **Layer 5d (CI/CD Artifact Matrix)**: Forgejo Actions & mirrored GitHub Actions multi-platform package build, signing & artifact upload on `feature/gui-application` and `main` | **READY** |
+| **P34** | CI/CD Multi-Platform Artifact Matrix | `.forgejo/workflows/build-and-deploy.yml` & `.github/workflows/build-and-deploy.yml` triggers on `feature/gui-application`, all 8 gates mirrored, and `build-and-publish-gui-artifacts` job uploading 5 package bundles | **COMPLETED** |
 | **P35** | [`p35-docs-verification-and-merge-closeout.md`](p35-docs-verification-and-merge-closeout.md) | `flash` / `sonnet` | **Layer 5e (Docs, Pages & Merge Closeout)**: `docs/desktop-and-mobile-gui.md`, Docsify sidebar, 8-gate verification, merge `feature/gui-application` -> `main` & branch cleanup | **READY** |
 
 ---
@@ -65,6 +65,7 @@
 | **P31** | Sovereign Code Signing & Rotation | Sovereign X.509 `id-kp-codeSigning` CA + 90-day leaf certificate rotation, GPG archive keyring, trust anchors in `docs/assets/keys/`, and scheduled CI rotation workflows | **COMPLETED** |
 | **P32** | Linux & AUR Packaging | Desktop integration (`.desktop`, autostart tray, AppStream metainfo, SVG icon), AUR `nanoweaver-hrt-desktop-bin` and `-git`, unified `.deb`, `.rpm`, and Arch `.pkg.tar.zst` (`x86_64` & `arm64`) | **COMPLETED** |
 | **P33** | macOS, Windows & Mobile Packaging | macOS `NanoWeaverHrt.dmg`, Windows dual-scope `nanoweaver-hrt-desktop-installer.exe` (`Current User` / `System`) + `NanoWeaverHrt.msix`, and Mobile `.apk` & `.ipa` (`Android`, `iOS`, `iPadOS`) | **COMPLETED** |
+| **P34** | CI/CD Artifact Pipelines | Multi-platform build, sign, and artifact upload across Forgejo Actions (`archlinux-multi-platform`) and GitHub Actions (`ubuntu-latest`) on `feature/gui-application` and `main` | **COMPLETED** |
 
 ---
 

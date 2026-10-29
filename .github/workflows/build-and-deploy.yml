@@ -2,8 +2,8 @@ name: Build, Test & Publish Trajectory Parser to GHCR
 
 on:
   push:
-    branches: [ "main" ]
-    #tags: [ "v*" ]
+    branches: [ "main", "feature/gui-application" ]
+    tags: [ "v*" ]
   pull_request:
     branches: [ "main" ]
 
@@ -154,11 +154,32 @@ jobs:
           print(f'SUCCESS: Scanned {len(files)} markdown files: Zero broken LaTeX interpolation tokens found.')
           EOF
 
+      - name: Verify XML Docblock Completeness
+        # WHAT: Asserts every documented member carries one <param> per parameter and a <returns>.
+        # WHY:  Enforces AGENTS.md Prime Directive 2 across all solution code.
+        # HOW:  Runs check-docblocks.py script against src directory.
+        run: python3 -I scripts/check-docblocks.py src
+
+      - name: Enforce Un-Excluded Coverage Ratchet
+        # WHAT: Re-measures coverage with compiler-generated code included and compares it to coverage-baseline.json.
+        # WHY:  The 100% step excludes endpoint lambdas and async state machines; the ratchet makes that gap visible and downward-only.
+        # HOW:  Runs the tests with coverage-full.runsettings, then check-coverage-ratchet.py.
+        run: |
+          rm -rf artifacts/coverage-full
+          dotnet test NanoWeaverHrt.slnx --configuration Release --settings coverage-full.runsettings --collect:"XPlat Code Coverage" --results-directory artifacts/coverage-full --verbosity minimal
+          python3 -I scripts/check-coverage-ratchet.py artifacts/coverage-full coverage-baseline.json
+
+      - name: Verify Vendored JavaScript Subsystem & SRI Integrity
+        # WHAT: Cryptographically verifies SHA-256 and SHA-384 Subresource Integrity (SRI) on vendored JS.
+        # WHY:  Enforces AGENTS.md Prime Directive 8 and Directive 12 zero-CDN integrity without external fetches.
+        # HOW:  Executes scripts/verify-vendored-js.sh checking hashes and Node Known-Answer Tests.
+        run: ./scripts/verify-vendored-js.sh
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GitHub Container Registry (GHCR)
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -178,7 +199,7 @@ jobs:
           context: .
           file: docker/web/Dockerfile.web
           platforms: linux/amd64
-          push: ${{ github.event_name != 'pull_request' }}
+          push: ${{ github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
           tags: |
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/nanoweaver-hrt-web:latest
           cache-from: type=gha
@@ -198,7 +219,70 @@ jobs:
           context: .
           file: docker/simulation/Dockerfile.simulation
           platforms: linux/amd64
-          push: ${{ github.event_name != 'pull_request' }}
+          push: ${{ github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
           tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/nanoweaver-hrt-simulation:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  build-and-publish-gui-artifacts:
+    # WHAT: Builds, signs, and attaches standalone desktop and mobile application packages on GitHub Actions.
+    # WHY:  Mirrors the Forgejo artifact matrix so GitHub mirrors host identical release assets.
+    # HOW:  Installs SDKs, runs scripts/packaging/build-all-packages.sh, and uploads 5 discrete artifact bundles.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Build and Sign Standalone Release Packages
+        run: ./scripts/packaging/build-all-packages.sh
+
+      - name: Upload Linux Packages & AUR Definitions
+        uses: actions/upload-artifact@v4
+        with:
+          name: nanoweaver-hrt-linux-packages
+          path: |
+            artifacts/packages/linux/*
+            packaging/aur/**
+          if-no-files-found: error
+
+      - name: Upload macOS Packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: nanoweaver-hrt-macos-packages
+          path: artifacts/packages/macos/*
+          if-no-files-found: error
+
+      - name: Upload Windows Packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: nanoweaver-hrt-windows-packages
+          path: artifacts/packages/windows/*
+          if-no-files-found: error
+
+      - name: Upload Mobile Packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: nanoweaver-hrt-mobile-packages
+          path: artifacts/packages/mobile/*
+          if-no-files-found: error
+
+      - name: Upload Cryptographic Manifest & Trust Anchors
+        uses: actions/upload-artifact@v4
+        with:
+          name: nanoweaver-hrt-codesign-manifest
+          path: |
+            artifacts/packages/SHA256SUMS*
+            docs/assets/keys/*
+          if-no-files-found: error
