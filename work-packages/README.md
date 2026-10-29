@@ -15,7 +15,7 @@
 | :--- | :--- | :--- | :--- | :--- |
 | **P26** | Standalone Instance Store & Vault | `NanoWeaverHrt.Client` SQLite multi-instance registry (`IInstanceProfileRepository`) & `AES-256-GCM` client key vault (`IClientKeyRingVault`, `Ed25519` & `ML-DSA-65`) | **COMPLETED** |
 | **P27** | Multi-Instance API Client SDK | **Layer 2 (Domain & Auth SDK)**: `INanoWeaverNodeClient` challenge-response PKI auth, telemetry polling, `IMultiInstanceCoordinator` & state-transition alerts | **COMPLETED** |
-| **P28** | [`p28-background-tray-and-notifications.md`](p28-background-tray-and-notifications.md) | `flash_lite` / `haiku` | **Layer 2/3 (Background Daemon & Tray)**: `NanoWeaverHrt.Gui.Core` `IBackgroundInstanceMonitor`, `ITrayIconController`, `INativeNotificationSink` & 15-min idle lock | **READY** |
+| **P28** | Background Tray & Notifications | **Layer 2/3 (Background Daemon & Tray)**: `NanoWeaverHrt.Gui.Core` `IBackgroundInstanceMonitor`, `ITrayIconController`, `INativeNotificationSink` & 15-min idle lock | **COMPLETED** |
 | **P29** | [`p29-avalonia-core-views-and-viewmodels.md`](p29-avalonia-core-views-and-viewmodels.md) | `flash` / `sonnet` | **Layer 4a (Shared GUI Core & ViewModels)**: `InstanceOnboardingViewModel`, `MainShellViewModel`, sovereign dark-theme palette & headless xUnit tests | **READY** |
 | **P30** | [`p30-desktop-and-mobile-platform-heads.md`](p30-desktop-and-mobile-platform-heads.md) | `flash` / `sonnet` | **Layer 4b (Desktop & Mobile Heads)**: `NanoWeaverHrt.Desktop` (`NanoWeaverHrt`) & `NanoWeaverHrt.Mobile` executables, native OS notification/tray adapters (`Linux`, `macOS`, `Windows`, `Android`, `iOS`, `iPadOS`) | **READY** |
 | **P31** | [`p31-sovereign-codesign-pki-and-rotation.md`](p31-sovereign-codesign-pki-and-rotation.md) | `flash` / `haiku` | **Layer 5a (Code Signing & Rotation)**: Sovereign X.509 `id-kp-codeSigning` CA + 90-day leaf rotation scripts, GPG archive signing & scheduled rotation workflows | **READY** |
@@ -59,6 +59,7 @@
 | **P25** | Verification & Closeout | Full 8-gate pre-flight verification, comprehensive documentation across `compliance-and-security.md` and `api-reference.md`, and ratchet closeout | **COMPLETED** |
 | **P26** | Instance Store & Key Vault | `NanoWeaverHrt.Client` SQLite multi-instance registry (`IInstanceProfileRepository`) & `AES-256-GCM` client key vault (`IClientKeyRingVault`, `Ed25519` & `ML-DSA-65`) | **COMPLETED** |
 | **P27** | Multi-Instance API Client SDK | `INanoWeaverNodeClient` PKI challenge-response authentication, telemetry/simulation REST client, and `IMultiInstanceCoordinator` alert diffing | **COMPLETED** |
+| **P28** | Background Tray & Notifications | `NanoWeaverHrt.Gui.Core` `IBackgroundInstanceMonitor`, `ITrayIconController`, `INativeNotificationSink` & 15-min idle lock | **COMPLETED** |
 
 ---
 
