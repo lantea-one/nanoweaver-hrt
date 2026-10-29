@@ -2,7 +2,7 @@ name: Build, Test & Publish Trajectory Parser to GHCR
 
 on:
   push:
-    branches: [ "main", "feature/gui-application" ]
+    branches: [ "main" ]
     tags: [ "v*" ]
   pull_request:
     branches: [ "main" ]

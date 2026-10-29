@@ -109,10 +109,17 @@ else
     echo "Creating deterministic PE32+ self-extracting installer package..."
     ZIP_TMP="${ROOT_DIR}/artifacts/staging/win-installer-payload.zip"
     rm -f "${ZIP_TMP}"
-    (
-        cd "${STAGING_DIR}"
-        zip -r -q "${ZIP_TMP}" .
-    )
+    python3 -c "
+import os, zipfile
+staging = '${STAGING_DIR}'
+zip_path = '${ZIP_TMP}'
+with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+    for root, _, files in os.walk(staging):
+        for f in sorted(files):
+            full = os.path.join(root, f)
+            rel = os.path.relpath(full, staging)
+            zf.write(full, rel)
+"
     create_pe32plus_binary "${INSTALLER_TARGET}" "${ZIP_TMP}"
     rm -f "${ZIP_TMP}"
 fi

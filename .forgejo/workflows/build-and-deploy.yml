@@ -2,7 +2,7 @@ name: Build & Publish Trajectory Parser to Forgejo Package Registry
 
 on:
   push:
-    branches: [ "main", "feature/gui-application" ]
+    branches: [ "main" ]
     tags: [ "v*" ]
   pull_request:
     branches: [ "main" ]

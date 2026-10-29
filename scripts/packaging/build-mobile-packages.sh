@@ -242,10 +242,18 @@ EOF
     fi
 
     # Package IPA (ZIP archive containing Payload/)
-    (
-        cd "${ipa_staging}"
-        zip -r -q "${target_ipa}" Payload
-    )
+    python3 -c "
+import os, zipfile
+staging = '${ipa_staging}'
+ipa_path = '${target_ipa}'
+payload_dir = os.path.join(staging, 'Payload')
+with zipfile.ZipFile(ipa_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+    for root, _, files in os.walk(payload_dir):
+        for f in sorted(files):
+            full = os.path.join(root, f)
+            rel = os.path.relpath(full, staging)
+            zf.write(full, rel)
+"
     rm -rf "${ipa_staging}"
     echo "Created ${target_ipa}"
 }
