@@ -85,7 +85,7 @@ jobs:
         # WHAT: Attaches public verification artifacts to the workflow run.
         # WHY:  Provides direct download of updated public keys for release engineers and audit logs.
         # HOW:  Uses upload-artifact to bundle docs/assets/keys/.
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3
         with:
           name: sovereign-public-trust-anchors
           path: docs/assets/keys/

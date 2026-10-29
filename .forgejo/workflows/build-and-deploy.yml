@@ -278,7 +278,7 @@ jobs:
         run: ./scripts/packaging/build-all-packages.sh
 
       - name: Upload Linux Packages & AUR Definitions
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3
         with:
           name: nanoweaver-hrt-linux-packages
           path: |
@@ -287,28 +287,28 @@ jobs:
           if-no-files-found: error
 
       - name: Upload macOS Packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3
         with:
           name: nanoweaver-hrt-macos-packages
           path: artifacts/packages/macos/*
           if-no-files-found: error
 
       - name: Upload Windows Packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3
         with:
           name: nanoweaver-hrt-windows-packages
           path: artifacts/packages/windows/*
           if-no-files-found: error
 
       - name: Upload Mobile Packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3
         with:
           name: nanoweaver-hrt-mobile-packages
           path: artifacts/packages/mobile/*
           if-no-files-found: error
 
       - name: Upload Cryptographic Manifest & Trust Anchors
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3
         with:
           name: nanoweaver-hrt-codesign-manifest
           path: |
