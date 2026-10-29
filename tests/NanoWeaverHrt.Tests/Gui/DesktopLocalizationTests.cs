@@ -1,8 +1,12 @@
+using System.Collections;
 using System.ComponentModel;
+using System.Data;
+using System.Data.Common;
 using Microsoft.Data.Sqlite;
 using Moq;
 using NanoWeaverHrt.Client.Api;
 using NanoWeaverHrt.Client.Storage;
+using NanoWeaverHrt.Database.Access;
 using NanoWeaverHrt.Desktop.Platform;
 using NanoWeaverHrt.Gui.Core.Services;
 using NanoWeaverHrt.Gui.Core.ViewModels;
@@ -219,6 +223,31 @@ public sealed class DesktopLocalizationTests : IDisposable
     }
 
     /// <summary>
+    /// Verifies that <see cref="LanguagePreferenceService"/> properly detects all supported database backends.
+    /// </summary>
+    /// <param name="connectionString">Connection string.</param>
+    /// <param name="expectedBackend">Expected database backend.</param>
+    [Theory]
+    [InlineData("Host=localhost;Database=test;Username=test;Password=secret", WeaverDatabaseBackend.PostgreSql)]
+    [InlineData("Server=127.0.0.1;Port=5432;User Id=postgres;Password=pass;Database=test", WeaverDatabaseBackend.PostgreSql)]
+    [InlineData("Data Source=test.db", WeaverDatabaseBackend.Sqlite)]
+    [InlineData("Data Source=:memory:", WeaverDatabaseBackend.Sqlite)]
+    [InlineData("Data Source=analytics.duckdb", WeaverDatabaseBackend.DuckDb)]
+    [InlineData("Server=localhost;Port=3306;Database=weaver;Uid=root;", WeaverDatabaseBackend.MySql)]
+    [InlineData("Server=cluster;Database=weaver;Dialect=mysql", WeaverDatabaseBackend.MySql)]
+    public void LanguagePreferenceService_IdentifiesAllStorageBackends(string connectionString, WeaverDatabaseBackend expectedBackend)
+    {
+        // WHAT: Tests multi-engine backend detection from connection strings.
+        // WHY:  Ensures proper backend selection across PostgreSQL, DuckDB, MySQL, and SQLite.
+        // HOW:  Instantiates LanguagePreferenceService and checks Backend, IsPostgreSql, IsDuckDb, and IsMySql properties.
+        using var service = new LanguagePreferenceService(connectionString);
+        Assert.Equal(expectedBackend, service.Backend);
+        Assert.Equal(expectedBackend == WeaverDatabaseBackend.PostgreSql, service.IsPostgreSql);
+        Assert.Equal(expectedBackend == WeaverDatabaseBackend.DuckDb, service.IsDuckDb);
+        Assert.Equal(expectedBackend == WeaverDatabaseBackend.MySql, service.IsMySql);
+    }
+
+    /// <summary>
     /// Verifies that <see cref="LanguagePreferenceService"/> with a PostgreSQL connection string invokes Npgsql
     /// and throws when the configured database host cannot be reached.
     /// </summary>
@@ -232,6 +261,133 @@ public sealed class DesktopLocalizationTests : IDisposable
         Assert.True(service.IsPostgreSql);
 
         await Assert.ThrowsAnyAsync<Exception>(async () => await service.InitializeAsync());
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="LanguagePreferenceService"/> throws when MySQL is configured without a connection factory.
+    /// </summary>
+    [Fact]
+    public async Task LanguagePreferenceService_MySql_ThrowsWithoutProviderWhenOpenedDirectly()
+    {
+        // WHAT: Tests that MySQL without provider or custom factory fails fast with InvalidOperationException.
+        // WHY:  Ensures missing driver is surfaced clearly rather than swallowed.
+        // HOW:  Instantiates LanguagePreferenceService with MySQL string and asserts InitializeAsync throws.
+        using var service = new LanguagePreferenceService("Server=localhost;Port=3306;Database=weaver;Uid=root;");
+        Assert.True(service.IsMySql);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.InitializeAsync());
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="LanguagePreferenceService"/> opens a direct DuckDB connection when no custom factory is provided.
+    /// </summary>
+    [Fact]
+    public async Task LanguagePreferenceService_DuckDb_DirectConnection_OpensAndInitializes()
+    {
+        // WHAT: Tests DuckDB connection instantiation through OpenConnectionAsync without custom factory.
+        // WHY:  Guarantees 100% coverage on DuckDB branch in OpenConnectionAsync.
+        // HOW:  Creates LanguagePreferenceService with a file-backed DuckDB connection string and runs InitializeAsync.
+        string dbFile = Path.Combine(Path.GetTempPath(), $"weaver_pref_duck_{Guid.NewGuid():N}.duckdb");
+        try
+        {
+            using var service = new LanguagePreferenceService($"Data Source={dbFile}");
+            Assert.True(service.IsDuckDb);
+            await service.InitializeAsync();
+        }
+        finally
+        {
+            if (File.Exists(dbFile))
+            {
+                try
+                {
+                    File.Delete(dbFile);
+                }
+                catch
+                {
+                    // Suppress transient file lock on Windows teardown
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="LanguagePreferenceService"/> creates schema, executes upserts, and retrieves values
+    /// on DuckDB dialect using an isolated SQLite-backed connection factory.
+    /// </summary>
+    [Fact]
+    public async Task LanguagePreferenceService_DuckDbDialect_CustomFactory_ExecutesAllBranches()
+    {
+        // WHAT: Verifies DuckDB dialect table DDL creation, upsert execution, and preferred language retrieval.
+        // WHY:  Guarantees that DuckDB dialect SQL and parameters round-trip accurately in preference service.
+        // HOW:  Supplies a connection factory returning SQLite test database and executes full lifecycle.
+        string memDb = $"Data Source={Path.Combine(Path.GetTempPath(), $"weaver_duck_pref_{Guid.NewGuid():N}.db")}";
+        try
+        {
+            using var service = new LanguagePreferenceService(
+                "Data Source=inproc.duckdb",
+                _ => new SqliteConnection(memDb));
+
+            Assert.True(service.IsDuckDb);
+            Assert.False(service.IsPostgreSql);
+            Assert.False(service.IsMySql);
+            Assert.Equal(WeaverDatabaseBackend.DuckDb, service.Backend);
+
+            await service.InitializeAsync();
+            await service.SetPreferredLanguageAsync(WeaverLanguage.French);
+            WeaverLanguage read = await service.GetPreferredLanguageAsync();
+            Assert.Equal(WeaverLanguage.French, read);
+
+            await service.SetPreferredLanguageAsync(WeaverLanguage.Spanish);
+            WeaverLanguage updated = await service.GetPreferredLanguageAsync();
+            Assert.Equal(WeaverLanguage.Spanish, updated);
+        }
+        finally
+        {
+            using var cleanupConn = new SqliteConnection(memDb);
+            SqliteConnection.ClearPool(cleanupConn);
+            string file = memDb.Replace("Data Source=", string.Empty);
+            if (File.Exists(file))
+            {
+                try { File.Delete(file); } catch { }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="LanguagePreferenceService"/> executes MySQL schema creation and upsert DML
+    /// using a recording test double connection.
+    /// </summary>
+    [Fact]
+    public async Task LanguagePreferenceService_MySqlDialect_CustomFactory_ExecutesAllBranches()
+    {
+        // WHAT: Tests MySQL schema DDL execution, ON DUPLICATE KEY upsert statement, and scalar query.
+        // WHY:  Confirms MySQL dialect SQL emission and parameter binding without requiring a live MySQL server.
+        // HOW:  Passes recording connection test double and validates executed commands and parameters.
+        var recordingConn = new RecordingPreferenceDbConnection();
+        using var service = new LanguagePreferenceService(
+            "Server=cluster.lan;Port=3306;Database=weaver;Uid=root;",
+            _ => recordingConn);
+
+        Assert.True(service.IsMySql);
+        Assert.False(service.IsPostgreSql);
+        Assert.False(service.IsDuckDb);
+        Assert.Equal(WeaverDatabaseBackend.MySql, service.Backend);
+
+        await service.InitializeAsync();
+        Assert.Single(recordingConn.ExecutedCommandTexts);
+        Assert.Contains("CREATE TABLE IF NOT EXISTS weaver_gui_preferences", recordingConn.ExecutedCommandTexts[0]);
+        Assert.Contains("DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)", recordingConn.ExecutedCommandTexts[0]);
+
+        await service.SetPreferredLanguageAsync(WeaverLanguage.Japanese);
+        Assert.Equal(2, recordingConn.ExecutedCommandTexts.Count);
+        Assert.Contains("ON DUPLICATE KEY UPDATE", recordingConn.ExecutedCommandTexts[1]);
+        Assert.Contains("@k", recordingConn.ExecutedCommandTexts[1]);
+        Assert.Contains("@v", recordingConn.ExecutedCommandTexts[1]);
+        Assert.Contains("@t", recordingConn.ExecutedCommandTexts[1]);
+
+        recordingConn.ScalarResultToReturn = "Japanese";
+        WeaverLanguage lang = await service.GetPreferredLanguageAsync();
+        Assert.Equal(WeaverLanguage.Japanese, lang);
+        Assert.Equal("SELECT value FROM weaver_gui_preferences WHERE key = @k;", recordingConn.ExecutedCommandTexts[2]);
     }
 
     /// <summary>
@@ -810,6 +966,302 @@ public sealed class DesktopLocalizationTests : IDisposable
 
             controller.ApplyLocalizedState(TrayHealthBadge.Healthy, "Status.Online", true, false, Array.Empty<string>());
             Assert.Contains("NanoWeaver HRT", controller.CurrentState.TooltipText);
+        }
+    }
+
+    /// <summary>
+    /// Recording database connection for preference service testing without a live MySQL server.
+    /// </summary>
+    private sealed class RecordingPreferenceDbConnection : DbConnection
+    {
+        /// <summary>Gets executed command texts.</summary>
+        public List<string> ExecutedCommandTexts { get; } = new();
+
+        /// <summary>Gets or sets scalar result.</summary>
+        public object? ScalarResultToReturn { get; set; }
+
+        /// <summary>Gets or sets connection string.</summary>
+        [System.Diagnostics.CodeAnalysis.AllowNull]
+        public override string ConnectionString { get; set; } = "Server=recording;";
+
+        /// <summary>Gets database name.</summary>
+        public override string Database => "recording_db";
+
+        /// <summary>Gets data source.</summary>
+        public override string DataSource => "recording_host";
+
+        /// <summary>Gets server version.</summary>
+        public override string ServerVersion => "8.0.30";
+
+        /// <summary>Gets connection state.</summary>
+        public override ConnectionState State => ConnectionState.Open;
+
+        /// <summary>Changes database.</summary>
+        /// <param name="databaseName">Name.</param>
+        public override void ChangeDatabase(string databaseName) { }
+
+        /// <summary>Closes connection.</summary>
+        public override void Close() { }
+
+        /// <summary>Opens connection.</summary>
+        public override void Open() { }
+
+        /// <summary>Opens connection async.</summary>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A completed task.</returns>
+        public override Task OpenAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        /// <summary>Begins transaction.</summary>
+        /// <param name="isolationLevel">Level.</param>
+        /// <returns>Transaction.</returns>
+        protected override DbTransaction BeginDbTransaction(IsolationLevel isolationLevel) => new RecordingPreferenceDbTransaction(this);
+
+        /// <summary>Creates command.</summary>
+        /// <returns>Recording command.</returns>
+        protected override DbCommand CreateDbCommand() => new RecordingPreferenceDbCommand(this);
+    }
+
+    /// <summary>
+    /// Recording transaction for preference tests.
+    /// </summary>
+    private sealed class RecordingPreferenceDbTransaction : DbTransaction
+    {
+        /// <summary>Owner connection.</summary>
+        private readonly DbConnection _conn;
+
+        /// <summary>Initializes a new instance of the <see cref="RecordingPreferenceDbTransaction"/> class.</summary>
+        /// <param name="conn">Connection.</param>
+        public RecordingPreferenceDbTransaction(DbConnection conn) => _conn = conn;
+
+        /// <summary>Gets connection.</summary>
+        protected override DbConnection DbConnection => _conn;
+
+        /// <summary>Gets isolation level.</summary>
+        public override IsolationLevel IsolationLevel => IsolationLevel.ReadCommitted;
+
+        /// <summary>Commits transaction.</summary>
+        public override void Commit() { }
+
+        /// <summary>Rolls back transaction.</summary>
+        public override void Rollback() { }
+    }
+
+    /// <summary>
+    /// Recording command for preference tests.
+    /// </summary>
+    private sealed class RecordingPreferenceDbCommand : DbCommand
+    {
+        /// <summary>Owner connection.</summary>
+        private readonly RecordingPreferenceDbConnection _conn;
+
+        /// <summary>Parameter collection.</summary>
+        private readonly RecordingPreferenceDbParameterCollection _params = new();
+
+        /// <summary>Initializes a new instance of the <see cref="RecordingPreferenceDbCommand"/> class.</summary>
+        /// <param name="conn">Connection.</param>
+        public RecordingPreferenceDbCommand(RecordingPreferenceDbConnection conn) => _conn = conn;
+
+        /// <summary>Gets or sets command text.</summary>
+        [System.Diagnostics.CodeAnalysis.AllowNull]
+        public override string CommandText { get; set; } = string.Empty;
+
+        /// <summary>Gets or sets command timeout.</summary>
+        public override int CommandTimeout { get; set; }
+
+        /// <summary>Gets or sets command type.</summary>
+        public override CommandType CommandType { get; set; } = CommandType.Text;
+
+        /// <summary>Gets or sets design-time visibility.</summary>
+        public override bool DesignTimeVisible { get; set; }
+
+        /// <summary>Gets or sets updated row source.</summary>
+        public override UpdateRowSource UpdatedRowSource { get; set; }
+
+        /// <summary>Gets or sets connection.</summary>
+        protected override DbConnection? DbConnection { get => _conn; set { } }
+
+        /// <summary>Gets parameter collection.</summary>
+        protected override DbParameterCollection DbParameterCollection => _params;
+
+        /// <summary>Gets or sets transaction.</summary>
+        protected override DbTransaction? DbTransaction { get; set; }
+
+        /// <summary>Cancels execution.</summary>
+        public override void Cancel() { }
+
+        /// <summary>Executes non query.</summary>
+        /// <returns>Rows affected.</returns>
+        public override int ExecuteNonQuery()
+        {
+            _conn.ExecutedCommandTexts.Add(CommandText);
+            return 1;
+        }
+
+        /// <summary>Executes non query async.</summary>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>Rows affected.</returns>
+        public override Task<int> ExecuteNonQueryAsync(CancellationToken cancellationToken) => Task.FromResult(ExecuteNonQuery());
+
+        /// <summary>Executes scalar.</summary>
+        /// <returns>Scalar result.</returns>
+        public override object? ExecuteScalar()
+        {
+            _conn.ExecutedCommandTexts.Add(CommandText);
+            return _conn.ScalarResultToReturn;
+        }
+
+        /// <summary>Executes scalar async.</summary>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>Scalar result.</returns>
+        public override Task<object?> ExecuteScalarAsync(CancellationToken cancellationToken) => Task.FromResult(ExecuteScalar());
+
+        /// <summary>Prepares command.</summary>
+        public override void Prepare() { }
+
+        /// <summary>Creates parameter.</summary>
+        /// <returns>New parameter.</returns>
+        protected override DbParameter CreateDbParameter() => new RecordingPreferenceDbParameter();
+
+        /// <summary>Executes reader.</summary>
+        /// <param name="behavior">Behavior.</param>
+        /// <returns>Not supported.</returns>
+        protected override DbDataReader ExecuteDbDataReader(CommandBehavior behavior) => throw new NotSupportedException();
+    }
+
+    /// <summary>
+    /// Recording parameter for preference tests.
+    /// </summary>
+    private sealed class RecordingPreferenceDbParameter : DbParameter
+    {
+        /// <summary>Gets or sets db type.</summary>
+        public override DbType DbType { get; set; }
+
+        /// <summary>Gets or sets direction.</summary>
+        public override ParameterDirection Direction { get; set; } = ParameterDirection.Input;
+
+        /// <summary>Gets or sets is nullable.</summary>
+        public override bool IsNullable { get; set; }
+
+        /// <summary>Gets or sets parameter name.</summary>
+        [System.Diagnostics.CodeAnalysis.AllowNull]
+        public override string ParameterName { get; set; } = string.Empty;
+
+        /// <summary>Gets or sets source column.</summary>
+        [System.Diagnostics.CodeAnalysis.AllowNull]
+        public override string SourceColumn { get; set; } = string.Empty;
+
+        /// <summary>Gets or sets value.</summary>
+        public override object? Value { get; set; }
+
+        /// <summary>Gets or sets null mapping.</summary>
+        public override bool SourceColumnNullMapping { get; set; }
+
+        /// <summary>Gets or sets size.</summary>
+        public override int Size { get; set; }
+
+        /// <summary>Resets db type.</summary>
+        public override void ResetDbType() { }
+    }
+
+    /// <summary>
+    /// Recording parameter collection for preference tests.
+    /// </summary>
+    private sealed class RecordingPreferenceDbParameterCollection : DbParameterCollection
+    {
+        /// <summary>Parameters list.</summary>
+        private readonly List<DbParameter> _items = new();
+
+        /// <summary>Gets count.</summary>
+        public override int Count => _items.Count;
+
+        /// <summary>Gets sync root.</summary>
+        public override object SyncRoot => ((ICollection)_items).SyncRoot;
+
+        /// <summary>Adds parameter.</summary>
+        /// <param name="value">Parameter.</param>
+        /// <returns>Index.</returns>
+        public override int Add(object? value) { _items.Add((DbParameter)value!); return _items.Count - 1; }
+
+        /// <summary>Adds range.</summary>
+        /// <param name="values">Array.</param>
+        public override void AddRange(Array values) { foreach (object v in values) Add(v); }
+
+        /// <summary>Clears parameters.</summary>
+        public override void Clear() => _items.Clear();
+
+        /// <summary>Checks contains.</summary>
+        /// <param name="value">Value.</param>
+        /// <returns>True if contained.</returns>
+        public override bool Contains(object? value) => value is DbParameter p && _items.Contains(p);
+
+        /// <summary>Checks contains name.</summary>
+        /// <param name="value">Name.</param>
+        /// <returns>True if contained.</returns>
+        public override bool Contains(string value) => _items.Any(p => p.ParameterName == value);
+
+        /// <summary>Copies to array.</summary>
+        /// <param name="array">Array.</param>
+        /// <param name="index">Index.</param>
+        public override void CopyTo(Array array, int index) => ((ICollection)_items).CopyTo(array, index);
+
+        /// <summary>Gets enumerator.</summary>
+        /// <returns>Enumerator.</returns>
+        public override IEnumerator GetEnumerator() => _items.GetEnumerator();
+
+        /// <summary>Gets parameter by index.</summary>
+        /// <param name="index">Index.</param>
+        /// <returns>Parameter.</returns>
+        protected override DbParameter GetParameter(int index) => _items[index];
+
+        /// <summary>Gets parameter by name.</summary>
+        /// <param name="parameterName">Name.</param>
+        /// <returns>Parameter.</returns>
+        protected override DbParameter GetParameter(string parameterName) => _items.First(p => p.ParameterName == parameterName);
+
+        /// <summary>Gets index of parameter.</summary>
+        /// <param name="value">Value.</param>
+        /// <returns>Index.</returns>
+        public override int IndexOf(object? value) => value is DbParameter p ? _items.IndexOf(p) : -1;
+
+        /// <summary>Gets index of name.</summary>
+        /// <param name="parameterName">Name.</param>
+        /// <returns>Index.</returns>
+        public override int IndexOf(string parameterName) => _items.FindIndex(p => p.ParameterName == parameterName);
+
+        /// <summary>Inserts parameter.</summary>
+        /// <param name="index">Index.</param>
+        /// <param name="value">Parameter.</param>
+        public override void Insert(int index, object? value) => _items.Insert(index, (DbParameter)value!);
+
+        /// <summary>Removes parameter.</summary>
+        /// <param name="value">Parameter.</param>
+        public override void Remove(object? value) { if (value is DbParameter p) _items.Remove(p); }
+
+        /// <summary>Removes at index.</summary>
+        /// <param name="index">Index.</param>
+        public override void RemoveAt(int index) => _items.RemoveAt(index);
+
+        /// <summary>Removes by name.</summary>
+        /// <param name="parameterName">Name.</param>
+        public override void RemoveAt(string parameterName)
+        {
+            int idx = IndexOf(parameterName);
+            if (idx >= 0) _items.RemoveAt(idx);
+        }
+
+        /// <summary>Sets parameter.</summary>
+        /// <param name="index">Index.</param>
+        /// <param name="value">Parameter.</param>
+        protected override void SetParameter(int index, DbParameter value) => _items[index] = value;
+
+        /// <summary>Sets parameter by name.</summary>
+        /// <param name="parameterName">Name.</param>
+        /// <param name="value">Parameter.</param>
+        protected override void SetParameter(string parameterName, DbParameter value)
+        {
+            int idx = IndexOf(parameterName);
+            if (idx >= 0) _items[idx] = value;
+            else Add(value);
         }
     }
 }

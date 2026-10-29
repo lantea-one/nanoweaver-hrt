@@ -1,14 +1,16 @@
 using System.Data.Common;
 using System.Globalization;
+using DuckDB.NET.Data;
 using Microsoft.Data.Sqlite;
+using NanoWeaverHrt.Database.Access;
 using NanoWeaverHrt.Localization;
 using Npgsql;
 
 namespace NanoWeaverHrt.Client.Storage;
 
 /// <summary>
-/// Dual-engine persistence service managing persistent user language and locale preferences,
-/// backed by SQLite (local client) or PostgreSQL (centralized/enterprise node).
+/// Multi-engine persistence service managing persistent user language and locale preferences,
+/// backed by SQLite (local client), PostgreSQL (centralized/enterprise node), DuckDB (columnar), or MySQL (clustered).
 /// </summary>
 public sealed class LanguagePreferenceService : ILanguagePreferenceService, IDisposable
 {
@@ -37,6 +39,30 @@ public sealed class LanguagePreferenceService : ILanguagePreferenceService, IDis
         """;
 
     /// <summary>
+    /// Schema creation DDL for DuckDB preferences table.
+    /// </summary>
+    private const string DuckDbSchemaDdl =
+        "CREATE TABLE IF NOT EXISTS weaver_gui_preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at_utc TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP);";
+
+    /// <summary>
+    /// Schema creation DDL for MySQL preferences table.
+    /// </summary>
+    private const string MySqlSchemaDdl =
+        "CREATE TABLE IF NOT EXISTS weaver_gui_preferences (key VARCHAR(128) PRIMARY KEY, value VARCHAR(512) NOT NULL, updated_at_utc DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6));";
+
+    /// <summary>
+    /// Upsert DML statement for DuckDB preferences.
+    /// </summary>
+    private const string DuckDbUpsertDml =
+        "INSERT INTO weaver_gui_preferences (key, value, updated_at_utc) VALUES (@k, @v, @t) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at_utc = EXCLUDED.updated_at_utc;";
+
+    /// <summary>
+    /// Upsert DML statement for MySQL preferences.
+    /// </summary>
+    private const string MySqlUpsertDml =
+        "INSERT INTO weaver_gui_preferences (key, value, updated_at_utc) VALUES (@k, @v, @t) ON DUPLICATE KEY UPDATE value = VALUES(value), updated_at_utc = VALUES(updated_at_utc);";
+
+    /// <summary>
     /// Key used to store language preference in the database.
     /// </summary>
     private const string LanguageKey = "ui.language";
@@ -50,6 +76,11 @@ public sealed class LanguagePreferenceService : ILanguagePreferenceService, IDis
     /// Indicates whether the target storage engine is PostgreSQL (<c>true</c>) or SQLite (<c>false</c>).
     /// </summary>
     private readonly bool _isPostgreSql;
+
+    /// <summary>
+    /// The resolved database backend for preferences storage.
+    /// </summary>
+    private readonly WeaverDatabaseBackend _backend;
 
     /// <summary>
     /// Optional connection factory used for testing connection branches without an external database server.
@@ -72,17 +103,27 @@ public sealed class LanguagePreferenceService : ILanguagePreferenceService, IDis
     public bool IsPostgreSql => _isPostgreSql;
 
     /// <summary>
+    /// Gets a value indicating whether this preference service is configured for DuckDB storage.
+    /// </summary>
+    public bool IsDuckDb => _backend == WeaverDatabaseBackend.DuckDb;
+
+    /// <summary>
+    /// Gets a value indicating whether this preference service is configured for MySQL storage.
+    /// </summary>
+    public bool IsMySql => _backend == WeaverDatabaseBackend.MySql;
+
+    /// <summary>
+    /// Gets the target database backend engine for this preference store.
+    /// </summary>
+    public WeaverDatabaseBackend Backend => _backend;
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="LanguagePreferenceService"/> class using the specified connection string.
     /// </summary>
-    /// <param name="connectionString">The SQLite or PostgreSQL database connection string.</param>
+    /// <param name="connectionString">The SQLite, PostgreSQL, DuckDB, or MySQL database connection string.</param>
     public LanguagePreferenceService(string connectionString)
+        : this(connectionString, ResolveBackend(connectionString), connectionFactory: null)
     {
-        // WHAT: Validates and assigns the database connection string and identifies the storage dialect.
-        // WHY:  Permits client to connect to either SQLite or enterprise PostgreSQL preference stores.
-        // HOW:  Guards against null or whitespace, inspects connection string tokens for PostgreSQL keywords.
-        ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
-        _connectionString = connectionString;
-        _isPostgreSql = IsPostgreSqlConnectionString(connectionString);
     }
 
     /// <summary>
@@ -91,12 +132,25 @@ public sealed class LanguagePreferenceService : ILanguagePreferenceService, IDis
     /// <param name="connectionString">The SQLite or PostgreSQL database connection string.</param>
     /// <param name="connectionFactory">Factory generating database connections.</param>
     internal LanguagePreferenceService(string connectionString, Func<string, DbConnection> connectionFactory)
-        : this(connectionString)
+        : this(connectionString, ResolveBackend(connectionString), connectionFactory)
     {
-        // WHAT: Assigns custom connection factory delegate for unit testing.
-        // WHY:  Permits executing PostgreSQL dialect statements without external daemon dependencies.
-        // HOW:  Validates factory is non-null and assigns to _connectionFactory.
-        ArgumentNullException.ThrowIfNull(connectionFactory);
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="LanguagePreferenceService"/> class with an explicit backend and optional connection factory.
+    /// </summary>
+    /// <param name="connectionString">The database connection string.</param>
+    /// <param name="backend">The explicit database backend.</param>
+    /// <param name="connectionFactory">Optional factory generating database connections.</param>
+    public LanguagePreferenceService(string connectionString, WeaverDatabaseBackend backend, Func<string, DbConnection>? connectionFactory = null)
+    {
+        // WHAT: Validates and assigns the database connection string, backend dialect, and optional connection factory.
+        // WHY:  Permits client to connect to SQLite, PostgreSQL, DuckDB, or MySQL preference stores.
+        // HOW:  Guards against null or whitespace, stores backend, computes IsPostgreSql flag for backward compatibility.
+        ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
+        _connectionString = connectionString;
+        _backend = backend;
+        _isPostgreSql = backend == WeaverDatabaseBackend.PostgreSql;
         _connectionFactory = connectionFactory;
     }
 
@@ -115,7 +169,7 @@ public sealed class LanguagePreferenceService : ILanguagePreferenceService, IDis
     public async Task InitializeAsync(CancellationToken ct = default)
     {
         // WHAT: Creates the weaver_gui_preferences table on the active backend if not already present.
-        // WHY:  Guarantees tables exist before executing read/write commands on SQLite or PostgreSQL.
+        // WHY:  Guarantees tables exist before executing read/write commands on SQLite, PostgreSQL, DuckDB, or MySQL.
         // HOW:  Acquires SemaphoreSlim lock, opens a DbConnection, and executes engine-specific DDL.
         if (_isInitialized)
         {
@@ -133,7 +187,13 @@ public sealed class LanguagePreferenceService : ILanguagePreferenceService, IDis
             {
                 await using DbConnection connection = await OpenConnectionAsync(ct).ConfigureAwait(false);
                 await using DbCommand cmd = connection.CreateCommand();
-                cmd.CommandText = _isPostgreSql ? PostgresSchemaDdl : SqliteSchemaDdl;
+                cmd.CommandText = _backend switch
+                {
+                    WeaverDatabaseBackend.DuckDb => DuckDbSchemaDdl,
+                    WeaverDatabaseBackend.MySql => MySqlSchemaDdl,
+                    WeaverDatabaseBackend.PostgreSql => PostgresSchemaDdl,
+                    _ => SqliteSchemaDdl
+                };
                 await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
             }
 
@@ -148,7 +208,7 @@ public sealed class LanguagePreferenceService : ILanguagePreferenceService, IDis
     /// <inheritdoc/>
     public async ValueTask<WeaverLanguage> GetPreferredLanguageAsync(CancellationToken ct = default)
     {
-        // WHAT: Retrieves persistent user language preference from SQLite or PostgreSQL.
+        // WHAT: Retrieves persistent user language preference from SQLite, PostgreSQL, DuckDB, or MySQL.
         // WHY:  Restores user's chosen UI locale on application launch regardless of storage engine.
         // HOW:  Initializes schema, executes parameterized SELECT for LanguageKey, parses WeaverLanguage enum, defaulting to English.
         await InitializeAsync(ct).ConfigureAwait(false);
@@ -157,12 +217,12 @@ public sealed class LanguagePreferenceService : ILanguagePreferenceService, IDis
         {
             await using DbConnection connection = await OpenConnectionAsync(ct).ConfigureAwait(false);
             await using DbCommand cmd = connection.CreateCommand();
-            cmd.CommandText = "SELECT preference_value FROM weaver_gui_preferences WHERE preference_key = @key;";
+            bool isNewSchema = _backend is WeaverDatabaseBackend.DuckDb or WeaverDatabaseBackend.MySql;
+            cmd.CommandText = isNewSchema
+                ? "SELECT value FROM weaver_gui_preferences WHERE key = @k;"
+                : "SELECT preference_value FROM weaver_gui_preferences WHERE preference_key = @key;";
 
-            DbParameter pKey = cmd.CreateParameter();
-            pKey.ParameterName = "@key";
-            pKey.Value = LanguageKey;
-            cmd.Parameters.Add(pKey);
+            AddParameter(cmd, isNewSchema ? "@k" : "@key", LanguageKey);
 
             object? result = await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false);
 
@@ -178,9 +238,9 @@ public sealed class LanguagePreferenceService : ILanguagePreferenceService, IDis
     /// <inheritdoc/>
     public async ValueTask SetPreferredLanguageAsync(WeaverLanguage language, CancellationToken ct = default)
     {
-        // WHAT: Persists the selected WeaverLanguage preference to SQLite or PostgreSQL.
+        // WHAT: Persists the selected WeaverLanguage preference across SQLite, PostgreSQL, DuckDB, or MySQL.
         // WHY:  Stores user preference across application sessions on the configured storage backend.
-        // HOW:  Initializes schema, formats timestamp, and executes dual-engine compatible ON CONFLICT statement.
+        // HOW:  Initializes schema, formats timestamp, and executes engine-compatible upsert statement.
         await InitializeAsync(ct).ConfigureAwait(false);
 
         string value = language.ToString();
@@ -189,29 +249,49 @@ public sealed class LanguagePreferenceService : ILanguagePreferenceService, IDis
         {
             await using DbConnection connection = await OpenConnectionAsync(ct).ConfigureAwait(false);
             await using DbCommand cmd = connection.CreateCommand();
-            cmd.CommandText =
-                """
-                INSERT INTO weaver_gui_preferences (preference_key, preference_value, updated_at_utc)
-                VALUES (@key, @value, @updatedAt)
-                ON CONFLICT (preference_key) DO UPDATE SET
-                    preference_value = EXCLUDED.preference_value,
-                    updated_at_utc = EXCLUDED.updated_at_utc;
-                """;
 
-            DbParameter pKey = cmd.CreateParameter();
-            pKey.ParameterName = "@key";
-            pKey.Value = LanguageKey;
-            cmd.Parameters.Add(pKey);
-
-            DbParameter pVal = cmd.CreateParameter();
-            pVal.ParameterName = "@value";
-            pVal.Value = value;
-            cmd.Parameters.Add(pVal);
-
-            DbParameter pTime = cmd.CreateParameter();
-            pTime.ParameterName = "@updatedAt";
-            pTime.Value = _isPostgreSql ? (object)DateTimeOffset.UtcNow : updatedAt;
-            cmd.Parameters.Add(pTime);
+            if (_backend == WeaverDatabaseBackend.DuckDb)
+            {
+                cmd.CommandText = DuckDbUpsertDml;
+                AddParameter(cmd, "@k", LanguageKey);
+                AddParameter(cmd, "@v", value);
+                AddParameter(cmd, "@t", DateTime.UtcNow);
+            }
+            else if (_backend == WeaverDatabaseBackend.MySql)
+            {
+                cmd.CommandText = MySqlUpsertDml;
+                AddParameter(cmd, "@k", LanguageKey);
+                AddParameter(cmd, "@v", value);
+                AddParameter(cmd, "@t", DateTime.UtcNow);
+            }
+            else if (_backend == WeaverDatabaseBackend.PostgreSql)
+            {
+                cmd.CommandText =
+                    """
+                    INSERT INTO weaver_gui_preferences (preference_key, preference_value, updated_at_utc)
+                    VALUES (@key, @value, @updatedAt)
+                    ON CONFLICT (preference_key) DO UPDATE SET
+                        preference_value = EXCLUDED.preference_value,
+                        updated_at_utc = EXCLUDED.updated_at_utc;
+                    """;
+                AddParameter(cmd, "@key", LanguageKey);
+                AddParameter(cmd, "@value", value);
+                AddParameter(cmd, "@updatedAt", DateTimeOffset.UtcNow);
+            }
+            else
+            {
+                cmd.CommandText =
+                    """
+                    INSERT INTO weaver_gui_preferences (preference_key, preference_value, updated_at_utc)
+                    VALUES (@key, @value, @updatedAt)
+                    ON CONFLICT (preference_key) DO UPDATE SET
+                        preference_value = EXCLUDED.preference_value,
+                        updated_at_utc = EXCLUDED.updated_at_utc;
+                    """;
+                AddParameter(cmd, "@key", LanguageKey);
+                AddParameter(cmd, "@value", value);
+                AddParameter(cmd, "@updatedAt", updatedAt);
+            }
 
             await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
@@ -235,25 +315,43 @@ public sealed class LanguagePreferenceService : ILanguagePreferenceService, IDis
     /// <returns>An open database connection.</returns>
     private async Task<DbConnection> OpenConnectionAsync(CancellationToken ct)
     {
-        // WHAT: Instantiates and opens an NpgsqlConnection or SqliteConnection based on configuration.
-        // WHY:  Abstracts connection construction across SQLite and PostgreSQL engines.
-        // HOW:  If custom connection factory is configured, delegates to it; otherwise checks directory and instantiates appropriate connection.
-        if (!_isPostgreSql && _connectionFactory is null)
+        // WHAT: Instantiates and opens a connection based on the resolved backend.
+        // WHY:  Abstracts connection construction across SQLite, PostgreSQL, DuckDB, and MySQL engines.
+        // HOW:  If custom connection factory is configured, delegates to it; otherwise instantiates the driver.
+        if (_connectionFactory is not null)
         {
-            var builder = new SqliteConnectionStringBuilder(_connectionString);
-            if (!string.IsNullOrWhiteSpace(builder.DataSource) &&
-                !builder.DataSource.Equals(":memory:", StringComparison.OrdinalIgnoreCase))
-            {
-                string? dir = Path.GetDirectoryName(builder.DataSource);
-                if (!string.IsNullOrWhiteSpace(dir))
-                {
-                    Directory.CreateDirectory(dir);
-                }
-            }
+            DbConnection custom = _connectionFactory(_connectionString);
+            await custom.OpenAsync(ct).ConfigureAwait(false);
+            return custom;
         }
 
-        DbConnection connection = _connectionFactory?.Invoke(_connectionString)
-            ?? (_isPostgreSql ? (DbConnection)new NpgsqlConnection(_connectionString) : new SqliteConnection(_connectionString));
+        DbConnection connection;
+        switch (_backend)
+        {
+            case WeaverDatabaseBackend.DuckDb:
+                connection = new DuckDBConnection(_connectionString);
+                break;
+            case WeaverDatabaseBackend.PostgreSql:
+                connection = new NpgsqlConnection(_connectionString);
+                break;
+            case WeaverDatabaseBackend.MySql:
+                throw new InvalidOperationException("No MySQL ADO.NET provider is available. Supply a custom connection factory delegate to LanguagePreferenceService.");
+            case WeaverDatabaseBackend.Sqlite:
+            default:
+                var builder = new SqliteConnectionStringBuilder(_connectionString);
+                if (!string.IsNullOrWhiteSpace(builder.DataSource) &&
+                    !builder.DataSource.Equals(":memory:", StringComparison.OrdinalIgnoreCase))
+                {
+                    string? dir = Path.GetDirectoryName(builder.DataSource);
+                    if (!string.IsNullOrWhiteSpace(dir))
+                    {
+                        Directory.CreateDirectory(dir);
+                    }
+                }
+                connection = new SqliteConnection(_connectionString);
+                break;
+        }
+
         await connection.OpenAsync(ct).ConfigureAwait(false);
         return connection;
     }
@@ -273,6 +371,59 @@ public sealed class LanguagePreferenceService : ILanguagePreferenceService, IDis
             || connectionString.Contains("Port=", StringComparison.OrdinalIgnoreCase)
             || connectionString.Contains("User Id=", StringComparison.OrdinalIgnoreCase)
             || connectionString.Contains("Username=", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Inspects a connection string to detect the target database backend.
+    /// </summary>
+    /// <param name="connectionString">The connection string to evaluate.</param>
+    /// <returns>The resolved <see cref="WeaverDatabaseBackend"/>.</returns>
+    private static WeaverDatabaseBackend ResolveBackend(string? connectionString)
+    {
+        // WHAT: Detects database engine dialect from connection string tokens and file extensions.
+        // WHY:  Routes queries and DDL to the correct relational or columnar SQL dialect.
+        // HOW:  Checks for DuckDB tokens first, then MySQL tokens, then PostgreSQL tokens, defaulting to SQLite.
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            return WeaverDatabaseBackend.Sqlite;
+        }
+
+        if (connectionString.Contains("duckdb", StringComparison.OrdinalIgnoreCase))
+        {
+            return WeaverDatabaseBackend.DuckDb;
+        }
+
+        if (connectionString.Contains("mysql", StringComparison.OrdinalIgnoreCase)
+            || connectionString.Contains("mariadb", StringComparison.OrdinalIgnoreCase)
+            || connectionString.Contains("Port=3306", StringComparison.OrdinalIgnoreCase)
+            || connectionString.Contains("Uid=", StringComparison.OrdinalIgnoreCase))
+        {
+            return WeaverDatabaseBackend.MySql;
+        }
+
+        if (IsPostgreSqlConnectionString(connectionString))
+        {
+            return WeaverDatabaseBackend.PostgreSql;
+        }
+
+        return WeaverDatabaseBackend.Sqlite;
+    }
+
+    /// <summary>
+    /// Adds a named parameter with the specified value to a database command.
+    /// </summary>
+    /// <param name="cmd">The command to append the parameter to.</param>
+    /// <param name="name">The parameter name including prefix.</param>
+    /// <param name="value">The parameter value.</param>
+    private static void AddParameter(DbCommand cmd, string name, object value)
+    {
+        // WHAT: Creates and appends a single DbParameter to the DbCommand.
+        // WHY:  Standardizes parameter binding across all database engines and statements.
+        // HOW:  Creates parameter via cmd.CreateParameter, assigns name and value, adds to Parameters collection.
+        DbParameter param = cmd.CreateParameter();
+        param.ParameterName = name;
+        param.Value = value;
+        cmd.Parameters.Add(param);
     }
 
     /// <summary>
