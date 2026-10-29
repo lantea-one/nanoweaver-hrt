@@ -74,7 +74,7 @@ PFX_FILE="${PKI_DIR}/codesign-leaf.pfx"
 ANDROID_KEYSTORE="${PKI_DIR}/codesign-android.keystore"
 GNUPG_DIR="${PKI_DIR}/gnupg"
 
-if [[ ! -f "${LEAF_KEY}" || ! -f "${LEAF_CERT}" || ! -f "${ROOT_CERT}" ]]; then
+if [[ ! -f "${LEAF_KEY}" || ! -f "${LEAF_CERT}" || ! -f "${ROOT_CERT}" || ! -f "${PFX_FILE}" || ! -d "${GNUPG_DIR}" ]]; then
     echo ">> Signing keys missing in ${PKI_DIR}. Auto-provisioning via provision-or-rotate-codesign.sh..."
     "${SCRIPT_DIR}/provision-or-rotate-codesign.sh" \
         --out-dir "${PKI_DIR}" \

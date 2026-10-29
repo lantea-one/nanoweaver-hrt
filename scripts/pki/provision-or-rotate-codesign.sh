@@ -87,24 +87,34 @@ mkdir -p "${PUBLIC_KEYS_DIR}"
 LEAF_CERT_PUB="${PUBLIC_KEYS_DIR}/nanoweaver-codesign-leaf.crt"
 ROOT_CERT_PUB="${PUBLIC_KEYS_DIR}/nanoweaver-codesign-root-ca.crt"
 ARCHIVE_KEYRING_PUB="${PUBLIC_KEYS_DIR}/nanoweaver-archive-keyring.asc"
+LEAF_KEY_PRIV="${OUT_DIR}/nanoweaver-codesign-leaf.key"
+PFX_PRIV="${OUT_DIR}/codesign-leaf.pfx"
+GNUPG_DIR_PRIV="${OUT_DIR}/gnupg"
 
-# WHAT: Evaluate current leaf certificate validity and expiry threshold.
-# WHY:  Avoid unnecessary rotation churn if the certificate still has sufficient validity.
-# HOW:  Execute openssl x509 -checkend with the configured threshold seconds.
-if [[ ${FORCE_ROTATION} -eq 0 && -f "${LEAF_CERT_PUB}" && -f "${ROOT_CERT_PUB}" ]]; then
+# WHAT: Evaluate current leaf certificate validity, expiry threshold, and private key presence.
+# WHY:  Avoid unnecessary rotation churn if the certificate still has sufficient validity
+#       AND matching private signing keys already exist in the target output directory.
+# HOW:  Check presence of private leaf key, PKCS#12 bundle, and GPG directory, verify public keys
+#       match the private key, and execute openssl x509 -checkend with the configured threshold seconds.
+if [[ ${FORCE_ROTATION} -eq 0 && -f "${LEAF_CERT_PUB}" && -f "${ROOT_CERT_PUB}" && -f "${LEAF_KEY_PRIV}" && -f "${PFX_PRIV}" && -d "${GNUPG_DIR_PRIV}" ]]; then
     if openssl x509 -in "${LEAF_CERT_PUB}" -checkend "${CHECK_EXPIRY_SECONDS}" -noout >/dev/null 2>&1; then
         if openssl verify -CAfile "${ROOT_CERT_PUB}" "${LEAF_CERT_PUB}" >/dev/null 2>&1; then
-            EXPIRY_DATE="$(openssl x509 -in "${LEAF_CERT_PUB}" -noout -enddate | cut -d= -f2)"
-            echo "=============================================================================="
-            echo ">> Sovereign Code-Signing Leaf Certificate is VALID (No rotation required)"
-            echo "   Leaf:       ${LEAF_CERT_PUB}"
-            echo "   Expires on: ${EXPIRY_DATE}"
-            echo "   Threshold:  ${CHECK_EXPIRY_SECONDS}s ($(( CHECK_EXPIRY_SECONDS / 86400 )) days)"
-            echo "=============================================================================="
-            exit 0
+            PUB_FROM_CERT="$(openssl x509 -in "${LEAF_CERT_PUB}" -noout -pubkey 2>/dev/null || true)"
+            PUB_FROM_KEY="$(openssl pkey -in "${LEAF_KEY_PRIV}" -pubout 2>/dev/null || true)"
+            if [[ -n "${PUB_FROM_CERT}" && "${PUB_FROM_CERT}" == "${PUB_FROM_KEY}" ]]; then
+                EXPIRY_DATE="$(openssl x509 -in "${LEAF_CERT_PUB}" -noout -enddate | cut -d= -f2)"
+                echo "=============================================================================="
+                echo ">> Sovereign Code-Signing Leaf Certificate & Private Keys are VALID (No rotation required)"
+                echo "   Leaf:       ${LEAF_CERT_PUB}"
+                echo "   Private:    ${LEAF_KEY_PRIV}"
+                echo "   Expires on: ${EXPIRY_DATE}"
+                echo "   Threshold:  ${CHECK_EXPIRY_SECONDS}s ($(( CHECK_EXPIRY_SECONDS / 86400 )) days)"
+                echo "=============================================================================="
+                exit 0
+            fi
         fi
     fi
-    echo ">> Existing leaf certificate is expiring within ${CHECK_EXPIRY_SECONDS}s or verification failed. Proceeding with rotation..."
+    echo ">> Existing leaf certificate is expiring within ${CHECK_EXPIRY_SECONDS}s, verification failed, or private keys mismatched. Proceeding with rotation..."
 fi
 
 echo "=============================================================================="
