@@ -275,9 +275,14 @@ fi
 # WHAT: Generate 90-day OpenPGP Ed25519 signing key and export public keyring.
 # WHY:  Linux package managers and detached signature verifiers authenticate via OpenPGP.
 # HOW:  Run unattended gpg --batch --generate-key in an isolated homedir and export armored public key.
+#       A short transient symlink in /tmp is used for GNUPGHOME to prevent sockaddr_un 108-byte
+#       socket path truncation on deep CI runner filesystems.
 GNUPG_DIR="${OUT_DIR}/gnupg"
 mkdir -p "${GNUPG_DIR}"
 chmod 700 "${GNUPG_DIR}"
+
+SHORT_GPG_LINK="$(mktemp -u -t nw-gpg-XXXXXX)"
+ln -sfn "${GNUPG_DIR}" "${SHORT_GPG_LINK}"
 
 GPG_CONF="${OUT_DIR}/gpg-batch.conf"
 cat << 'EOF' > "${GPG_CONF}"
@@ -294,12 +299,15 @@ Expire-Date: 90d
 %commit
 EOF
 
-GNUPGHOME="${GNUPG_DIR}" gpg --batch --generate-key "${GPG_CONF}" >/dev/null 2>&1
+GNUPGHOME="${SHORT_GPG_LINK}" gpg --batch --generate-key "${GPG_CONF}"
 rm -f "${GPG_CONF}"
 
-GNUPGHOME="${GNUPG_DIR}" gpg --armor --export "release@lantea.one" > "${ARCHIVE_KEYRING_PUB}"
+GNUPGHOME="${SHORT_GPG_LINK}" gpg --armor --export "release@lantea.one" > "${ARCHIVE_KEYRING_PUB}"
 cp "${ARCHIVE_KEYRING_PUB}" "${OUT_DIR}/nanoweaver-archive-keyring.asc"
 echo "✓ OpenPGP Public Keyring exported to ${ARCHIVE_KEYRING_PUB}"
+
+GNUPGHOME="${SHORT_GPG_LINK}" gpgconf --kill gpg-agent >/dev/null 2>&1 || true
+rm -f "${SHORT_GPG_LINK}"
 
 # WHAT: Verify cryptographic validity of all minted artifacts.
 # WHY:  Fail immediately if the leaf certificate fails validation against the root CA.

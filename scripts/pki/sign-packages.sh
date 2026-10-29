@@ -82,6 +82,17 @@ if [[ ! -f "${LEAF_KEY}" || ! -f "${LEAF_CERT}" || ! -f "${ROOT_CERT}" || ! -f "
         --pfx-password "${PFX_PASSWORD}"
 fi
 
+# WHAT: Establish short symlink in /tmp for GNUPGHOME if GNUPG_DIR exists.
+# WHY:  Avoid sockaddr_un 108-character limit when runner paths are deep.
+# HOW:  Symlink GNUPG_DIR to transient /tmp link and kill agent on script completion.
+SHORT_GPG_LINK=""
+GPG_EXEC_HOME="${GNUPG_DIR}"
+if [[ -d "${GNUPG_DIR}" ]]; then
+    SHORT_GPG_LINK="$(mktemp -u -t nw-gpg-XXXXXX)"
+    ln -sfn "${GNUPG_DIR}" "${SHORT_GPG_LINK}"
+    GPG_EXEC_HOME="${SHORT_GPG_LINK}"
+fi
+
 echo "=============================================================================="
 echo ">> Sovereign Code-Signing & Release Manifest Engine"
 echo "   Artifacts Directory: ${ARTIFACTS_DIR}"
@@ -203,11 +214,11 @@ for pkg in "${TARGET_FILES[@]}"; do
         GPG_ASC="${pkg}.asc"
         GPG_SIG="${pkg}.sig"
 
-        GNUPGHOME="${GNUPG_DIR}" gpg --batch --yes --armor --detach-sign --output "${GPG_ASC}" "${pkg}" >/dev/null 2>&1
-        GNUPGHOME="${GNUPG_DIR}" gpg --batch --yes --detach-sign --output "${GPG_SIG}" "${pkg}" >/dev/null 2>&1
+        GNUPGHOME="${GPG_EXEC_HOME}" gpg --batch --yes --armor --detach-sign --output "${GPG_ASC}" "${pkg}" >/dev/null 2>&1
+        GNUPGHOME="${GPG_EXEC_HOME}" gpg --batch --yes --detach-sign --output "${GPG_SIG}" "${pkg}" >/dev/null 2>&1
 
-        GNUPGHOME="${GNUPG_DIR}" gpg --batch --verify "${GPG_ASC}" "${pkg}" >/dev/null 2>&1
-        GNUPGHOME="${GNUPG_DIR}" gpg --batch --verify "${GPG_SIG}" "${pkg}" >/dev/null 2>&1
+        GNUPGHOME="${GPG_EXEC_HOME}" gpg --batch --verify "${GPG_ASC}" "${pkg}" >/dev/null 2>&1
+        GNUPGHOME="${GPG_EXEC_HOME}" gpg --batch --verify "${GPG_SIG}" "${pkg}" >/dev/null 2>&1
         echo "   ✓ Detached OpenPGP signatures generated and verified: $(basename "${GPG_ASC}"), $(basename "${GPG_SIG}")"
     fi
 done
@@ -250,12 +261,17 @@ echo "✓ Master manifest signed with X.509 CMS: SHA256SUMS.p7s"
 
 # Cryptographically sign SHA256SUMS with OpenPGP
 if [[ -d "${GNUPG_DIR}" ]]; then
-    GNUPGHOME="${GNUPG_DIR}" gpg --batch --yes --armor --detach-sign --output "${MANIFEST_ASC}" "${MANIFEST}" >/dev/null 2>&1
-    GNUPGHOME="${GNUPG_DIR}" gpg --batch --yes --detach-sign --output "${MANIFEST_SIG}" "${MANIFEST}" >/dev/null 2>&1
+    GNUPGHOME="${GPG_EXEC_HOME}" gpg --batch --yes --armor --detach-sign --output "${MANIFEST_ASC}" "${MANIFEST}" >/dev/null 2>&1
+    GNUPGHOME="${GPG_EXEC_HOME}" gpg --batch --yes --detach-sign --output "${MANIFEST_SIG}" "${MANIFEST}" >/dev/null 2>&1
 
-    GNUPGHOME="${GNUPG_DIR}" gpg --batch --verify "${MANIFEST_ASC}" "${MANIFEST}" >/dev/null 2>&1
-    GNUPGHOME="${GNUPG_DIR}" gpg --batch --verify "${MANIFEST_SIG}" "${MANIFEST}" >/dev/null 2>&1
+    GNUPGHOME="${GPG_EXEC_HOME}" gpg --batch --verify "${MANIFEST_ASC}" "${MANIFEST}" >/dev/null 2>&1
+    GNUPGHOME="${GPG_EXEC_HOME}" gpg --batch --verify "${MANIFEST_SIG}" "${MANIFEST}" >/dev/null 2>&1
     echo "✓ Master manifest signed with OpenPGP: SHA256SUMS.asc and SHA256SUMS.sig"
+fi
+
+if [[ -n "${SHORT_GPG_LINK:-}" && -L "${SHORT_GPG_LINK}" ]]; then
+    GNUPGHOME="${GPG_EXEC_HOME}" gpgconf --kill gpg-agent >/dev/null 2>&1 || true
+    rm -f "${SHORT_GPG_LINK}"
 fi
 
 echo "=============================================================================="
