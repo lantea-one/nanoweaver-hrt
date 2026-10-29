@@ -23,6 +23,11 @@
 const WEAVER_SESSION_KEY = 'weaver_session';
 
 /**
+ * Name of the storage key and cookie holding the active community localization language.
+ */
+const WEAVER_LANG_KEY = 'weaver_lang';
+
+/**
  * Minimum interval, in milliseconds, between server heartbeats raised from DOM activity.
  */
 const HEARTBEAT_THROTTLE_MS = 30000;
@@ -120,6 +125,48 @@ function weaverClearSession() {
         document.cookie = WEAVER_SESSION_KEY + '=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC; SameSite=Strict';
     } catch (e) {
         console.error('weaverClearSession failed:', e);
+    }
+}
+
+/**
+ * Persists the community localization language in sessionStorage and a SameSite=Strict cookie.
+ *
+ * WHAT: Stores the language tag in a browser session cookie and mirrors it to sessionStorage.
+ * WHY:  Work Package P45 requires language preference to persist across page reloads and tab navigations
+ *       without requiring server roundtrips or database calls.
+ * HOW:  Writes to document.cookie with SameSite=Strict and Secure (when served over HTTPS), then updates
+ *       sessionStorage. Ignores empty input and catches storage-denied exceptions gracefully.
+ * @param {string} lang - The BCP-47 language tag or identifier (e.g. 'es-ES', 'en-US').
+ */
+function weaverSetLanguage(lang) {
+    if (!lang) return;
+    try {
+        const secureAttribute = window.location.protocol === 'https:' ? '; Secure' : '';
+        document.cookie = WEAVER_LANG_KEY + '=' + encodeURIComponent(lang) + '; path=/; SameSite=Strict' + secureAttribute;
+        sessionStorage.setItem(WEAVER_LANG_KEY, lang);
+    } catch (e) {
+        console.error('weaverSetLanguage failed:', e);
+    }
+}
+
+/**
+ * Retrieves the persisted community localization language from sessionStorage or the session cookie.
+ *
+ * WHAT: Reads the active language preference stored in the browser.
+ * WHY:  Enables Blazor components (LanguageSelector, MainLayout) to restore user language on first render.
+ * HOW:  Prefers sessionStorage for instant retrieval, falls back to document.cookie, and returns null if not set.
+ * @returns {string|null} The persisted language tag if found; otherwise, null.
+ */
+function weaverGetLanguage() {
+    try {
+        let lang = sessionStorage.getItem(WEAVER_LANG_KEY);
+        if (!lang) {
+            const match = document.cookie.match(/(?:^|;\s*)weaver_lang=([^;]*)/);
+            if (match) lang = decodeURIComponent(match[1]);
+        }
+        return lang || null;
+    } catch (e) {
+        return null;
     }
 }
 
@@ -242,7 +289,9 @@ const WeaverSession = {
     weaverGetSessionToken,
     weaverClearSession,
     weaverRegisterIdleWatcher,
-    weaverUnregisterIdleWatcher
+    weaverUnregisterIdleWatcher,
+    weaverSetLanguage,
+    weaverGetLanguage
 };
 
 window.weaverPurgeLegacySession = weaverPurgeLegacySession;
@@ -251,6 +300,8 @@ window.weaverGetSessionToken = weaverGetSessionToken;
 window.weaverClearSession = weaverClearSession;
 window.weaverRegisterIdleWatcher = weaverRegisterIdleWatcher;
 window.weaverUnregisterIdleWatcher = weaverUnregisterIdleWatcher;
+window.weaverSetLanguage = weaverSetLanguage;
+window.weaverGetLanguage = weaverGetLanguage;
 
 if (typeof module !== 'undefined') {
     module.exports = WeaverSession;

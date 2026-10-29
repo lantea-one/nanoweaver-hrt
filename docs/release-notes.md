@@ -4,6 +4,40 @@
 
 ---
 
+## Release v2026.10.29.3 (Opentrons Wet-Lab Automation & Community Localization — 2026-10-29)
+
+Major milestone release bridging in-silico computational nanocarrier design with physical laboratory execution via Opentrons robotic liquid handling automation, alongside comprehensive 10-language community localization, dual-engine PostgreSQL preference storage, and downward ratchet coverage improvements.
+
+### Highlights
+* **Opentrons Python Protocol API v2 Generator**:
+  - Implemented `IOpentronsProtocolGenerator` and `OpentronsProtocolGenerator` supporting both **Opentrons OT-2** and **Opentrons Flex** liquid handling robots.
+  - Automated ANSI/SLAS labware mapping (96-well and 384-well plates, 12-channel reservoirs, aluminum temperature blocks, and on-deck thermocyclers).
+  - Stoichiometric mastermix dispensing with 10× staple:scaffold volumetric calculations, reduced aspiration speeds to protect delicate single-stranded viral scaffolds, and tip conservation toggles.
+  - On-deck thermal annealing ramps (`90°C → 20°C`) with automated 105°C heated lid control and post-synthesis 4°C holds.
+* **REST API Endpoints for Wet-Lab Automation**:
+  - `POST /api/fabrication/opentrons/generate`: Validates hardware parameters, computes runtime estimates, and emits fully executable Python Protocol API v2 scripts.
+  - `POST /api/fabrication/opentrons/download`: Direct binary file attachment download (`text/x-python`) for immediate loading into the Opentrons App or USB drives.
+  - Strict role gating (`Researcher` or `Administrator`) and RFC 7807 problem details error mapping.
+* **Guided DNA Origami Workflow Wizard UI Integration**:
+  - Embedded Opentrons hardware configuration cards in Stage 5 and Stage 6 of `WorkflowWizard.razor`.
+  - Visual deck layout summary cards displaying active slot allocations, source tubes, destination wells, and thermocycler blocks.
+  - Interactive protocol preview modal with one-click clipboard copy and direct browser blob download interop.
+* **10-Language Community Localization**:
+  - Delivered `IWeaverLocalizer` domain architecture with 10 native embedded JSON resource catalogs: English (`en-US`), Spanish (`es-ES`), French (`fr-FR`), German (`de-DE`), Brazilian Portuguese (`pt-BR`), Italian (`it-IT`), Japanese (`ja-JP`), Simplified Chinese (`zh-CN`), Dutch (`nl-NL`), and Polish (`pl-PL`).
+  - Thread-safe zero-allocation dictionary lookups with neutral-culture and primary English fallback hierarchies.
+  - Interactive language switcher (`LanguageSelector.razor`) embedded in `MainLayout.razor` with reactive navigation label updates.
+  - Desktop ViewModel and tray icon localization (`MainShellViewModel`, `DesktopTrayIconController`).
+* **Dual-Engine PostgreSQL & SQLite Preference Storage**:
+  - `LanguagePreferenceService` provides unified locale persistence supporting both local client SQLite (`weaver_preferences.db`) and enterprise PostgreSQL (`weaver_gui_preferences` with `TIMESTAMPTZ` and `ON CONFLICT DO UPDATE`).
+  - Client-side browser persistence via `weaver-session.js` using `sessionStorage` and `SameSite=Strict` cookies (`weaver_lang`) with conditional `Secure` flags.
+* **Zero Quality Regressions & Ratchet Improvement**:
+  - All 1,162 unit and integration tests passed (100% pass rate).
+  - Gate 4 enforced 100.00% Line and 100.00% Branch code coverage.
+  - Gate 7 un-excluded coverage ratchet strictly improved: branch rate increased from 97.43% to 97.56%, line rate increased from 99.63% to 99.65%, and uncovered line total held rock-solid at 54.
+  - Zero XML docblock errors and zero unescaped single-dollar LaTeX formatting tokens.
+
+---
+
 ## Release v2026.10.29.2 (Desktop & Packaging Hardening — 2026-10-29)
 
 Maintenance and feature release delivering standalone windowed desktop user interfaces, direct-download portable executables, universal macOS Fat Mach-O dynamic slice alignment, and cross-platform manifest version synchronization across all packaging formats.

@@ -1,0 +1,20 @@
+{
+  "Nav.Home": "Home",
+  "Nav.Endocrine": "Endocrine Hub",
+  "Nav.Wizard": "Setup Wizard",
+  "Nav.Simulations": "Simulations",
+  "Nav.Genomics": "Pharmacogenomics",
+  "Nav.Compliance": "Compliance Audit",
+  "Nav.Datasets": "Datasets",
+  "Nav.Language": "Language",
+  "Regimen.MtF": "Male to Female (MtF)",
+  "Regimen.FtM": "Female to Male (FtM)",
+  "Regimen.E2Dominant": "17β-Estradiol Dominant",
+  "Regimen.TDominant": "Testosterone Dominant",
+  "Alert.IdleTimeout": "Session expired due to inactivity. Please authenticate again.",
+  "Alert.CryptoShredded": "Cryptographic keys shredded. PHI permanently inaccessible.",
+  "Alert.TamperDetected": "Tampering detected in secure ledger. Emergency lock engaged.",
+  "Status.Online": "Online",
+  "Status.Offline": "Offline",
+  "Status.Connecting": "Connecting..."
+}

@@ -1,5 +1,6 @@
 @page "/"
 @page "/wizard"
+@using NanoWeaverHrt.Fabrication.Opentrons
 @inject IFabricationService FabricationService
 @inject EndocrineStateEngine EndocrineEngine
 @inject IPharmacogenomicsService PharmacogenomicsService
@@ -9,7 +10,8 @@
 @inject LammpsCustomPipeReader LammpsParser
 @inject IParquetTrajectoryWriter ParquetWriter
 @inject NavigationManager Nav
-@inject IJSRuntime JS
+@inject IJSRuntime JSRuntime
+@inject IOpentronsProtocolGenerator OpentronsGenerator
 
 <div class="wizard-container">
     <!-- Wizard Progress Stepper -->
@@ -559,6 +561,126 @@
                 </div>
             </div>
 
+            <!-- ===================================================================== -->
+            <!-- AUTOMATE WITH OPENTRONS: Stage 5 Annealing Stoichiometry Automation   -->
+            <!-- ===================================================================== -->
+            <div class="opentrons-section card subpanel mt-4">
+                <div class="panel-header">
+                    <div>
+                        <div class="flex-align gap-2">
+                            <span class="badge badge-accent">ROBOTIC WET-LAB AUTOMATION</span>
+                            <span class="badge badge-outline">OPENTRONS PROTOCOL API V2</span>
+                        </div>
+                        <h3 class="mt-1">🤖 Automate with Opentrons</h3>
+                        <p class="panel-desc">Generate deterministic Python automation scripts for robotic DNA origami stoichiometric folding, well-to-well staple aliquoting, and on-deck thermal annealing.</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-2 gap-3 mt-3">
+                    <!-- Robot Model Selector -->
+                    <div class="form-group">
+                        <label class="form-label" for="opentrons-robot-select">
+                            <strong>Robot Model Platform:</strong>
+                        </label>
+                        <select id="opentrons-robot-select" class="form-control font-mono" value="@ActiveOpentronsOptions.RobotModel" @onchange="OnRobotModelChanged">
+                            <option value="@OpentronsRobotModel.OT2">Opentrons OT-2 (Standard Benchtop)</option>
+                            <option value="@OpentronsRobotModel.Flex">Opentrons Flex (High-Throughput)</option>
+                        </select>
+                        <span class="subtext">Select between the standard 11-slot OT-2 or the next-generation 12-slot Opentrons Flex.</span>
+                    </div>
+
+                    <!-- Pipette Model Selector -->
+                    <div class="form-group">
+                        <label class="form-label" for="opentrons-pipette-select">
+                            <strong>Pipette Model:</strong>
+                        </label>
+                        <select id="opentrons-pipette-select" class="form-control font-mono" value="@ActiveOpentronsOptions.PipetteModel" @onchange="OnPipetteModelChanged">
+                            @if (ActiveOpentronsOptions.RobotModel == OpentronsRobotModel.OT2)
+                            {
+                                <option value="@OpentronsPipetteModel.P20_Single_Gen2">OT-2 Single-Channel 20 µL (P20 Gen2)</option>
+                                <option value="@OpentronsPipetteModel.P20_Multi_Gen2">OT-2 8-Channel 20 µL (P20 Multi Gen2)</option>
+                                <option value="@OpentronsPipetteModel.P300_Single_Gen2">OT-2 Single-Channel 300 µL (P300 Gen2)</option>
+                            }
+                            else
+                            {
+                                <option value="@OpentronsPipetteModel.Flex_1Channel_50">Flex 1-Channel 50 µL</option>
+                                <option value="@OpentronsPipetteModel.Flex_8Channel_50">Flex 8-Channel 50 µL</option>
+                            }
+                        </select>
+                        <span class="subtext">Multi-channel pipettes transfer entire columns in parallel; single-channel transfers well-by-well.</span>
+                    </div>
+
+                    <!-- Labware Plate Selector -->
+                    <div class="form-group">
+                        <label class="form-label" for="opentrons-plate-select">
+                            <strong>Source Staple Labware Plate:</strong>
+                        </label>
+                        <select id="opentrons-plate-select" class="form-control font-mono" value="@ActiveOpentronsOptions.SourcePlateType" @onchange="OnPlateTypeChanged">
+                            <option value="@OpentronsPlateType.Nest96WellPcr">NEST 96-Well PCR Plate (100 µL Full Skirt)</option>
+                            <option value="@OpentronsPlateType.BioRad96WellPcr">Bio-Rad 96-Well PCR Plate (200 µL)</option>
+                            <option value="@OpentronsPlateType.Corning96Flat">Corning 96-Well Flat Bottom (360 µL)</option>
+                            <option value="@OpentronsPlateType.Nest384WellPcr">NEST 384-Well PCR Plate (30 µL)</option>
+                        </select>
+                        <span class="subtext">Format for staple libraries: standard 96-well vs. high-density 384-well plates.</span>
+                    </div>
+
+                    <!-- On-Deck Hardware Modules -->
+                    <div class="form-group">
+                        <label class="form-label">
+                            <strong>On-Deck Hardware Modules:</strong>
+                        </label>
+                        <div class="d-flex flex-column gap-2 mt-1">
+                            <label class="form-check-label d-flex align-center gap-2">
+                                <input type="checkbox" id="opentrons-temp-module" checked="@ActiveOpentronsOptions.UseTemperatureModule" @onchange="OnTemperatureModuleChanged" />
+                                <span>Temperature Module (Active 4°C hold during assembly)</span>
+                            </label>
+                            <label class="form-check-label d-flex align-center gap-2">
+                                <input type="checkbox" id="opentrons-thermocycler-module" checked="@ActiveOpentronsOptions.UseThermocyclerModule" @onchange="OnThermocyclerModuleChanged" />
+                                <span>Thermocycler Module (Automated on-deck thermal annealing ramp)</span>
+                            </label>
+                        </div>
+                        <span class="subtext">Modules manage reaction cooling and on-deck thermal denaturation/cooling cycles.</span>
+                    </div>
+                </div>
+
+                <!-- Deck Layout Visualization Summary -->
+                <div class="opentrons-deck-summary grid grid-4 gap-2 mt-3">
+                    <div class="metric-card card p-2 text-center">
+                        <div class="metric-label">DECK SLOTS</div>
+                        <div class="metric-value font-mono text-accent deck-slots-value">@GetDeckSlotSummary()</div>
+                        <div class="stat-sub">Platform: @ActiveOpentronsOptions.RobotModel</div>
+                    </div>
+                    <div class="metric-card card p-2 text-center">
+                        <div class="metric-label">TIP RACKS NEEDED</div>
+                        <div class="metric-value font-mono text-accent tip-racks-value">@GetTipRacksSummary()</div>
+                        <div class="stat-sub">Filter Tip Boxes</div>
+                    </div>
+                    <div class="metric-card card p-2 text-center">
+                        <div class="metric-label">SOURCE WELLS / PLATES</div>
+                        <div class="metric-value font-mono text-accent source-wells-value">@GetSourceWellsSummary()</div>
+                        <div class="stat-sub">@GetPlatesCountSummary() Plates Required</div>
+                    </div>
+                    <div class="metric-card card p-2 text-center">
+                        <div class="metric-label">ESTIMATED RUNTIME</div>
+                        <div class="metric-value font-mono text-success estimated-runtime-value">@GetEstimatedRuntimeSummary()</div>
+                        <div class="stat-sub">Robotic Protocol</div>
+                    </div>
+                </div>
+
+                <!-- Action Button -->
+                <div class="mt-3 d-flex justify-between align-center">
+                    <div class="subtext font-mono">
+                        @if (CurrentOpentronsResult != null)
+                        {
+                            <span>Script SHA-256: @CurrentOpentronsResult.ScriptSha256[..12]...</span>
+                        }
+                    </div>
+                    <button id="btn-generate-opentrons" class="btn btn-primary" @onclick="OpenOpentronsModal">
+                        ⚡ Generate Opentrons Protocol
+                    </button>
+                </div>
+            </div>
+
             <div class="wizard-actions mt-4 flex-between">
                 <button class="btn btn-secondary" @onclick="() => SetStep(4)">← Back to Parser</button>
                 <button class="btn btn-primary" @onclick="() => SetStep(6)">Proceed to Fabrication Output →</button>
@@ -845,6 +967,126 @@
                 }
             </div>
 
+            <!-- ===================================================================== -->
+            <!-- AUTOMATE WITH OPENTRONS: Stage 6 Bench Synthesis Liquid Handling      -->
+            <!-- ===================================================================== -->
+            <div class="opentrons-section card subpanel mt-4">
+                <div class="panel-header">
+                    <div>
+                        <div class="flex-align gap-2">
+                            <span class="badge badge-accent">ROBOTIC WET-LAB AUTOMATION</span>
+                            <span class="badge badge-outline">OPENTRONS PROTOCOL API V2</span>
+                        </div>
+                        <h3 class="mt-1">🤖 Automate with Opentrons</h3>
+                        <p class="panel-desc">Generate deterministic Python automation scripts for robotic DNA origami stoichiometric folding, well-to-well staple aliquoting, and on-deck thermal annealing.</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-2 gap-3 mt-3">
+                    <!-- Robot Model Selector -->
+                    <div class="form-group">
+                        <label class="form-label" for="opentrons-robot-select">
+                            <strong>Robot Model Platform:</strong>
+                        </label>
+                        <select id="opentrons-robot-select" class="form-control font-mono" value="@ActiveOpentronsOptions.RobotModel" @onchange="OnRobotModelChanged">
+                            <option value="@OpentronsRobotModel.OT2">Opentrons OT-2 (Standard Benchtop)</option>
+                            <option value="@OpentronsRobotModel.Flex">Opentrons Flex (High-Throughput)</option>
+                        </select>
+                        <span class="subtext">Select between the standard 11-slot OT-2 or the next-generation 12-slot Opentrons Flex.</span>
+                    </div>
+
+                    <!-- Pipette Model Selector -->
+                    <div class="form-group">
+                        <label class="form-label" for="opentrons-pipette-select">
+                            <strong>Pipette Model:</strong>
+                        </label>
+                        <select id="opentrons-pipette-select" class="form-control font-mono" value="@ActiveOpentronsOptions.PipetteModel" @onchange="OnPipetteModelChanged">
+                            @if (ActiveOpentronsOptions.RobotModel == OpentronsRobotModel.OT2)
+                            {
+                                <option value="@OpentronsPipetteModel.P20_Single_Gen2">OT-2 Single-Channel 20 µL (P20 Gen2)</option>
+                                <option value="@OpentronsPipetteModel.P20_Multi_Gen2">OT-2 8-Channel 20 µL (P20 Multi Gen2)</option>
+                                <option value="@OpentronsPipetteModel.P300_Single_Gen2">OT-2 Single-Channel 300 µL (P300 Gen2)</option>
+                            }
+                            else
+                            {
+                                <option value="@OpentronsPipetteModel.Flex_1Channel_50">Flex 1-Channel 50 µL</option>
+                                <option value="@OpentronsPipetteModel.Flex_8Channel_50">Flex 8-Channel 50 µL</option>
+                            }
+                        </select>
+                        <span class="subtext">Multi-channel pipettes transfer entire columns in parallel; single-channel transfers well-by-well.</span>
+                    </div>
+
+                    <!-- Labware Plate Selector -->
+                    <div class="form-group">
+                        <label class="form-label" for="opentrons-plate-select">
+                            <strong>Source Staple Labware Plate:</strong>
+                        </label>
+                        <select id="opentrons-plate-select" class="form-control font-mono" value="@ActiveOpentronsOptions.SourcePlateType" @onchange="OnPlateTypeChanged">
+                            <option value="@OpentronsPlateType.Nest96WellPcr">NEST 96-Well PCR Plate (100 µL Full Skirt)</option>
+                            <option value="@OpentronsPlateType.BioRad96WellPcr">Bio-Rad 96-Well PCR Plate (200 µL)</option>
+                            <option value="@OpentronsPlateType.Corning96Flat">Corning 96-Well Flat Bottom (360 µL)</option>
+                            <option value="@OpentronsPlateType.Nest384WellPcr">NEST 384-Well PCR Plate (30 µL)</option>
+                        </select>
+                        <span class="subtext">Format for staple libraries: standard 96-well vs. high-density 384-well plates.</span>
+                    </div>
+
+                    <!-- On-Deck Hardware Modules -->
+                    <div class="form-group">
+                        <label class="form-label">
+                            <strong>On-Deck Hardware Modules:</strong>
+                        </label>
+                        <div class="d-flex flex-column gap-2 mt-1">
+                            <label class="form-check-label d-flex align-center gap-2">
+                                <input type="checkbox" id="opentrons-temp-module" checked="@ActiveOpentronsOptions.UseTemperatureModule" @onchange="OnTemperatureModuleChanged" />
+                                <span>Temperature Module (Active 4°C hold during assembly)</span>
+                            </label>
+                            <label class="form-check-label d-flex align-center gap-2">
+                                <input type="checkbox" id="opentrons-thermocycler-module" checked="@ActiveOpentronsOptions.UseThermocyclerModule" @onchange="OnThermocyclerModuleChanged" />
+                                <span>Thermocycler Module (Automated on-deck thermal annealing ramp)</span>
+                            </label>
+                        </div>
+                        <span class="subtext">Modules manage reaction cooling and on-deck thermal denaturation/cooling cycles.</span>
+                    </div>
+                </div>
+
+                <!-- Deck Layout Visualization Summary -->
+                <div class="opentrons-deck-summary grid grid-4 gap-2 mt-3">
+                    <div class="metric-card card p-2 text-center">
+                        <div class="metric-label">DECK SLOTS</div>
+                        <div class="metric-value font-mono text-accent deck-slots-value">@GetDeckSlotSummary()</div>
+                        <div class="stat-sub">Platform: @ActiveOpentronsOptions.RobotModel</div>
+                    </div>
+                    <div class="metric-card card p-2 text-center">
+                        <div class="metric-label">TIP RACKS NEEDED</div>
+                        <div class="metric-value font-mono text-accent tip-racks-value">@GetTipRacksSummary()</div>
+                        <div class="stat-sub">Filter Tip Boxes</div>
+                    </div>
+                    <div class="metric-card card p-2 text-center">
+                        <div class="metric-label">SOURCE WELLS / PLATES</div>
+                        <div class="metric-value font-mono text-accent source-wells-value">@GetSourceWellsSummary()</div>
+                        <div class="stat-sub">@GetPlatesCountSummary() Plates Required</div>
+                    </div>
+                    <div class="metric-card card p-2 text-center">
+                        <div class="metric-label">ESTIMATED RUNTIME</div>
+                        <div class="metric-value font-mono text-success estimated-runtime-value">@GetEstimatedRuntimeSummary()</div>
+                        <div class="stat-sub">Robotic Protocol</div>
+                    </div>
+                </div>
+
+                <!-- Action Button -->
+                <div class="mt-3 d-flex justify-between align-center">
+                    <div class="subtext font-mono">
+                        @if (CurrentOpentronsResult != null)
+                        {
+                            <span>Script SHA-256: @CurrentOpentronsResult.ScriptSha256[..12]...</span>
+                        }
+                    </div>
+                    <button id="btn-generate-opentrons" class="btn btn-primary" @onclick="OpenOpentronsModal">
+                        ⚡ Generate Opentrons Protocol
+                    </button>
+                </div>
+            </div>
+
             <!-- Export Actions -->
             <div class="mt-4 text-center">
                 <button class="btn btn-primary btn-lg" @onclick="ExportFabricationPackageAsync">
@@ -867,7 +1109,90 @@
     }
 </div>
 
+<!-- ===================================================================== -->
+<!-- OPENTRONS PROTOCOL SCRIPT PREVIEW MODAL DIALOG                        -->
+<!-- ===================================================================== -->
+@if (IsOpentronsModalOpen && CurrentOpentronsResult != null)
+{
+    <div class="modal-overlay" @onclick="CloseOpentronsModal" @onkeydown="HandleModalKeyDown" tabindex="0">
+        <div class="modal-card" style="max-width: 900px; width: 95%;" @onclick:stopPropagation>
+            <div class="modal-header d-flex justify-between align-center">
+                <div class="d-flex align-center gap-2">
+                    <span class="badge badge-accent">OPENTRONS PROTOCOL API V2</span>
+                    <h3 class="m-0 text-white">Opentrons Python Protocol Preview</h3>
+                </div>
+                <button class="btn-close" id="btn-close-opentrons-modal" @onclick="CloseOpentronsModal" aria-label="Close">&times;</button>
+            </div>
+
+            <div class="modal-body">
+                <!-- Deck summary inside modal -->
+                <div class="modal-deck-summary grid grid-4 gap-2 mb-3">
+                    <div class="card p-2 text-center">
+                        <div class="metric-label">ROBOT &amp; DECK</div>
+                        <div class="font-mono text-accent">@ActiveOpentronsOptions.RobotModel (@GetDeckSlotSummary())</div>
+                    </div>
+                    <div class="card p-2 text-center">
+                        <div class="metric-label">TIP RACKS</div>
+                        <div class="font-mono text-accent">@GetTipRacksSummary()</div>
+                    </div>
+                    <div class="card p-2 text-center">
+                        <div class="metric-label">TOTAL TRANSFERS</div>
+                        <div class="font-mono text-accent">@CurrentOpentronsResult.TransferCount Transfers</div>
+                    </div>
+                    <div class="card p-2 text-center">
+                        <div class="metric-label">EST. RUNTIME</div>
+                        <div class="font-mono text-success">@GetEstimatedRuntimeSummary()</div>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-between align-center mb-2">
+                    <span class="font-mono text-muted small">SHA-256: @CurrentOpentronsResult.ScriptSha256</span>
+                    @if (!string.IsNullOrEmpty(_opentronsCopyStatus))
+                    {
+                        <span class="badge badge-success opentrons-copy-badge">@_opentronsCopyStatus</span>
+                    }
+                </div>
+
+                <!-- Syntax-highlighted code block -->
+                <pre class="font-mono protocol-preview-block" style="background: #050811; color: #f1f5f9; padding: 1rem; border-radius: 6px; max-height: 400px; overflow: auto; border: 1px solid var(--border-color); font-size: 0.85rem; line-height: 1.5;"><code>@CurrentOpentronsResult.PythonScript</code></pre>
+            </div>
+
+            <div class="modal-footer d-flex justify-end gap-2">
+                <button id="btn-copy-opentrons-script" class="btn btn-secondary" @onclick="CopyOpentronsProtocolAsync">
+                    📋 Copy to Clipboard
+                </button>
+                <button id="btn-download-opentrons-script" class="btn btn-accent" @onclick="DownloadOpentronsProtocolAsync">
+                    📥 Download Protocol (.py)
+                </button>
+                <button id="btn-dismiss-opentrons-modal" class="btn btn-outline" @onclick="CloseOpentronsModal">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
+    /// <summary>
+    /// Configuration options for Opentrons liquid handler protocol automation script generation.
+    /// </summary>
+    public OpentronsProtocolOptions ActiveOpentronsOptions { get; set; } = new();
+
+    /// <summary>
+    /// Generated Opentrons liquid handler protocol execution result and deck metrics.
+    /// </summary>
+    public OpentronsProtocolResult? CurrentOpentronsResult { get; set; }
+
+    /// <summary>
+    /// Indicates whether the Opentrons Python protocol preview modal dialog is currently visible.
+    /// </summary>
+    public bool IsOpentronsModalOpen { get; set; }
+
+    /// <summary>
+    /// Status notification message displayed after copying the Python protocol script to clipboard.
+    /// </summary>
+    private string? _opentronsCopyStatus;
+
     /// <summary>
     /// Optional step query parameter allowing direct deep linking to a specific wizard stage (e.g. ?step=6).
     /// </summary>
@@ -883,7 +1208,7 @@
     /// <summary>
     /// Current active step index in the 6-stage wizard.
     /// </summary>
-    private int CurrentStep { get; set; } = 1;
+    public int CurrentStep { get; set; } = 1;
 
     /// <summary>
     /// Library of built-in sample DNA designs.
@@ -1120,13 +1445,14 @@
     /// Transitions the wizard to a specific step.
     /// </summary>
     /// <param name="step">The target step number (1 to 6).</param>
-    private void SetStep(int step)
+    public void SetStep(int step)
     {
         CurrentStep = Math.Clamp(step, 1, 6);
         if (CurrentStep == 6)
         {
             RegenerateFabrication();
         }
+        StateHasChanged();
     }
 
     /// <summary>
@@ -1265,7 +1591,7 @@
     }
 
     /// <summary>
-    /// Re-synthesizes the complete fabrication package.
+    /// Re-synthesizes the complete fabrication package and updates Opentrons liquid handler automation protocol.
     /// </summary>
     private void RegenerateFabrication()
     {
@@ -1274,6 +1600,7 @@
             SelectedRegimen,
             SelectedGeometry,
             TargetKd);
+        EnsureOpentronsProtocolGenerated();
     }
 
     /// <summary>
@@ -1297,28 +1624,372 @@
         {
             if (CurrentStep == 1)
             {
-                await JS.InvokeVoidAsync("WeaverVisualizer.renderCompositionDoughnut", "canvas-composition", _baseA, _baseT, _baseG, _baseC, _gcPercent);
-                await JS.InvokeVoidAsync("WeaverVisualizer.renderDnaHelix", "canvas-dna-helix", new { sequence = InputSequence, numBasePairs = 18 });
+                await JSRuntime.InvokeVoidAsync("WeaverVisualizer.renderCompositionDoughnut", "canvas-composition", _baseA, _baseT, _baseG, _baseC, _gcPercent);
+                await JSRuntime.InvokeVoidAsync("WeaverVisualizer.renderDnaHelix", "canvas-dna-helix", new { sequence = InputSequence, numBasePairs = 18 });
             }
             else if (CurrentStep == 2)
             {
-                await JS.InvokeVoidAsync("WeaverVisualizer.renderAnatomicalTargeting", "canvas-anatomical-target", new { regimen = SelectedRegimen.ToString(), targetTissue = "AnteriorPituitaryGonadotrope", kdNanoMolar = TargetKd, targetE2 = TargetEstradiolPmol, targetT = TargetTestosteroneNmol });
+                await JSRuntime.InvokeVoidAsync("WeaverVisualizer.renderAnatomicalTargeting", "canvas-anatomical-target", new { regimen = SelectedRegimen.ToString(), targetTissue = "AnteriorPituitaryGonadotrope", kdNanoMolar = TargetKd, targetE2 = TargetEstradiolPmol, targetT = TargetTestosteroneNmol });
             }
             else if (CurrentStep == 5)
             {
                 IReadOnlyList<HormoneCurvePoint> kinetics = EndocrineEngine.SimulateKinetics();
                 object[] pts = kinetics.Select(p => (object)new { hour = p.Hour, estradiol_pmol_l = p.EstradiolPmolL, testosterone_nmol_l = p.TestosteroneNmolL }).ToArray();
-                await JS.InvokeVoidAsync("WeaverVisualizer.renderKineticsChart", "canvas-kinetics", pts, TargetEstradiolPmol, TargetTestosteroneNmol);
+                await JSRuntime.InvokeVoidAsync("WeaverVisualizer.renderKineticsChart", "canvas-kinetics", pts, TargetEstradiolPmol, TargetTestosteroneNmol);
             }
             else if (CurrentStep == 6 && _currentPackage?.AnnealingSchedule != null)
             {
                 object[] steps = _currentPackage.AnnealingSchedule.Select(s => (object)new { step_index = s.StepIndex, target_temperature_celsius = s.TargetTemperatureCelsius, hold_duration_minutes = s.HoldDurationMinutes }).ToArray();
-                await JS.InvokeVoidAsync("WeaverVisualizer.renderAnnealingRampChart", "canvas-annealing", steps);
+                await JSRuntime.InvokeVoidAsync("WeaverVisualizer.renderAnnealingRampChart", "canvas-annealing", steps);
             }
         }
         catch
         {
             // Canvas render exceptions handled gracefully
         }
+    }
+
+    /// <summary>
+    /// Handles changes from the robot model selector dropdown.
+    /// </summary>
+    /// <param name="e">Change event arguments containing the selected robot model string value.</param>
+    private void OnRobotModelChanged(ChangeEventArgs e)
+    {
+        // WHAT: Event handler for the Opentrons robot platform dropdown.
+        // WHY:  Updates robot architecture and validates pipette compatibility.
+        // HOW:  Parses enum string value and delegates to SetOpentronsRobot.
+        if (Enum.TryParse<OpentronsRobotModel>(e.Value?.ToString(), out var model))
+        {
+            SetOpentronsRobot(model);
+        }
+    }
+
+    /// <summary>
+    /// Updates the active Opentrons robot model platform and reconciles compatible pipette selection.
+    /// </summary>
+    /// <param name="model">The chosen robot model platform (OT-2 vs. Flex).</param>
+    public void SetOpentronsRobot(OpentronsRobotModel model)
+    {
+        // WHAT: Configures target robot hardware and reconciles pipette model compatibility.
+        // WHY:  OT-2 pipettes are incompatible with Flex mounts, and Flex pipettes cannot be mounted on OT-2.
+        // HOW:  Switches pipette to an appropriate default when transitioning across robot generations.
+        OpentronsPipetteModel pipette = ActiveOpentronsOptions.PipetteModel;
+        if (model == OpentronsRobotModel.Flex && pipette is OpentronsPipetteModel.P20_Single_Gen2 or OpentronsPipetteModel.P20_Multi_Gen2 or OpentronsPipetteModel.P300_Single_Gen2)
+        {
+            pipette = OpentronsPipetteModel.Flex_1Channel_50;
+        }
+        else if (model == OpentronsRobotModel.OT2 && pipette is OpentronsPipetteModel.Flex_1Channel_50 or OpentronsPipetteModel.Flex_8Channel_50)
+        {
+            pipette = OpentronsPipetteModel.P20_Single_Gen2;
+        }
+
+        ActiveOpentronsOptions = ActiveOpentronsOptions with
+        {
+            RobotModel = model,
+            PipetteModel = pipette
+        };
+
+        EnsureOpentronsProtocolGenerated();
+    }
+
+    /// <summary>
+    /// Handles changes from the pipette model selector dropdown.
+    /// </summary>
+    /// <param name="e">Change event arguments containing the selected pipette model string value.</param>
+    private void OnPipetteModelChanged(ChangeEventArgs e)
+    {
+        // WHAT: Event handler for the Opentrons pipette dropdown.
+        // WHY:  Updates the liquid dispensing tool geometry and volume rating.
+        // HOW:  Parses enum string value and delegates to SetOpentronsPipette.
+        if (Enum.TryParse<OpentronsPipetteModel>(e.Value?.ToString(), out var pipette))
+        {
+            SetOpentronsPipette(pipette);
+        }
+    }
+
+    /// <summary>
+    /// Updates the primary Opentrons pipette model and recalculates transfer scheduling.
+    /// </summary>
+    /// <param name="pipette">The selected pipette model.</param>
+    public void SetOpentronsPipette(OpentronsPipetteModel pipette)
+    {
+        // WHAT: Configures active pipette model on ActiveOpentronsOptions.
+        // WHY:  Governs single-channel vs. multi-channel column transfers and tip consumption rates.
+        // HOW:  Replaces record with updated pipette model and refreshes protocol summary.
+        ActiveOpentronsOptions = ActiveOpentronsOptions with
+        {
+            PipetteModel = pipette
+        };
+
+        EnsureOpentronsProtocolGenerated();
+    }
+
+    /// <summary>
+    /// Handles changes from the source staple labware plate selector dropdown.
+    /// </summary>
+    /// <param name="e">Change event arguments containing the selected plate type string value.</param>
+    private void OnPlateTypeChanged(ChangeEventArgs e)
+    {
+        // WHAT: Event handler for the source labware plate dropdown.
+        // WHY:  Switches between 96-well and 384-well well plate geometries.
+        // HOW:  Parses enum string value and delegates to SetOpentronsPlate.
+        if (Enum.TryParse<OpentronsPlateType>(e.Value?.ToString(), out var plate))
+        {
+            SetOpentronsPlate(plate);
+        }
+    }
+
+    /// <summary>
+    /// Updates the source staple labware plate format.
+    /// </summary>
+    /// <param name="plate">The chosen labware plate format.</param>
+    public void SetOpentronsPlate(OpentronsPlateType plate)
+    {
+        // WHAT: Updates the source staple labware plate type.
+        // WHY:  Governs plate capacity (96 vs 384 wells) and deck plate count.
+        // HOW:  Updates options record and triggers protocol recalculation.
+        ActiveOpentronsOptions = ActiveOpentronsOptions with
+        {
+            SourcePlateType = plate
+        };
+
+        EnsureOpentronsProtocolGenerated();
+    }
+
+    /// <summary>
+    /// Toggles on-deck Temperature Module integration.
+    /// </summary>
+    /// <param name="e">Change event arguments containing checkbox checked state.</param>
+    private void OnTemperatureModuleChanged(ChangeEventArgs e)
+    {
+        // WHAT: Toggles temperature module hardware on deck.
+        // WHY:  Maintains assembled reactions at 4°C during stoichiometric aliquoting.
+        // HOW:  Extracts boolean value from change args and recalculates deck summary.
+        bool useTemp = e.Value is true or "True" or "true";
+        ActiveOpentronsOptions = ActiveOpentronsOptions with
+        {
+            UseTemperatureModule = useTemp
+        };
+
+        EnsureOpentronsProtocolGenerated();
+    }
+
+    /// <summary>
+    /// Toggles on-deck Thermocycler Module integration.
+    /// </summary>
+    /// <param name="e">Change event arguments containing checkbox checked state.</param>
+    private void OnThermocyclerModuleChanged(ChangeEventArgs e)
+    {
+        // WHAT: Toggles thermocycler module hardware on deck.
+        // WHY:  Automates thermal denaturation and cryogenic cooling ramps directly on the robot.
+        // HOW:  Extracts boolean value from change args and recalculates protocol and runtime.
+        bool useTc = e.Value is true or "True" or "true";
+        ActiveOpentronsOptions = ActiveOpentronsOptions with
+        {
+            UseThermocyclerModule = useTc
+        };
+
+        EnsureOpentronsProtocolGenerated();
+    }
+
+    /// <summary>
+    /// Generates or refreshes the active Opentrons protocol execution result and deck layout metrics.
+    /// </summary>
+    public void EnsureOpentronsProtocolGenerated()
+    {
+        // WHAT: Synthesizes an updated Opentrons protocol result using IOpentronsProtocolGenerator.
+        // WHY:  Ensures deck summary statistics and Python script text match active options.
+        // HOW:  Ensures fabrication package is generated, then calls OpentronsGenerator.GenerateProtocol.
+        if (_currentPackage == null)
+        {
+            _currentPackage = FabricationService.GenerateFabricationPackage(
+                SelectedSampleId,
+                SelectedRegimen,
+                SelectedGeometry,
+                TargetKd);
+        }
+
+        if (_currentPackage != null && OpentronsGenerator != null)
+        {
+            CurrentOpentronsResult = OpentronsGenerator.GenerateProtocol(_currentPackage, ActiveOpentronsOptions);
+        }
+    }
+
+    /// <summary>
+    /// Opens the Opentrons Python protocol preview modal dialog.
+    /// </summary>
+    public void OpenOpentronsModal()
+    {
+        // WHAT: Displays the modal dialog displaying the generated Python protocol script.
+        // WHY:  Allows operators to inspect Python code, review deck metrics, and trigger download/copy.
+        // HOW:  Refreshes protocol result, clears copy feedback badge, and sets IsOpentronsModalOpen to true.
+        EnsureOpentronsProtocolGenerated();
+        _opentronsCopyStatus = null;
+        IsOpentronsModalOpen = true;
+    }
+
+    /// <summary>
+    /// Closes the Opentrons Python protocol preview modal dialog.
+    /// </summary>
+    public void CloseOpentronsModal()
+    {
+        // WHAT: Dismisses the Opentrons protocol preview modal dialog.
+        // WHY:  Returns focus and visual control to the primary wizard stepper view.
+        // HOW:  Sets IsOpentronsModalOpen to false and resets copy feedback status.
+        IsOpentronsModalOpen = false;
+        _opentronsCopyStatus = null;
+    }
+
+    /// <summary>
+    /// Handles keyboard events on the modal dialog, closing it when the Escape key is pressed.
+    /// </summary>
+    /// <param name="e">Keyboard event arguments indicating the key pressed.</param>
+    private void HandleModalKeyDown(KeyboardEventArgs e)
+    {
+        // WHAT: Dismisses modal dialog on Escape key press.
+        // WHY:  Ensures WCAG 2.1 accessibility and sovereign keyboard navigation invariants.
+        // HOW:  Checks key for "Escape" case-insensitively and calls CloseOpentronsModal.
+        if (string.Equals(e.Key, "Escape", StringComparison.OrdinalIgnoreCase))
+        {
+            CloseOpentronsModal();
+        }
+    }
+
+    /// <summary>
+    /// Initiates a browser download of the generated Opentrons Python protocol script as a .py file.
+    /// </summary>
+    /// <returns>A task representing the asynchronous interop operation.</returns>
+    public async Task DownloadOpentronsProtocolAsync()
+    {
+        // WHAT: Downloads the Python protocol script to the operator's machine.
+        // WHY:  Enables transferring the script to Opentrons App or execution via robot SSH/CLI.
+        // HOW:  Invokes weaverDownloadBlob in app.js with text/x-python MIME type.
+        if (CurrentOpentronsResult == null)
+        {
+            return;
+        }
+
+        string fileName = $"opentrons_protocol_{_currentPackage?.PackageId ?? "nanoweaver"}.py";
+        await JSRuntime.InvokeVoidAsync("weaverDownloadBlob", fileName, CurrentOpentronsResult.PythonScript, "text/x-python");
+    }
+
+    /// <summary>
+    /// Copies the generated Opentrons Python protocol script text to the operator's system clipboard.
+    /// </summary>
+    /// <returns>A task representing the asynchronous interop operation.</returns>
+    public async Task CopyOpentronsProtocolAsync()
+    {
+        // WHAT: Copies the active Python script content to the clipboard.
+        // WHY:  Provides instant 1-click clipboard access for pasting into Opentrons App or text editor.
+        // HOW:  Invokes weaverCopyText in app.js and sets temporary feedback status string.
+        if (CurrentOpentronsResult == null)
+        {
+            return;
+        }
+
+        await JSRuntime.InvokeVoidAsync("weaverCopyText", CurrentOpentronsResult.PythonScript);
+        _opentronsCopyStatus = "Copied to clipboard!";
+    }
+
+    /// <summary>
+    /// Computes the total number of physical deck slots occupied by labware, tips, and modules.
+    /// </summary>
+    /// <returns>Integer count of occupied deck slots.</returns>
+    private int GetOccupiedDeckSlotsCount()
+    {
+        // WHAT: Computes occupied deck slots based on active labware and hardware modules.
+        // WHY:  Ensures the planned layout fits within physical robot boundaries (11 for OT-2, 12 for Flex).
+        // HOW:  Sums destination, source plates, tip racks, master mix reservoir, and modules.
+        if (CurrentOpentronsResult == null)
+        {
+            return 0;
+        }
+
+        int slots = 1; // Destination plate
+        slots += CurrentOpentronsResult.SourcePlatesRequired;
+        slots += CurrentOpentronsResult.TipRacksRequired;
+        slots += 1; // Master mix reservoir
+
+        if (ActiveOpentronsOptions.UseTemperatureModule && !ActiveOpentronsOptions.UseThermocyclerModule)
+        {
+            slots += 1; // Temperature module
+        }
+
+        if (ActiveOpentronsOptions.UseThermocyclerModule && ActiveOpentronsOptions.RobotModel == OpentronsRobotModel.OT2)
+        {
+            slots += 3; // OT-2 thermocycler occupies 4 physical slots (7, 8, 10, 11)
+        }
+
+        return slots;
+    }
+
+    /// <summary>
+    /// Formats the deck slot summary string for display in the Opentrons automation dashboard.
+    /// </summary>
+    /// <returns>Formatted slot count string (e.g. "4 / 11 Slots" or "5 / 12 Slots").</returns>
+    private string GetDeckSlotSummary()
+    {
+        // WHAT: Formats occupied slot count versus maximum platform deck capacity.
+        // WHY:  Provides immediate feedback on physical deck space utilization.
+        // HOW:  Calculates max slots (12 for Flex, 11 for OT-2) and formats string.
+        int maxSlots = ActiveOpentronsOptions.RobotModel == OpentronsRobotModel.Flex ? 12 : 11;
+        int used = GetOccupiedDeckSlotsCount();
+        return $"{used} / {maxSlots} Slots";
+    }
+
+    /// <summary>
+    /// Formats the required tip racks summary string for display.
+    /// </summary>
+    /// <returns>Formatted tip racks count string.</returns>
+    private string GetTipRacksSummary()
+    {
+        // WHAT: Formats tip rack quantity text.
+        // WHY:  Informs operators how many tip boxes must be loaded on deck.
+        // HOW:  Inspects CurrentOpentronsResult.TipRacksRequired and appends unit.
+        return CurrentOpentronsResult != null
+            ? $"{CurrentOpentronsResult.TipRacksRequired} {(CurrentOpentronsResult.TipRacksRequired == 1 ? "Rack" : "Racks")}"
+            : "1 Rack";
+    }
+
+    /// <summary>
+    /// Formats the source wells and transfer count summary string for display.
+    /// </summary>
+    /// <returns>Formatted source wells count string.</returns>
+    private string GetSourceWellsSummary()
+    {
+        // WHAT: Formats source wells and staple transfer count text.
+        // WHY:  Displays how many individual oligo transfers will be performed.
+        // HOW:  Inspects CurrentOpentronsResult.TransferCount and returns formatted string.
+        return CurrentOpentronsResult != null
+            ? $"{CurrentOpentronsResult.TransferCount} Wells"
+            : $"{_currentPackage?.StapleOligos.Count ?? 0} Wells";
+    }
+
+    /// <summary>
+    /// Formats the required source plate count summary string for display.
+    /// </summary>
+    /// <returns>Formatted plate count string.</returns>
+    private string GetPlatesCountSummary()
+    {
+        // WHAT: Formats required source plate count text.
+        // WHY:  Informs operator of source labware plate count needed.
+        // HOW:  Returns CurrentOpentronsResult.SourcePlatesRequired as string.
+        return CurrentOpentronsResult != null
+            ? $"{CurrentOpentronsResult.SourcePlatesRequired}"
+            : "1";
+    }
+
+    /// <summary>
+    /// Formats the estimated robot runtime summary string for display.
+    /// </summary>
+    /// <returns>Formatted runtime in minutes.</returns>
+    private string GetEstimatedRuntimeSummary()
+    {
+        // WHAT: Formats the estimated protocol execution runtime.
+        // WHY:  Allows laboratory operators to plan machine scheduling accurately.
+        // HOW:  Formats CurrentOpentronsResult.EstimatedRunDurationMinutes to one decimal place.
+        return CurrentOpentronsResult != null
+            ? $"{CurrentOpentronsResult.EstimatedRunDurationMinutes:F1} min"
+            : "0.0 min";
     }
 }

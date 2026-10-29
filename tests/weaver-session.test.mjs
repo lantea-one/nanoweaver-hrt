@@ -145,6 +145,8 @@ test('the module publishes every helper as a browser global', () => {
     assert.equal(globalThis.window.weaverPurgeLegacySession, WeaverSession.weaverPurgeLegacySession);
     assert.equal(globalThis.window.weaverRegisterIdleWatcher, WeaverSession.weaverRegisterIdleWatcher);
     assert.equal(globalThis.window.weaverUnregisterIdleWatcher, WeaverSession.weaverUnregisterIdleWatcher);
+    assert.equal(globalThis.window.weaverSetLanguage, WeaverSession.weaverSetLanguage);
+    assert.equal(globalThis.window.weaverGetLanguage, WeaverSession.weaverGetLanguage);
 });
 
 test('weaverSetSession stores the token in sessionStorage and a session cookie, never in localStorage', () => {
@@ -205,6 +207,59 @@ test('weaverGetSessionToken prefers sessionStorage, falls back to the cookie, an
 
     globalThis.sessionStorage = createStorage(true);
     assert.equal(WeaverSession.weaverGetSessionToken(), null);
+});
+
+test('weaverSetLanguage persists language to sessionStorage and SameSite=Strict cookie', () => {
+    resetDom();
+    WeaverSession.weaverSetLanguage('es-ES');
+
+    assert.equal(globalThis.sessionStorage.getItem('weaver_lang'), 'es-ES');
+    assert.equal(cookieJar.get('weaver_lang'), 'es-ES');
+
+    const attributes = globalThis.document.lastCookieAttributes.map(a => a.toLowerCase());
+    assert.ok(attributes.includes('path=/'));
+    assert.ok(attributes.includes('samesite=strict'));
+    assert.ok(!attributes.includes('secure'));
+});
+
+test('weaverSetLanguage marks cookie Secure when protocol is https', () => {
+    resetDom();
+    globalThis.window.location.protocol = 'https:';
+    WeaverSession.weaverSetLanguage('de-DE');
+
+    assert.equal(cookieJar.get('weaver_lang'), 'de-DE');
+    const attributes = globalThis.document.lastCookieAttributes.map(a => a.toLowerCase());
+    assert.ok(attributes.includes('secure'));
+});
+
+test('weaverSetLanguage ignores empty language input and handles storage errors', () => {
+    resetDom();
+    WeaverSession.weaverSetLanguage('');
+    WeaverSession.weaverSetLanguage(null);
+    assert.equal(cookieJar.has('weaver_lang'), false);
+    assert.equal(errors.length, 0);
+
+    globalThis.sessionStorage = createStorage(true);
+    assert.doesNotThrow(() => WeaverSession.weaverSetLanguage('fr-FR'));
+    assert.equal(errors.length, 1);
+    assert.equal(cookieJar.get('weaver_lang'), 'fr-FR');
+});
+
+test('weaverGetLanguage retrieves language preference with fallback hierarchy', () => {
+    resetDom();
+    assert.equal(WeaverSession.weaverGetLanguage(), null);
+
+    // Cookie fallback
+    globalThis.document.cookie = 'weaver_lang=es-ES; path=/; SameSite=Strict';
+    assert.equal(WeaverSession.weaverGetLanguage(), 'es-ES');
+
+    // sessionStorage priority
+    globalThis.sessionStorage.setItem('weaver_lang', 'fr-FR');
+    assert.equal(WeaverSession.weaverGetLanguage(), 'fr-FR');
+
+    // Storage-denied exception handling
+    globalThis.sessionStorage = createStorage(true);
+    assert.equal(WeaverSession.weaverGetLanguage(), null);
 });
 
 test('weaverClearSession purges session storage, the legacy localStorage copy and the cookie', () => {

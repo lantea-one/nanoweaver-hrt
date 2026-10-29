@@ -603,7 +603,6 @@ public sealed class DesktopAndMobilePlatformTests
         // Clean lifecycle with cancellation token hitting catch block
         using var cts = new CancellationTokenSource();
         var lifecycleTask = MobileEntryPoint.RunMobileLifecycleAsync("android", sink, cts.Token);
-        await Task.Delay(15);
         cts.Cancel();
         int cleanExit = await lifecycleTask;
         Assert.Equal(0, cleanExit);

@@ -103,33 +103,37 @@ Explore the comprehensive guides and references below:
    * Local development prerequisites, .NET 10 setup, Docker Compose GPU backends (Intel Arc, NVIDIA CUDA, AMD ROCm, CPU).
 3. [**Desktop & Mobile Applications**](desktop-and-mobile-gui.md)
    * Standalone cross-platform applications (Avalonia UI 11 / .NET 10) for Linux, macOS, Windows, Android, iOS, iPadOS, direct portable `.exe`, and 90-day sovereign code-signing PKI.
-4. [**Secure Public Access & Reverse Proxies**](secure-public-access.md)
+4. [**Community Localization**](localization.md)
+   * 10 native community languages (English, Spanish, French, German, Portuguese, Italian, Japanese, Chinese, Dutch, Polish), zero-allocation embedded JSON catalogs, dual-engine SQLite/PostgreSQL persistence, and SameSite=Strict cookies.
+5. [**Secure Public Access & Reverse Proxies**](secure-public-access.md)
    * Hardened production deployment architectures, automated Let's Encrypt SSL/TLS, Caddy, Nginx + Certbot, and Cloudflare Tunnels (CGNAT bypass).
-5. [**Guided DNA Workflow Wizard**](workflow-wizard.md)
+6. [**Guided DNA Workflow Wizard**](workflow-wizard.md)
    * Deep-dive walkthrough of all 6 stages from digitized sequence ingestion to physical bench synthesis.
-6. [**Endocrine Hub & Pharmacodynamics**](endocrine-hub.md)
+7. [**Endocrine Hub & Pharmacodynamics**](endocrine-hub.md)
    * Plain-English biomedical context of the HPG axis, bistable state transitions, and 72-hour kinetics.
-7. [**In-Silico Simulation Studio**](in-silico-simulations.md)
+8. [**In-Silico Simulation Studio**](in-silico-simulations.md)
    * Multi-scale molecular dynamics (oxDNA, LAMMPS) and whole-body PBPK modeling for in-silico translational de-risking.
-8. [**Configuration & Sovereign Peering**](configuration-peers.md)
+9. [**Configuration & Sovereign Peering**](configuration-peers.md)
    * Database-first precedence rules, single-use share key lifecycle, and federating remote UI instances.
-9. [**Stack Topology & Hardware Telemetry**](stack-services.md)
-   * Service health inspection, diagnostic connectivity pings, SIMD detection, and Server GC telemetry.
-10. [**Trajectory Streaming & Dataset Provenance**](trajectories-and-datasets.md)
+10. [**Stack Topology & Hardware Telemetry**](stack-services.md)
+    * Service health inspection, diagnostic connectivity pings, SIMD detection, and Server GC telemetry.
+11. [**Trajectory Streaming & Dataset Provenance**](trajectories-and-datasets.md)
     * Zero-allocation streaming pipelines, columnar Parquet serialization, and SHA-256 signed tarballs.
-11. [**Example Biomedical Workflows**](example-workflows.md)
+12. [**Example Biomedical Workflows**](example-workflows.md)
     * Concrete step-by-step examples: MtF feminizing nanotube, FtM masculinizing nanocage, and collaborative compute peering.
-12. [**DIY & HomeLab Benchtop Fabrication Guide**](diy-fabrication-guide.md)
+13. [**DIY & HomeLab Benchtop Fabrication Guide**](diy-fabrication-guide.md)
     * Step-by-step physical instructions for community scientists: 50 µL pipetting recipe, reagents checklist, 7-step bench execution, agarose gel QC, and non-toxic safety protocols.
-13. [**Post-Quantum Cryptography & Regulatory Compliance**](compliance-and-security.md)
+14. [**Opentrons Wet-Lab Automation**](opentrons-automation.md)
+    * Programmatic Python API v2 protocol generation for Opentrons OT-2 and Flex liquid handlers, 96/384-well plate layouts, stoichiometric 10:1 staple dispensing, and automated on-deck thermocycler ramps.
+15. [**Post-Quantum Cryptography & Regulatory Compliance**](compliance-and-security.md)
     * NIST FIPS 203 (ML-KEM-768), FIPS 204 (ML-DSA-65), HIPAA Safe Harbor, GDPR Article 17 crypto-shredding, GINA non-discrimination, FDA 21 CFR Part 11 audit trails, asymmetric PKI identities, SQL migrations, and idle session guards.
-14. [**Vendored JavaScript Subsystem & SRI Integrity**](vendored-javascript.md)
+16. [**Vendored JavaScript Subsystem & SRI Integrity**](vendored-javascript.md)
     * Zero external CDNs, Subresource Integrity (SRI) dynamic hashing, noble crypto Known-Answer Tests, and browser sandbox security.
-15. [**REST API Reference**](api-reference.md)
+17. [**REST API Reference**](api-reference.md)
     * Full endpoint catalog, request/response JSON schemas, and test suite execution.
-16. [**Release Notes & Architecture Evolution**](release-notes.md)
-    * Phase 2 post-quantum cryptographic upgrades, transport boundary enforcement, column-level PHI encryption, and releases v2026.10.29.1 and v2026.10.29.2.
-17. [**Scientific Research & Legal Disclaimer**](disclaimer.md)
+18. [**Release Notes & Architecture Evolution**](release-notes.md)
+    * Phase 2 post-quantum cryptographic upgrades, transport boundary enforcement, column-level PHI encryption, and releases v2026.10.29.1, v2026.10.29.2, and v2026.10.29.3.
+19. [**Scientific Research & Legal Disclaimer**](disclaimer.md)
     * Formal scientific research scope, medical non-advice, and BSL-1 biosafety declarations.
 
 ---

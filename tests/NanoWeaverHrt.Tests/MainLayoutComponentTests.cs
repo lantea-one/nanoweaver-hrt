@@ -10,6 +10,7 @@ using Microsoft.JSInterop;
 using Moq;
 using NanoWeaverHrt.Components.Layout;
 using NanoWeaverHrt.Configuration;
+using NanoWeaverHrt.Localization;
 using NanoWeaverHrt.Security.Authentication;
 using Xunit;
 
@@ -87,6 +88,7 @@ public sealed class MainLayoutComponentTests : TestContext
         Services.AddSingleton(_authMock.Object);
         Services.AddSingleton(_sessionState);
         Services.AddSingleton(_activityMock.Object);
+        Services.AddSingleton<IWeaverLocalizer, WeaverLocalizer>();
     }
 
     /// <summary>
@@ -144,6 +146,22 @@ public sealed class MainLayoutComponentTests : TestContext
         Assert.Empty(cut.FindAll(".telemetry-grid"));
         Assert.Empty(cut.FindAll(".node-status"));
         Assert.Equal("http://localhost/login?reason=idle_timeout", nav.Uri);
+    }
+
+    /// <summary>
+    /// Verifies that TryReadSessionTokenAsync returns null gracefully when JS interop throws.
+    /// </summary>
+    [Fact]
+    public void TryReadSessionToken_WhenJsThrows_CatchesGracefully()
+    {
+        // WHAT: Tests exception handling during session token retrieval.
+        // WHY:  Prerendering or disconnected circuits must not crash the layout component.
+        // HOW:  Configures weaverGetSessionToken to throw JSException and renders MainLayout.
+        JSInterop.Setup<string?>("weaverGetSessionToken").SetException(new JSException("Circuit disconnected"));
+
+        IRenderedComponent<MainLayout> cut = RenderComponent<MainLayout>();
+        Assert.NotNull(cut);
+        Assert.False(_sessionState.IsAuthenticated);
     }
 
     /// <summary>
@@ -492,19 +510,16 @@ public sealed class MainLayoutComponentTests : TestContext
     /// Verifies that the client-side idle watcher unregisters when the session transitions to unauthenticated.
     /// </summary>
     [Fact]
-    public void IdleWatcher_UnregistersWhenSessionBecomesUnauthenticated()
+    public async Task IdleWatcher_UnregistersWhenSessionBecomesUnauthenticated()
     {
         // WHAT: Tests unregistering the idle watcher when authentication state is cleared.
         // WHY:  Prevents idle watcher callback leaks after sign-out.
-        // HOW:  Renders with authenticated session, clears user, triggers re-render, and asserts unregister.
+        // HOW:  Renders with authenticated session, clears user via dispatcher, and asserts unregister.
         _sessionState.SetUser(_adminUser);
-        JSInterop.SetupVoid("weaverRegisterIdleWatcher", It.IsAny<object>(), It.IsAny<int>()).SetVoidResult();
-        JSInterop.SetupVoid("weaverUnregisterIdleWatcher").SetVoidResult();
 
         IRenderedComponent<MainLayout> cut = RenderComponent<MainLayout>();
 
-        _sessionState.SignOut();
-        cut.Render();
+        await cut.InvokeAsync(() => _sessionState.SignOut());
 
         JSInterop.VerifyInvoke("weaverUnregisterIdleWatcher");
     }
@@ -513,19 +528,17 @@ public sealed class MainLayoutComponentTests : TestContext
     /// Verifies that unregistering the idle watcher catches exceptions gracefully.
     /// </summary>
     [Fact]
-    public void IdleWatcher_WhenUnregisterThrows_CatchesGracefully()
+    public async Task IdleWatcher_WhenUnregisterThrows_CatchesGracefully()
     {
         // WHAT: Tests exception handling during idle watcher unregistration.
         // WHY:  Disconnected circuits must not throw unhandled exceptions during cleanup.
-        // HOW:  Configures weaverUnregisterIdleWatcher to throw and renders component during sign-out.
+        // HOW:  Configures weaverUnregisterIdleWatcher to throw and dispatches sign-out via component dispatcher.
         _sessionState.SetUser(_adminUser);
-        JSInterop.SetupVoid("weaverRegisterIdleWatcher", It.IsAny<object>(), It.IsAny<int>()).SetVoidResult();
         JSInterop.SetupVoid("weaverUnregisterIdleWatcher").SetException(new JSException("Circuit dead"));
 
         IRenderedComponent<MainLayout> cut = RenderComponent<MainLayout>();
 
-        _sessionState.SignOut();
-        cut.Render();
+        await cut.InvokeAsync(() => _sessionState.SignOut());
 
         Assert.False(_sessionState.IsAuthenticated);
     }
@@ -580,5 +593,29 @@ public sealed class MainLayoutComponentTests : TestContext
         updateMethod.Invoke(cut.Instance, null);
 
         Assert.NotNull(cut.Find(".telemetry-grid"));
+    }
+
+    /// <summary>
+    /// Verifies that switching the language via the embedded language selector reactively updates
+    /// navigation link labels without requiring a page reload.
+    /// </summary>
+    [Fact]
+    public void EmbeddedLanguageSelector_WhenLanguageChanged_UpdatesNavLinksReactively()
+    {
+        // WHAT: Tests reactive UI localization in MainLayout when language changes.
+        // WHY:  Ensures that selecting a different language immediately translates navigation labels.
+        // HOW:  Renders MainLayout authenticated, verifies default English label, changes selection to Spanish, and verifies Spanish text.
+        _sessionState.SetUser(_adminUser);
+        IRenderedComponent<MainLayout> cut = RenderComponent<MainLayout>();
+
+        var endocrineLink = cut.Find("a[href='/endocrine']");
+        Assert.Contains("Endocrine Hub", endocrineLink.TextContent);
+
+        // Find the language selector dropdown and change value to Spanish (es-ES)
+        var selectElement = cut.Find(".language-dropdown");
+        selectElement.Change("es-ES");
+
+        endocrineLink = cut.Find("a[href='/endocrine']");
+        Assert.Contains("Centro Endocrino", endocrineLink.TextContent);
     }
 }

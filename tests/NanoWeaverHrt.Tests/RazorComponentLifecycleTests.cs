@@ -20,7 +20,9 @@ using NanoWeaverHrt.Components.Pages;
 using NanoWeaverHrt.Configuration;
 using NanoWeaverHrt.Endocrine;
 using NanoWeaverHrt.Fabrication;
+using NanoWeaverHrt.Fabrication.Opentrons;
 using NanoWeaverHrt.Genomics;
+using NanoWeaverHrt.Localization;
 using NanoWeaverHrt.Pipelines;
 using NanoWeaverHrt.Security.Access;
 using NanoWeaverHrt.Security.Authentication;
@@ -92,6 +94,7 @@ public sealed class RazorComponentLifecycleTests : IDisposable
         sc.AddSingleton<IConfigurationRepository, SystemConfigurationStore>();
         sc.AddSingleton<IStackServiceManager, StackServiceManager>();
         sc.AddSingleton<IFabricationService, FabricationService>();
+        sc.AddSingleton<IOpentronsProtocolGenerator, OpentronsProtocolGenerator>();
         sc.AddSingleton<IDatasetManager, DatasetTransferService>();
         sc.AddSingleton<XyzPipeReader>();
         sc.AddSingleton<DcdPipeReader>();
@@ -119,6 +122,7 @@ public sealed class RazorComponentLifecycleTests : IDisposable
         sc.AddSingleton<ISubjectAccessService, SubjectAccessService>();
         sc.AddSingleton<IUserAuthenticationService, UserAuthenticationService>();
         sc.AddSingleton<IServerSessionActivityTracker>(_ => new ServerSessionActivityTracker());
+        sc.AddSingleton<IWeaverLocalizer, WeaverLocalizer>();
         sc.AddScoped<UserSessionState>();
         sc.AddSingleton<NavigationManager>(_navManager);
         sc.AddSingleton<IJSRuntime>(_jsRuntime);

@@ -6,6 +6,7 @@
 @inject IServerSessionActivityTracker SessionActivity
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
+@inject IWeaverLocalizer Localizer
 
 <header class="navbar">
     <div class="brand">
@@ -15,30 +16,33 @@
             <p class="subtitle">Decentralized Synthetic Biology &amp; DNA Origami Engineering Platform</p>
         </div>
     </div>
-    @*
-        WHAT: Node identity, accelerator, database backend and the signed-in user chip.
-        WHY:  Every one of these discloses how this sovereign node is configured,
-              so none of it may render to a visitor without a session.
-        HOW:  Rendered only when ShellVisible is true (see the @code block).
-    *@
-    @if (ShellVisible)
-    {
-        <div class="node-status">
-            <div class="status-indicator">
-                <span class="pulse"></span>
-                <span>NODE: @Environment.MachineName.ToUpperInvariant()</span>
-            </div>
-            <div class="badge badge-accent">@_acceleratorBackend.ToUpperInvariant()</div>
-            <div class="badge badge-outline">DB: @ConfigRepo.ActiveBackendName</div>
-@*
-            WHAT: Binds authenticated user chip using non-null assertion.
-            WHY:  ShellVisible requires SessionState.IsAuthenticated, which guarantees CurrentUser is non-null.
-            HOW:  Direct property access on SessionState.CurrentUser!.
+    <div class="header-actions">
+        <LanguageSelector CurrentLanguage="_currentLanguage" OnLanguageChanged="HandleLanguageChanged" />
+        @*
+            WHAT: Node identity, accelerator, database backend and the signed-in user chip.
+            WHY:  Every one of these discloses how this sovereign node is configured,
+                  so none of it may render to a visitor without a session.
+            HOW:  Rendered only when ShellVisible is true (see the @code block).
         *@
-            <div class="badge badge-primary">@SessionState.CurrentUser!.Username (@SessionState.CurrentUser!.Role)</div>
-            <button class="btn btn-sm btn-outline text-muted" @onclick="HandleSignOut">Sign Out</button>
-        </div>
-    }
+        @if (ShellVisible)
+        {
+            <div class="node-status">
+                <div class="status-indicator">
+                    <span class="pulse"></span>
+                    <span>NODE: @Environment.MachineName.ToUpperInvariant()</span>
+                </div>
+                <div class="badge badge-accent">@_acceleratorBackend.ToUpperInvariant()</div>
+                <div class="badge badge-outline">DB: @ConfigRepo.ActiveBackendName</div>
+    @*
+                WHAT: Binds authenticated user chip using non-null assertion.
+                WHY:  ShellVisible requires SessionState.IsAuthenticated, which guarantees CurrentUser is non-null.
+                HOW:  Direct property access on SessionState.CurrentUser!.
+            *@
+                <div class="badge badge-primary">@SessionState.CurrentUser!.Username (@SessionState.CurrentUser!.Role)</div>
+                <button class="btn btn-sm btn-outline text-muted" @onclick="HandleSignOut">Sign Out</button>
+            </div>
+        }
+    </div>
 </header>
 
 @*
@@ -66,13 +70,13 @@
             <span class="nav-icon">📁</span> Trajectory Browser
         </NavLink>
         <NavLink href="/endocrine" class="nav-link">
-            <span class="nav-icon">⚖️</span> Endocrine Hub
+            <span class="nav-icon">⚖️</span> @Localizer.GetString("Nav.Endocrine", _currentLanguage)
         </NavLink>
         <NavLink href="/simulations" class="nav-link">
-            <span class="nav-icon">🧪</span> In-Silico Studio
+            <span class="nav-icon">🧪</span> @Localizer.GetString("Nav.Simulations", _currentLanguage)
         </NavLink>
         <NavLink href="/compliance" class="nav-link">
-            <span class="nav-icon">🔒</span> Compliance &amp; PQC
+            <span class="nav-icon">🔒</span> @Localizer.GetString("Nav.Compliance", _currentLanguage)
         </NavLink>
         @if (SessionState.IsAdmin)
         {
@@ -653,5 +657,23 @@
 
         _telemetryTimer?.Dispose();
         _dotNetRef?.Dispose();
+    }
+
+    /// <summary>
+    /// Currently selected community language for UI localization.
+    /// </summary>
+    private WeaverLanguage _currentLanguage = WeaverLanguage.English;
+
+    /// <summary>
+    /// Handles language change notifications raised by the embedded language selector component.
+    /// </summary>
+    /// <param name="newLanguage">The newly selected community localization language.</param>
+    public void HandleLanguageChanged(WeaverLanguage newLanguage)
+    {
+        // WHAT: Updates the master layout active community language.
+        // WHY:  Triggers reactive re-rendering of localized navigation labels without requiring a page reload.
+        // HOW:  Stores new language into _currentLanguage and dispatches StateHasChanged.
+        _currentLanguage = newLanguage;
+        StateHasChanged();
     }
 }

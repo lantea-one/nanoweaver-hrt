@@ -1,0 +1,20 @@
+{
+  "Nav.Home": "Startpagina",
+  "Nav.Endocrine": "Endocrien Centrum",
+  "Nav.Wizard": "Installatiewizard",
+  "Nav.Simulations": "Simulaties",
+  "Nav.Genomics": "Farmacogenomica",
+  "Nav.Compliance": "Nalevingsaudit",
+  "Nav.Datasets": "Gegevenssets",
+  "Nav.Language": "Taal",
+  "Regimen.MtF": "Man naar Vrouw (MtF)",
+  "Regimen.FtM": "Vrouw naar Man (FtM)",
+  "Regimen.E2Dominant": "17β-Estradiol Dominant",
+  "Regimen.TDominant": "Testosteron Dominant",
+  "Alert.IdleTimeout": "Sessie verlopen door inactiviteit. Gelieve opnieuw te verifiëren.",
+  "Alert.CryptoShredded": "Cryptografische sleutels vernietigd. PHI permanent ontoegankelijk.",
+  "Alert.TamperDetected": "Knoeien gedetecteerd in beveiligd grootboek. Noodvergrendeling geactiveerd.",
+  "Status.Online": "Online",
+  "Status.Offline": "Offline",
+  "Status.Connecting": "Verbinden..."
+}

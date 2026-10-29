@@ -1,0 +1,20 @@
+{
+  "Nav.Home": "首页",
+  "Nav.Endocrine": "内分泌中心",
+  "Nav.Wizard": "设置向导",
+  "Nav.Simulations": "模拟",
+  "Nav.Genomics": "药物基因组学",
+  "Nav.Compliance": "合规审计",
+  "Nav.Datasets": "数据集",
+  "Nav.Language": "语言",
+  "Regimen.MtF": "男跨女 (MtF)",
+  "Regimen.FtM": "女跨男 (FtM)",
+  "Regimen.E2Dominant": "17β-雌二醇主导",
+  "Regimen.TDominant": "睾酮主导",
+  "Alert.IdleTimeout": "由于长时间未操作，会话已过期。请重新认证。",
+  "Alert.CryptoShredded": "加密密钥已被粉碎。受保护健康信息已永久无法访问。",
+  "Alert.TamperDetected": "在安全账本中检测到篡改。已启动紧急锁定。",
+  "Status.Online": "在线",
+  "Status.Offline": "离线",
+  "Status.Connecting": "正在连接..."
+}

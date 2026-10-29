@@ -125,9 +125,9 @@ public static class MobileEntryPoint
 
         try
         {
-            while (!ct.IsCancellationRequested)
+            if (!ct.IsCancellationRequested)
             {
-                await Task.Delay(50, ct).ConfigureAwait(false);
+                await Task.Delay(Timeout.InfiniteTimeSpan, ct).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException)

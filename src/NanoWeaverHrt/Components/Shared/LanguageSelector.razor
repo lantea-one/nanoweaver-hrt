@@ -1,0 +1,124 @@
+@using Microsoft.JSInterop
+@using NanoWeaverHrt.Localization
+@inject IWeaverLocalizer Localizer
+@inject IJSRuntime JSRuntime
+
+<div class="language-selector-container">
+    <span class="language-selector-icon" aria-hidden="true">🌐</span>
+    <select class="language-dropdown"
+            value="@CurrentLanguageTag"
+            @onchange="HandleSelectionChangedAsync"
+            aria-label="@Localizer.GetString("Nav.Language", CurrentLanguage)">
+        @foreach (WeaverLanguageInfo lang in SupportedLanguages)
+        {
+            <option value="@lang.Bcp47Tag">@lang.NativeName</option>
+        }
+    </select>
+</div>
+
+@code {
+    /// <summary>
+    /// Gets the list of supported community localization languages.
+    /// </summary>
+    private IReadOnlyList<WeaverLanguageInfo> SupportedLanguages => Localizer.GetSupportedLanguages();
+
+    /// <summary>
+    /// Gets the BCP-47 language tag corresponding to the currently active language.
+    /// </summary>
+    private string CurrentLanguageTag
+    {
+        get
+        {
+            // WHAT: Resolves the BCP-47 tag for the active language.
+            // WHY:  Synchronizes the HTML select value attribute with the component state.
+            // HOW:  Looks up the matching language info descriptor from supported languages, defaulting to 'en-US'.
+            foreach (WeaverLanguageInfo info in SupportedLanguages)
+            {
+                if (info.Code == CurrentLanguage)
+                {
+                    return info.Bcp47Tag;
+                }
+            }
+
+            return "en-US";
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets the active community language selected in the dropdown.
+    /// </summary>
+    [Parameter]
+    public WeaverLanguage CurrentLanguage { get; set; } = WeaverLanguage.English;
+
+    /// <summary>
+    /// Event callback raised when the user selects a new localization language.
+    /// </summary>
+    [Parameter]
+    public EventCallback<WeaverLanguage> OnLanguageChanged { get; set; }
+
+    /// <summary>
+    /// Restores persisted language preference from client storage on initial component render.
+    /// </summary>
+    /// <param name="firstRender">Indicates whether this is the first interactive render pass.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // WHAT: Reads persisted language preference from cookies/sessionStorage on first client render.
+        // WHY:  Maintains user language preference across page refreshes and browser tabs without forcing page reloads.
+        // HOW:  Invokes JS helper 'weaverGetLanguage', resolves tag to WeaverLanguage, and notifies parent if changed.
+        if (firstRender)
+        {
+            try
+            {
+                string? storedTag = await JSRuntime.InvokeAsync<string?>("weaverGetLanguage");
+                if (!string.IsNullOrWhiteSpace(storedTag))
+                {
+                    WeaverLanguage resolved = Localizer.ResolveLanguage(storedTag);
+                    if (resolved != CurrentLanguage)
+                    {
+                        CurrentLanguage = resolved;
+                        if (OnLanguageChanged.HasDelegate)
+                        {
+                            await OnLanguageChanged.InvokeAsync(resolved);
+                        }
+
+                        StateHasChanged();
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                // Handled gracefully when JS runtime is unavailable, storage is denied, or prerendering.
+            }
+        }
+    }
+
+    /// <summary>
+    /// Handles user selection changes from the HTML select dropdown.
+    /// </summary>
+    /// <param name="args">The change event arguments containing the selected BCP-47 tag.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    public async Task HandleSelectionChangedAsync(ChangeEventArgs args)
+    {
+        // WHAT: Updates the active community language and persists the choice to client-side storage.
+        // WHY:  Enforces immediate reactive localization across the sovereign shell and ensures persistence via 'weaver_lang' cookie.
+        // HOW:  Parses the selected tag via IWeaverLocalizer, invokes 'weaverSetLanguage' with SameSite=Strict cookie, and fires OnLanguageChanged.
+        string? selectedTag = args.Value?.ToString();
+        WeaverLanguage resolved = Localizer.ResolveLanguage(selectedTag);
+        CurrentLanguage = resolved;
+
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("weaverSetLanguage", selectedTag ?? "en-US");
+        }
+        catch (Exception)
+        {
+            // Handled gracefully when JS interop or storage is unavailable.
+        }
+
+        if (OnLanguageChanged.HasDelegate)
+        {
+            await OnLanguageChanged.InvokeAsync(resolved);
+        }
+    }
+}

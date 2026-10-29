@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using NanoWeaverHrt.Client.Api;
 using NanoWeaverHrt.Client.Storage;
+using NanoWeaverHrt.Localization;
 
 namespace NanoWeaverHrt.Gui.Core.ViewModels;
 
@@ -57,6 +58,21 @@ public sealed class MainShellViewModel : INotifyPropertyChanged
     private InstanceConnectionSnapshot? _selectedSnapshot;
 
     /// <summary>
+    /// Localization provider for translating UI strings and system tray items.
+    /// </summary>
+    private readonly IWeaverLocalizer _localizer;
+
+    /// <summary>
+    /// Service managing persistent user language preferences.
+    /// </summary>
+    private readonly ILanguagePreferenceService? _languagePreferenceService;
+
+    /// <summary>
+    /// Backing field for currently selected user interface language.
+    /// </summary>
+    private WeaverLanguage _selectedLanguage;
+
+    /// <summary>
     /// Occurs when a property value changes.
     /// </summary>
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -67,17 +83,24 @@ public sealed class MainShellViewModel : INotifyPropertyChanged
     /// <param name="profileRepository">Repository for querying and removing instance profiles.</param>
     /// <param name="coordinator">Coordinator managing instance snapshots and authentication.</param>
     /// <param name="nodeClient">Optional REST client for triggering simulations.</param>
+    /// <param name="localizer">Optional localization provider. Defaults to a new instance of <see cref="WeaverLocalizer"/>.</param>
+    /// <param name="languagePreferenceService">Optional language preference persistence service.</param>
     public MainShellViewModel(
         IInstanceProfileRepository profileRepository,
         IMultiInstanceCoordinator coordinator,
-        INanoWeaverNodeClient? nodeClient = null)
+        INanoWeaverNodeClient? nodeClient = null,
+        IWeaverLocalizer? localizer = null,
+        ILanguagePreferenceService? languagePreferenceService = null)
     {
-        // WHAT: Assigns dependencies for profile storage, multi-instance coordination, and REST API access.
-        // WHY:  Coordinates data flows between client-side services and the Avalonia UI presentation layer.
-        // HOW:  Validates mandatory parameters and initializes empty collections.
+        // WHAT: Assigns dependencies for profile storage, multi-instance coordination, REST API access, and localization.
+        // WHY:  Coordinates data flows between client-side services, localizer catalogs, and Avalonia presentation layer.
+        // HOW:  Validates mandatory parameters, sets optional dependencies with sensible fallbacks, and initializes empty collections.
         _profileRepository = profileRepository ?? throw new ArgumentNullException(nameof(profileRepository));
         _coordinator = coordinator ?? throw new ArgumentNullException(nameof(coordinator));
         _nodeClient = nodeClient;
+        _localizer = localizer ?? new WeaverLocalizer();
+        _languagePreferenceService = languagePreferenceService;
+        _selectedLanguage = WeaverLanguage.English;
     }
 
     /// <summary>
@@ -145,6 +168,12 @@ public sealed class MainShellViewModel : INotifyPropertyChanged
         }
 
         UpdateSelectedSnapshot();
+
+        if (_languagePreferenceService != null)
+        {
+            _selectedLanguage = await _languagePreferenceService.GetPreferredLanguageAsync(ct).ConfigureAwait(false);
+            NotifyLocalizationPropertiesChanged();
+        }
 
         OnPropertyChanged(nameof(Profiles));
         OnPropertyChanged(nameof(Snapshots));
@@ -409,6 +438,7 @@ public sealed class MainShellViewModel : INotifyPropertyChanged
         if (string.IsNullOrWhiteSpace(_selectedInstanceId))
         {
             _selectedSnapshot = null;
+            OnPropertyChanged(nameof(LocalizedStatusText));
             return;
         }
 
@@ -443,6 +473,8 @@ public sealed class MainShellViewModel : INotifyPropertyChanged
                 _selectedSnapshot = null;
             }
         }
+
+        OnPropertyChanged(nameof(LocalizedStatusText));
     }
 
     /// <summary>
@@ -455,5 +487,184 @@ public sealed class MainShellViewModel : INotifyPropertyChanged
         // WHY:  Notifies data-bound Avalonia UI components of property state changes.
         // HOW:  Raises PropertyChanged with PropertyChangedEventArgs.
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
+    /// <summary>
+    /// Gets the localization provider configured for this shell ViewModel.
+    /// </summary>
+    public IWeaverLocalizer Localizer => _localizer;
+
+    /// <summary>
+    /// Gets the language preference persistence service, if configured.
+    /// </summary>
+    public ILanguagePreferenceService? LanguagePreferenceService => _languagePreferenceService;
+
+    /// <summary>
+    /// Gets or sets the currently active display language.
+    /// </summary>
+    public WeaverLanguage SelectedLanguage
+    {
+        get => _selectedLanguage;
+        set
+        {
+            // WHAT: Mutates the selected language and notifies observers if changed.
+            // WHY:  Powers interactive language pickers and reactive UI translation refresh.
+            // HOW:  Compares new value with _selectedLanguage; updates field, fires PropertyChanged,
+            //       notifies dependent localized properties, and initiates async persistence if service is present.
+            if (_selectedLanguage != value)
+            {
+                _selectedLanguage = value;
+                OnPropertyChanged(nameof(SelectedLanguage));
+                NotifyLocalizationPropertiesChanged();
+
+                if (_languagePreferenceService != null)
+                {
+                    _ = SetPreferredLanguageSafeAsync(value);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets the list of community languages supported by the platform.
+    /// </summary>
+    public IReadOnlyList<WeaverLanguageInfo> AvailableLanguages => _localizer.GetSupportedLanguages();
+
+    /// <summary>
+    /// Gets the localized connection status string for the currently selected instance.
+    /// </summary>
+    public string LocalizedStatusText
+    {
+        get
+        {
+            // WHAT: Maps the current selected connection state to a localized label.
+            // WHY:  Ensures node connectivity status appears translated in the UI sidebar and header.
+            // HOW:  Switches over SelectedSnapshot.State, choosing corresponding key, and asks localizer.
+            if (_selectedSnapshot == null)
+            {
+                return _localizer.GetString("Status.Offline", _selectedLanguage);
+            }
+
+            string key = _selectedSnapshot.State switch
+            {
+                InstanceConnectionState.Online => "Status.Online",
+                InstanceConnectionState.Connecting => "Status.Connecting",
+                _ => "Status.Offline"
+            };
+
+            return _localizer.GetString(key, _selectedLanguage);
+        }
+    }
+
+    /// <summary>
+    /// Gets the localized idle session lock alert message.
+    /// </summary>
+    public string LocalizedIdleLockMessage => _localizer.GetString("Alert.IdleTimeout", _selectedLanguage);
+
+    /// <summary>
+    /// Gets the localized label for the system tray Show/Restore action.
+    /// </summary>
+    public string LocalizedTrayShowText => GetLocalizedText("Tray.Show", "Show / Restore");
+
+    /// <summary>
+    /// Gets the localized label for the system tray Lock Key Vault action.
+    /// </summary>
+    public string LocalizedTrayLockVaultText => GetLocalizedText("Tray.LockVault", "Lock Key Vault");
+
+    /// <summary>
+    /// Gets the localized label for the system tray Exit / Quit action.
+    /// </summary>
+    public string LocalizedTrayExitText => GetLocalizedText("Tray.Exit", "Quit");
+
+    /// <summary>
+    /// Sets the active language and awaits persistence to storage.
+    /// </summary>
+    /// <param name="language">Target language to select.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task representing the asynchronous save operation.</returns>
+    public async Task SetLanguageAsync(WeaverLanguage language, CancellationToken ct = default)
+    {
+        // WHAT: Changes active UI language, dispatches notifications, and awaits persistence.
+        // WHY:  Allows deterministic awaiting of language switches in GUI and test contexts.
+        // HOW:  Updates backing field, raises property changes, and awaits ILanguagePreferenceService.
+        _selectedLanguage = language;
+        OnPropertyChanged(nameof(SelectedLanguage));
+        NotifyLocalizationPropertiesChanged();
+
+        if (_languagePreferenceService != null)
+        {
+            await _languagePreferenceService.SetPreferredLanguageAsync(language, ct).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Resolves a localized string for the specified key using the currently selected language, returning a fallback if missing.
+    /// </summary>
+    /// <param name="key">Localization resource key.</param>
+    /// <param name="fallback">Fallback string if key is missing or unresolved.</param>
+    /// <returns>Localized string value, or fallback if not found.</returns>
+    public string GetLocalizedText(string key, string fallback = "")
+    {
+        // WHAT: Resolves a localized string key against the active language catalog.
+        // WHY:  Ensures graceful degradation to fallback text when a key is absent or empty.
+        // HOW:  Guards against empty key, invokes localizer, and compares result to key identifier.
+        if (string.IsNullOrEmpty(key))
+        {
+            return fallback;
+        }
+
+        string val = _localizer.GetString(key, _selectedLanguage);
+        return string.IsNullOrEmpty(val) || string.Equals(val, key, StringComparison.Ordinal)
+            ? (string.IsNullOrEmpty(fallback) ? key : fallback)
+            : val;
+    }
+
+    /// <summary>
+    /// Resolves a localized notification or alert message for the given alert key.
+    /// </summary>
+    /// <param name="alertKey">Alert resource key.</param>
+    /// <param name="defaultMessage">Default message body if unlocalized.</param>
+    /// <returns>Localized message string.</returns>
+    public string GetLocalizedAlertMessage(string alertKey, string defaultMessage)
+    {
+        // WHAT: Translates alert titles and messages for display in GUI alert feeds.
+        // WHY:  Allows multi-language alerts across native desktop and mobile notification centers.
+        // HOW:  Delegates to GetLocalizedText with fallback to defaultMessage.
+        return GetLocalizedText(alertKey, defaultMessage);
+    }
+
+    /// <summary>
+    /// Raises property changed notifications for all localized string properties.
+    /// </summary>
+    private void NotifyLocalizationPropertiesChanged()
+    {
+        // WHAT: Dispatches PropertyChanged events for all dependent localized string properties.
+        // WHY:  Fulfills reactive UI update invariant without requiring application restart.
+        // HOW:  Invokes OnPropertyChanged for each localized property identifier.
+        OnPropertyChanged(nameof(LocalizedStatusText));
+        OnPropertyChanged(nameof(LocalizedIdleLockMessage));
+        OnPropertyChanged(nameof(LocalizedTrayShowText));
+        OnPropertyChanged(nameof(LocalizedTrayLockVaultText));
+        OnPropertyChanged(nameof(LocalizedTrayExitText));
+    }
+
+    /// <summary>
+    /// Safely persists the preferred language in a background fire-and-forget task.
+    /// </summary>
+    /// <param name="language">Language to persist.</param>
+    /// <returns>A task representing the background save operation.</returns>
+    private async Task SetPreferredLanguageSafeAsync(WeaverLanguage language)
+    {
+        // WHAT: Persists language preference in background without blocking synchronous property setters.
+        // WHY:  Prevents UI freezes while ensuring preference changes are captured to disk.
+        // HOW:  Awaits SetPreferredLanguageAsync in try/catch block to suppress transient storage exceptions.
+        try
+        {
+            await _languagePreferenceService!.SetPreferredLanguageAsync(language).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Suppress background persistence exceptions during synchronous property setter dispatches.
+        }
     }
 }

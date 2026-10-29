@@ -85,6 +85,65 @@ body {
     gap: 1.25rem;
 }
 
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+/* ==========================================================================
+   Language Selector Dropdown
+   --------------------------------------------------------------------------
+   WHAT: Compact localization switcher dropdown for the master layout header.
+   WHY:  Permits seamless switching between supported languages without layout
+         shifts or breaking mobile viewports.
+   HOW:  Styled with obsidian slate (#161f30) background, subtle border, and
+         bioluminescent cyan (#00f5d4) focus and hover accents.
+   ========================================================================== */
+.language-selector-container {
+    display: inline-flex;
+    align-items: center;
+    position: relative;
+    gap: 0.35rem;
+}
+
+.language-selector-icon {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    user-select: none;
+    line-height: 1;
+}
+
+.language-dropdown {
+    background-color: #161f30;
+    color: var(--text-main);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 0.3rem 0.6rem;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    line-height: 1.2;
+    cursor: pointer;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    outline: none;
+    max-width: 140px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.language-dropdown:hover,
+.language-dropdown:focus {
+    border-color: #00f5d4;
+    box-shadow: 0 0 8px rgba(0, 245, 212, 0.35);
+}
+
+.language-dropdown option {
+    background-color: #161f30;
+    color: #e6edf3;
+    font-family: var(--font-mono);
+}
+
 .status-indicator {
     display: flex;
     align-items: center;

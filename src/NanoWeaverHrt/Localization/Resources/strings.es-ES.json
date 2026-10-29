@@ -1,0 +1,20 @@
+{
+  "Nav.Home": "Inicio",
+  "Nav.Endocrine": "Centro Endocrino",
+  "Nav.Wizard": "Asistente de Configuración",
+  "Nav.Simulations": "Simulaciones",
+  "Nav.Genomics": "Farmacogenómica",
+  "Nav.Compliance": "Auditoría de Cumplimiento",
+  "Nav.Datasets": "Conjuntos de Datos",
+  "Nav.Language": "Idioma",
+  "Regimen.MtF": "Hombre a Mujer (MtF)",
+  "Regimen.FtM": "Mujer a Hombre (FtM)",
+  "Regimen.E2Dominant": "17β-Estradiol Dominante",
+  "Regimen.TDominant": "Testosterona Dominante",
+  "Alert.IdleTimeout": "Sesión expirada por inactividad. Por favor autentíquese de nuevo.",
+  "Alert.CryptoShredded": "Claves criptográficas destruidas. PHI permanentemente inacessible.",
+  "Alert.TamperDetected": "Manipulación detectada en el registro seguro. Bloqueo de emergencia activado.",
+  "Status.Online": "En línea",
+  "Status.Offline": "Desconectado",
+  "Status.Connecting": "Conectando..."
+}

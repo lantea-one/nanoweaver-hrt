@@ -2,13 +2,13 @@
 
 > **Instructions for Human Architects and AI Assistants**:
 > This directory contains the standard operating procedures, architectural templates, and quality invariants for authoring, decomposing, and executing work packages in **nanoweaver-hrt**.
-> All architectural and feature phases (**P1–P39**) are fully completed, verified at 100.00% line and branch coverage, and shipped in release **`v2026.10.29.2`**.
+> All architectural and feature phases (**P1–P46**) are fully completed, verified at 100.00% line and branch coverage, and shipped in release **`v2026.10.29.3`**.
 
 ---
 
 ## 1. Development & Release Status
 
-All 39 development phases have concluded:
+All 46 development phases have concluded:
 - **Phases P1–P3**: Core Minimal API service, zero-allocation SIMD trajectory parser, and `System.IO.Pipelines` frame streaming.
 - **Phases P4–P6**: Database seam rollout across User, DNA, and Configuration stores on `IWeaverDbConnectionFactory`.
 - **Phases P7–P12**: PHI column-level encryption at rest, post-quantum Subject Key Vault, FDA 21 CFR Part 11 audit ledger, Ed25519 dataset signing, and Peer Key Registry.
@@ -20,20 +20,16 @@ All 39 development phases have concluded:
   - **P37**: Universal package version synchronization (`2026.10.29.2`) across Linux (.deb, .rpm, .pkg.tar.zst, AUR), Windows (MSIX, NSIS), macOS (.dmg, .app), and Mobile (.apk, .ipa).
   - **P38**: Standalone interactive windowed desktop GUI shell (`IDesktopUiHost`, `DefaultDesktopUiHost`) with tray controller, single-instance mutex gating, and 100.00% line & branch test coverage.
   - **P39**: Master cross-platform packaging validation, 8-gate pre-flight verification, release documentation, and dual-pipeline publishing.
+- **Phases P40–P46**: Wet-Lab Automation & Community Localization (shipped in `v2026.10.29.3`):
+  - **P40**: Opentrons Python Protocol API v2 liquid handler generator engine (`IOpentronsProtocolGenerator`, OT-2 and Flex support, stoichiometric dispensing, on-deck thermocycling).
+  - **P41**: Opentrons REST API endpoints (`POST /api/fabrication/opentrons/generate` & `/download`) with role gating and RFC 7807 problem details.
+  - **P42**: Guided DNA Origami Workflow Wizard UI integration (Stages 5 & 6 hardware cards, visual deck layout, preview/download modal).
+  - **P43**: Localization domain architecture (`IWeaverLocalizer`, `WeaverLocalizer`) with 10 native embedded JSON catalogs (`en-US`, `es-ES`, `fr-FR`, `de-DE`, `pt-BR`, `it-IT`, `ja-JP`, `zh-CN`, `nl-NL`, `pl-PL`).
+  - **P44**: Multi-platform desktop & ViewModel localization (`MainShellViewModel`, `DesktopTrayIconController`, `LanguagePreferenceService` with dual-engine SQLite/PostgreSQL support).
+  - **P45**: Sovereign Web UI language switcher (`LanguageSelector.razor`, `MainLayout.razor`, `EndocrineDashboard.razor`, `weaver_lang` SameSite=Strict cookies).
+  - **P46**: Pre-flight verification (1,162 tests, 100% line & branch coverage), downward ratchet improvement (97.56% branch, 99.65% line), Docsify documentation guides, and release ratification.
 
-There are currently **7 active work packages** targeting the `v2026.10.29.3` milestone (Wet-Lab Automation & Community Localization):
-
-### Active Work Packages (Milestone `v2026.10.29.3`: `P40–P46`)
-
-| Phase | Work Package File | Target Role / Model | Architectural Layer & Scope | Status |
-| :--- | :--- | :--- | :--- | :--- |
-| **P40** | [`p40-opentrons-protocol-generator-engine.md`](p40-opentrons-protocol-generator-engine.md) | `coder` (`flash`) | Wet-Lab Liquid Handler Protocol Generator Engine (`IOpentronsProtocolGenerator`, Protocol API v2 AST, 100% tests) | **READY** |
-| **P41** | [`p41-opentrons-rest-api-and-export.md`](p41-opentrons-rest-api-and-export.md) | `coder` (`flash`) | Wet-Lab Liquid Handler REST API & Script Export (`POST /api/fabrication/opentrons/*`, integration tests) | **READY** |
-| **P42** | [`p42-opentrons-ui-workflow-wizard.md`](p42-opentrons-ui-workflow-wizard.md) | `coder` / `mechanic` (`flash`) | Wet-Lab Liquid Handler UI Integration in Workflow Wizard (robot/pipette selectors, Python preview, 1-click download) | **READY** |
-| **P43** | [`p43-localization-architecture-and-resources.md`](p43-localization-architecture-and-resources.md) | `coder` (`flash`) | Community Localization Architecture & Embedded Resource Provider (`IWeaverLocalizer`, `en-US`, `es-ES`, `fr-FR`, `de-DE`) | **READY** |
-| **P44** | [`p44-desktop-viewmodel-localization.md`](p44-desktop-viewmodel-localization.md) | `coder` (`flash`) | Multi-Platform Desktop & ViewModel Localization (`MainShellViewModel`, preference persistence, tray/notification i18n) | **READY** |
-| **P45** | [`p45-web-ui-language-switcher.md`](p45-web-ui-language-switcher.md) | `coder` / `mechanic` (`flash`) | Sovereign Web UI Language Switcher & Localized Razor Components (`MainLayout.razor`, cookie persistence, bUnit tests) | **READY** |
-| **P46** | [`p46-release-verification-and-documentation.md`](p46-release-verification-and-documentation.md) | `architect` / parent coordinator (`inherit` / `pro`) | System-Wide Verification (8 gates), Docsify Guides (`opentrons-automation.md`, `localization.md`), tag `v2026.10.29.3` | **PLANNED** |
+There are currently **0 active work packages**. All planned initiatives for `v2026.10.29.3` have concluded cleanly.
 
 ---
 

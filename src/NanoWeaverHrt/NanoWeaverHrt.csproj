@@ -33,4 +33,11 @@
     <InternalsVisibleTo Include="NanoWeaverHrt.Tests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Localization/Resources/*.json">
+      <WithCulture>false</WithCulture>
+      <Type>Non-Resx</Type>
+    </EmbeddedResource>
+  </ItemGroup>
+
 </Project>

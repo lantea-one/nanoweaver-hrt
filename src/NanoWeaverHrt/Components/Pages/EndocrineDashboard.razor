@@ -4,6 +4,7 @@
 @inject IPharmacogenomicsService GenomicsService
 @inject IConfigurationRepository ConfigRepo
 @inject IJSRuntime JS
+@inject IWeaverLocalizer Localizer
 
 <div class="endocrine-container">
     <div class="panel-header">
@@ -32,11 +33,11 @@
             <div class="toggle-switch-group">
                 <button class="toggle-btn @(_activeProfile.TargetState == ToggleState.EstrogenicDominant ? "active-estrogen" : "")"
                         @onclick="() => SetToggleState(ToggleState.EstrogenicDominant)">
-                    <span class="symbol">♀</span> Male-to-Female (MtF / E2 Dominant)
+                    <span class="symbol">♀</span> @Localizer.GetString("Regimen.MtF", _currentLanguage) (@Localizer.GetString("Regimen.E2Dominant", _currentLanguage))
                 </button>
                 <button class="toggle-btn @(_activeProfile.TargetState == ToggleState.AndrogenicDominant ? "active-testosterone" : "")"
                         @onclick="() => SetToggleState(ToggleState.AndrogenicDominant)">
-                    <span class="symbol">♂</span> Female-to-Male (FtM / T Dominant)
+                    <span class="symbol">♂</span> @Localizer.GetString("Regimen.FtM", _currentLanguage) (@Localizer.GetString("Regimen.TDominant", _currentLanguage))
                 </button>
             </div>
 
@@ -262,6 +263,11 @@
     private PatientGenomicProfile _genomicProfile = null!;
 
     /// <summary>
+    /// Currently active community localization language.
+    /// </summary>
+    private WeaverLanguage _currentLanguage = WeaverLanguage.English;
+
+    /// <summary>
     /// Simulated kinetics curve data points over 72 hours.
     /// </summary>
     private IReadOnlyList<HormoneCurvePoint> _kineticsPoints = [];
@@ -392,11 +398,31 @@
     };
 
     /// <summary>
-    /// Renders the HTML5 canvas kinetics curve after DOM is updated.
+    /// Renders the HTML5 canvas kinetics curve after DOM is updated and synchronizes persisted language preference.
     /// </summary>
     /// <param name="firstRender">True on initial render.</param>
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        // WHAT: Reads persisted language preference on initial render.
+        // WHY:  Ensures endocrine toggle labels match the client's preferred language.
+        // HOW:  Queries 'weaverGetLanguage' via JS interop and triggers StateHasChanged if updated.
+        if (firstRender)
+        {
+            try
+            {
+                string? storedTag = await JS.InvokeAsync<string?>("weaverGetLanguage");
+                if (!string.IsNullOrWhiteSpace(storedTag))
+                {
+                    _currentLanguage = Localizer.ResolveLanguage(storedTag);
+                    StateHasChanged();
+                }
+            }
+            catch (Exception)
+            {
+                // Headless unit tests or prerendering
+            }
+        }
+
         await RenderChartAsync();
     }
 

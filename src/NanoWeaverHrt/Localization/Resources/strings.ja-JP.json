@@ -1,0 +1,20 @@
+{
+  "Nav.Home": "ホーム",
+  "Nav.Endocrine": "内分泌ハブ",
+  "Nav.Wizard": "セットアップウィザード",
+  "Nav.Simulations": "シミュレーション",
+  "Nav.Genomics": "薬理ゲノミクス",
+  "Nav.Compliance": "コンプライアンス監査",
+  "Nav.Datasets": "データセット",
+  "Nav.Language": "言語",
+  "Regimen.MtF": "男性から女性 (MtF)",
+  "Regimen.FtM": "女性から男性 (FtM)",
+  "Regimen.E2Dominant": "17β-エストラジオール優位",
+  "Regimen.TDominant": "テストステロン優位",
+  "Alert.IdleTimeout": "無操作のためセッションが終了しました。再度認証してください。",
+  "Alert.CryptoShredded": "暗号化鍵がシュレッダー破棄されました。PHIは恒久的にアクセス不能です。",
+  "Alert.TamperDetected": "セキュア台帳で改ざんが検出されました。緊急ロックが作動しました。",
+  "Status.Online": "オンライン",
+  "Status.Offline": "オフライン",
+  "Status.Connecting": "接続中..."
+}

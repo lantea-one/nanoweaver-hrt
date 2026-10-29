@@ -17,6 +17,7 @@ using NanoWeaverHrt.Configuration;
 using NanoWeaverHrt.Database.Access;
 using NanoWeaverHrt.Endocrine;
 using NanoWeaverHrt.Fabrication;
+using NanoWeaverHrt.Fabrication.Opentrons;
 using NanoWeaverHrt.Genomics;
 using NanoWeaverHrt.Models;
 using NanoWeaverHrt.Pipelines;
@@ -42,6 +43,7 @@ using NanoWeaverHrt.Caching;
 using NanoWeaverHrt.Bridges;
 using NanoWeaverHrt.Security.Integrity;
 using NanoWeaverHrt.Security.Access;
+using NanoWeaverHrt.Localization;
 
 namespace NanoWeaverHrt;
 
@@ -154,6 +156,17 @@ public class Program
         builder.Services.AddSingleton<IValkeyLockService, ValkeyLockService>();
         builder.Services.AddSingleton<IValkeyEventBridge, ValkeyEventBridge>();
         builder.Services.AddHostedService(sp => (ValkeyEventBridge)sp.GetRequiredService<IValkeyEventBridge>());
+
+        // WHAT: Registers community localization services and ambient culture context.
+        // WHY:  Supplies localized strings and regional formatting across Web, Desktop, and API boundaries.
+        // HOW:  Registers WeaverLocalizer as a singleton IWeaverLocalizer into the DI container.
+        builder.Services.AddSingleton<IWeaverCultureContext, WeaverCultureContext>();
+        builder.Services.AddSingleton<IWeaverLocalizer, WeaverLocalizer>();
+
+        // WHAT: Registers the automated Opentrons wet-lab protocol generator.
+        // WHY:  Transforms DNA origami fabrication packages into executable Opentrons Protocol API v2 Python scripts.
+        // HOW:  Registers OpentronsProtocolGenerator as singleton IOpentronsProtocolGenerator into the DI container.
+        builder.Services.AddSingleton<IOpentronsProtocolGenerator, OpentronsProtocolGenerator>();
 
         // WHAT: Configures Swagger & OpenAPI generation with XML comments and Swashbuckle annotations.
         // WHY:  Provides interactive API exploration (/swagger) and ReDoc documentation (/documentation).
@@ -3769,6 +3782,78 @@ public class Program
         .Produces(StatusCodes.Status403Forbidden)
         .Produces(StatusCodes.Status404NotFound);
 
+        // ---------------------------------------------------------------------
+        // REST API: Wet-Lab Liquid Handler Protocol Generation & Script Export
+        // ---------------------------------------------------------------------
+        app.MapPost("/api/fabrication/opentrons/generate", (
+            GenerateOpentronsScriptRequest req,
+            IFabricationService fabService,
+            IOpentronsProtocolGenerator generator,
+            HttpContext context) =>
+        {
+            // WHAT: Generates an Opentrons Protocol API v2 Python script and deck layout summary.
+            // WHY:  Allows wet-lab researchers to automate DNA origami stoichiometric pipetting on OT-2 or Flex robots.
+            // HOW:  Validates inputs, synthesizes fabrication package via IFabricationService, and builds protocol script.
+            IResult? validationResult = ValidateOpentronsRequest(req, context);
+            if (validationResult != null)
+            {
+                return validationResult;
+            }
+
+            OpentronsProtocolOptions options = req.Options ?? new();
+            FabricationPackage package = fabService.GenerateFabricationPackage(
+                req.SequenceOrSampleId,
+                req.Regimen,
+                string.IsNullOrWhiteSpace(req.Geometry) ? "Nanotube" : req.Geometry,
+                req.TargetKd > 0 ? req.TargetKd : 4.8);
+
+            OpentronsProtocolResult result = generator.GenerateProtocol(package, options);
+            return Results.Ok(result);
+        })
+        .WithName("GenerateOpentronsProtocol")
+        .WithTags("DNA Origami Fabrication")
+        .WithSummary("Generates an automated Opentrons OT-2 or Flex Python protocol script for wet-lab stoichiometric pipetting.")
+        .WithDescription("Synthesizes DNA origami staple routing, determines deck layouts, and generates an executable Opentrons Protocol API v2 script (Administrator or Researcher role required).")
+        .Produces<OpentronsProtocolResult>(StatusCodes.Status200OK)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden);
+
+        app.MapPost("/api/fabrication/opentrons/download", (
+            GenerateOpentronsScriptRequest req,
+            IFabricationService fabService,
+            IOpentronsProtocolGenerator generator,
+            HttpContext context) =>
+        {
+            // WHAT: Generates and streams a downloadable Opentrons Python protocol script (.py).
+            // WHY:  Provides a direct file download for immediate transfer to liquid handler robot controllers.
+            // HOW:  Validates parameters, generates Python protocol script, and streams as UTF-8 attachment.
+            IResult? validationResult = ValidateOpentronsRequest(req, context);
+            if (validationResult != null)
+            {
+                return validationResult;
+            }
+
+            OpentronsProtocolOptions options = req.Options ?? new();
+            FabricationPackage package = fabService.GenerateFabricationPackage(
+                req.SequenceOrSampleId,
+                req.Regimen,
+                string.IsNullOrWhiteSpace(req.Geometry) ? "Nanotube" : req.Geometry,
+                req.TargetKd > 0 ? req.TargetKd : 4.8);
+
+            OpentronsProtocolResult result = generator.GenerateProtocol(package, options);
+            byte[] scriptBytes = System.Text.Encoding.UTF8.GetBytes(result.PythonScript);
+            return Results.File(scriptBytes, "text/x-python; charset=utf-8", "nanoweaver_origami_opentrons.py");
+        })
+        .WithName("DownloadOpentronsProtocol")
+        .WithTags("DNA Origami Fabrication")
+        .WithSummary("Generates and downloads an executable Opentrons Python protocol script file.")
+        .WithDescription("Streams the generated Python protocol script directly as an attachment with MIME type text/x-python (Administrator or Researcher role required).")
+        .Produces(StatusCodes.Status200OK, contentType: "text/x-python")
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden);
+
         app.Run();
     }
 
@@ -4011,7 +4096,8 @@ public class Program
         new("/api/trajectories/download", MatchDescendants: true),
         new("/api/compliance/verify-ledger", MatchDescendants: false),
         new("/api/subject-access/my-subjects", MatchDescendants: false),
-        new("/api/subject-groups", MatchDescendants: true)
+        new("/api/subject-groups", MatchDescendants: true),
+        new("/api/fabrication/opentrons", MatchDescendants: true)
     ];
 
     /// <summary>
@@ -4811,6 +4897,48 @@ public class Program
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Validates an incoming Opentrons liquid handler script generation request.
+    /// </summary>
+    /// <param name="req">The protocol generation request payload.</param>
+    /// <param name="context">The active HTTP context.</param>
+    /// <returns>A rejection <see cref="IResult"/> when validation fails; otherwise, <c>null</c>.</returns>
+    internal static IResult? ValidateOpentronsRequest(GenerateOpentronsScriptRequest req, HttpContext context)
+    {
+        // WHAT: Enforces biophysical parameter boundaries and non-empty sequence inputs.
+        // WHY:  A liquid handler protocol cannot be synthesized without valid stoichiometry and sequence targets.
+        // HOW:  Inspects sequence, options boundaries (volume, concentration, excess ratio), and dissociation constant.
+        if (string.IsNullOrWhiteSpace(req.SequenceOrSampleId))
+        {
+            return SecureProblemResult(context, StatusCodes.Status400BadRequest, "SequenceOrSampleId cannot be empty.");
+        }
+
+        if (req.Options != null)
+        {
+            if (req.Options.TotalReactionVolumeMicroliters <= 0)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "TotalReactionVolumeMicroliters must be greater than zero.");
+            }
+
+            if (req.Options.ScaffoldConcentrationNanomolar <= 0)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "ScaffoldConcentrationNanomolar must be greater than zero.");
+            }
+
+            if (req.Options.StapleMolarExcessRatio <= 0)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "StapleMolarExcessRatio must be greater than zero.");
+            }
+        }
+
+        if (req.TargetKd < 0)
+        {
+            return SecureProblemResult(context, StatusCodes.Status400BadRequest, "TargetKd cannot be negative.");
+        }
+
+        return null;
     }
 }
 
