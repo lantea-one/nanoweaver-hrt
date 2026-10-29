@@ -107,7 +107,7 @@ flowchart TD
 ### 9. Standalone Multi-Platform Desktop & Mobile Applications
 - **Cross-Platform Native Clients**: Dedicated platform heads for Linux (`x86_64` / `arm64`), macOS (Universal Apple Silicon & Intel), Windows (`win-x64`), Android, iOS, and iPadOS sharing 100% of ViewModels and client SDK logic.
 - **Client Key Vault & 15-Minute Inactivity Lock**: Private keys (Ed25519 & ML-DSA-65) reside strictly within client AES-256-GCM encrypted vaults, with background tray monitoring, notification badging, and automated session zeroization on idle inactivity.
-- **Binary Releases & Sovereign Code Signing**: Release packages across ArchLinux (`.pkg.tar.zst` and AUR), Debian/Ubuntu (`.deb`), Fedora (`.rpm`), macOS (`NanoWeaverHrt.dmg`), Windows (dual-scope `nanoweaver-hrt-desktop-installer.exe` + `NanoWeaverHrt.msix`), and Mobile (`.apk`, `.ipa`), signed with the sovereign X.509 `id-kp-codeSigning` Root CA and 90-day short-lived leaf certificates. See [**Desktop & Mobile Applications Guide**](docs/desktop-and-mobile-gui.md).
+- **Direct Portable Executables & Sovereign Code Signing**: Release packages across Windows (direct portable `nanoweaver-hrt-desktop-portable-x64.exe` / `NanoWeaverHrt.exe`, dual-scope `nanoweaver-hrt-desktop-installer.exe`, and `NanoWeaverHrt.msix`), ArchLinux (`.pkg.tar.zst` and AUR), Debian/Ubuntu (`.deb`), Fedora (`.rpm`), macOS (`NanoWeaverHrt.dmg`), and Mobile (`.apk`, `.ipa`), signed with the sovereign X.509 `id-kp-codeSigning` Root CA and 90-day short-lived leaf certificates. See [**Desktop & Mobile Applications Guide**](docs/desktop-and-mobile-gui.md) and [**Release v2026.10.29.2**](https://git.lantea.one/lantea-one/nanoweaver-hrt/releases/tag/v2026.10.29.2).
 
 ---
 
@@ -214,6 +214,7 @@ Comprehensive documentation, biomedical engineering primers, architectural diagr
 * **[Live Documentation Portal](https://lantea-one.github.io/nanoweaver-hrt/)** (GitHub Pages)
 * **[Scientific Abstract](docs/abstract.md)**: Formal peer-reviewed abstract, biophysical gating mechanisms, zero-allocation pipeline specifications, and stage-gate verification matrix.
 * **[Getting Started & Deployment Guide](docs/getting-started.md)**: Local .NET 10 setup and Docker GPU overrides (Intel Arc, NVIDIA, AMD).
+* **[Desktop & Mobile Applications Guide](docs/desktop-and-mobile-gui.md)**: Native desktop and mobile GUI apps (Avalonia UI 11 / .NET 10), direct portable `.exe`, packaging, and 90-day sovereign code signing.
 * **[Secure Public Access & Reverse Proxies](docs/secure-public-access.md)**: Production deployment architectures, free Let's Encrypt SSL/TLS, Caddy, Nginx, Traefik, and Cloudflare Tunnels.
 * **[Guided DNA Origami Workflow Wizard](docs/workflow-wizard.md)**: 6-stage engineering pipeline from FASTA scaffold to benchtop synthesis.
 * **[Endocrine Hub & Pharmacodynamics](docs/endocrine-hub.md)**: In-vivo HPG axis feedback, bistable setpoints, and 72-hour kinetics.
@@ -224,7 +225,9 @@ Comprehensive documentation, biomedical engineering primers, architectural diagr
 * **[Example Biomedical Workflows](docs/example-workflows.md)**: End-to-end recipes for MtF, FtM, high-throughput streaming, and lab peering.
 * **[DIY & HomeLab Benchtop Fabrication Guide](docs/diy-fabrication-guide.md)**: Accessible physical synthesis instructions, 50 µL pipetting recipe, and agarose gel QC for community bio-hackers.
 * **[Post-Quantum Cryptography & Regulatory Compliance](docs/compliance-and-security.md)**: NIST FIPS 203 (ML-KEM-768), FIPS 204 (ML-DSA-65), HIPAA Safe Harbor, GDPR Article 17 crypto-shredding, and FDA 21 CFR Part 11 audit trails.
+* **[Vendored JavaScript Subsystem & SRI Integrity](docs/vendored-javascript.md)**: Subresource Integrity (SRI) dynamic hashing, zero external CDNs, and browser crypto test vectors.
 * **[REST API Reference & Test Harness](docs/api-reference.md)**: Programmatic minimal endpoints, JSON schemas, and test execution.
+* **[Release Notes & Architecture Evolution](docs/release-notes.md)**: Chronological changelog across platform releases (v2026.10.29.1, v2026.10.29.2).
 * **[Scientific Research & Legal Disclaimer](docs/disclaimer.md)**: Formal scientific research scope, medical non-advice, and BSL-1 biosafety declarations.
 
 ---
@@ -249,7 +252,7 @@ dotnet test NanoWeaverHrt.slnx
 # Run JavaScript visualizer test suite (100% line, branch, function coverage)
 npm test
 
-# Run universal 5-step pre-flight verification gate (.NET format, JS tests, .NET tests, 100% coverage, markdown math check)
+# Run universal 8-step pre-flight verification gate (.NET format, JS tests, .NET tests, 100% coverage, markdown math, XML docblocks, ratchet baseline, vendored JS/SRI)
 ./scripts/verify-all.sh
 ```
 

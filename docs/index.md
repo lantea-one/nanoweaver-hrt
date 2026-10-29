@@ -101,32 +101,36 @@ Explore the comprehensive guides and references below:
    * Formal scientific abstract, biomolecular gating mechanisms, zero-allocation pipeline specifications, and pharmacogenomic models.
 2. [**Getting Started & Deployment**](getting-started.md)
    * Local development prerequisites, .NET 10 setup, Docker Compose GPU backends (Intel Arc, NVIDIA CUDA, AMD ROCm, CPU).
-3. [**Secure Public Access & Reverse Proxies**](secure-public-access.md)
+3. [**Desktop & Mobile Applications**](desktop-and-mobile-gui.md)
+   * Standalone cross-platform applications (Avalonia UI 11 / .NET 10) for Linux, macOS, Windows, Android, iOS, iPadOS, direct portable `.exe`, and 90-day sovereign code-signing PKI.
+4. [**Secure Public Access & Reverse Proxies**](secure-public-access.md)
    * Hardened production deployment architectures, automated Let's Encrypt SSL/TLS, Caddy, Nginx + Certbot, and Cloudflare Tunnels (CGNAT bypass).
-4. [**Guided DNA Workflow Wizard**](workflow-wizard.md)
+5. [**Guided DNA Workflow Wizard**](workflow-wizard.md)
    * Deep-dive walkthrough of all 6 stages from digitized sequence ingestion to physical bench synthesis.
-5. [**Endocrine Hub & Pharmacodynamics**](endocrine-hub.md)
+6. [**Endocrine Hub & Pharmacodynamics**](endocrine-hub.md)
    * Plain-English biomedical context of the HPG axis, bistable state transitions, and 72-hour kinetics.
-6. [**In-Silico Simulation Studio**](in-silico-simulations.md)
+7. [**In-Silico Simulation Studio**](in-silico-simulations.md)
    * Multi-scale molecular dynamics (oxDNA, LAMMPS) and whole-body PBPK modeling for in-silico translational de-risking.
-7. [**Configuration & Sovereign Peering**](configuration-peers.md)
+8. [**Configuration & Sovereign Peering**](configuration-peers.md)
    * Database-first precedence rules, single-use share key lifecycle, and federating remote UI instances.
-8. [**Stack Topology & Hardware Telemetry**](stack-services.md)
+9. [**Stack Topology & Hardware Telemetry**](stack-services.md)
    * Service health inspection, diagnostic connectivity pings, SIMD detection, and Server GC telemetry.
-9. [**Trajectory Streaming & Dataset Provenance**](trajectories-and-datasets.md)
-   * Zero-allocation streaming pipelines, columnar Parquet serialization, and SHA-256 signed tarballs.
-10. [**Example Biomedical Workflows**](example-workflows.md)
+10. [**Trajectory Streaming & Dataset Provenance**](trajectories-and-datasets.md)
+    * Zero-allocation streaming pipelines, columnar Parquet serialization, and SHA-256 signed tarballs.
+11. [**Example Biomedical Workflows**](example-workflows.md)
     * Concrete step-by-step examples: MtF feminizing nanotube, FtM masculinizing nanocage, and collaborative compute peering.
-11. [**DIY & HomeLab Benchtop Fabrication Guide**](diy-fabrication-guide.md)
+12. [**DIY & HomeLab Benchtop Fabrication Guide**](diy-fabrication-guide.md)
     * Step-by-step physical instructions for community scientists: 50 µL pipetting recipe, reagents checklist, 7-step bench execution, agarose gel QC, and non-toxic safety protocols.
-12. [**Post-Quantum Cryptography & Regulatory Compliance**](compliance-and-security.md)
+13. [**Post-Quantum Cryptography & Regulatory Compliance**](compliance-and-security.md)
     * NIST FIPS 203 (ML-KEM-768), FIPS 204 (ML-DSA-65), HIPAA Safe Harbor, GDPR Article 17 crypto-shredding, GINA non-discrimination, FDA 21 CFR Part 11 audit trails, asymmetric PKI identities, SQL migrations, and idle session guards.
-13. [**REST API Reference**](api-reference.md)
+14. [**Vendored JavaScript Subsystem & SRI Integrity**](vendored-javascript.md)
+    * Zero external CDNs, Subresource Integrity (SRI) dynamic hashing, noble crypto Known-Answer Tests, and browser sandbox security.
+15. [**REST API Reference**](api-reference.md)
     * Full endpoint catalog, request/response JSON schemas, and test suite execution.
-14. [**Scientific Research & Legal Disclaimer**](disclaimer.md)
+16. [**Release Notes & Architecture Evolution**](release-notes.md)
+    * Phase 2 post-quantum cryptographic upgrades, transport boundary enforcement, column-level PHI encryption, and releases v2026.10.29.1 and v2026.10.29.2.
+17. [**Scientific Research & Legal Disclaimer**](disclaimer.md)
     * Formal scientific research scope, medical non-advice, and BSL-1 biosafety declarations.
-15. [**Release Notes & Architecture Evolution**](release-notes.md)
-    * Phase 2 post-quantum cryptographic upgrades, transport boundary enforcement, column-level PHI encryption, and RFC 7807 contracts.
 
 ---
 

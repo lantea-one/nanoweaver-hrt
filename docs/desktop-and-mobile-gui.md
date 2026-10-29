@@ -142,7 +142,7 @@ Add-AppxPackage -Path NanoWeaverHrt.msix
 #### 4. Automated Release Scheme & Direct Binary Downloads
 All release assets are continuously published on every push to `main` and tagged release:
 - **Continuous Rolling Nightly Release**: Tagged `nightly`, providing immediate access to the latest master build with direct `.exe`, `.dmg`, `.deb`, `.rpm`, and mobile package downloads.
-- **Tagged SemVer Releases**: Permanent releases (e.g. `v1.0.0`) minted when version tags are pushed.
+- **Tagged CalVer Releases**: Permanent releases minted using the `v<yyyy>.<mm>.<dd>.<increment>` convention (e.g. `v2026.10.29.1`, `v2026.10.29.2`).
 - Direct downloads are hosted on the Sovereign Forgejo instance (`https://git.lantea.one/lantea-one/nanoweaver-hrt/releases`) and mirrored on GitHub Releases.
 
 ---
