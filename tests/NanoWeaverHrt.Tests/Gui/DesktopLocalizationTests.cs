@@ -100,19 +100,46 @@ public sealed class DesktopLocalizationTests : IDisposable
 
     /// <summary>
     /// Verifies that calling <see cref="LanguagePreferenceService.InitializeAsync"/> multiple times is idempotent,
-    /// including under concurrent initialization attempts.
+    /// including under concurrent initialization attempts, deterministically exercising both outer and inner guards.
     /// </summary>
     [Fact]
     public async Task LanguagePreferenceService_InitializeAsync_IdempotentOnMultipleCalls()
     {
         // WHAT: Ensures InitializeAsync can be safely executed repeatedly and concurrently.
-        // WHY:  Guarantees concurrent callers or re-entrant queries do not fail.
-        // HOW:  Calls InitializeAsync concurrently across tasks and sequentially, verifying no exceptions occur.
-        using var service = new LanguagePreferenceService(_connectionString);
-        var t1 = Task.Run(() => service.InitializeAsync());
-        var t2 = Task.Run(() => service.InitializeAsync());
-        await Task.WhenAll(t1, t2);
+        // WHY:  Guarantees concurrent callers or re-entrant queries do not fail and double-checked lock branch executes deterministically.
+        // HOW:  Uses TaskCompletionSource to hold first caller inside connection creation while concurrent callers queue on _initLock,
+        //       guaranteeing the inner if (_isInitialized) return branch executes deterministically across all environments.
+        var enteredFactory = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFactory = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        using var service = new LanguagePreferenceService(
+            _connectionString,
+            cs =>
+            {
+                enteredFactory.TrySetResult();
+                releaseFactory.Task.GetAwaiter().GetResult();
+                return new SqliteConnection(cs);
+            });
+
+        Task t1 = Task.Run(() => service.InitializeAsync());
+        await enteredFactory.Task;
+
+        // t1 is holding _initLock inside InitializeAsync.
+        // Queue concurrent callers while t1 is inside the lock and _isInitialized is still false.
+        Task t2 = Task.Run(() => service.InitializeAsync());
+        Task t3 = Task.Run(() => service.InitializeAsync());
+
+        // Allow queued tasks to reach await _initLock.WaitAsync().
+        await Task.Delay(50);
+
+        // Release t1 to set _isInitialized = true and release _initLock, allowing t2 and t3 to hit the inner return.
+        releaseFactory.TrySetResult();
+        await Task.WhenAll(t1, t2, t3);
+
+        // Sequential call verifies outer return path.
         await service.InitializeAsync();
+        WeaverLanguage lang = await service.GetPreferredLanguageAsync();
+        Assert.Equal(WeaverLanguage.English, lang);
     }
 
     /// <summary>
