@@ -104,6 +104,11 @@ flowchart TD
 - **Hybrid Caching & Distributed Locking**: Multi-node coordination with `ValkeyCacheService` (with in-memory fallback) and `ValkeyLockService` (atomic `SET NX PX` and Lua release script with `SemaphoreSlim` fallback).
 - **Cluster Event Bridge**: Bi-directional event synchronization across nodes with circular echo prevention and password redaction in all telemetry endpoints (`GET /api/system/event-bus`).
 
+### 9. Standalone Multi-Platform Desktop & Mobile Applications
+- **Cross-Platform Native Clients**: Dedicated platform heads for Linux (`x86_64` / `arm64`), macOS (Universal Apple Silicon & Intel), Windows (`win-x64`), Android, iOS, and iPadOS sharing 100% of ViewModels and client SDK logic.
+- **Client Key Vault & 15-Minute Inactivity Lock**: Private keys (Ed25519 & ML-DSA-65) reside strictly within client AES-256-GCM encrypted vaults, with background tray monitoring, notification badging, and automated session zeroization on idle inactivity.
+- **Binary Releases & Sovereign Code Signing**: Release packages across ArchLinux (`.pkg.tar.zst` and AUR), Debian/Ubuntu (`.deb`), Fedora (`.rpm`), macOS (`NanoWeaverHrt.dmg`), Windows (dual-scope `nanoweaver-hrt-desktop-installer.exe` + `NanoWeaverHrt.msix`), and Mobile (`.apk`, `.ipa`), signed with the sovereign X.509 `id-kp-codeSigning` Root CA and 90-day short-lived leaf certificates. See [**Desktop & Mobile Applications Guide**](docs/desktop-and-mobile-gui.md).
+
 ---
 
 ## 🚀 Quickstart

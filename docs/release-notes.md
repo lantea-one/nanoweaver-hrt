@@ -58,6 +58,13 @@ Phase 2 introduces critical post-quantum cryptographic upgrades, transport bound
   * `StackServiceManager`: Covered all `GetServiceByIdAsync` nodes and hardware accelerator fallback on empty attributes.
   * `ValkeyCacheService` & `ValkeyLockService`: Full coverage of in-memory fallbacks, expired key cleanup, retry delays, and double-disposal/fault resilience.
   * `ValkeyEventBridge`: Covered all inbound listener lambdas, echo suppression, outbound failure logging, and corrupted JSON handling.
+
+### 9. Multi-Platform Desktop & Mobile Applications (Phases P26–P35)
+* **Standalone Cross-Platform Architecture**: Introduced native client platform heads for Linux (`x86_64` / `arm64`), macOS (Universal Apple Silicon & Intel), Windows (`win-x64`), Android, iOS, and iPadOS sharing 100% of ViewModels and client SDK logic.
+* **Local Instance Registry & Encrypted Key Vault**: Local encrypted SQLite store (`IInstanceProfileRepository`) for multi-instance cluster connections and AES-256-GCM client-side key vault (`IClientKeyRingVault`) for Ed25519 and ML-DSA-65 keys, keeping private keys strictly on the user device.
+* **Background Monitoring Daemon & Tray Controller**: 15-minute idle lock watchdog, native OS notification dispatching (`INativeNotificationSink`), tray health badging, and alert deduplication cooldowns.
+* **Sovereign Code-Signing PKI & 90-Day Automated Rotation**: Dedicated sovereign X.509 `id-kp-codeSigning` Root CA, short-lived 90-day leaf certificate rotation via scheduled monthly CI workflows, and OpenPGP/GPG archive key signing for packages and `SHA256SUMS` manifests.
+* **Unified Binary Packaging Matrix**: Multi-distribution packaging pipeline providing ArchLinux `.pkg.tar.zst`, AUR (`nanoweaver-hrt-desktop-bin` and `-git`), Debian/Ubuntu `.deb`, Fedora `.rpm`, macOS `NanoWeaverHrt.dmg`, Windows dual-scope installer (`nanoweaver-hrt-desktop-installer.exe` supporting Current User or System Administrator) + `NanoWeaverHrt.msix`, and sideloadable mobile packages (`.apk`, `.ipa`).
 * **Remaining Uncovered Lines Accounting**:
   * `Program.cs` minimal-API lambdas (lines 1830, 1691-1700, 1973-1980, 2050, 2090, 2134, etc.): Defense-in-depth authorization and conflict return paths that are intentionally unreachable over HTTP because the upstream `ResolveSubjectRecordAccess` middleware intercepts cross-subject requests.
   * Blazor components (`MainLayout.razor`, `Login.razor`, `SetupWizard.razor`): Compiler-generated Razor component state-machine transitions and JS interop disconnected fallbacks.
