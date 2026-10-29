@@ -34,6 +34,22 @@ public sealed class WeaverLocalizerTests
         Assert.Equal("fr-FR", info.Bcp47Tag);
         Assert.Equal("French", info.EnglishName);
         Assert.Equal("Français", info.NativeName);
+        Assert.False(info.IsRightToLeft);
+
+        var arabicInfo = new WeaverLanguageInfo
+        {
+            Code = WeaverLanguage.Arabic,
+            Bcp47Tag = "ar-SA",
+            EnglishName = "Arabic",
+            NativeName = "العربية",
+            IsRightToLeft = true
+        };
+
+        Assert.Equal(WeaverLanguage.Arabic, arabicInfo.Code);
+        Assert.Equal("ar-SA", arabicInfo.Bcp47Tag);
+        Assert.Equal("Arabic", arabicInfo.EnglishName);
+        Assert.Equal("العربية", arabicInfo.NativeName);
+        Assert.True(arabicInfo.IsRightToLeft);
     }
 
     /// <summary>
@@ -81,18 +97,18 @@ public sealed class WeaverLocalizerTests
     }
 
     /// <summary>
-    /// Verifies that <see cref="WeaverLocalizer.GetSupportedLanguages"/> returns all 10 community languages.
+    /// Verifies that <see cref="WeaverLocalizer.GetSupportedLanguages"/> returns all 18 community languages.
     /// </summary>
     [Fact]
-    public void GetSupportedLanguages_ReturnsAllTenCommunityLanguages()
+    public void GetSupportedLanguages_ReturnsAllEighteenCommunityLanguages()
     {
         // WHAT: Validates the list of supported community languages.
-        // WHY:  Ensures full community coverage across the 10 target locales.
+        // WHY:  Ensures full community coverage across the 18 target locales.
         // HOW:  Calls GetSupportedLanguages and verifies count and item values.
         var localizer = new WeaverLocalizer();
         IReadOnlyList<WeaverLanguageInfo> languages = localizer.GetSupportedLanguages();
 
-        Assert.Equal(10, languages.Count);
+        Assert.Equal(18, languages.Count);
 
         var codes = languages.Select(l => l.Code).ToHashSet();
         Assert.Contains(WeaverLanguage.English, codes);
@@ -105,6 +121,14 @@ public sealed class WeaverLocalizerTests
         Assert.Contains(WeaverLanguage.Chinese, codes);
         Assert.Contains(WeaverLanguage.Dutch, codes);
         Assert.Contains(WeaverLanguage.Polish, codes);
+        Assert.Contains(WeaverLanguage.Arabic, codes);
+        Assert.Contains(WeaverLanguage.Korean, codes);
+        Assert.Contains(WeaverLanguage.Turkish, codes);
+        Assert.Contains(WeaverLanguage.Hindi, codes);
+        Assert.Contains(WeaverLanguage.Ukrainian, codes);
+        Assert.Contains(WeaverLanguage.Vietnamese, codes);
+        Assert.Contains(WeaverLanguage.Indonesian, codes);
+        Assert.Contains(WeaverLanguage.Swedish, codes);
 
         foreach (WeaverLanguageInfo lang in languages)
         {
@@ -174,6 +198,46 @@ public sealed class WeaverLocalizerTests
     [InlineData("pl", WeaverLanguage.Polish)]
     [InlineData("Polish", WeaverLanguage.Polish)]
     [InlineData("Polski", WeaverLanguage.Polish)]
+    [InlineData("ar-SA", WeaverLanguage.Arabic)]
+    [InlineData("ar_SA", WeaverLanguage.Arabic)]
+    [InlineData("ar", WeaverLanguage.Arabic)]
+    [InlineData("Arabic", WeaverLanguage.Arabic)]
+    [InlineData("العربية", WeaverLanguage.Arabic)]
+    [InlineData("ko-KR", WeaverLanguage.Korean)]
+    [InlineData("ko_KR", WeaverLanguage.Korean)]
+    [InlineData("ko", WeaverLanguage.Korean)]
+    [InlineData("Korean", WeaverLanguage.Korean)]
+    [InlineData("한국어", WeaverLanguage.Korean)]
+    [InlineData("tr-TR", WeaverLanguage.Turkish)]
+    [InlineData("tr_TR", WeaverLanguage.Turkish)]
+    [InlineData("tr", WeaverLanguage.Turkish)]
+    [InlineData("Turkish", WeaverLanguage.Turkish)]
+    [InlineData("Türkçe", WeaverLanguage.Turkish)]
+    [InlineData("hi-IN", WeaverLanguage.Hindi)]
+    [InlineData("hi_IN", WeaverLanguage.Hindi)]
+    [InlineData("hi", WeaverLanguage.Hindi)]
+    [InlineData("Hindi", WeaverLanguage.Hindi)]
+    [InlineData("हिन्दी", WeaverLanguage.Hindi)]
+    [InlineData("uk-UA", WeaverLanguage.Ukrainian)]
+    [InlineData("uk_UA", WeaverLanguage.Ukrainian)]
+    [InlineData("uk", WeaverLanguage.Ukrainian)]
+    [InlineData("Ukrainian", WeaverLanguage.Ukrainian)]
+    [InlineData("Українська", WeaverLanguage.Ukrainian)]
+    [InlineData("vi-VN", WeaverLanguage.Vietnamese)]
+    [InlineData("vi_VN", WeaverLanguage.Vietnamese)]
+    [InlineData("vi", WeaverLanguage.Vietnamese)]
+    [InlineData("Vietnamese", WeaverLanguage.Vietnamese)]
+    [InlineData("Tiếng Việt", WeaverLanguage.Vietnamese)]
+    [InlineData("id-ID", WeaverLanguage.Indonesian)]
+    [InlineData("id_ID", WeaverLanguage.Indonesian)]
+    [InlineData("id", WeaverLanguage.Indonesian)]
+    [InlineData("Indonesian", WeaverLanguage.Indonesian)]
+    [InlineData("Bahasa Indonesia", WeaverLanguage.Indonesian)]
+    [InlineData("sv-SE", WeaverLanguage.Swedish)]
+    [InlineData("sv_SE", WeaverLanguage.Swedish)]
+    [InlineData("sv", WeaverLanguage.Swedish)]
+    [InlineData("Swedish", WeaverLanguage.Swedish)]
+    [InlineData("Svenska", WeaverLanguage.Swedish)]
     public void ResolveLanguage_VariousInputs_ResolvesExpectedLanguage(string? input, WeaverLanguage expected)
     {
         // WHAT: Tests tag normalization and lookup resolution for multiple language aliases.
@@ -185,7 +249,7 @@ public sealed class WeaverLocalizerTests
     }
 
     /// <summary>
-    /// Verifies that all 18 standard localization keys exist and return non-empty strings across all 10 community languages.
+    /// Verifies that all 18 standard localization keys exist and return non-empty strings across all 18 community languages.
     /// </summary>
     /// <param name="language">Target community language.</param>
     [Theory]
@@ -199,6 +263,14 @@ public sealed class WeaverLocalizerTests
     [InlineData(WeaverLanguage.Chinese)]
     [InlineData(WeaverLanguage.Dutch)]
     [InlineData(WeaverLanguage.Polish)]
+    [InlineData(WeaverLanguage.Arabic)]
+    [InlineData(WeaverLanguage.Korean)]
+    [InlineData(WeaverLanguage.Turkish)]
+    [InlineData(WeaverLanguage.Hindi)]
+    [InlineData(WeaverLanguage.Ukrainian)]
+    [InlineData(WeaverLanguage.Vietnamese)]
+    [InlineData(WeaverLanguage.Indonesian)]
+    [InlineData(WeaverLanguage.Swedish)]
     public void GetString_AllKeysAcrossAllLanguages_ReturnNonEmptyTranslations(WeaverLanguage language)
     {
         // WHAT: Validates presence of all 18 standard navigation, regimen, alert, and status keys.
@@ -250,16 +322,40 @@ public sealed class WeaverLocalizerTests
         Assert.Equal("Inicio", localizer.GetString("Nav.Home", WeaverLanguage.Spanish));
         Assert.Equal("Accueil", localizer.GetString("Nav.Home", WeaverLanguage.French));
         Assert.Equal("Startseite", localizer.GetString("Nav.Home", WeaverLanguage.German));
+        Assert.Equal("الرئيسية", localizer.GetString("Nav.Home", WeaverLanguage.Arabic));
+        Assert.Equal("홈", localizer.GetString("Nav.Home", WeaverLanguage.Korean));
+        Assert.Equal("Ana Sayfa", localizer.GetString("Nav.Home", WeaverLanguage.Turkish));
+        Assert.Equal("होम", localizer.GetString("Nav.Home", WeaverLanguage.Hindi));
+        Assert.Equal("Головна", localizer.GetString("Nav.Home", WeaverLanguage.Ukrainian));
+        Assert.Equal("Trang chủ", localizer.GetString("Nav.Home", WeaverLanguage.Vietnamese));
+        Assert.Equal("Beranda", localizer.GetString("Nav.Home", WeaverLanguage.Indonesian));
+        Assert.Equal("Hem", localizer.GetString("Nav.Home", WeaverLanguage.Swedish));
 
         Assert.Equal("Male to Female (MtF)", localizer.GetString("Regimen.MtF", WeaverLanguage.English));
         Assert.Equal("Hombre a Mujer (MtF)", localizer.GetString("Regimen.MtF", WeaverLanguage.Spanish));
         Assert.Equal("Homme vers Femme (MtF)", localizer.GetString("Regimen.MtF", WeaverLanguage.French));
         Assert.Equal("Mann zu Frau (MtF)", localizer.GetString("Regimen.MtF", WeaverLanguage.German));
+        Assert.Equal("ذكر إلى أنثى (MtF)", localizer.GetString("Regimen.MtF", WeaverLanguage.Arabic));
+        Assert.Equal("남성에서 여성 (MtF)", localizer.GetString("Regimen.MtF", WeaverLanguage.Korean));
+        Assert.Equal("Erkekten Kadına (MtF)", localizer.GetString("Regimen.MtF", WeaverLanguage.Turkish));
+        Assert.Equal("पुरुष से महिला (MtF)", localizer.GetString("Regimen.MtF", WeaverLanguage.Hindi));
+        Assert.Equal("Чоловік у жінку (MtF)", localizer.GetString("Regimen.MtF", WeaverLanguage.Ukrainian));
+        Assert.Equal("Nam sang Nữ (MtF)", localizer.GetString("Regimen.MtF", WeaverLanguage.Vietnamese));
+        Assert.Equal("Pria ke Wanita (MtF)", localizer.GetString("Regimen.MtF", WeaverLanguage.Indonesian));
+        Assert.Equal("Man till Kvinna (MtF)", localizer.GetString("Regimen.MtF", WeaverLanguage.Swedish));
 
         Assert.Equal("Online", localizer.GetString("Status.Online", WeaverLanguage.English));
         Assert.Equal("En línea", localizer.GetString("Status.Online", WeaverLanguage.Spanish));
         Assert.Equal("En ligne", localizer.GetString("Status.Online", WeaverLanguage.French));
         Assert.Equal("Online", localizer.GetString("Status.Online", WeaverLanguage.German));
+        Assert.Equal("متصل", localizer.GetString("Status.Online", WeaverLanguage.Arabic));
+        Assert.Equal("온라인", localizer.GetString("Status.Online", WeaverLanguage.Korean));
+        Assert.Equal("Çevrimiçi", localizer.GetString("Status.Online", WeaverLanguage.Turkish));
+        Assert.Equal("ऑनलाइन", localizer.GetString("Status.Online", WeaverLanguage.Hindi));
+        Assert.Equal("Онлайн", localizer.GetString("Status.Online", WeaverLanguage.Ukrainian));
+        Assert.Equal("Trực tuyến", localizer.GetString("Status.Online", WeaverLanguage.Vietnamese));
+        Assert.Equal("Online", localizer.GetString("Status.Online", WeaverLanguage.Indonesian));
+        Assert.Equal("Online", localizer.GetString("Status.Online", WeaverLanguage.Swedish));
     }
 
     /// <summary>
@@ -456,5 +552,28 @@ public sealed class WeaverLocalizerTests
         var localizer = new WeaverLocalizer(mockAssembly.Object);
         Assert.Equal("Nav.Home", localizer.GetString("Nav.Home", WeaverLanguage.English));
         Assert.Equal("Nav.Home", localizer.GetString("Nav.Home", WeaverLanguage.Spanish));
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="WeaverLanguageInfo.IsRightToLeft"/> is correctly flagged true only for Arabic among supported languages.
+    /// </summary>
+    [Fact]
+    public void GetSupportedLanguages_RightToLeftFlag_OnlyArabicIsTrue()
+    {
+        // WHAT: Tests script direction detection across all supported languages.
+        // WHY:  Guarantees UI layout systems can accurately toggle RTL layout flow (e.g. dir="rtl").
+        // HOW:  Queries GetSupportedLanguages and verifies that IsRightToLeft is true exclusively for Arabic.
+        var localizer = new WeaverLocalizer();
+        IReadOnlyList<WeaverLanguageInfo> languages = localizer.GetSupportedLanguages();
+
+        WeaverLanguageInfo arabic = Assert.Single(languages, l => l.IsRightToLeft);
+        Assert.Equal(WeaverLanguage.Arabic, arabic.Code);
+        Assert.Equal("ar-SA", arabic.Bcp47Tag);
+        Assert.True(arabic.IsRightToLeft);
+
+        foreach (WeaverLanguageInfo lang in languages.Where(l => l.Code != WeaverLanguage.Arabic))
+        {
+            Assert.False(lang.IsRightToLeft, $"Language '{lang.Code}' should not be right-to-left.");
+        }
     }
 }

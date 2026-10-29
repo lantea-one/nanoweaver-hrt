@@ -1,0 +1,20 @@
+{
+  "Nav.Home": "Hem",
+  "Nav.Endocrine": "Endokrint nav",
+  "Nav.Wizard": "Konfigurationsguide",
+  "Nav.Simulations": "Simuleringar",
+  "Nav.Genomics": "Farmakogenomik",
+  "Nav.Compliance": "Efterlevnadsgranskning",
+  "Nav.Datasets": "Dataset",
+  "Nav.Language": "Språk",
+  "Regimen.MtF": "Man till Kvinna (MtF)",
+  "Regimen.FtM": "Kvinna till Man (FtM)",
+  "Regimen.E2Dominant": "17β-östradioldominant",
+  "Regimen.TDominant": "Testosterondominant",
+  "Alert.IdleTimeout": "Sessionen upphörde på grund av inaktivitet. Vänligen autentisera igen.",
+  "Alert.CryptoShredded": "Kryptografiska nycklar strimlade. PHI är permanent oåtkomlig.",
+  "Alert.TamperDetected": "Manipulering upptäckt i säker huvudbok. Nödlås aktiverat.",
+  "Status.Online": "Online",
+  "Status.Offline": "Offline",
+  "Status.Connecting": "Ansluter..."
+}

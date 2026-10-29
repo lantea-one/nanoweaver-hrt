@@ -1,0 +1,20 @@
+{
+  "Nav.Home": "Beranda",
+  "Nav.Endocrine": "Pusat Endokrin",
+  "Nav.Wizard": "Panduan Pengaturan",
+  "Nav.Simulations": "Simulasi",
+  "Nav.Genomics": "Farmakogenomik",
+  "Nav.Compliance": "Audit Kepatuhan",
+  "Nav.Datasets": "Himpunan Data",
+  "Nav.Language": "Bahasa",
+  "Regimen.MtF": "Pria ke Wanita (MtF)",
+  "Regimen.FtM": "Wanita ke Pria (FtM)",
+  "Regimen.E2Dominant": "Dominan 17β-Estradiol",
+  "Regimen.TDominant": "Dominan Testosteron",
+  "Alert.IdleTimeout": "Sesi kedaluwarsa karena tidak ada aktivitas. Silakan autentikasi kembali.",
+  "Alert.CryptoShredded": "Kunci kriptografi telah dihancurkan. PHI tidak dapat diakses secara permanen.",
+  "Alert.TamperDetected": "Perusakan terdeteksi pada buku besar aman. Kunci darurat diaktifkan.",
+  "Status.Online": "Online",
+  "Status.Offline": "Offline",
+  "Status.Connecting": "Menghubungkan..."
+}

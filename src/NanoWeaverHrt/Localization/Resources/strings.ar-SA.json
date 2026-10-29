@@ -1,0 +1,20 @@
+{
+  "Nav.Home": "الرئيسية",
+  "Nav.Endocrine": "مركز الغدد الصماء",
+  "Nav.Wizard": "معالج الإعداد",
+  "Nav.Simulations": "المحاكاة",
+  "Nav.Genomics": "علم الجينوم الدوائي",
+  "Nav.Compliance": "تدقيق الامتثال",
+  "Nav.Datasets": "مجموعات البيانات",
+  "Nav.Language": "اللغة",
+  "Regimen.MtF": "ذكر إلى أنثى (MtF)",
+  "Regimen.FtM": "أنثى إلى ذكر (FtM)",
+  "Regimen.E2Dominant": "17β-إستراديول سائد",
+  "Regimen.TDominant": "تستوستيرون سائد",
+  "Alert.IdleTimeout": "انتهت الجلسة بسبب عدم النشاط. يرجى إعادة المصادقة.",
+  "Alert.CryptoShredded": "تم تمزيق المفاتيح المشفرة. معلومات PHI غير قابلة للوصول بشكل دائم.",
+  "Alert.TamperDetected": "تم اكتشاف تلاعب في السجل الآمن. تم تفعيل القفل الطارئ.",
+  "Status.Online": "متصل",
+  "Status.Offline": "غير متصل",
+  "Status.Connecting": "جارٍ الاتصال..."
+}

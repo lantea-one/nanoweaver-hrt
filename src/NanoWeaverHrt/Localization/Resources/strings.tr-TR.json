@@ -1,0 +1,20 @@
+{
+  "Nav.Home": "Ana Sayfa",
+  "Nav.Endocrine": "Endokrin Merkezi",
+  "Nav.Wizard": "Kurulum Sihirbazı",
+  "Nav.Simulations": "Simülasyonlar",
+  "Nav.Genomics": "Farmakogenomik",
+  "Nav.Compliance": "Uyumluluk Denetimi",
+  "Nav.Datasets": "Veri Kümeleri",
+  "Nav.Language": "Dil",
+  "Regimen.MtF": "Erkekten Kadına (MtF)",
+  "Regimen.FtM": "Kadından Erkeğe (FtM)",
+  "Regimen.E2Dominant": "17β-Estradiol Baskın",
+  "Regimen.TDominant": "Testosteron Baskın",
+  "Alert.IdleTimeout": "Hareketsizlik nedeniyle oturum sona erdi. Lütfen tekrar kimlik doğrulaması yapın.",
+  "Alert.CryptoShredded": "Kriptografik anahtarlar parçalandı. PHI kalıcı olarak erişilemez.",
+  "Alert.TamperDetected": "Güvenli defterde tahrifat tespit edildi. Acil durum kilidi devrede.",
+  "Status.Online": "Çevrimiçi",
+  "Status.Offline": "Çevrimdışı",
+  "Status.Connecting": "Bağlanıyor..."
+}

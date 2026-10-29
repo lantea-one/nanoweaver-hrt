@@ -16,4 +16,7 @@ public sealed record WeaverLanguageInfo
 
     /// <summary>Native autonym (e.g., 'Español').</summary>
     public required string NativeName { get; init; }
+
+    /// <summary>Indicates whether the script direction is right-to-left.</summary>
+    public bool IsRightToLeft { get; init; }
 }

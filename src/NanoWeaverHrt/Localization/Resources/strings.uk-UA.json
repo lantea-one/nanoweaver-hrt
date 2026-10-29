@@ -1,0 +1,20 @@
+{
+  "Nav.Home": "Головна",
+  "Nav.Endocrine": "Ендокринний центр",
+  "Nav.Wizard": "Майстер налаштування",
+  "Nav.Simulations": "Симуляції",
+  "Nav.Genomics": "Фармакогеноміка",
+  "Nav.Compliance": "Аудит відповідності",
+  "Nav.Datasets": "Набори даних",
+  "Nav.Language": "Мова",
+  "Regimen.MtF": "Чоловік у жінку (MtF)",
+  "Regimen.FtM": "Жінка у чоловіка (FtM)",
+  "Regimen.E2Dominant": "Домінування 17β-естрадіолу",
+  "Regimen.TDominant": "Домінування тестостерону",
+  "Alert.IdleTimeout": "Сеанс завершено через неактивність. Будь ласка, авторизуйтесь знову.",
+  "Alert.CryptoShredded": "Криптографічні ключі знищено. PHI назавжди недоступна.",
+  "Alert.TamperDetected": "Виявлено втручання в захищений реєстр. Аварійне блокування активовано.",
+  "Status.Online": "Онлайн",
+  "Status.Offline": "Офлайн",
+  "Status.Connecting": "Підключення..."
+}

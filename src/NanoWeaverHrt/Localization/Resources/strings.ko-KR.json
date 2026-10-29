@@ -1,0 +1,20 @@
+{
+  "Nav.Home": "홈",
+  "Nav.Endocrine": "내분비 허브",
+  "Nav.Wizard": "설정 마법사",
+  "Nav.Simulations": "시뮬레이션",
+  "Nav.Genomics": "약물유전체학",
+  "Nav.Compliance": "규정 준수 감사",
+  "Nav.Datasets": "데이터세트",
+  "Nav.Language": "언어",
+  "Regimen.MtF": "남성에서 여성 (MtF)",
+  "Regimen.FtM": "여성에서 남성 (FtM)",
+  "Regimen.E2Dominant": "17β-에스트라디올 우세",
+  "Regimen.TDominant": "테스토스테론 우세",
+  "Alert.IdleTimeout": "비활동으로 인해 세션이 만료되었습니다. 다시 인증해 주세요.",
+  "Alert.CryptoShredded": "암호화 키가 파쇄되었습니다. PHI에 영구적으로 접근할 수 없습니다.",
+  "Alert.TamperDetected": "보안 원장에서 변조가 감지되었습니다. 비상 잠금이 활성화되었습니다.",
+  "Status.Online": "온라인",
+  "Status.Offline": "오프라인",
+  "Status.Connecting": "연결 중..."
+}

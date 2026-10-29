@@ -1,0 +1,20 @@
+{
+  "Nav.Home": "Trang chủ",
+  "Nav.Endocrine": "Trung tâm nội tiết",
+  "Nav.Wizard": "Thuật sĩ thiết lập",
+  "Nav.Simulations": "Mô phỏng",
+  "Nav.Genomics": "Dược lý gen",
+  "Nav.Compliance": "Kiểm toán tuân thủ",
+  "Nav.Datasets": "Bộ dữ liệu",
+  "Nav.Language": "Ngôn ngữ",
+  "Regimen.MtF": "Nam sang Nữ (MtF)",
+  "Regimen.FtM": "Nữ sang Nam (FtM)",
+  "Regimen.E2Dominant": "Ưu thế 17β-Estradiol",
+  "Regimen.TDominant": "Ưu thế Testosterone",
+  "Alert.IdleTimeout": "Phiên đã hết hạn do không hoạt động. Vui lòng xác thực lại.",
+  "Alert.CryptoShredded": "Khóa mật mã đã bị hủy. PHI vĩnh viễn không thể truy cập.",
+  "Alert.TamperDetected": "Phát hiện giả mạo trong sổ cái bảo mật. Đã kích hoạt khóa khẩn cấp.",
+  "Status.Online": "Trực tuyến",
+  "Status.Offline": "Ngoại tuyến",
+  "Status.Connecting": "Đang kết nối..."
+}

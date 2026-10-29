@@ -11,7 +11,7 @@ namespace NanoWeaverHrt.Localization;
 public sealed class WeaverLocalizer : IWeaverLocalizer
 {
     /// <summary>
-    /// Metadata describing all 10 supported community languages.
+    /// Metadata describing all 18 supported community languages.
     /// </summary>
     private static readonly WeaverLanguageInfo[] SupportedLanguages =
     [
@@ -25,6 +25,14 @@ public sealed class WeaverLocalizer : IWeaverLocalizer
         new() { Code = WeaverLanguage.Chinese, Bcp47Tag = "zh-CN", EnglishName = "Chinese", NativeName = "简体中文" },
         new() { Code = WeaverLanguage.Dutch, Bcp47Tag = "nl-NL", EnglishName = "Dutch", NativeName = "Nederlands" },
         new() { Code = WeaverLanguage.Polish, Bcp47Tag = "pl-PL", EnglishName = "Polish", NativeName = "Polski" },
+        new() { Code = WeaverLanguage.Arabic, Bcp47Tag = "ar-SA", EnglishName = "Arabic", NativeName = "العربية", IsRightToLeft = true },
+        new() { Code = WeaverLanguage.Korean, Bcp47Tag = "ko-KR", EnglishName = "Korean", NativeName = "한국어" },
+        new() { Code = WeaverLanguage.Turkish, Bcp47Tag = "tr-TR", EnglishName = "Turkish", NativeName = "Türkçe" },
+        new() { Code = WeaverLanguage.Hindi, Bcp47Tag = "hi-IN", EnglishName = "Hindi", NativeName = "हिन्दी" },
+        new() { Code = WeaverLanguage.Ukrainian, Bcp47Tag = "uk-UA", EnglishName = "Ukrainian", NativeName = "Українська" },
+        new() { Code = WeaverLanguage.Vietnamese, Bcp47Tag = "vi-VN", EnglishName = "Vietnamese", NativeName = "Tiếng Việt" },
+        new() { Code = WeaverLanguage.Indonesian, Bcp47Tag = "id-ID", EnglishName = "Indonesian", NativeName = "Bahasa Indonesia" },
+        new() { Code = WeaverLanguage.Swedish, Bcp47Tag = "sv-SE", EnglishName = "Swedish", NativeName = "Svenska" },
     ];
 
     /// <summary>
