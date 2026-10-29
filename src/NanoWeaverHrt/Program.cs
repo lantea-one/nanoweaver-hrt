@@ -45,6 +45,7 @@ using NanoWeaverHrt.Security.Integrity;
 using NanoWeaverHrt.Security.Access;
 using NanoWeaverHrt.Localization;
 using NanoWeaverHrt.Analytics;
+using NanoWeaverHrt.Hardware.Benchmarking;
 
 namespace NanoWeaverHrt;
 
@@ -173,6 +174,11 @@ public class Program
         // WHY:  Enables zero-copy analytical queries and structural summary metric computation across molecular trajectories.
         // HOW:  Registers DuckDbTrajectoryAnalyticsService as singleton ITrajectoryAnalyticsService into the DI container.
         builder.Services.AddSingleton<ITrajectoryAnalyticsService, DuckDbTrajectoryAnalyticsService>();
+
+        // WHAT: Registers the hardware accelerator qualification and diagnostic benchmark engine.
+        // WHY:  Permits cluster operators and researchers to benchmark compute throughput (FP32/FP64) and memory bandwidth before launching workloads.
+        // HOW:  Registers AcceleratorBenchmarkService as singleton IAcceleratorBenchmarkService into the DI container.
+        builder.Services.AddSingleton<IAcceleratorBenchmarkService, AcceleratorBenchmarkService>();
 
         // WHAT: Configures Swagger & OpenAPI generation with XML comments and Swashbuckle annotations.
         // WHY:  Provides interactive API exploration (/swagger) and ReDoc documentation (/documentation).
