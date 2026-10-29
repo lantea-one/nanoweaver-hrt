@@ -3860,6 +3860,59 @@ public class Program
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status403Forbidden);
 
+        // ---------------------------------------------------------------------
+        // REST API: Trajectory Parquet Analytics Query
+        // ---------------------------------------------------------------------
+        app.MapPost("/api/trajectories/analytics/query", async (
+            TrajectoryAnalyticsApiRequest request,
+            ITrajectoryAnalyticsService analyticsService,
+            HttpContext httpContext,
+            CancellationToken ct) =>
+        {
+            // WHAT: Validates input, executes read-only SQL query via DuckDbTrajectoryAnalyticsService, and returns tabular analytics result.
+            // WHY:  Permits researchers and computational nanotechnologists to run ad-hoc columnar SQL directly over trajectory Parquet datasets.
+            // HOW:  Validates request non-null, maps to TrajectoryAnalyticsQuery, invokes ExecuteQueryAsync, wraps in TrajectoryAnalyticsApiResponse.
+            if (request is null || string.IsNullOrWhiteSpace(request.DatasetName) || string.IsNullOrWhiteSpace(request.Query))
+            {
+                return SecureProblemResult(httpContext, StatusCodes.Status400BadRequest, "Dataset name and query must not be empty.");
+            }
+
+            try
+            {
+                int maxRows = request.MaxRows.GetValueOrDefault(1000);
+                TrajectoryAnalyticsQuery query = new(
+                    DatasetName: request.DatasetName.Trim(),
+                    Query: request.Query.Trim(),
+                    MaxRows: maxRows > 0 ? maxRows : 1000);
+
+                TrajectoryAnalyticsResult result = await analyticsService.ExecuteQueryAsync(query, ct);
+                TrajectoryAnalyticsApiResponse response = new(
+                    DatasetName: request.DatasetName,
+                    Columns: result.Columns,
+                    Rows: result.Rows,
+                    TotalRows: result.TotalRows,
+                    ElapsedMilliseconds: result.ElapsedMilliseconds);
+
+                return Results.Ok(response);
+            }
+            catch (FileNotFoundException fnfEx)
+            {
+                return SecureProblemResult(httpContext, StatusCodes.Status404NotFound, fnfEx.Message);
+            }
+            catch (InvalidOperationException invEx)
+            {
+                return SecureProblemResult(httpContext, StatusCodes.Status400BadRequest, invEx.Message);
+            }
+        })
+        .WithName("QueryTrajectoryAnalytics")
+        .WithTags("Trajectories")
+        .WithSummary("Executes a read-only analytical SQL query against a trajectory dataset.")
+        .WithDescription("Runs columnar SQL queries directly over trajectory Parquet datasets or in-memory analytical sessions via DuckDB.")
+        .Produces<TrajectoryAnalyticsApiResponse>(StatusCodes.Status200OK)
+        .ProducesProblem(StatusCodes.Status400BadRequest)
+        .ProducesProblem(StatusCodes.Status404NotFound)
+        .ProducesProblem(StatusCodes.Status500InternalServerError);
+
         app.Run();
     }
 

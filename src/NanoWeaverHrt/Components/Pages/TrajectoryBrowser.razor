@@ -1,10 +1,12 @@
 @page "/trajectories"
+@using NanoWeaverHrt.Analytics
 @inject IDatasetManager DatasetManager
 @inject XyzPipeReader XyzParser
 @inject DcdPipeReader DcdParser
 @inject LammpsCustomPipeReader LammpsParser
 @inject IParquetTrajectoryWriter ParquetWriter
 @inject IConfigurationRepository ConfigRepo
+@inject ITrajectoryAnalyticsService AnalyticsService
 
 <div class="trajectory-container">
     <div class="panel-header">
@@ -69,6 +71,117 @@
             <div class="console-box mt-3">
                 <div class="console-header">ZERO-ALLOCATION PIPELINE TELEMETRY CONSOLE</div>
                 <div class="console-body font-mono">@_consoleOutput</div>
+            </div>
+        }
+    </div>
+
+    <!-- Columnar Trajectory Analytics & SQL Query Drawer -->
+    <div class="card panel mt-4" id="analytics-section">
+        <div class="panel-header">
+            <div>
+                <h3>Trajectory Parquet Analytics &amp; In-Process SQL</h3>
+                <p class="panel-desc">Interactive columnar SQL execution directly over converted Apache Parquet datasets or in-memory analytical sessions via DuckDB.</p>
+            </div>
+            <button class="btn btn-secondary btn-sm" @onclick="ToggleQueryDrawer">
+                @(_drawerOpen ? "▲ Hide Query Drawer" : "▼ Open Query Drawer")
+            </button>
+        </div>
+
+        @if (_drawerOpen)
+        {
+            <div class="query-drawer mt-3">
+                <div class="grid-2col">
+                    <div class="form-group">
+                        <label class="form-label" for="dataset-select">Target Dataset / Parquet File:</label>
+                        <select id="dataset-select" class="input-select font-mono" @bind="_queryDataset">
+                            <option value="sample">sample (In-Memory Origami Beads)</option>
+                            <option value=":memory:">:memory: (Ephemeral DuckDB Session)</option>
+                            @foreach (TrajectoryFileItem file in _files)
+                            {
+                                <option value="@Path.GetFileNameWithoutExtension(file.Name)">@file.Name</option>
+                            }
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="preset-select">Preset Analytical Templates:</label>
+                        <select id="preset-select" class="input-select" @onchange="OnPresetSelected">
+                            <option value="">-- Choose an analytical template --</option>
+                            <option value="region">Distribution of Beads by Region</option>
+                            <option value="bbox">Bounding Box Dimensions</option>
+                            <option value="density">Frame Count &amp; Atom Density</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group mt-3">
+                    <label class="form-label" for="sql-query-input">SQL Query (Read-Only):</label>
+                    <textarea id="sql-query-input" class="input-text font-mono" rows="4" @bind="_queryText" placeholder="SELECT * FROM trajectory LIMIT 50;"></textarea>
+                </div>
+
+                <div class="mt-3 flex-between">
+                    <div class="subtext">
+                        <span>Max Rows: </span>
+                        <input id="max-rows-input" type="number" class="input-number" style="width: 80px;" @bind="_queryMaxRows" min="1" max="10000" />
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-outline btn-sm" @onclick="ClearQueryResults">
+                            Clear Results
+                        </button>
+                        <button class="btn btn-primary btn-sm" id="btn-run-query" disabled="@_isQueryExecuting" @onclick="ExecuteAnalyticsQueryAsync">
+                            @(_isQueryExecuting ? "Executing Query..." : "⚡ Run Columnar SQL")
+                        </button>
+                    </div>
+                </div>
+
+                @if (!string.IsNullOrEmpty(_queryError))
+                {
+                    <div class="callout-box mt-3" style="border-left-color: var(--accent-rose, #e06c75);">
+                        <div class="callout-title" style="color: var(--accent-rose, #e06c75);">⚠️ Query Execution Error</div>
+                        <div class="font-mono subtext" id="query-error-message">@_queryError</div>
+                    </div>
+                }
+
+                @if (_analyticsResult != null)
+                {
+                    <div class="result-box mt-3" id="query-results-box">
+                        <div class="flex-between">
+                            <div class="result-title">Query Results: @_analyticsResult.TotalRows row(s) returned</div>
+                            <span class="badge badge-accent">@(_analyticsResult.ElapsedMilliseconds.ToString("F2")) ms</span>
+                        </div>
+
+                        <div class="table-container mt-2">
+                            <table class="data-table" id="analytics-results-table">
+                                <thead>
+                                    <tr>
+                                        @foreach (string col in _analyticsResult.Columns)
+                                        {
+                                            <th>@col</th>
+                                        }
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @if (_analyticsResult.Rows.Count == 0)
+                                    {
+                                        <tr><td colspan="@_analyticsResult.Columns.Count" class="empty-state">No matching records returned.</td></tr>
+                                    }
+                                    else
+                                    {
+                                        @foreach (IReadOnlyList<object?> row in _analyticsResult.Rows)
+                                        {
+                                            <tr>
+                                                @foreach (object? cell in row)
+                                                {
+                                                    <td class="font-mono">@(cell?.ToString() ?? "NULL")</td>
+                                                }
+                                            </tr>
+                                        }
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                }
             </div>
         }
     </div>
@@ -177,6 +290,41 @@
 </div>
 
 @code {
+    /// <summary>
+    /// Flag indicating whether the analytics query drawer is expanded.
+    /// </summary>
+    private bool _drawerOpen = true;
+
+    /// <summary>
+    /// Target dataset identifier for the analytical query.
+    /// </summary>
+    private string _queryDataset = "sample";
+
+    /// <summary>
+    /// SQL query text to execute.
+    /// </summary>
+    private string _queryText = "SELECT target_region, COUNT(*) AS bead_count FROM trajectory GROUP BY target_region ORDER BY bead_count DESC;";
+
+    /// <summary>
+    /// Maximum number of rows to return from the analytical query.
+    /// </summary>
+    private int _queryMaxRows = 1000;
+
+    /// <summary>
+    /// Flag indicating whether an analytical query is actively executing.
+    /// </summary>
+    private bool _isQueryExecuting;
+
+    /// <summary>
+    /// Error message produced by the analytical query execution, if any.
+    /// </summary>
+    private string? _queryError;
+
+    /// <summary>
+    /// Result produced by the most recent analytical query execution.
+    /// </summary>
+    private TrajectoryAnalyticsResult? _analyticsResult;
+
     /// <summary>
     /// Collection of discovered trajectory files.
     /// </summary>
@@ -389,6 +537,86 @@
         finally
         {
             _isExporting = false;
+        }
+    }
+
+    /// <summary>
+    /// Toggles the analytical query drawer open or closed.
+    /// </summary>
+    private void ToggleQueryDrawer()
+    {
+        // WHAT: Inverts the drawer expansion state.
+        // WHY:  Allows researchers to collapse the query panel to save screen space.
+        // HOW:  Toggles the _drawerOpen boolean flag.
+        _drawerOpen = !_drawerOpen;
+    }
+
+    /// <summary>
+    /// Populates the query text area with a pre-configured analytical template.
+    /// </summary>
+    /// <param name="e">Change event args from the preset selector.</param>
+    private void OnPresetSelected(ChangeEventArgs e)
+    {
+        // WHAT: Replaces the query textarea content with a standard analytical SQL template.
+        // WHY:  Provides quick-access templates for common origami and trajectory geometry inquiries.
+        // HOW:  Maps dropdown key to pre-composed SQL string.
+        string? selected = e.Value?.ToString();
+        _queryText = selected switch
+        {
+            "region" => "SELECT target_region, COUNT(*) AS bead_count FROM trajectory GROUP BY target_region ORDER BY bead_count DESC;",
+            "bbox" => "SELECT MAX(x) - MIN(x) AS dx, MAX(y) - MIN(y) AS dy, MAX(z) - MIN(z) AS dz, (MAX(x) - MIN(x)) * (MAX(y) - MIN(y)) * (MAX(z) - MIN(z)) AS volume FROM trajectory;",
+            "density" => "SELECT COUNT(DISTINCT frame_index) AS frame_count, COUNT(DISTINCT atom_index) AS atom_count, COUNT(*) AS total_records FROM trajectory;",
+            _ => _queryText
+        };
+    }
+
+    /// <summary>
+    /// Clears the currently displayed analytical query results and error banners.
+    /// </summary>
+    private void ClearQueryResults()
+    {
+        // WHAT: Resets analytical result and error state.
+        // WHY:  Permits researchers to clear past query output before formulating new queries.
+        // HOW:  Nullifies _analyticsResult and _queryError.
+        _analyticsResult = null;
+        _queryError = null;
+    }
+
+    /// <summary>
+    /// Executes the active analytical SQL query against the selected trajectory dataset.
+    /// </summary>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    private async Task ExecuteAnalyticsQueryAsync()
+    {
+        // WHAT: Executes the read-only analytical SQL query via ITrajectoryAnalyticsService.
+        // WHY:  Allows interactive exploration of trajectory datasets directly within the Web UI.
+        // HOW:  Validates inputs, maps to TrajectoryAnalyticsQuery, executes asynchronously, and captures results or errors.
+        if (string.IsNullOrWhiteSpace(_queryText))
+        {
+            _queryError = "SQL query cannot be empty.";
+            return;
+        }
+
+        _isQueryExecuting = true;
+        _queryError = null;
+
+        try
+        {
+            TrajectoryAnalyticsQuery query = new(
+                DatasetName: string.IsNullOrWhiteSpace(_queryDataset) ? "sample" : _queryDataset.Trim(),
+                Query: _queryText.Trim(),
+                MaxRows: _queryMaxRows > 0 ? _queryMaxRows : 1000);
+
+            _analyticsResult = await AnalyticsService.ExecuteQueryAsync(query);
+        }
+        catch (Exception ex)
+        {
+            _queryError = ex.Message;
+            _analyticsResult = null;
+        }
+        finally
+        {
+            _isQueryExecuting = false;
         }
     }
 }

@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
+using NanoWeaverHrt.Analytics;
 using NanoWeaverHrt.Endocrine;
 using NanoWeaverHrt.Genomics;
 using NanoWeaverHrt.Models;
@@ -840,5 +841,162 @@ public sealed class EndpointIntegrationTests : IClassFixture<WebApplicationFacto
         Assert.Contains("application/xml", specJson);
         Assert.Contains("application/x-yaml", specJson);
         Assert.Contains("example", specJson);
+    }
+
+    /// <summary>
+    /// Verifies that POST /api/trajectories/analytics/query returns HTTP 200 OK with tabular data for a valid sample dataset query.
+    /// </summary>
+    [Fact]
+    public async Task QueryTrajectoryAnalytics_WithValidSampleDataset_ReturnsOkWithData()
+    {
+        // WHAT: Posts an analytical query against the sample dataset.
+        // WHY:  Validates end-to-end execution of the columnar SQL minimal API endpoint.
+        // HOW:  Sends a POST request with TrajectoryAnalyticsApiRequest, validates 200 OK, columns, and rows.
+        TrajectoryAnalyticsApiRequest req = new(
+            DatasetName: "sample",
+            Query: "SELECT target_region, COUNT(*) AS count_val FROM trajectory GROUP BY target_region ORDER BY count_val DESC;",
+            MaxRows: 50);
+
+        HttpResponseMessage response = await _client.PostAsJsonAsync("/api/trajectories/analytics/query", req);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        TrajectoryAnalyticsApiResponse? result = await response.Content.ReadFromJsonAsync<TrajectoryAnalyticsApiResponse>();
+        Assert.NotNull(result);
+        Assert.Equal("sample", result.DatasetName);
+        Assert.Equal(2, result.Columns.Count);
+        Assert.Equal("target_region", result.Columns[0]);
+        Assert.Equal("count_val", result.Columns[1]);
+        Assert.True(result.TotalRows > 0);
+        Assert.True(result.ElapsedMilliseconds >= 0.0);
+    }
+
+    /// <summary>
+    /// Verifies that POST /api/trajectories/analytics/query returns HTTP 200 OK for an ephemeral in-memory calculation.
+    /// </summary>
+    [Fact]
+    public async Task QueryTrajectoryAnalytics_WithMemorySession_ReturnsOk()
+    {
+        // WHAT: Posts a scalar mathematical calculation against the ephemeral in-memory session.
+        // WHY:  Ensures that :memory: queries succeed without disk file dependencies.
+        // HOW:  Sends a POST request specifying :memory: and an arithmetic query, asserting the computed value.
+        TrajectoryAnalyticsApiRequest req = new(
+            DatasetName: ":memory:",
+            Query: "SELECT 21 * 2 AS answer;",
+            MaxRows: null);
+
+        HttpResponseMessage response = await _client.PostAsJsonAsync("/api/trajectories/analytics/query", req);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        TrajectoryAnalyticsApiResponse? result = await response.Content.ReadFromJsonAsync<TrajectoryAnalyticsApiResponse>();
+        Assert.NotNull(result);
+        Assert.Single(result.Columns);
+        Assert.Equal("answer", result.Columns[0]);
+        Assert.Single(result.Rows);
+        JsonElement elem = (JsonElement)result.Rows[0][0]!;
+        Assert.Equal(42, elem.GetInt32());
+    }
+
+    /// <summary>
+    /// Verifies that POST /api/trajectories/analytics/query returns HTTP 400 Bad Request when the query is empty.
+    /// </summary>
+    [Fact]
+    public async Task QueryTrajectoryAnalytics_WithEmptyQuery_ReturnsBadRequest()
+    {
+        // WHAT: Sends a query request with whitespace-only SQL statement.
+        // WHY:  Enforces input validation guarding against blank or missing analytical queries.
+        // HOW:  Sends a POST request with whitespace query and asserts 400 Bad Request.
+        TrajectoryAnalyticsApiRequest req = new(
+            DatasetName: "sample",
+            Query: "   ",
+            MaxRows: 100);
+
+        HttpResponseMessage response = await _client.PostAsJsonAsync("/api/trajectories/analytics/query", req);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    /// <summary>
+    /// Verifies that POST /api/trajectories/analytics/query returns HTTP 400 Bad Request when the dataset name is empty.
+    /// </summary>
+    [Fact]
+    public async Task QueryTrajectoryAnalytics_WithEmptyDatasetName_ReturnsBadRequest()
+    {
+        // WHAT: Sends a query request with whitespace-only dataset name.
+        // WHY:  Enforces input validation requiring an identifiable target dataset.
+        // HOW:  Sends a POST request with empty dataset name and asserts 400 Bad Request.
+        TrajectoryAnalyticsApiRequest req = new(
+            DatasetName: "",
+            Query: "SELECT 1;",
+            MaxRows: 100);
+
+        HttpResponseMessage response = await _client.PostAsJsonAsync("/api/trajectories/analytics/query", req);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    /// <summary>
+    /// Verifies that POST /api/trajectories/analytics/query returns HTTP 400 Bad Request when mutation SQL is submitted.
+    /// </summary>
+    [Fact]
+    public async Task QueryTrajectoryAnalytics_WithProhibitedMutationQuery_ReturnsBadRequest()
+    {
+        // WHAT: Submits a query attempting a DROP TABLE mutation command.
+        // WHY:  Validates that read-only query guard rejections are mapped to 400 Bad Request Problem Details.
+        // HOW:  Sends a POST request with DROP TABLE statement and asserts 400 Bad Request.
+        TrajectoryAnalyticsApiRequest req = new(
+            DatasetName: "sample",
+            Query: "DROP TABLE trajectory;",
+            MaxRows: 100);
+
+        HttpResponseMessage response = await _client.PostAsJsonAsync("/api/trajectories/analytics/query", req);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    /// <summary>
+    /// Verifies that POST /api/trajectories/analytics/query returns HTTP 404 Not Found when the requested dataset does not exist.
+    /// </summary>
+    [Fact]
+    public async Task QueryTrajectoryAnalytics_WithMissingDataset_ReturnsNotFound()
+    {
+        // WHAT: Queries a non-existent dataset name on disk.
+        // WHY:  Validates that FileNotFoundException is caught and mapped to 404 Not Found Problem Details.
+        // HOW:  Sends a POST request specifying an unresolvable parquet filename and asserts 404 Not Found.
+        TrajectoryAnalyticsApiRequest req = new(
+            DatasetName: "nonexistent_dataset_test_404",
+            Query: "SELECT * FROM trajectory;",
+            MaxRows: 100);
+
+        HttpResponseMessage response = await _client.PostAsJsonAsync("/api/trajectories/analytics/query", req);
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    /// <summary>
+    /// Verifies that POST /api/trajectories/analytics/query handles row limiting and non-positive MaxRows gracefully.
+    /// </summary>
+    [Fact]
+    public async Task QueryTrajectoryAnalytics_WithRowLimiting_EnforcesRequestedLimit()
+    {
+        // WHAT: Posts queries with specific row count bounds and non-positive row counts.
+        // WHY:  Validates row limit clamping logic inside the analytical endpoint.
+        // HOW:  Sends POST requests with MaxRows = 2 and MaxRows = -1, asserting proper row returns.
+        TrajectoryAnalyticsApiRequest reqLimited = new(
+            DatasetName: "sample",
+            Query: "SELECT * FROM trajectory;",
+            MaxRows: 2);
+
+        HttpResponseMessage responseLimited = await _client.PostAsJsonAsync("/api/trajectories/analytics/query", reqLimited);
+        Assert.Equal(HttpStatusCode.OK, responseLimited.StatusCode);
+        TrajectoryAnalyticsApiResponse? resultLimited = await responseLimited.Content.ReadFromJsonAsync<TrajectoryAnalyticsApiResponse>();
+        Assert.NotNull(resultLimited);
+        Assert.Equal(2, resultLimited.TotalRows);
+
+        TrajectoryAnalyticsApiRequest reqZero = new(
+            DatasetName: "sample",
+            Query: "SELECT * FROM trajectory;",
+            MaxRows: -1);
+
+        HttpResponseMessage responseZero = await _client.PostAsJsonAsync("/api/trajectories/analytics/query", reqZero);
+        Assert.Equal(HttpStatusCode.OK, responseZero.StatusCode);
+        TrajectoryAnalyticsApiResponse? resultZero = await responseZero.Content.ReadFromJsonAsync<TrajectoryAnalyticsApiResponse>();
+        Assert.NotNull(resultZero);
+        Assert.True(resultZero.TotalRows > 2);
     }
 }

@@ -231,3 +231,20 @@ When resolving architectural alternatives, ambiguities, or configuration choices
 - Formulate choices into multiple-choice options with a single recommended default option prefixed with `(Recommended)`.
 - Explicitly explain the architectural rationale, trade-offs, and security implications of each option.
 - Never make unratified assumptions on security boundaries, cryptographic algorithms, or database schemas.
+
+---
+
+## 6. Tailored Repository AI Agents (`.agents/`)
+
+NanoWeaverHrt vendors specialized AI agent definitions within `.agents/` registered via `.agents/agents.json`. All future AI assistants and contributors MUST invoke these specialized agents for tasks matching their domain:
+
+| Agent Identifier | Model | Target Scope | Core Responsibility |
+| :--- | :--- | :--- | :--- |
+| `nanoweaver-hrt-architect` (`architect`) | `pro` | Architecture & Planning | Designs 5-layer work packages in `work-packages/`, cryptographic PKI protocols, and multi-engine persistence. Never writes production code. |
+| `nanoweaver-hrt-coder` (`coder`) | `flash` | Full Repository | Generalist senior software engineer implementing assigned work packages under full AGENTS.md Prime Directives. |
+| `nanoweaver-hrt-coder-web-service` | `flash` | `src/NanoWeaverHrt` | Minimal APIs in `Program.cs`, SIMD `System.IO.Pipelines` parsers, multi-engine persistence (SQLite, PostgreSQL, DuckDB, MySQL), and bUnit Razor test suites. |
+| `nanoweaver-hrt-coder-desktop` | `flash` | `src/NanoWeaverHrt.Desktop`, `src/NanoWeaverHrt.Gui.Core` | Avalonia UI 11 / .NET 10 desktop application, MVVM ViewModels, `DesktopTrayIconController`, 18-language localization, and desktop packaging. |
+| `nanoweaver-hrt-coder-android` | `flash` | `src/NanoWeaverHrt.Mobile` (Android) | Android Avalonia lifecycle, `MainActivity`, Android Keystore PKI keys, permissions, and APK packaging. |
+| `nanoweaver-hrt-coder-ios` | `flash` | `src/NanoWeaverHrt.Mobile` (iOS) | iOS Avalonia lifecycle, `AppDelegate`, Keychain / Secure Enclave PKI keys, and iOS packaging. |
+| `nanoweaver-hrt-mechanic` (`mechanic`) | `flash_lite` | Full Repository | Surgical, non-behavioral mechanical edits: renames, `dotnet format`, XML docblocks (`scripts/check-docblocks.py`), and compiler warnings. |
+
