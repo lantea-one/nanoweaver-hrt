@@ -16,7 +16,16 @@ All initial development phases (P1 through P35) have concluded:
 - **Phases P21–P25**: Tiered researcher access control (`ReadAccess`, `GenomicAccess`, `FullReadAccess`), cohort management UI, and OpenAPI contracts.
 - **Phases P26–P35**: Standalone cross-platform desktop and mobile GUI applications (Avalonia UI 11 / .NET 10) for Linux, macOS, Windows, Android, iOS, iPadOS, sovereign code-signing PKI rotation, multi-platform packaging, and continuous release pipelines.
 
-There are currently **0 active work packages**. When new multi-layer features or remediations are planned, author a new work package using the guide below.
+There are currently **4 active work packages** targeting the `v2026.10.29.2` release hardening:
+
+### Active Work Packages (Release `v2026.10.29.2`: `P36–P39`)
+
+| Phase | Work Package File | Target Role / Model | Architectural Layer & Scope | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| **P36** | [`p36-packaging-binary-pickup-and-macho-alignment.md`](p36-packaging-binary-pickup-and-macho-alignment.md) | `mechanic` / `coder` (`flash`) | Windows single-file `NanoWeaverHrt.Desktop.exe` pickup & macOS Fat Mach-O dynamic slice alignment | **READY** |
+| **P37** | [`p37-package-manifest-version-synchronization.md`](p37-package-manifest-version-synchronization.md) | `mechanic` (`flash_lite`) | Universal package version parameterization (`2026.10.29.2`) across Linux, macOS, Windows, Mobile & AUR | **READY** |
+| **P38** | [`p38-desktop-graphical-windowed-ui-shell.md`](p38-desktop-graphical-windowed-ui-shell.md) | `architect` / `coder` (`flash`) | Desktop default interactive windowed UI shell execution (`IDesktopUiHost`, `DefaultDesktopUiHost`, 100% tests) | **READY** |
+| **P39** | [`p39-release-v2026.10.29.2-verification-and-publishing.md`](p39-release-v2026.10.29.2-verification-and-publishing.md) | `architect` / parent coordinator (`inherit` / `pro`) | Full 8-gate verification, 16 platform packages, release notes, tag `v2026.10.29.2` & CI publishing | **PLANNED** |
 
 ---
 
