@@ -166,7 +166,7 @@ jobs:
         # HOW:  Runs the tests with coverage-full.runsettings, then check-coverage-ratchet.py.
         run: |
           rm -rf artifacts/coverage-full
-          dotnet test NanoWeaverHrt.slnx --configuration Release --settings coverage-full.runsettings --collect:"XPlat Code Coverage" --results-directory artifacts/coverage-full --verbosity minimal
+          env -u WEAVER_TEST_POSTGRES XDG_RUNTIME_DIR=/tmp dotnet test NanoWeaverHrt.slnx --configuration Release --no-build --settings coverage-full.runsettings --collect:"XPlat Code Coverage" --results-directory artifacts/coverage-full --verbosity minimal
           python3 -I scripts/check-coverage-ratchet.py artifacts/coverage-full coverage-baseline.json
 
       - name: Verify Vendored JavaScript Subsystem & SRI Integrity

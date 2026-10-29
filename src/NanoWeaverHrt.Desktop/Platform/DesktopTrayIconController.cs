@@ -75,6 +75,11 @@ public sealed class DesktopTrayIconController : ITrayIconController
     public WeaverLanguage CurrentLanguage => _currentLanguage;
 
     /// <summary>
+    /// Gets a value indicating whether the current language uses right-to-left layout direction.
+    /// </summary>
+    public bool IsRightToLeft => _currentLanguage == WeaverLanguage.Arabic;
+
+    /// <summary>
     /// Gets the localization provider configured for this tray controller.
     /// </summary>
     public IWeaverLocalizer? Localizer => _localizer;

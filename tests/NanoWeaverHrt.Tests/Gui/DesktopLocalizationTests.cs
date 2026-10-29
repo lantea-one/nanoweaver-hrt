@@ -389,7 +389,8 @@ public sealed class DesktopLocalizationTests : IDisposable
         Assert.NotNull(vm.Localizer);
         Assert.Null(vm.LanguagePreferenceService);
         Assert.Equal(WeaverLanguage.English, vm.SelectedLanguage);
-        Assert.Equal(10, vm.AvailableLanguages.Count);
+        Assert.False(vm.IsRightToLeft);
+        Assert.Equal(18, vm.AvailableLanguages.Count);
         Assert.Equal("Offline", vm.LocalizedStatusText);
         Assert.False(string.IsNullOrWhiteSpace(vm.LocalizedIdleLockMessage));
         Assert.Equal("Show / Restore", vm.LocalizedTrayShowText);
@@ -651,5 +652,137 @@ public sealed class DesktopLocalizationTests : IDisposable
             vm.GetLocalizedAlertMessage("Unmapped.Alert", "Default Alert Message"));
         Assert.Equal("Default Alert Message",
             vm.GetLocalizedAlertMessage(string.Empty, "Default Alert Message"));
+    }
+
+    /// <summary>
+    /// Verifies that all 18 supported community languages round-trip accurately through
+    /// <see cref="LanguagePreferenceService"/> across write, disk persistence, and re-read cycles on SQLite.
+    /// </summary>
+    [Fact]
+    public async Task LanguagePreferenceService_All18Languages_RoundTripCorrectly()
+    {
+        // WHAT: Verifies that every one of the 18 WeaverLanguage enum values persists and round-trips correctly.
+        // WHY:  Guarantees that no supported language is corrupted, truncated, or dropped during SQLite serialization.
+        // HOW:  Iterates over Enum.GetValues<WeaverLanguage>(), persists each via SetPreferredLanguageAsync,
+        //       and asserts GetPreferredLanguageAsync returns the exact enum value.
+        using var service = new LanguagePreferenceService(_connectionString);
+        foreach (WeaverLanguage lang in Enum.GetValues<WeaverLanguage>())
+        {
+            await service.SetPreferredLanguageAsync(lang);
+            WeaverLanguage read = await service.GetPreferredLanguageAsync();
+            Assert.Equal(lang, read);
+        }
+    }
+
+    /// <summary>
+    /// Verifies that all 18 supported community languages round-trip accurately through
+    /// <see cref="LanguagePreferenceService"/> using PostgreSQL dialect and custom connection factory.
+    /// </summary>
+    [Fact]
+    public async Task LanguagePreferenceService_PostgreSql_All18Languages_RoundTripCorrectly()
+    {
+        // WHAT: Verifies PostgreSQL dialect persistence across all 18 community languages.
+        // WHY:  Ensures enterprise PostgreSQL nodes handle every supported language dialect without error.
+        // HOW:  Passes custom connection factory returning isolated SQLite memory/temp file and tests all 18 enum values.
+        string memDb = $"Data Source={Path.Combine(Path.GetTempPath(), $"weaver_pg_pref_all_{Guid.NewGuid():N}.db")}";
+        try
+        {
+            using var service = new LanguagePreferenceService(
+                "Host=pg-node.lan;Database=weaver;Username=postgres",
+                _ => new SqliteConnection(memDb));
+
+            await service.InitializeAsync();
+            foreach (WeaverLanguage lang in Enum.GetValues<WeaverLanguage>())
+            {
+                await service.SetPreferredLanguageAsync(lang);
+                WeaverLanguage read = await service.GetPreferredLanguageAsync();
+                Assert.Equal(lang, read);
+            }
+        }
+        finally
+        {
+            using var cleanupConn = new SqliteConnection(memDb);
+            SqliteConnection.ClearPool(cleanupConn);
+            string file = memDb.Replace("Data Source=", string.Empty);
+            if (File.Exists(file))
+            {
+                try { File.Delete(file); } catch { }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verifies that all 18 community languages update <see cref="MainShellViewModel.SelectedLanguage"/>,
+    /// correctly compute <see cref="MainShellViewModel.IsRightToLeft"/>, and fire property change notifications.
+    /// </summary>
+    [Fact]
+    public async Task MainShellViewModel_All18Languages_SetLanguageAsync_UpdatesStateAndNotifies()
+    {
+        // WHAT: Tests language mutation, RTL resolution, and event dispatching for all 18 languages.
+        // WHY:  Ensures UI reactivity across entire community language catalog in MainShellViewModel.
+        // HOW:  Loops through all 18 WeaverLanguage values, sets language via SetLanguageAsync, asserts IsRightToLeft,
+        //       and captures PropertyChanged events.
+        var repoMock = new Mock<IInstanceProfileRepository>();
+        var coordMock = new Mock<IMultiInstanceCoordinator>();
+        coordMock.Setup(c => c.GetSnapshots()).Returns(Array.Empty<InstanceConnectionSnapshot>());
+
+        var prefMock = new Mock<ILanguagePreferenceService>();
+        prefMock.Setup(p => p.SetPreferredLanguageAsync(It.IsAny<WeaverLanguage>(), It.IsAny<CancellationToken>()))
+            .Returns(ValueTask.CompletedTask);
+
+        var vm = new MainShellViewModel(repoMock.Object, coordMock.Object, languagePreferenceService: prefMock.Object);
+
+        foreach (WeaverLanguage lang in Enum.GetValues<WeaverLanguage>())
+        {
+            var changedProperties = new HashSet<string>();
+            vm.PropertyChanged += (_, e) =>
+            {
+                if (!string.IsNullOrEmpty(e.PropertyName))
+                {
+                    changedProperties.Add(e.PropertyName);
+                }
+            };
+
+            await vm.SetLanguageAsync(lang);
+
+            Assert.Equal(lang, vm.SelectedLanguage);
+            Assert.Equal(lang == WeaverLanguage.Arabic, vm.IsRightToLeft);
+            Assert.Contains(nameof(MainShellViewModel.SelectedLanguage), changedProperties);
+            Assert.Contains(nameof(MainShellViewModel.IsRightToLeft), changedProperties);
+            Assert.Contains(nameof(MainShellViewModel.LocalizedStatusText), changedProperties);
+            Assert.Contains(nameof(MainShellViewModel.LocalizedIdleLockMessage), changedProperties);
+            Assert.Contains(nameof(MainShellViewModel.LocalizedTrayShowText), changedProperties);
+            Assert.Contains(nameof(MainShellViewModel.LocalizedTrayLockVaultText), changedProperties);
+            Assert.Contains(nameof(MainShellViewModel.LocalizedTrayExitText), changedProperties);
+        }
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="DesktopTrayIconController"/> supports all 18 languages, correctly reflects
+    /// <see cref="DesktopTrayIconController.IsRightToLeft"/>, and emits localized tray snapshots.
+    /// </summary>
+    [Fact]
+    public void DesktopTrayIconController_All18Languages_SetLanguage_UpdatesStateAndDirection()
+    {
+        // WHAT: Tests tray icon controller language switching, RTL detection, and standard menu items for all 18 languages.
+        // WHY:  Ensures system tray menus adapt to any community language supported by the node.
+        // HOW:  Instantiates DesktopTrayIconController, iterates all 18 languages, sets language,
+        //       asserts IsRightToLeft flag and verifies GetStandardMenuItems returns 3 items.
+        var localizer = new WeaverLocalizer();
+        var controller = new DesktopTrayIconController(localizer: localizer);
+
+        foreach (WeaverLanguage lang in Enum.GetValues<WeaverLanguage>())
+        {
+            controller.SetLanguage(lang);
+            Assert.Equal(lang, controller.CurrentLanguage);
+            Assert.Equal(lang == WeaverLanguage.Arabic, controller.IsRightToLeft);
+
+            IReadOnlyList<string> menuItems = controller.GetStandardMenuItems();
+            Assert.Equal(3, menuItems.Count);
+            Assert.All(menuItems, item => Assert.False(string.IsNullOrWhiteSpace(item)));
+
+            controller.ApplyLocalizedState(TrayHealthBadge.Healthy, "Status.Online", true, false, Array.Empty<string>());
+            Assert.Contains("NanoWeaver HRT", controller.CurrentState.TooltipText);
+        }
     }
 }

@@ -531,6 +531,11 @@ public sealed class MainShellViewModel : INotifyPropertyChanged
     public IReadOnlyList<WeaverLanguageInfo> AvailableLanguages => _localizer.GetSupportedLanguages();
 
     /// <summary>
+    /// Gets a value indicating whether the currently selected language uses a right-to-left layout direction.
+    /// </summary>
+    public bool IsRightToLeft => _selectedLanguage == WeaverLanguage.Arabic;
+
+    /// <summary>
     /// Gets the localized connection status string for the currently selected instance.
     /// </summary>
     public string LocalizedStatusText
@@ -646,6 +651,7 @@ public sealed class MainShellViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(LocalizedTrayShowText));
         OnPropertyChanged(nameof(LocalizedTrayLockVaultText));
         OnPropertyChanged(nameof(LocalizedTrayExitText));
+        OnPropertyChanged(nameof(IsRightToLeft));
     }
 
     /// <summary>

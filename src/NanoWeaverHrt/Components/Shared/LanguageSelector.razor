@@ -3,17 +3,26 @@
 @inject IWeaverLocalizer Localizer
 @inject IJSRuntime JSRuntime
 
-<div class="language-selector-container">
+<div class="language-selector-container @(IsRightToLeft ? "rtl" : string.Empty)"
+     dir="@(IsRightToLeft ? "rtl" : "ltr")"
+     data-direction="@(IsRightToLeft ? "rtl" : "ltr")">
     <span class="language-selector-icon" aria-hidden="true">🌐</span>
     <select class="language-dropdown"
+            dir="@(IsRightToLeft ? "rtl" : "ltr")"
             value="@CurrentLanguageTag"
             @onchange="HandleSelectionChangedAsync"
             aria-label="@Localizer.GetString("Nav.Language", CurrentLanguage)">
         @foreach (WeaverLanguageInfo lang in SupportedLanguages)
         {
-            <option value="@lang.Bcp47Tag">@lang.NativeName</option>
+            <option value="@lang.Bcp47Tag" dir="@(lang.IsRightToLeft ? "rtl" : "ltr")">
+                @lang.NativeName (@lang.Bcp47Tag)
+            </option>
         }
     </select>
+    @if (IsRightToLeft)
+    {
+        <span class="rtl-indicator" aria-label="RTL" title="Right-to-Left">RTL</span>
+    }
 </div>
 
 @code {
@@ -21,6 +30,11 @@
     /// Gets the list of supported community localization languages.
     /// </summary>
     private IReadOnlyList<WeaverLanguageInfo> SupportedLanguages => Localizer.GetSupportedLanguages();
+
+    /// <summary>
+    /// Gets a value indicating whether the currently selected language uses a right-to-left script direction.
+    /// </summary>
+    private bool IsRightToLeft => CurrentLanguage == WeaverLanguage.Arabic;
 
     /// <summary>
     /// Gets the BCP-47 language tag corresponding to the currently active language.

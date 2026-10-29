@@ -618,4 +618,35 @@ public sealed class MainLayoutComponentTests : TestContext
         endocrineLink = cut.Find("a[href='/endocrine']");
         Assert.Contains("Centro Endocrino", endocrineLink.TextContent);
     }
+
+    /// <summary>
+    /// Verifies that switching the language to Arabic in MainLayout reactively sets dir="rtl" on the root layout wrapper,
+    /// and switching back to an LTR language restores dir="ltr".
+    /// </summary>
+    [Fact]
+    public void EmbeddedLanguageSelector_WhenArabicSelected_SetsLayoutDirectionToRtl()
+    {
+        // WHAT: Tests reactive RTL direction switching on the root layout wrapper.
+        // WHY:  Guarantees that selecting Arabic activates RTL layout across the entire UI shell.
+        // HOW:  Renders MainLayout, checks initial dir="ltr", switches to "ar-SA", checks dir="rtl", switches to "en-US", checks dir="ltr".
+        _sessionState.SetUser(_adminUser);
+        IRenderedComponent<MainLayout> cut = RenderComponent<MainLayout>();
+
+        var layoutWrapper = cut.Find(".layout-wrapper");
+        Assert.Equal("ltr", layoutWrapper.GetAttribute("dir"));
+
+        // Switch to Arabic (ar-SA)
+        var selectElement = cut.Find(".language-dropdown");
+        selectElement.Change("ar-SA");
+
+        layoutWrapper = cut.Find(".layout-wrapper");
+        Assert.Equal("rtl", layoutWrapper.GetAttribute("dir"));
+
+        // Switch back to English (en-US)
+        selectElement = cut.Find(".language-dropdown");
+        selectElement.Change("en-US");
+
+        layoutWrapper = cut.Find(".layout-wrapper");
+        Assert.Equal("ltr", layoutWrapper.GetAttribute("dir"));
+    }
 }
