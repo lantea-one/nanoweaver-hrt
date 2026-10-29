@@ -79,6 +79,9 @@ mkdir -p "${STAGING_DIR}"
 echo "Building/Staging for win-x64..."
 if command -v dotnet &>/dev/null; then
     if XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp}" dotnet publish "${ROOT_DIR}/src/NanoWeaverHrt.Desktop/NanoWeaverHrt.Desktop.csproj" -c Release -r "win-x64" --self-contained true -p:PublishTrimmed=false -o "${STAGING_DIR}" &>/dev/null || true; then
+        if [ -f "${STAGING_DIR}/NanoWeaverHrt.Desktop.exe" ] && [ ! -f "${STAGING_DIR}/NanoWeaverHrt.exe" ]; then
+            cp -f "${STAGING_DIR}/NanoWeaverHrt.Desktop.exe" "${STAGING_DIR}/NanoWeaverHrt.exe"
+        fi
         if [ -f "${STAGING_DIR}/NanoWeaverHrt.exe" ]; then
             echo "Successfully published via dotnet for win-x64"
         fi
@@ -227,6 +230,9 @@ mkdir -p "${STAGING_PORTABLE}"
 
 if command -v dotnet &>/dev/null; then
     if XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp}" dotnet publish "${ROOT_DIR}/src/NanoWeaverHrt.Desktop/NanoWeaverHrt.Desktop.csproj" -c Release -r "win-x64" --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:PublishTrimmed=false -o "${STAGING_PORTABLE}" &>/dev/null || true; then
+        if [ -f "${STAGING_PORTABLE}/NanoWeaverHrt.Desktop.exe" ] && [ ! -f "${STAGING_PORTABLE}/NanoWeaverHrt.exe" ]; then
+            cp -f "${STAGING_PORTABLE}/NanoWeaverHrt.Desktop.exe" "${STAGING_PORTABLE}/NanoWeaverHrt.exe"
+        fi
         if [ -f "${STAGING_PORTABLE}/NanoWeaverHrt.exe" ]; then
             cp -f "${STAGING_PORTABLE}/NanoWeaverHrt.exe" "${PORTABLE_TARGET}"
             echo "Successfully published single-file portable executable via dotnet"

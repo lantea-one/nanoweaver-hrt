@@ -56,19 +56,27 @@ with open('${x64_bin}', 'rb') as f:
 with open('${arm64_bin}', 'rb') as f:
     arm64_data = f.read()
 
+x64_len = len(x64_data)
+arm64_len = len(arm64_data)
+
+# Align each architecture slice to 4096-byte (2^12) page boundaries
+x64_offset = 4096
+arm64_offset = ((x64_offset + x64_len + 4095) // 4096) * 4096
+total_size = arm64_offset + arm64_len
+
 # Fat header: magic=0xcafebabe, nfat_arch=2
 fat_hdr = struct.pack('>II', 0xcafebabe, 2)
-# Arch 1: x86_64 (offset=4096, align=12)
-arch1 = struct.pack('>IIIII', 0x01000007, 3, 4096, len(x64_data), 12)
-# Arch 2: arm64 (offset=8192, align=12)
-arch2 = struct.pack('>IIIII', 0x0100000c, 0, 8192, len(arm64_data), 12)
+# Arch 1: x86_64 (align=12 -> 2^12 = 4096 bytes)
+arch1 = struct.pack('>IIIII', 0x01000007, 3, x64_offset, x64_len, 12)
+# Arch 2: arm64 (align=12 -> 2^12 = 4096 bytes)
+arch2 = struct.pack('>IIIII', 0x0100000c, 0, arm64_offset, arm64_len, 12)
 
-out_buf = bytearray(8192 + len(arm64_data))
+out_buf = bytearray(total_size)
 out_buf[0:8] = fat_hdr
 out_buf[8:28] = arch1
 out_buf[28:48] = arch2
-out_buf[4096:4096 + len(x64_data)] = x64_data
-out_buf[8192:8192 + len(arm64_data)] = arm64_data
+out_buf[x64_offset:x64_offset + x64_len] = x64_data
+out_buf[arm64_offset:arm64_offset + arm64_len] = arm64_data
 
 with open('${out_path}', 'wb') as f:
     f.write(out_buf)

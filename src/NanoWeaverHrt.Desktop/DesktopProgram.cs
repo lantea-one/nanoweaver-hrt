@@ -36,6 +36,7 @@ public static class DesktopProgram
     /// <param name="processRunner">Optional process runner abstraction.</param>
     /// <param name="mutexName">Optional mutex name override for test isolation.</param>
     /// <param name="ct">Cancellation token for terminating asynchronous operations.</param>
+    /// <param name="uiHost">Optional desktop UI host abstraction.</param>
     /// <returns>Process exit code: 0 for clean execution, 1 for CLI syntax error, 2 for instance collision.</returns>
     public static async Task<int> RunAsync(
         string[] args,
@@ -43,7 +44,8 @@ public static class DesktopProgram
         TextWriter? stderr = null,
         IPlatformProcessRunner? processRunner = null,
         string? mutexName = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        IDesktopUiHost? uiHost = null)
     {
         // WHAT: Validate and initialize output stream writers.
         // WHY:  Permits redirection of output to string buffers during test assertions.
@@ -51,7 +53,12 @@ public static class DesktopProgram
         TextWriter outWriter = stdout ?? Console.Out;
         TextWriter errWriter = stderr ?? Console.Error;
 
-        if (args.Length == 0 || args[0] is "--help" or "-h" or "help")
+        if (args.Length == 0 || args[0] is "--gui")
+        {
+            return await RunGuiAsync(outWriter, errWriter, uiHost, mutexName, ct).ConfigureAwait(false);
+        }
+
+        if (args[0] is "--help" or "-h" or "help")
         {
             PrintUsage(outWriter);
             return 0;
@@ -86,6 +93,7 @@ public static class DesktopProgram
         writer.WriteLine("Usage: NanoWeaverHrt [options]");
         writer.WriteLine();
         writer.WriteLine("Options:");
+        writer.WriteLine("  --gui               Launches the interactive desktop GUI shell (default when run without arguments).");
         writer.WriteLine("  --verify-self       Executes platform diagnostics and exits 0 if healthy.");
         writer.WriteLine("  --headless-daemon   Runs the background instance monitoring daemon without a GUI.");
         writer.WriteLine("  --help, -h          Displays this help documentation.");
@@ -150,5 +158,37 @@ public static class DesktopProgram
 
         await stdout.WriteLineAsync("NanoWeaver HRT Headless Daemon stopped cleanly.").ConfigureAwait(false);
         return 0;
+    }
+
+    /// <summary>
+    /// Launches and executes the interactive desktop user interface shell with single-instance mutex enforcement.
+    /// </summary>
+    /// <param name="stdout">Standard output text stream.</param>
+    /// <param name="stderr">Standard error text stream.</param>
+    /// <param name="uiHost">Optional custom UI host implementation.</param>
+    /// <param name="mutexName">System mutex name for single-instance verification.</param>
+    /// <param name="ct">Cancellation token signalling process shutdown.</param>
+    /// <returns>Integer exit code: 0 on normal exit, 2 on single-instance mutex collision.</returns>
+    private static async Task<int> RunGuiAsync(
+        TextWriter stdout,
+        TextWriter stderr,
+        IDesktopUiHost? uiHost,
+        string? mutexName,
+        CancellationToken ct)
+    {
+        // WHAT: Acquire single-instance mutex and delegate to desktop UI host.
+        // WHY:  Prevents launching duplicate GUI windows while providing interactive desktop shell experience.
+        // HOW:  Validates primary instance status with SingleInstanceMutexGuard and awaits uiHost.RunUiAsync.
+        string effectiveMutex = mutexName ?? SingleInstanceMutexGuard.DefaultMutexName;
+        using var guard = new SingleInstanceMutexGuard(effectiveMutex);
+
+        if (!guard.IsPrimaryInstance)
+        {
+            await stderr.WriteLineAsync("Error: Another instance of NanoWeaver HRT is already running.").ConfigureAwait(false);
+            return 2;
+        }
+
+        IDesktopUiHost host = uiHost ?? new DefaultDesktopUiHost(null, null, stdout);
+        return await host.RunUiAsync(ct).ConfigureAwait(false);
     }
 }

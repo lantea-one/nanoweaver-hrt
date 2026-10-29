@@ -358,17 +358,12 @@ public sealed class DesktopAndMobilePlatformTests
     public async Task DesktopProgram_CommandLineFlags_CoverAllBranches()
     {
         // WHAT: Test CLI entrypoints in DesktopProgram.
-        // WHY:  Ensures --help, --verify-self, --headless-daemon, and unrecognized options execute as specified.
+        // WHY:  Ensures --help, -h, help, --verify-self, --headless-daemon, and unrecognized options execute as specified.
         // HOW:  Invokes DesktopProgram.RunAsync with custom StringWriter streams.
         using var stdout = new StringWriter();
         using var stderr = new StringWriter();
 
-        // Empty args -> help
-        int exitCodeEmpty = await DesktopProgram.RunAsync([], stdout, stderr);
-        Assert.Equal(0, exitCodeEmpty);
-        Assert.Contains("NanoWeaver HRT — Desktop Platform Head", stdout.ToString());
-
-        // --help / -h
+        // --help / -h / help
         stdout.GetStringBuilder().Clear();
         int exitCodeHelp = await DesktopProgram.RunAsync(["--help"], stdout, stderr);
         Assert.Equal(0, exitCodeHelp);
@@ -377,6 +372,10 @@ public sealed class DesktopAndMobilePlatformTests
         stdout.GetStringBuilder().Clear();
         int exitCodeShortHelp = await DesktopProgram.RunAsync(["-h"], stdout, stderr);
         Assert.Equal(0, exitCodeShortHelp);
+
+        stdout.GetStringBuilder().Clear();
+        int exitCodeWordHelp = await DesktopProgram.RunAsync(["help"], stdout, stderr);
+        Assert.Equal(0, exitCodeWordHelp);
 
         // --verify-self with custom runner
         stdout.GetStringBuilder().Clear();
@@ -418,6 +417,85 @@ public sealed class DesktopAndMobilePlatformTests
         // Main static entrypoint
         int mainExit = await DesktopProgram.Main(["--help"]);
         Assert.Equal(0, mainExit);
+    }
+
+    /// <summary>
+    /// Verifies <see cref="DefaultDesktopUiHost"/> state transitions, property accessors, and lifecycle execution.
+    /// </summary>
+    [Fact]
+    public async Task DefaultDesktopUiHost_Properties_And_Lifecycle_ExecuteCleanly()
+    {
+        // WHAT: Test DefaultDesktopUiHost constructor defaults, properties, and RunUiAsync execution.
+        // WHY:  Validates desktop windowed UI shell hosting layer and clean cancellation semantics.
+        // HOW:  Asserts initial state, executes with cancellation tokens, and tests pre-cancelled token fast path.
+        using var stdout = new StringWriter();
+        var host = new DefaultDesktopUiHost(null, null, stdout);
+        Assert.Null(host.ShellViewModel);
+        Assert.NotNull(host.TrayController);
+
+        // Run with normal cancellation
+        using var cts = new CancellationTokenSource();
+        cts.CancelAfter(40);
+        int exitCode = await host.RunUiAsync(cts.Token);
+        Assert.Equal(0, exitCode);
+        Assert.Contains("Windowed UI Shell initialized.", stdout.ToString());
+        Assert.Contains("Windowed UI Shell shutting down.", stdout.ToString());
+        Assert.Equal(TrayHealthBadge.Idle, host.TrayController.CurrentState.Badge);
+
+        // Run with pre-cancelled token (covers ct.IsCancellationRequested early return)
+        using var preCancelledCts = new CancellationTokenSource();
+        preCancelledCts.Cancel();
+        int preCancelledExit = await host.RunUiAsync(preCancelledCts.Token);
+        Assert.Equal(0, preCancelledExit);
+
+        // Test non-null custom tray controller and null outWriter fallback to Console.Out
+        var customTray = new DesktopTrayIconController();
+        var hostWithCustomTray = new DefaultDesktopUiHost(null, customTray, null);
+        Assert.Same(customTray, hostWithCustomTray.TrayController);
+    }
+
+    /// <summary>
+    /// Verifies interactive GUI launching and single-instance mutex enforcement in <see cref="DesktopProgram"/>.
+    /// </summary>
+    [Fact]
+    public async Task DesktopProgram_RunGuiAsync_CoversAllBranches()
+    {
+        // WHAT: Test empty args and --gui flag invocation of RunGuiAsync.
+        // WHY:  Ensures DesktopProgram defaults to interactive UI mode while respecting mutex guards and custom UI hosts.
+        // HOW:  Invokes RunAsync with empty args and --gui, testing clean exit, mock host delegation, and mutex collision.
+        using var stdout = new StringWriter();
+        using var stderr = new StringWriter();
+
+        var mockHost = new Mock<IDesktopUiHost>();
+        mockHost.Setup(h => h.RunUiAsync(It.IsAny<CancellationToken>())).ReturnsAsync(0);
+
+        string guiMutex = $"TestGuiMutex_{Guid.NewGuid():N}";
+
+        // Empty args with mock UI host
+        int exitEmpty = await DesktopProgram.RunAsync([], stdout, stderr, mutexName: guiMutex, uiHost: mockHost.Object);
+        Assert.Equal(0, exitEmpty);
+        mockHost.Verify(h => h.RunUiAsync(It.IsAny<CancellationToken>()), Times.Once);
+
+        // --gui flag with mock UI host
+        mockHost.Invocations.Clear();
+        int exitGuiFlag = await DesktopProgram.RunAsync(["--gui"], stdout, stderr, mutexName: guiMutex, uiHost: mockHost.Object);
+        Assert.Equal(0, exitGuiFlag);
+        mockHost.Verify(h => h.RunUiAsync(It.IsAny<CancellationToken>()), Times.Once);
+
+        // Default UI host fallback (uiHost is null) with cancellation
+        using var defaultHostCts = new CancellationTokenSource();
+        defaultHostCts.CancelAfter(40);
+        string defaultMutex = $"TestDefaultGuiMutex_{Guid.NewGuid():N}";
+        int exitDefaultHost = await DesktopProgram.RunAsync([], stdout, stderr, mutexName: defaultMutex, ct: defaultHostCts.Token);
+        Assert.Equal(0, exitDefaultHost);
+        Assert.Contains("Windowed UI Shell initialized.", stdout.ToString());
+
+        // Single-instance collision during GUI launch
+        using var heldGuard = new SingleInstanceMutexGuard(guiMutex);
+        stderr.GetStringBuilder().Clear();
+        int exitCollision = await DesktopProgram.RunAsync([], stdout, stderr, mutexName: guiMutex);
+        Assert.Equal(2, exitCollision);
+        Assert.Contains("Error: Another instance of NanoWeaver HRT is already running.", stderr.ToString());
     }
 
     /// <summary>

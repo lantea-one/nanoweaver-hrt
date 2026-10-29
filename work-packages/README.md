@@ -2,30 +2,24 @@
 
 > **Instructions for Human Architects and AI Assistants**:
 > This directory contains the standard operating procedures, architectural templates, and quality invariants for authoring, decomposing, and executing work packages in **nanoweaver-hrt**.
-> All initial architecture and feature phases (**P1–P35**) are fully completed, verified at 100.00% line and branch coverage, and shipped in release **`v2026.10.29.1`**.
+> All architectural and feature phases (**P1–P39**) are fully completed, verified at 100.00% line and branch coverage, and shipped in release **`v2026.10.29.2`**.
 
 ---
 
 ## 1. Development & Release Status
 
-All initial development phases (P1 through P35) have concluded:
+All 39 development phases have concluded:
 - **Phases P1–P3**: Core Minimal API service, zero-allocation SIMD trajectory parser, and `System.IO.Pipelines` frame streaming.
 - **Phases P4–P6**: Database seam rollout across User, DNA, and Configuration stores on `IWeaverDbConnectionFactory`.
 - **Phases P7–P12**: PHI column-level encryption at rest, post-quantum Subject Key Vault, FDA 21 CFR Part 11 audit ledger, Ed25519 dataset signing, and Peer Key Registry.
 - **Phases P13–P20**: Zero-private-key-transmission PKI authentication (Ed25519 & ML-DSA-65), in-browser cryptographic signing, bUnit component security test suite, and Subresource Integrity (SRI) dynamic pipeline.
 - **Phases P21–P25**: Tiered researcher access control (`ReadAccess`, `GenomicAccess`, `FullReadAccess`), cohort management UI, and OpenAPI contracts.
-- **Phases P26–P35**: Standalone cross-platform desktop and mobile GUI applications (Avalonia UI 11 / .NET 10) for Linux, macOS, Windows, Android, iOS, iPadOS, sovereign code-signing PKI rotation, multi-platform packaging, and continuous release pipelines.
-
-There are currently **4 active work packages** targeting the `v2026.10.29.2` release hardening:
-
-### Active Work Packages (Release `v2026.10.29.2`: `P36–P39`)
-
-| Phase | Work Package File | Target Role / Model | Architectural Layer & Scope | Status |
-| :--- | :--- | :--- | :--- | :--- |
-| **P36** | [`p36-packaging-binary-pickup-and-macho-alignment.md`](p36-packaging-binary-pickup-and-macho-alignment.md) | `mechanic` / `coder` (`flash`) | Windows single-file `NanoWeaverHrt.Desktop.exe` pickup & macOS Fat Mach-O dynamic slice alignment | **READY** |
-| **P37** | [`p37-package-manifest-version-synchronization.md`](p37-package-manifest-version-synchronization.md) | `mechanic` (`flash_lite`) | Universal package version parameterization (`2026.10.29.2`) across Linux, macOS, Windows, Mobile & AUR | **READY** |
-| **P38** | [`p38-desktop-graphical-windowed-ui-shell.md`](p38-desktop-graphical-windowed-ui-shell.md) | `architect` / `coder` (`flash`) | Desktop default interactive windowed UI shell execution (`IDesktopUiHost`, `DefaultDesktopUiHost`, 100% tests) | **READY** |
-| **P39** | [`p39-release-v2026.10.29.2-verification-and-publishing.md`](p39-release-v2026.10.29.2-verification-and-publishing.md) | `architect` / parent coordinator (`inherit` / `pro`) | Full 8-gate verification, 16 platform packages, release notes, tag `v2026.10.29.2` & CI publishing | **PLANNED** |
+- **Phases P26–P35**: Standalone cross-platform desktop and mobile GUI applications (Avalonia UI 11 / .NET 10) for Linux, macOS, Windows, Android, iOS, iPadOS, sovereign code-signing PKI rotation, multi-platform packaging, and continuous release pipelines (shipped in `v2026.10.29.1`).
+- **Phases P36–P39**: Hardening and distribution enhancements (shipped in `v2026.10.29.2`):
+  - **P36**: Windows single-file portable executable packaging & universal macOS dynamic 4096-byte page-aligned fat Mach-O slice synthesis.
+  - **P37**: Universal package version synchronization (`2026.10.29.2`) across Linux (.deb, .rpm, .pkg.tar.zst, AUR), Windows (MSIX, NSIS), macOS (.dmg, .app), and Mobile (.apk, .ipa).
+  - **P38**: Standalone interactive windowed desktop GUI shell (`IDesktopUiHost`, `DefaultDesktopUiHost`) with tray controller, single-instance mutex gating, and 100.00% line & branch test coverage.
+  - **P39**: Master cross-platform packaging validation, 8-gate pre-flight verification, release documentation, and dual-pipeline publishing.
 
 ---
 

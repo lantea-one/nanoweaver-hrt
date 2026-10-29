@@ -5,6 +5,12 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 OUTPUT_DIR="${ROOT_DIR}/artifacts/packages/linux"
 mkdir -p "${OUTPUT_DIR}"
 
+PACKAGE_VERSION="${PACKAGE_VERSION:-${GITHUB_REF_NAME:-}}"
+if [ -z "${PACKAGE_VERSION}" ] || [ "${PACKAGE_VERSION}" = "main" ]; then
+    PACKAGE_VERSION="$(git describe --tags --exact-match 2>/dev/null || echo "2026.10.29.2")"
+fi
+PACKAGE_VERSION="${PACKAGE_VERSION#v}"
+
 if [ -z "${XDG_RUNTIME_DIR:-}" ] || [ ! -d "${XDG_RUNTIME_DIR}" ]; then
     export XDG_RUNTIME_DIR="/tmp"
 fi
@@ -103,7 +109,7 @@ build_arch_pkg() {
     # Generate .PKGINFO
     cat << EOF > "${pkg_dir}/.PKGINFO"
 pkgname = nanoweaver-hrt-desktop
-pkgver = 1.0.0-1
+pkgver = ${PACKAGE_VERSION}-1
 pkgdesc = Decentralized Synthetic Biology & DNA Origami Research Platform
 url = https://git.lantea.one/fabigail/nanoweaver-hrt
 builddate = $(date +%s)
@@ -123,7 +129,7 @@ EOF
     cat << EOF > "${pkg_dir}/.BUILDINFO"
 format = 1
 pkgname = nanoweaver-hrt-desktop
-pkgver = 1.0.0-1
+pkgver = ${PACKAGE_VERSION}-1
 pkgarch = ${arch_slug}
 packager = Nanoweaver HRT Buildbot <admin@lantea.one>
 builddate = $(date +%s)
@@ -163,7 +169,7 @@ build_deb_pkg() {
 
     cat << EOF > "${rootfs}/DEBIAN/control"
 Package: nanoweaver-hrt-desktop
-Version: 1.0.0-1
+Version: ${PACKAGE_VERSION}-1
 Section: science
 Priority: optional
 Architecture: ${deb_arch}
@@ -234,7 +240,7 @@ build_rpm_pkg() {
         mkdir -p "${rpmbuild_dir}"/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
 
         # Tar rootfs as source tarball
-        local source_tar="${rpmbuild_dir}/SOURCES/nanoweaver-hrt-desktop-1.0.0.tar.gz"
+        local source_tar="${rpmbuild_dir}/SOURCES/nanoweaver-hrt-desktop-${PACKAGE_VERSION}.tar.gz"
         (
             cd "${rootfs}"
             tar -czf "${source_tar}" usr etc
@@ -243,12 +249,12 @@ build_rpm_pkg() {
         local spec_file="${rpmbuild_dir}/SPECS/nanoweaver-hrt-desktop.spec"
         cat << EOF > "${spec_file}"
 Name:           nanoweaver-hrt-desktop
-Version:        1.0.0
+Version:        ${PACKAGE_VERSION}
 Release:        1%{?dist}
 Summary:        Decentralized Synthetic Biology & DNA Origami Research Platform
 License:        MIT
 URL:            https://git.lantea.one/fabigail/nanoweaver-hrt
-Source0:        nanoweaver-hrt-desktop-1.0.0.tar.gz
+Source0:        nanoweaver-hrt-desktop-${PACKAGE_VERSION}.tar.gz
 Requires:       glibc, libX11, libICE, libSM, fontconfig, dbus-libs, libnotify
 
 %description
@@ -276,7 +282,7 @@ cp -r usr etc %{buildroot}/
 /usr/share/licenses/nanoweaver-hrt-desktop
 
 %changelog
-* Wed Oct 29 2026 Nanoweaver HRT Buildbot <admin@lantea.one> - 1.0.0-1
+* Wed Oct 29 2026 Nanoweaver HRT Buildbot <admin@lantea.one> - ${PACKAGE_VERSION}-1
 - Initial release
 EOF
 
@@ -288,14 +294,14 @@ EOF
     # If rpmbuild wasn't present or failed to produce the exact filename, emit a valid deterministic fallback rpm
     if [ ! -f "${OUTPUT_DIR}/${pkg_filename}" ]; then
         echo "Emitting deterministic RPM fallback for ${pkg_filename}..."
-        python3 - "${rootfs}" "${OUTPUT_DIR}/${pkg_filename}" "${rpm_arch}" << 'EOF'
+        python3 - "${rootfs}" "${OUTPUT_DIR}/${pkg_filename}" "${rpm_arch}" "${PACKAGE_VERSION}" << 'EOF'
 import struct, os, gzip, subprocess, sys
 
 rootfs = sys.argv[1]
 out_path = sys.argv[2]
 arch = sys.argv[3]
 name = 'nanoweaver-hrt-desktop'
-version = '1.0.0'
+version = sys.argv[4] if len(sys.argv) > 4 else '2026.10.29.2'
 release = '1'
 
 def build_rpm(rootfs, out_path, name, version, release, arch):

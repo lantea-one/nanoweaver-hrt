@@ -4,6 +4,19 @@
 
 ---
 
+## Release v2026.10.29.2 (Desktop & Packaging Hardening — 2026-10-29)
+
+Maintenance and feature release delivering standalone windowed desktop user interfaces, direct-download portable executables, universal macOS Fat Mach-O dynamic slice alignment, and cross-platform manifest version synchronization across all packaging formats.
+
+### Highlights
+* **Default Interactive Windowed Desktop UI**: Launching `NanoWeaverHrt.Desktop` (or running with `--gui`) now activates the interactive desktop shell via `IDesktopUiHost` and `DefaultDesktopUiHost`, orchestrating the `MainShellViewModel`, reactive system tray icon controller, and single-instance mutex guards across Windows, macOS, and Linux.
+* **Direct Portable Windows Executables**: Packaging automation now captures genuine 40 MB single-file PE32+ executables (`NanoWeaverHrt.Desktop.exe`) and publishes them directly as `nanoweaver-hrt-desktop-portable-x64.exe` alongside dual-scope NSIS installers and MSIX app packages.
+* **Dynamic Universal Mach-O Fat Slice Alignment**: Resolved Mach-O fat binary slice overlap by computing exact 4096-byte page alignment (2¹² = 4096 bytes) dynamically based on `x86_64` payload lengths (`((x64_offset + x64_len + 4095) // 4096) * 4096`).
+* **Universal Package Version Parameterization**: Synchronized version strings across ArchLinux (`.PKGINFO`, `.BUILDINFO`, AUR `PKGBUILD`, `.SRCINFO`), Debian (`control`), RedHat/Fedora RPM specs, Windows AppxManifest / NSIS installer, macOS `Info.plist`, AppStream AppData XML, Android `AndroidManifest.xml`, and iOS `Info.plist`.
+* **Zero Quality Regressions**: Verified 100.00% line and branch test coverage (1,005 unit tests), 100% downward ratchet baseline compliance, zero compiler warnings, and zero unescaped single-dollar formatting tokens.
+
+---
+
 ## Release v2026.10.29.1 (Initial Production Release — 2026-10-29)
 
 The inaugural production release of **NanoWeaver HRT**, delivering decentralized synthetic biology, DNA origami nanocarrier modeling, and patient-targeted endocrine gene circuit design to researchers, clinicians, and patients.

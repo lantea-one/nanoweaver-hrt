@@ -1,5 +1,5 @@
 pkgname = nanoweaver-hrt-desktop-bin
-pkgver = 1.0.0-1
+pkgver = 2026.10.29.2-1
 pkgdesc = Decentralized Synthetic Biology & DNA Origami Research Platform (Precompiled Binary)
 url = https://git.lantea.one/fabigail/nanoweaver-hrt
 arch = x86_64
@@ -15,7 +15,7 @@ depends = libsm
 depends = fontconfig
 depends = dbus
 depends = libnotify
-source_x86_64 = https://git.lantea.one/fabigail/nanoweaver-hrt/releases/download/v1.0.0/nanoweaver-hrt-desktop-x86_64.pkg.tar.zst
+source_x86_64 = https://git.lantea.one/fabigail/nanoweaver-hrt/releases/download/v2026.10.29.2/nanoweaver-hrt-desktop-x86_64.pkg.tar.zst
 sha256sums_x86_64 = SKIP
-source_aarch64 = https://git.lantea.one/fabigail/nanoweaver-hrt/releases/download/v1.0.0/nanoweaver-hrt-desktop-arm64.pkg.tar.zst
+source_aarch64 = https://git.lantea.one/fabigail/nanoweaver-hrt/releases/download/v2026.10.29.2/nanoweaver-hrt-desktop-arm64.pkg.tar.zst
 sha256sums_aarch64 = SKIP

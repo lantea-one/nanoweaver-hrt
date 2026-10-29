@@ -19,6 +19,12 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 OUTPUT_DIR="${ROOT_DIR}/artifacts/packages/mobile"
 mkdir -p "${OUTPUT_DIR}"
 
+PACKAGE_VERSION="${PACKAGE_VERSION:-${GITHUB_REF_NAME:-}}"
+if [ -z "${PACKAGE_VERSION}" ] || [ "${PACKAGE_VERSION}" = "main" ]; then
+    PACKAGE_VERSION="$(git describe --tags --exact-match 2>/dev/null || echo "2026.10.29.2")"
+fi
+PACKAGE_VERSION="${PACKAGE_VERSION#v}"
+
 echo "=== NanoWeaver HRT Mobile Packaging Engine ==="
 
 # WHAT: Stage mobile assemblies and dependencies.
@@ -92,11 +98,11 @@ def make_elf_so(machine_id):
 so_arm64 = make_elf_so(183) # EM_AARCH64
 so_x86_64 = make_elf_so(62)  # EM_X86_64
 
-android_manifest = '''<?xml version=\"1.0\" encoding=\"utf-8\"?>
+android_manifest = f'''<?xml version=\"1.0\" encoding=\"utf-8\"?>
 <manifest xmlns:android=\"http://schemas.android.com/apk/res/android\"
     package=\"org.lantea.nanoweaver_hrt\"
     android:versionCode=\"1\"
-    android:versionName=\"1.0.0\">
+    android:versionName=\"${PACKAGE_VERSION}\">
     <uses-sdk android:minSdkVersion=\"26\" android:targetSdkVersion=\"34\" />
     <uses-permission android:name=\"android.permission.INTERNET\" />
     <uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\" />
@@ -214,9 +220,9 @@ with open('${app_dir}/${icon_filename}', 'wb') as f:
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
+    <string>${PACKAGE_VERSION}</string>
     <key>CFBundleVersion</key>
-    <string>1.0.0</string>
+    <string>${PACKAGE_VERSION}</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
     <key>MinimumOSVersion</key>
