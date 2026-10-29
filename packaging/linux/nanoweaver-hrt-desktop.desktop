@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=NanoWeaver HRT Desktop
+Comment=Decentralized Synthetic Biology & DNA Origami Research Platform
+Exec=/usr/bin/nanoweaver-hrt-desktop
+Icon=nanoweaver-hrt-desktop
+Terminal=false
+Categories=Science;Biology;MedicalSoftware;
+StartupWMClass=NanoWeaverHrt
+Keywords=DNA;Origami;HRT;Biomedical;SyntheticBiology;

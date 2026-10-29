@@ -19,7 +19,7 @@
 | **P29** | Core ViewModels & Dark Theme | **Layer 4a (Shared GUI Core & ViewModels)**: `InstanceOnboardingViewModel`, `MainShellViewModel`, sovereign dark-theme palette & headless xUnit tests | **COMPLETED** |
 | **P30** | Desktop & Mobile Platform Heads | **Layer 4b (Desktop & Mobile Heads)**: `NanoWeaverHrt.Desktop` (`NanoWeaverHrt`) & `NanoWeaverHrt.Mobile` executables, native OS notification/tray adapters (`Linux`, `macOS`, `Windows`, `Android`, `iOS`, `iPadOS`) | **COMPLETED** |
 | **P31** | Sovereign Code Signing & Rotation | `scripts/pki/provision-or-rotate-codesign.sh`, `sign-packages.sh`, 90-day leaf cert rotation, public trust anchors in `docs/assets/keys/`, Forgejo & GitHub Actions rotation workflows | **COMPLETED** |
-| **P32** | [`p32-linux-packages-and-aur.md`](p32-linux-packages-and-aur.md) | `flash_lite` / `haiku` | **Layer 5b (Linux & AUR Packaging)**: Arch `.pkg.tar.zst` (`x86_64` & `arm64`), unified `.deb` (`amd64` & `arm64`), unified `.rpm` (`amd64` & `arm64`), and AUR (`-bin` & `-git`) | **READY** |
+| **P32** | Linux & AUR Packaging | `packaging/linux/`, `packaging/aur/`, Arch `.pkg.tar.zst` (`x86_64` & `arm64`), unified `.deb` (`amd64` & `arm64`), unified `.rpm` (`amd64` & `arm64`), and AUR (`-bin` & `-git`) | **COMPLETED** |
 | **P33** | [`p33-macos-windows-mobile-packaging.md`](p33-macos-windows-mobile-packaging.md) | `flash` / `sonnet` | **Layer 5c (macOS, Windows & Mobile Packaging)**: macOS `NanoWeaverHrt.dmg`, Windows dual-scope `nanoweaver-hrt-desktop-installer.exe` (`Current User` / `System`) + `NanoWeaverHrt.msix`, and Mobile `.apk` & `.ipa` (`Android`, `iOS`, `iPadOS`) | **READY** |
 | **P34** | [`p34-ci-cd-artifact-workflows.md`](p34-ci-cd-artifact-workflows.md) | `flash_lite` / `haiku` | **Layer 5d (CI/CD Artifact Matrix)**: Forgejo Actions & mirrored GitHub Actions multi-platform package build, signing & artifact upload on `feature/gui-application` and `main` | **READY** |
 | **P35** | [`p35-docs-verification-and-merge-closeout.md`](p35-docs-verification-and-merge-closeout.md) | `flash` / `sonnet` | **Layer 5e (Docs, Pages & Merge Closeout)**: `docs/desktop-and-mobile-gui.md`, Docsify sidebar, 8-gate verification, merge `feature/gui-application` -> `main` & branch cleanup | **READY** |
@@ -63,6 +63,7 @@
 | **P29** | Core ViewModels & Dark Theme | `NanoWeaverHrt.Gui.Core` `InstanceOnboardingViewModel`, `MainShellViewModel`, `SovereignPalette` dark theme tokens, and 100% unit tests | **COMPLETED** |
 | **P30** | Desktop & Mobile Platform Heads | `NanoWeaverHrt.Desktop` (`NanoWeaverHrt`) & `NanoWeaverHrt.Mobile` executables, cross-platform notification/tray adapters, and 100% unit tests | **COMPLETED** |
 | **P31** | Sovereign Code Signing & Rotation | Sovereign X.509 `id-kp-codeSigning` CA + 90-day leaf certificate rotation, GPG archive keyring, trust anchors in `docs/assets/keys/`, and scheduled CI rotation workflows | **COMPLETED** |
+| **P32** | Linux & AUR Packaging | Desktop integration (`.desktop`, autostart tray, AppStream metainfo, SVG icon), AUR `nanoweaver-hrt-desktop-bin` and `-git`, unified `.deb`, `.rpm`, and Arch `.pkg.tar.zst` (`x86_64` & `arm64`) | **COMPLETED** |
 
 ---
 

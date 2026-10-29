@@ -1,0 +1,26 @@
+# Maintainer: Nanoweaver HRT Project Contributors <admin@lantea.one>
+pkgname=nanoweaver-hrt-desktop-bin
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Decentralized Synthetic Biology & DNA Origami Research Platform (Precompiled Binary)"
+arch=('x86_64' 'aarch64')
+url="https://git.lantea.one/fabigail/nanoweaver-hrt"
+license=('MIT')
+provides=('nanoweaver-hrt-desktop')
+conflicts=('nanoweaver-hrt-desktop' 'nanoweaver-hrt-desktop-git')
+depends=('glibc' 'libx11' 'libice' 'libsm' 'fontconfig' 'dbus' 'libnotify')
+
+source_x86_64=("https://git.lantea.one/fabigail/nanoweaver-hrt/releases/download/v${pkgver}/nanoweaver-hrt-desktop-x86_64.pkg.tar.zst")
+source_aarch64=("https://git.lantea.one/fabigail/nanoweaver-hrt/releases/download/v${pkgver}/nanoweaver-hrt-desktop-arm64.pkg.tar.zst")
+sha256sums_x86_64=('SKIP')
+sha256sums_aarch64=('SKIP')
+
+package() {
+    # Install files from extracted archive structure
+    if [ -d "${srcdir}/usr" ]; then
+        cp -dr --no-preserve=ownership "${srcdir}/usr" "${pkgdir}/"
+    fi
+    if [ -d "${srcdir}/etc" ]; then
+        cp -dr --no-preserve=ownership "${srcdir}/etc" "${pkgdir}/"
+    fi
+}

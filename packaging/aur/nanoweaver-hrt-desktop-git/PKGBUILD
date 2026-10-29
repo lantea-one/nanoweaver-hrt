@@ -1,0 +1,50 @@
+# Maintainer: Nanoweaver HRT Project Contributors <admin@lantea.one>
+pkgname=nanoweaver-hrt-desktop-git
+pkgver=1.0.0.r0.g1234567
+pkgrel=1
+pkgdesc="Decentralized Synthetic Biology & DNA Origami Research Platform (Git)"
+arch=('x86_64' 'aarch64')
+url="https://git.lantea.one/fabigail/nanoweaver-hrt"
+license=('MIT')
+provides=('nanoweaver-hrt-desktop')
+conflicts=('nanoweaver-hrt-desktop' 'nanoweaver-hrt-desktop-bin')
+makedepends=('git' 'dotnet-sdk>=10.0')
+depends=('glibc' 'libx11' 'libice' 'libsm' 'fontconfig' 'dbus' 'libnotify')
+source=("git+https://git.lantea.one/fabigail/nanoweaver-hrt.git#branch=main")
+sha256sums=('SKIP')
+
+pkgver() {
+    cd "${srcdir}/nanoweaver-hrt"
+    git describe --long --tags 2>/dev/null | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g' || echo "1.0.0.r0.g$(git rev-parse --short HEAD)"
+}
+
+build() {
+    cd "${srcdir}/nanoweaver-hrt"
+    dotnet publish src/NanoWeaverHrt.Desktop/NanoWeaverHrt.Desktop.csproj -c Release --self-contained true -p:PublishTrimmed=false
+}
+
+package() {
+    cd "${srcdir}/nanoweaver-hrt"
+    
+    install -dm755 "${pkgdir}/usr/lib/nanoweaver-hrt-desktop"
+    install -dm755 "${pkgdir}/usr/bin"
+    install -dm755 "${pkgdir}/usr/share/applications"
+    install -dm755 "${pkgdir}/etc/xdg/autostart"
+    install -dm755 "${pkgdir}/usr/share/icons/hicolor/scalable/apps"
+    install -dm755 "${pkgdir}/usr/share/metainfo"
+    install -dm755 "${pkgdir}/usr/share/licenses/nanoweaver-hrt-desktop"
+
+    cp -r src/NanoWeaverHrt.Desktop/bin/Release/net10.0/*/publish/* "${pkgdir}/usr/lib/nanoweaver-hrt-desktop/"
+    chmod 755 "${pkgdir}/usr/lib/nanoweaver-hrt-desktop/NanoWeaverHrt"
+    ln -sf /usr/lib/nanoweaver-hrt-desktop/NanoWeaverHrt "${pkgdir}/usr/bin/nanoweaver-hrt-desktop"
+
+    install -m644 packaging/linux/nanoweaver-hrt-desktop.desktop "${pkgdir}/usr/share/applications/"
+    install -m644 packaging/linux/nanoweaver-hrt-desktop-tray.desktop "${pkgdir}/etc/xdg/autostart/"
+    install -m644 packaging/linux/nanoweaver-hrt-desktop.svg "${pkgdir}/usr/share/icons/hicolor/scalable/apps/"
+    install -m644 packaging/linux/org.lantea.NanoWeaverHrt.metainfo.xml "${pkgdir}/usr/share/metainfo/"
+    if [ -f "LICENSE" ]; then
+        install -m644 LICENSE "${pkgdir}/usr/share/licenses/nanoweaver-hrt-desktop/"
+    else
+        echo "MIT License" > "${pkgdir}/usr/share/licenses/nanoweaver-hrt-desktop/LICENSE"
+    fi
+}

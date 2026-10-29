@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=NanoWeaver HRT Headless Daemon Tray
+Comment=Background tray daemon for NanoWeaver HRT Desktop
+Exec=/usr/bin/nanoweaver-hrt-desktop --headless-daemon
+Icon=nanoweaver-hrt-desktop
+Terminal=false
+Categories=Science;Biology;MedicalSoftware;
+NoDisplay=true
+X-GNOME-Autostart-enabled=true

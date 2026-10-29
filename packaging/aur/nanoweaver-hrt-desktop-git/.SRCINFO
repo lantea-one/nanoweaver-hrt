@@ -1,0 +1,22 @@
+pkgname = nanoweaver-hrt-desktop-git
+pkgver = 1.0.0.r0.g0000000
+pkgrel = 1
+pkgdesc = Decentralized Synthetic Biology & DNA Origami Research Platform (Git)
+url = https://git.lantea.one/fabigail/nanoweaver-hrt
+arch = x86_64
+arch = aarch64
+license = MIT
+provides = nanoweaver-hrt-desktop
+conflicts = nanoweaver-hrt-desktop
+conflicts = nanoweaver-hrt-desktop-bin
+makedepends = git
+makedepends = dotnet-sdk>=10.0
+depends = glibc
+depends = libx11
+depends = libice
+depends = libsm
+depends = fontconfig
+depends = dbus
+depends = libnotify
+source = git+https://git.lantea.one/fabigail/nanoweaver-hrt.git#branch=main
+sha256sums = SKIP

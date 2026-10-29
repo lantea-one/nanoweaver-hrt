@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.lantea.NanoWeaverHrt</id>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <name>NanoWeaver HRT Desktop</name>
+  <summary>Decentralized Synthetic Biology &amp; DNA Origami Research Platform</summary>
+  <description>
+    <p>
+      NanoWeaver HRT is an open-source decentralized synthetic biology and DNA origami research platform designed for precision molecular engineering and patient-targeted hormone replacement therapy simulation.
+    </p>
+    <ul>
+      <li>High-throughput molecular dynamics trajectory parsing and visualization</li>
+      <li>Endocrine kinetics simulation and multi-node federation</li>
+      <li>Secure cryptographic PKI manifests and verifiable dataset bundles</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">nanoweaver-hrt-desktop.desktop</launchable>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://git.lantea.one/fabigail/nanoweaver-hrt/raw/branch/main/docs/assets/screenshot-dashboard.png</image>
+      <caption>NanoWeaver HRT Main Telemetry Dashboard</caption>
+    </screenshot>
+  </screenshots>
+  <url type="homepage">https://git.lantea.one/fabigail/nanoweaver-hrt</url>
+  <url type="bugtracker">https://git.lantea.one/fabigail/nanoweaver-hrt/issues</url>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="1.0.0" date="2026-10-29">
+      <description>
+        <p>Initial stable release of NanoWeaver HRT Desktop.</p>
+      </description>
+    </release>
+  </releases>
+</component>
