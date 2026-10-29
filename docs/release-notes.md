@@ -4,6 +4,22 @@
 
 ---
 
+## Release v2026.10.29.1 (Initial Production Release — 2026-10-29)
+
+The inaugural production release of **NanoWeaver HRT**, delivering decentralized synthetic biology, DNA origami nanocarrier modeling, and patient-targeted endocrine gene circuit design to researchers, clinicians, and patients.
+
+### Highlights
+* **High-Throughput SIMD Trajectory Parser**: Zero-allocation coordinate parsing for LAMMPS (`.xyz`) and oxDNA (`.dcd`) trajectories via `System.IO.Pipelines` and `ArrayPool<T>`.
+* **Zero-Private-Key-Transmission Identity**: Post-quantum PKI authentication (Ed25519 & ML-DSA-65) with client-side browser signing, role gating, and automated 15-minute idle session termination.
+* **Patient Privacy & PHI Cryptographic Sealing**: AES-256-GCM authenticated encryption at rest for patient demographics, gender identity, and DNA regimens with GDPR Article 17 crypto-shredding journal.
+* **Audit Ledger**: FDA 21 CFR Part 11 compliant audit logging to SQLite/PostgreSQL with ML-DSA-65 tamper-evident signatures across restarts.
+* **Tiered Cohort Access Control**: Granular tiered researcher permissions (`ReadAccess`, `GenomicAccess`, `FullReadAccess`) with unified cohort management.
+* **Standalone Cross-Platform Applications**: Native desktop and mobile GUI applications (Avalonia UI 11 / .NET 10) for Linux, macOS, Windows, Android, iOS, and iPadOS.
+* **Direct Binary Distribution**: Direct single-click release downloads for Windows (`.exe` standalone portable and installer), Linux (`.deb`, `.rpm`, `.pkg.tar.zst`, AUR), macOS (`.dmg`), and Mobile (`.apk`, `.ipa`), with detached X.509 CMS and OpenPGP signatures.
+* **100% Quality Verification**: 100.00% line & branch test coverage across developer code, zero build warnings, and 100% downward ratchet compliance.
+
+---
+
 ## Phase 2 Architecture & Security Hardening (Current Release)
 
 Phase 2 introduces critical post-quantum cryptographic upgrades, transport boundary enforcement, zero-information-disclosure error models, and hardened identity gating.

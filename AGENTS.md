@@ -90,7 +90,7 @@
       - **Phase Sizing (Bounded Architectural Layer)**: Exactly one architectural layer per phase (e.g., Migration & Repository → Service & Gating → REST API Endpoints → Blazor UI → Verification & Documentation). Never conflate schema migrations with UI rendering in a single phase.
       - **File Contract Independence**: Every work package must specify exact input/output interfaces, concrete types, method signatures, and invariants before code is written, ensuring downstream phases compile against fixed contracts without ambiguity.
       - **Downward Ratchet Preservation**: Minimize Roslyn state machine divergence. Always append new methods and minimal-API endpoints to the end of files. Avoid capturing outer local variables in endpoint lambdas. Synchronize `ExcludeByFile` rules across `coverlet.runsettings` and `coverage-full.runsettings`.
-      - **Clean Up Protocol**: Upon successful merge and upstream push of a phase or phase group, remove temporary phase instruction files (e.g., `work-packages/pXX-*.md`) to prevent workspace clutter, while updating `PHASES-v2.md` and `work-packages/README.md` as permanent audit records.
+      - **Clean Up Protocol**: Upon successful merge and upstream push of a phase or phase group, remove temporary phase instruction files (e.g., `work-packages/pXX-*.md`) to prevent workspace clutter, while updating `work-packages/README.md` and `docs/release-notes.md` as permanent audit records.
       - **Interactive Decisions Pattern**: Whenever an architectural fork, scoping ambiguity, or design decision arises, present it to the user as an interactive question form with a clearly justified recommended default option.
 
 ---
@@ -217,7 +217,7 @@ Never assign an LLM agent a task spanning the full vertical stack (schema throug
 5. **Phase 5: End-to-End Verification, Documentation & Closeout**
    - Runs full 8-gate `./scripts/verify-all.sh` verification.
    - Updates `docs/` Markdown specifications using clean Unicode (zero unescaped single-dollar symbols).
-   - Consolidates phase notes into `PHASES-v2.md` and `work-packages/README.md`, removing temporary `work-packages/pXX-*.md` instruction files.
+   - Consolidates phase notes into `work-packages/README.md` and `docs/release-notes.md`, removing temporary `work-packages/pXX-*.md` instruction files.
 
 ### 5.2 Downward Coverage Ratchet Invariants for Autonomous Agents
 The compiler-generated state machine ratchet (`scripts/check-coverage-ratchet.py`) prohibits any increase in uncovered lines across Roslyn lambdas (`<<Main>b__4_N>d`) and async state machines (`<Method>d__N`):
