@@ -311,12 +311,16 @@ rm -f "${SHORT_GPG_LINK}"
 
 # WHAT: Verify cryptographic validity of all minted artifacts.
 # WHY:  Fail immediately if the leaf certificate fails validation against the root CA.
-# HOW:  Execute openssl verify with root CA and verify codeSigning purpose.
+# HOW:  Execute openssl verify with root CA, check purpose compatibility, and assert codeSigning EKU.
 echo "=============================================================================="
 echo ">> Validating Issued PKI Assets..."
 echo "=============================================================================="
 openssl verify -CAfile "${ROOT_CERT_PUB}" "${LEAF_CERT_PUB}"
-openssl verify -purpose codesign -CAfile "${ROOT_CERT_PUB}" "${LEAF_CERT_PUB}"
+if openssl verify -help 2>&1 | grep -qw "codesign"; then
+    openssl verify -purpose codesign -CAfile "${ROOT_CERT_PUB}" "${LEAF_CERT_PUB}"
+else
+    openssl verify -purpose any -CAfile "${ROOT_CERT_PUB}" "${LEAF_CERT_PUB}"
+fi
 
 EKU_OUTPUT="$(openssl x509 -in "${LEAF_CERT_PUB}" -noout -ext extendedKeyUsage)"
 if [[ "${EKU_OUTPUT}" != *"Code Signing"* ]]; then
