@@ -445,6 +445,7 @@ public sealed class DesktopAndMobilePlatformTests
         // WHY:  Ensures notifications route to correct native channels on Android, iOS, and iPadOS.
         // HOW:  Dispatches alert, asserts success, checks DispatchedAlerts collection, and tests Clear().
         var sink = new MobileNotificationSink(platform);
+        Assert.NotNull(sink.Platform);
         var alert = CreateAlert(severity);
 
         bool result = await sink.SendNotificationAsync(alert);
@@ -488,10 +489,11 @@ public sealed class DesktopAndMobilePlatformTests
         Assert.Equal("iPadOS", MobileNotificationSink.ResolvePlatform("ipados"));
         Assert.Equal("Unknown", MobileNotificationSink.ResolvePlatform("other"));
 
-        // Fallback resolution with injected predicate
+        // Fallback resolution with injected predicate and default system fallback
         Assert.Equal("Android", MobileNotificationSink.ResolvePlatform(null, p => p == "ANDROID"));
         Assert.Equal("iOS", MobileNotificationSink.ResolvePlatform(null, p => p == "IOS"));
         Assert.Equal("Unknown", MobileNotificationSink.ResolvePlatform(null, _ => false));
+        Assert.Equal("Unknown", MobileNotificationSink.ResolvePlatform(null, null));
     }
 
     /// <summary>
@@ -520,11 +522,33 @@ public sealed class DesktopAndMobilePlatformTests
         int invalidExit = await MobileEntryPoint.RunMobileLifecycleAsync("unsupported-platform", sink);
         Assert.Equal(1, invalidExit);
 
-        // Clean lifecycle with cancellation token
+        // Clean lifecycle with cancellation token hitting catch block
         using var cts = new CancellationTokenSource();
-        cts.CancelAfter(50);
-        int cleanExit = await MobileEntryPoint.RunMobileLifecycleAsync("android", sink, cts.Token);
+        var lifecycleTask = MobileEntryPoint.RunMobileLifecycleAsync("android", sink, cts.Token);
+        await Task.Delay(15);
+        cts.Cancel();
+        int cleanExit = await lifecycleTask;
         Assert.Equal(0, cleanExit);
         Assert.NotEmpty(sink.DispatchedAlerts);
+
+        // Clean lifecycle with pre-cancelled token hitting while loop natural exit
+        using var preCancelledCts = new CancellationTokenSource();
+        preCancelledCts.Cancel();
+        int preCancelledExit = await MobileEntryPoint.RunMobileLifecycleAsync("android", sink, preCancelledCts.Token);
+        Assert.Equal(0, preCancelledExit);
+
+        // Exercise DispatchedMobileAlert record methods (ToString, Equals, GetHashCode, Deconstruct, with-expression)
+        var alertRecord = sink.DispatchedAlerts[0];
+        Assert.NotNull(alertRecord.ToString());
+        Assert.Equal(alertRecord.GetHashCode(), alertRecord.GetHashCode());
+        Assert.True(alertRecord.Equals(alertRecord));
+        Assert.False(alertRecord.Equals((object?)null));
+        var (recPlatform, recChannel, recAlert, recUtc) = alertRecord;
+        Assert.Equal(alertRecord.Platform, recPlatform);
+        Assert.Equal(alertRecord.ChannelId, recChannel);
+        Assert.Equal(alertRecord.Alert, recAlert);
+        Assert.Equal(alertRecord.DispatchedAtUtc, recUtc);
+        var copyRecord = alertRecord with { Platform = "iOS" };
+        Assert.Equal("iOS", copyRecord.Platform);
     }
 }
