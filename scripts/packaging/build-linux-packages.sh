@@ -5,6 +5,10 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 OUTPUT_DIR="${ROOT_DIR}/artifacts/packages/linux"
 mkdir -p "${OUTPUT_DIR}"
 
+if [ -z "${XDG_RUNTIME_DIR:-}" ] || [ ! -d "${XDG_RUNTIME_DIR}" ]; then
+    export XDG_RUNTIME_DIR="/tmp"
+fi
+
 echo "=== NanoWeaver HRT Linux Packaging Script ==="
 
 # Ensure LICENSE file exists
@@ -126,10 +130,17 @@ builddate = $(date +%s)
 EOF
 
     # Tar and zstd compress
-    (
-        cd "${pkg_dir}"
-        tar --numeric-owner --owner=0 --group=0 -cf - .PKGINFO .BUILDINFO usr etc 2>/dev/null || tar -cf - .PKGINFO .BUILDINFO usr etc
-    ) | zstd -c -T0 > "${OUTPUT_DIR}/${pkg_filename}"
+    if command -v zstd &>/dev/null; then
+        (
+            cd "${pkg_dir}"
+            tar --numeric-owner --owner=0 --group=0 -cf - .PKGINFO .BUILDINFO usr etc 2>/dev/null || tar -cf - .PKGINFO .BUILDINFO usr etc
+        ) | zstd -c -T0 > "${OUTPUT_DIR}/${pkg_filename}"
+    else
+        (
+            cd "${pkg_dir}"
+            tar --numeric-owner --owner=0 --group=0 -czf "${OUTPUT_DIR}/${pkg_filename}" .PKGINFO .BUILDINFO usr etc 2>/dev/null || tar -czf "${OUTPUT_DIR}/${pkg_filename}" .PKGINFO .BUILDINFO usr etc
+        )
+    fi
     echo "Created ${OUTPUT_DIR}/${pkg_filename}"
 }
 
@@ -143,25 +154,14 @@ build_deb_pkg() {
     populate_rootfs "${staging_dir}" "${rootfs}"
 
     echo "Packaging Debian package: ${pkg_filename}..."
-    if command -v dpkg-deb &>/dev/null; then
-        # Use native dpkg-deb if available
-        # Ensure correct ownership and permissions
-        dpkg-deb --root-owner-group --build "${rootfs}" "${OUTPUT_DIR}/${pkg_filename}"
-    else
-        # Universal fallback .deb builder (ar + control.tar.gz + data.tar.gz)
-        local deb_work="${ROOT_DIR}/artifacts/deb-work-${rid}"
-        rm -rf "${deb_work}"
-        mkdir -p "${deb_work}"
+    local installed_size
+    installed_size=$(du -sk "${rootfs}" | awk '{print $1}')
 
-        # 1. debian-binary
-        echo "2.0" > "${deb_work}/debian-binary"
+    # Create standard Debian control file and DEBIAN metadata directory
+    mkdir -p "${rootfs}/DEBIAN"
+    chmod 0755 "${rootfs}/DEBIAN"
 
-        # 2. control.tar.gz
-        mkdir -p "${deb_work}/control-dir"
-        local installed_size
-        installed_size=$(du -sk "${rootfs}" | awk '{print $1}')
-
-        cat << EOF > "${deb_work}/control-dir/control"
+    cat << EOF > "${rootfs}/DEBIAN/control"
 Package: nanoweaver-hrt-desktop
 Version: 1.0.0-1
 Section: science
@@ -175,30 +175,45 @@ Description: Decentralized Synthetic Biology & DNA Origami Research Platform
  NanoWeaver HRT is an open-source decentralized synthetic biology and DNA
  origami research platform for simulation and precision therapeutics.
 EOF
+    chmod 0644 "${rootfs}/DEBIAN/control"
 
-        # Generate md5sums
+    # Generate md5sums for package files
+    (
+        cd "${rootfs}"
+        find usr etc -type f -exec md5sum {} \; > "${rootfs}/DEBIAN/md5sums" 2>/dev/null || true
+    )
+    if [ -f "${rootfs}/DEBIAN/md5sums" ]; then
+        chmod 0644 "${rootfs}/DEBIAN/md5sums"
+    fi
+
+    if command -v dpkg-deb &>/dev/null; then
+        # Use native dpkg-deb if available
+        dpkg-deb --root-owner-group --build "${rootfs}" "${OUTPUT_DIR}/${pkg_filename}"
+    else
+        # Universal fallback .deb builder (ar + control.tar.gz + data.tar.gz)
+        local deb_work="${ROOT_DIR}/artifacts/deb-work-${rid}"
+        rm -rf "${deb_work}"
+        mkdir -p "${deb_work}"
+
+        echo "2.0" > "${deb_work}/debian-binary"
+
         (
-            cd "${rootfs}"
-            find usr etc -type f -exec md5sum {} \; > "${deb_work}/control-dir/md5sums"
+            cd "${rootfs}/DEBIAN"
+            tar --numeric-owner --owner=0 --group=0 -czf "${deb_work}/control.tar.gz" control $([ -f md5sums ] && echo md5sums)
         )
 
-        (
-            cd "${deb_work}/control-dir"
-            tar --numeric-owner --owner=0 --group=0 -czf ../control.tar.gz control md5sums
-        )
-
-        # 3. data.tar.gz
         (
             cd "${rootfs}"
             tar --numeric-owner --owner=0 --group=0 -czf "${deb_work}/data.tar.gz" usr etc
         )
 
-        # 4. Assemble ar archive
         (
             cd "${deb_work}"
             ar rcs "${OUTPUT_DIR}/${pkg_filename}" debian-binary control.tar.gz data.tar.gz
         )
+        rm -rf "${deb_work}"
     fi
+    rm -rf "${rootfs}/DEBIAN"
     echo "Created ${OUTPUT_DIR}/${pkg_filename}"
 }
 
@@ -273,13 +288,62 @@ EOF
     # If rpmbuild wasn't present or failed to produce the exact filename, emit a valid deterministic fallback rpm
     if [ ! -f "${OUTPUT_DIR}/${pkg_filename}" ]; then
         echo "Emitting deterministic RPM fallback for ${pkg_filename}..."
-        python3 -c "
-import struct, os, gzip, subprocess
+        python3 - "${rootfs}" "${OUTPUT_DIR}/${pkg_filename}" "${rpm_arch}" << 'EOF'
+import struct, os, gzip, subprocess, sys
+
+rootfs = sys.argv[1]
+out_path = sys.argv[2]
+arch = sys.argv[3]
+name = 'nanoweaver-hrt-desktop'
+version = '1.0.0'
+release = '1'
 
 def build_rpm(rootfs, out_path, name, version, release, arch):
-    proc = subprocess.Popen(['cpio', '-o', '-H', 'newc'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, cwd=rootfs)
-    find_proc = subprocess.Popen(['find', 'usr', 'etc'], stdout=subprocess.PIPE, cwd=rootfs)
-    cpio_out, _ = proc.communicate(input=find_proc.communicate()[0])
+    cpio_out = None
+    try:
+        proc = subprocess.Popen(['cpio', '-o', '-H', 'newc'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, cwd=rootfs)
+        find_proc = subprocess.Popen(['find', 'usr', 'etc'], stdout=subprocess.PIPE, cwd=rootfs)
+        cpio_out, _ = proc.communicate(input=find_proc.communicate()[0])
+    except Exception:
+        pass
+
+    if not cpio_out:
+        cpio_buf = bytearray()
+        ino = 100
+        for base in ['usr', 'etc']:
+            base_dir = os.path.join(rootfs, base)
+            if not os.path.exists(base_dir):
+                continue
+            for root, dirs, files in os.walk(base_dir):
+                for name_entry in dirs + files:
+                    full = os.path.join(root, name_entry)
+                    rel = os.path.relpath(full, rootfs).replace('\\', '/')
+                    is_dir = os.path.isdir(full) and not os.path.islink(full)
+                    mode = 0o040755 if is_dir else (0o120777 if os.path.islink(full) else 0o100755)
+                    data = b''
+                    if os.path.islink(full):
+                        data = os.readlink(full).encode('utf-8')
+                    elif not is_dir:
+                        with open(full, 'rb') as f:
+                            data = f.read()
+                    name_bytes = rel.encode('utf-8') + b'\x00'
+                    hdr = f"070701{ino:08X}{mode:08X}00000000000000000000000100000000{len(data):08X}00000000000000000000000000000000{len(name_bytes):08X}00000000".encode('ascii')
+                    cpio_buf.extend(hdr)
+                    cpio_buf.extend(name_bytes)
+                    if len(cpio_buf) % 4 != 0:
+                        cpio_buf.extend(b'\x00' * (4 - (len(cpio_buf) % 4)))
+                    cpio_buf.extend(data)
+                    if len(cpio_buf) % 4 != 0:
+                        cpio_buf.extend(b'\x00' * (4 - (len(cpio_buf) % 4)))
+                    ino += 1
+        trailer = b"TRAILER!!!\x00"
+        hdr = f"0707010000000000000000000000000000000000000001000000000000000000000000000000000000000000000000{len(trailer):08X}00000000".encode('ascii')
+        cpio_buf.extend(hdr)
+        cpio_buf.extend(trailer)
+        if len(cpio_buf) % 4 != 0:
+            cpio_buf.extend(b'\x00' * (4 - (len(cpio_buf) % 4)))
+        cpio_out = bytes(cpio_buf)
+
     payload = gzip.compress(cpio_out, compresslevel=9)
 
     arch_code = 1 if arch == 'x86_64' else 19
@@ -333,8 +397,8 @@ def build_rpm(rootfs, out_path, name, version, release, arch):
         f.write(main_header)
         f.write(payload)
 
-build_rpm('${rootfs}', '${OUTPUT_DIR}/${pkg_filename}', 'nanoweaver-hrt-desktop', '1.0.0', '1', '${rpm_arch}')
-"
+build_rpm(rootfs, out_path, name, version, release, arch)
+EOF
     fi
     echo "Created ${OUTPUT_DIR}/${pkg_filename}"
 }

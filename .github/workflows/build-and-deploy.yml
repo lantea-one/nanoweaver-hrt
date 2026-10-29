@@ -245,6 +245,12 @@ jobs:
         with:
           node-version: '24'
 
+      - name: Restore Dependencies
+        # WHAT: Restores all NuGet packages across the entire solution.
+        # WHY:  Caches dependencies and prevents concurrency collisions during multi-target packaging.
+        # HOW:  Runs dotnet restore NanoWeaverHrt.slnx before invoking packaging scripts.
+        run: dotnet restore NanoWeaverHrt.slnx
+
       - name: Build and Sign Standalone Release Packages
         run: ./scripts/packaging/build-all-packages.sh
 
