@@ -25,7 +25,7 @@ All 46 development phases have concluded:
   - **P51**: DuckDB In-Process Analytical Engine Core (`ITrajectoryAnalyticsService`, `DuckDbTrajectoryAnalyticsService`) — *Completed & Merged* ([`3abeb7c`](https://git.lantea.one/lantea-one/nanoweaver-hrt/commit/3abeb7c714d68d1ea009401ca520d368e7ec97e4))
   - **P52**: Trajectory Analytics REST API & UI Query Drawer (`POST /api/trajectories/analytics/query`, `TrajectoryBrowser.razor`) — *Completed & Verified*
   - **P53**: Hardware Accelerator Benchmark Engine Core (`IAcceleratorBenchmarkService`, FP32/FP64 GFLOPS & Bandwidth) — *Completed & Verified*
-  - **P54**: Hardware Accelerator Benchmark REST API & Diagnostic UI (`POST /api/system/benchmark/run`) — *Published* ([`p54-accelerator-benchmark-rest-ui.md`](./p54-accelerator-benchmark-rest-ui.md))
+  - **P54**: Hardware Accelerator Benchmark REST API & Diagnostic UI (`POST /api/system/benchmark/run`, `GET /api/system/benchmark/latest`) — *Completed & Verified*
   - **P55**: Verification, Documentation & Release Milestone `v2026.10.29.4` — *Published* ([`p55-release-closeout.md`](./p55-release-closeout.md))
 
 ---

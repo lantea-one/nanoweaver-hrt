@@ -3,10 +3,14 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
+using Moq;
 using NanoWeaverHrt.Analytics;
 using NanoWeaverHrt.Endocrine;
 using NanoWeaverHrt.Genomics;
+using NanoWeaverHrt.Hardware.Benchmarking;
 using NanoWeaverHrt.Models;
+using NanoWeaverHrt.Security.Authentication;
 using Xunit;
 
 namespace NanoWeaverHrt.Tests;
@@ -998,5 +1002,236 @@ public sealed class EndpointIntegrationTests : IClassFixture<WebApplicationFacto
         TrajectoryAnalyticsApiResponse? resultZero = await responseZero.Content.ReadFromJsonAsync<TrajectoryAnalyticsApiResponse>();
         Assert.NotNull(resultZero);
         Assert.True(resultZero.TotalRows > 2);
+    }
+
+    /// <summary>
+    /// Provisions a test user with the specified role and generates a signed bearer token.
+    /// </summary>
+    /// <param name="username">Unique username for the test user.</param>
+    /// <param name="role">Role to assign to the user.</param>
+    /// <returns>A signed Bearer token granting the specified role permissions.</returns>
+    private async Task<string> ProvisionUserAndGetTokenAsync(string username, UserRole role)
+    {
+        // WHAT: Seeds a test user account in the test database and mints an authentication token.
+        // WHY:  Enables testing role gating against specific permission levels (Patient, Researcher, Administrator).
+        // HOW:  Uses IUserAuthenticationService to complete initial setup if needed, creates user, and returns bearer token.
+        using IServiceScope scope = _factory.Services.CreateScope();
+        IUserAuthenticationService auth = scope.ServiceProvider.GetRequiredService<IUserAuthenticationService>();
+        await TestFixturesHelper.EnsureTestAdminAndGetTokenAsync(_factory);
+        IReadOnlyList<UserAccount> users = await auth.ListUsersAsync();
+        UserAccount? existing = users.FirstOrDefault(u => string.Equals(u.Username, username, StringComparison.OrdinalIgnoreCase));
+        if (existing is not null)
+        {
+            return auth.GenerateBearerToken(existing);
+        }
+
+        GeneratedKeyBundle bundle = TestChallengeHelper.CreateTestKeyBundle(username, role, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
+        UserAccount created = await auth.CreateUserAsync(username, role, AccessGate.ApiWeb, bundle.PublicKeyBase64, KeyAlgorithm.Ed25519);
+        return auth.GenerateBearerToken(created);
+    }
+
+    /// <summary>
+    /// Creates an HTTP client configured with an optional bearer token header.
+    /// </summary>
+    /// <param name="token">Optional Bearer token string to attach.</param>
+    /// <returns>A configured <see cref="HttpClient"/>.</returns>
+    private HttpClient CreateClientWithBearer(string? token)
+    {
+        // WHAT: Instantiates an HttpClient with the provided bearer token or none.
+        // WHY:  Allows discrete authentication state isolation for positive and negative tests.
+        // HOW:  Creates client from factory and sets Authorization header if token is provided.
+        HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = false });
+        if (!string.IsNullOrEmpty(token))
+        {
+            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        }
+        return client;
+    }
+
+    /// <summary>
+    /// Verifies that POST /api/system/benchmark/run executes a hardware qualification benchmark and returns 200 OK with report.
+    /// </summary>
+    /// <returns>A task representing the asynchronous test operation.</returns>
+    [Fact]
+    public async Task RunAcceleratorBenchmark_Endpoint_ExecutesAndReturnsReport()
+    {
+        // WHAT: Posts to /api/system/benchmark/run with Administrator authentication.
+        // WHY:  Validates that operators and researchers can execute hardware qualification benchmarks via REST API.
+        // HOW:  Sends POST request, asserts 200 OK, and validates the populated AcceleratorBenchmarkReport payload.
+        using HttpResponseMessage response = await _client.PostAsync("/api/system/benchmark/run", null);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        AcceleratorBenchmarkReport? report = await response.Content.ReadFromJsonAsync<AcceleratorBenchmarkReport>();
+        Assert.NotNull(report);
+        Assert.False(string.IsNullOrWhiteSpace(report.DeviceName));
+        Assert.False(string.IsNullOrWhiteSpace(report.DriverVersion));
+        Assert.True(report.SinglePrecisionGflops >= 0.0);
+        Assert.True(report.DoublePrecisionGflops >= 0.0);
+        Assert.True(report.MemoryBandwidthGigaBytesPerSecond >= 0.0);
+        Assert.True(Enum.IsDefined(report.Readiness));
+        Assert.NotNull(report.Recommendations);
+    }
+
+    /// <summary>
+    /// Verifies that GET /api/system/benchmark/latest returns 404 when no benchmark is cached, and 200 OK once executed.
+    /// </summary>
+    /// <returns>A task representing the asynchronous test operation.</returns>
+    [Fact]
+    public async Task GetLatestAcceleratorBenchmark_Endpoint_ReturnsReportOrNotFound()
+    {
+        // WHAT: Queries /api/system/benchmark/latest across both uninitialized and populated states.
+        // WHY:  Ensures the endpoint returns RFC 7807 404 Problem Details when no report exists, and 200 OK with report after execution.
+        // HOW:  Creates an isolated host to assert 404 on clean state, then triggers run and asserts 200 OK on retrieval.
+        string isolatedRoot = Path.Combine(Path.GetTempPath(), "weaver_bench_iso_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(isolatedRoot);
+            TestFixturesHelper.EnsureTestFixtures(isolatedRoot);
+
+            using WebApplicationFactory<Program> isolatedFactory = _factory.WithWebHostBuilder(builder =>
+            {
+                builder.UseSetting("TRAJECTORY_INCOMING_DIR", isolatedRoot);
+                builder.UseSetting("TRAJECTORY_EXPORT_DIR", Path.Combine(isolatedRoot, "exports"));
+                builder.UseSetting("TRAJECTORY_PARQUET_DIR", Path.Combine(isolatedRoot, "parquet"));
+                builder.ConfigureServices(services =>
+                {
+                    services.AddSingleton<IAcceleratorBenchmarkService, AcceleratorBenchmarkService>();
+                });
+            });
+
+            string token = await TestFixturesHelper.EnsureTestAdminAndGetTokenAsync(isolatedFactory);
+            using HttpClient isolatedClient = isolatedFactory.CreateClient();
+            isolatedClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+            // Phase 1: Clean state -> 404 Not Found
+            using HttpResponseMessage notFoundResponse = await isolatedClient.GetAsync("/api/system/benchmark/latest");
+            Assert.Equal(HttpStatusCode.NotFound, notFoundResponse.StatusCode);
+            Assert.Equal("application/problem+json", notFoundResponse.Content.Headers.ContentType?.MediaType);
+            string notFoundBody = await notFoundResponse.Content.ReadAsStringAsync();
+            Assert.Contains("No accelerator benchmark report is currently available.", notFoundBody);
+
+            // Phase 2: Run benchmark -> 200 OK
+            using HttpResponseMessage runResponse = await isolatedClient.PostAsync("/api/system/benchmark/run", null);
+            Assert.Equal(HttpStatusCode.OK, runResponse.StatusCode);
+
+            // Phase 3: Populated state -> 200 OK
+            using HttpResponseMessage okResponse = await isolatedClient.GetAsync("/api/system/benchmark/latest");
+            Assert.Equal(HttpStatusCode.OK, okResponse.StatusCode);
+            AcceleratorBenchmarkReport? report = await okResponse.Content.ReadFromJsonAsync<AcceleratorBenchmarkReport>();
+            Assert.NotNull(report);
+            Assert.False(string.IsNullOrWhiteSpace(report.DeviceName));
+        }
+        finally
+        {
+            try
+            {
+                if (Directory.Exists(isolatedRoot))
+                {
+                    Directory.Delete(isolatedRoot, recursive: true);
+                }
+            }
+            catch
+            {
+                // Best-effort cleanup
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verifies that unauthenticated requests to benchmark endpoints are rejected with 401 Unauthorized.
+    /// </summary>
+    /// <returns>A task representing the asynchronous test operation.</returns>
+    [Fact]
+    public async Task AcceleratorBenchmark_UnauthenticatedRequest_ReturnsUnauthorized()
+    {
+        // WHAT: Posts and gets benchmark endpoints without Bearer token.
+        // WHY:  Prime Directive 12 strictly requires PKI authentication for infrastructure endpoints.
+        // HOW:  Uses anonymous client, asserts 401 Unauthorized on both POST and GET.
+        using HttpClient anonymousClient = CreateClientWithBearer(null);
+
+        using HttpResponseMessage runResp = await anonymousClient.PostAsync("/api/system/benchmark/run", null);
+        Assert.Equal(HttpStatusCode.Unauthorized, runResp.StatusCode);
+
+        using HttpResponseMessage latestResp = await anonymousClient.GetAsync("/api/system/benchmark/latest");
+        Assert.Equal(HttpStatusCode.Unauthorized, latestResp.StatusCode);
+    }
+
+    /// <summary>
+    /// Verifies that authenticated Patient accounts are rejected with 403 Forbidden from benchmark endpoints.
+    /// </summary>
+    /// <returns>A task representing the asynchronous test operation.</returns>
+    [Fact]
+    public async Task AcceleratorBenchmark_PatientRole_ReturnsForbidden()
+    {
+        // WHAT: Sends benchmark requests using a Patient bearer token.
+        // WHY:  Prime Directive 12 restricts infrastructure benchmarks to Administrator and Researcher roles.
+        // HOW:  Provisions a Patient token, sends POST and GET requests, asserts 403 Forbidden.
+        string patientToken = await ProvisionUserAndGetTokenAsync("bench_patient_user", UserRole.Patient);
+        using HttpClient patientClient = CreateClientWithBearer(patientToken);
+
+        using HttpResponseMessage runResp = await patientClient.PostAsync("/api/system/benchmark/run", null);
+        Assert.Equal(HttpStatusCode.Forbidden, runResp.StatusCode);
+
+        using HttpResponseMessage latestResp = await patientClient.GetAsync("/api/system/benchmark/latest");
+        Assert.Equal(HttpStatusCode.Forbidden, latestResp.StatusCode);
+    }
+
+    /// <summary>
+    /// Verifies that authenticated Researcher accounts are authorized to execute and read benchmark reports.
+    /// </summary>
+    /// <returns>A task representing the asynchronous test operation.</returns>
+    [Fact]
+    public async Task AcceleratorBenchmark_ResearcherRole_IsAuthorized()
+    {
+        // WHAT: Posts to /api/system/benchmark/run with Researcher bearer token.
+        // WHY:  Prime Directive 12 permits Researchers to execute qualification benchmarks to ensure simulation readiness.
+        // HOW:  Provisions a Researcher token, sends POST and GET, asserting successful 200 OK responses.
+        string researcherToken = await ProvisionUserAndGetTokenAsync("bench_researcher_user", UserRole.Researcher);
+        using HttpClient researcherClient = CreateClientWithBearer(researcherToken);
+
+        using HttpResponseMessage runResp = await researcherClient.PostAsync("/api/system/benchmark/run", null);
+        Assert.Equal(HttpStatusCode.OK, runResp.StatusCode);
+
+        using HttpResponseMessage latestResp = await researcherClient.GetAsync("/api/system/benchmark/latest");
+        Assert.Equal(HttpStatusCode.OK, latestResp.StatusCode);
+    }
+
+    /// <summary>
+    /// Verifies that exceptions thrown by the accelerator benchmark service are sanitized into 500 Internal Server Error Problem Details.
+    /// </summary>
+    /// <returns>A task representing the asynchronous test operation.</returns>
+    [Fact]
+    public async Task AcceleratorBenchmark_FaultingService_ReturnsInternalServerError()
+    {
+        // WHAT: Injects a faulting IAcceleratorBenchmarkService and requests run and latest endpoints.
+        // WHY:  Directive 14 mandates RFC 7807 SecureProblemDetails for internal server faults with zero information disclosure.
+        // HOW:  Configures factory with mock throwing InvalidOperationException, asserts 500 status and problem+json content type.
+        Mock<IAcceleratorBenchmarkService> faultingMock = new();
+        faultingMock
+            .Setup(b => b.RunBenchmarkAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Hardware accelerator unit fault: OpenCL compute context failed."));
+        faultingMock
+            .Setup(b => b.GetLatestReportAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Hardware accelerator registry query fault."));
+
+        using WebApplicationFactory<Program> faultFactory = _factory.WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureServices(services =>
+            {
+                services.AddSingleton<IAcceleratorBenchmarkService>(faultingMock.Object);
+            });
+        });
+
+        string token = await TestFixturesHelper.EnsureTestAdminAndGetTokenAsync(faultFactory);
+        using HttpClient faultClient = faultFactory.CreateClient();
+        faultClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        using HttpResponseMessage runResp = await faultClient.PostAsync("/api/system/benchmark/run", null);
+        Assert.Equal(HttpStatusCode.InternalServerError, runResp.StatusCode);
+        Assert.Equal("application/problem+json", runResp.Content.Headers.ContentType?.MediaType);
+
+        using HttpResponseMessage latestResp = await faultClient.GetAsync("/api/system/benchmark/latest");
+        Assert.Equal(HttpStatusCode.InternalServerError, latestResp.StatusCode);
+        Assert.Equal("application/problem+json", latestResp.Content.Headers.ContentType?.MediaType);
     }
 }

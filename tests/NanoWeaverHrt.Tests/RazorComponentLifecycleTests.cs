@@ -22,6 +22,7 @@ using NanoWeaverHrt.Endocrine;
 using NanoWeaverHrt.Fabrication;
 using NanoWeaverHrt.Fabrication.Opentrons;
 using NanoWeaverHrt.Genomics;
+using NanoWeaverHrt.Hardware.Benchmarking;
 using NanoWeaverHrt.Localization;
 using NanoWeaverHrt.Pipelines;
 using NanoWeaverHrt.Security.Access;
@@ -121,6 +122,8 @@ public sealed class RazorComponentLifecycleTests : IDisposable
         sc.AddSingleton<ISubjectAccessRepository, SubjectAccessRepository>();
         sc.AddSingleton<ISubjectAccessService, SubjectAccessService>();
         sc.AddSingleton<IUserAuthenticationService, UserAuthenticationService>();
+        sc.AddSingleton<IAcceleratorTelemetryProvider, DefaultAcceleratorTelemetryProvider>();
+        sc.AddSingleton<IAcceleratorBenchmarkService, AcceleratorBenchmarkService>();
         sc.AddSingleton<IServerSessionActivityTracker>(_ => new ServerSessionActivityTracker());
         sc.AddSingleton<IWeaverLocalizer, WeaverLocalizer>();
         sc.AddScoped<UserSessionState>();

@@ -3919,6 +3919,65 @@ public class Program
         .ProducesProblem(StatusCodes.Status404NotFound)
         .ProducesProblem(StatusCodes.Status500InternalServerError);
 
+        // ---------------------------------------------------------------------
+        // REST API: Hardware Accelerator Qualification & Diagnostic Benchmarks
+        // ---------------------------------------------------------------------
+        app.MapPost("/api/system/benchmark/run", async (IAcceleratorBenchmarkService benchmarkService, HttpContext context, CancellationToken ct) =>
+        {
+            // WHAT: Triggers an on-demand hardware qualification benchmark run on the detected accelerator.
+            // WHY:  Enables researchers and operators to verify computational and memory performance before launching simulations.
+            // HOW:  Awaits IAcceleratorBenchmarkService.RunBenchmarkAsync, returning 200 OK or RFC 7807 problem details on error.
+            try
+            {
+                AcceleratorBenchmarkReport report = await benchmarkService.RunBenchmarkAsync(ct);
+                return Results.Ok(report);
+            }
+            catch (Exception ex)
+            {
+                return SecureProblemResult(
+                    context,
+                    StatusCodes.Status500InternalServerError,
+                    SecureExceptionSanitizer.SanitizeDetail(ex.Message, StatusCodes.Status500InternalServerError, context.TraceIdentifier));
+            }
+        })
+        .WithName("RunAcceleratorBenchmark")
+        .WithTags("System")
+        .WithSummary("Executes an on-demand hardware accelerator compute and memory bandwidth benchmark.")
+        .WithDescription("Runs deterministic FP32/FP64 floating-point compute tests and memory transfer benchmarks to evaluate accelerator simulation readiness.")
+        .Produces<AcceleratorBenchmarkReport>(StatusCodes.Status200OK)
+        .ProducesProblem(StatusCodes.Status500InternalServerError);
+
+        app.MapGet("/api/system/benchmark/latest", async (IAcceleratorBenchmarkService benchmarkService, HttpContext context, CancellationToken ct) =>
+        {
+            // WHAT: Retrieves the most recent cached hardware accelerator qualification report.
+            // WHY:  Permits status cards, diagnostic dashboards, and monitoring tools to inspect hardware qualification without re-running compute tests.
+            // HOW:  Queries IAcceleratorBenchmarkService.GetLatestReportAsync; returns 200 OK with report, 404 if absent, or 500 on fault.
+            try
+            {
+                AcceleratorBenchmarkReport? report = await benchmarkService.GetLatestReportAsync(ct);
+                if (report is null)
+                {
+                    return SecureProblemResult(context, StatusCodes.Status404NotFound, "No accelerator benchmark report is currently available.");
+                }
+
+                return Results.Ok(report);
+            }
+            catch (Exception ex)
+            {
+                return SecureProblemResult(
+                    context,
+                    StatusCodes.Status500InternalServerError,
+                    SecureExceptionSanitizer.SanitizeDetail(ex.Message, StatusCodes.Status500InternalServerError, context.TraceIdentifier));
+            }
+        })
+        .WithName("GetLatestAcceleratorBenchmarkReport")
+        .WithTags("System")
+        .WithSummary("Retrieves the most recent hardware accelerator qualification benchmark report.")
+        .WithDescription("Returns the cached benchmark report including FP32/FP64 GFLOPS, memory bandwidth, temperature, and readiness evaluation.")
+        .Produces<AcceleratorBenchmarkReport>(StatusCodes.Status200OK)
+        .ProducesProblem(StatusCodes.Status404NotFound)
+        .ProducesProblem(StatusCodes.Status500InternalServerError);
+
         app.Run();
     }
 
@@ -4162,7 +4221,8 @@ public class Program
         new("/api/compliance/verify-ledger", MatchDescendants: false),
         new("/api/subject-access/my-subjects", MatchDescendants: false),
         new("/api/subject-groups", MatchDescendants: true),
-        new("/api/fabrication/opentrons", MatchDescendants: true)
+        new("/api/fabrication/opentrons", MatchDescendants: true),
+        new("/api/system/benchmark", MatchDescendants: true)
     ];
 
     /// <summary>

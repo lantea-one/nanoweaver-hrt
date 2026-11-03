@@ -671,6 +671,8 @@ public sealed class ApiRoleGatingAndDisclosureTests : IClassFixture<WebApplicati
     [InlineData("GET", "/api/trajectories/download/sample.xyz", Program.RouteRoleRequirement.AdministratorOrResearcher)]
     [InlineData("DELETE", "/api/datasets/exports/bundle.tar.gz", Program.RouteRoleRequirement.AdministratorOrResearcher)]
     [InlineData("GET", "/api/datasets/exports", Program.RouteRoleRequirement.AdministratorOrResearcher)]
+    [InlineData("POST", "/api/system/benchmark/run", Program.RouteRoleRequirement.AdministratorOrResearcher)]
+    [InlineData("GET", "/api/system/benchmark/latest", Program.RouteRoleRequirement.AdministratorOrResearcher)]
     [InlineData("GET", "/api/datasets", Program.RouteRoleRequirement.None)]
     [InlineData("POST", "/api/auth/logout", Program.RouteRoleRequirement.None)]
     [InlineData("GET", "/api/configurations-report", Program.RouteRoleRequirement.None)]

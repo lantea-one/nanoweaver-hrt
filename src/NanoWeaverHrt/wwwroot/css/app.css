@@ -1298,6 +1298,88 @@ textarea.form-control {
     gap: 0.5rem;
 }
 
+/* Accelerator Hardware Qualification Diagnostic Card */
+.accelerator-benchmark-card {
+    border-left: 4px solid var(--accent-cyan);
+}
+
+.benchmark-device-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.benchmark-metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+}
+
+.benchmark-metric-box {
+    background-color: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 0.8rem;
+}
+
+.benchmark-metric-label {
+    font-size: 0.7rem;
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    font-weight: 700;
+}
+
+.benchmark-metric-value {
+    font-size: 1.1rem;
+    font-family: var(--font-mono);
+    color: var(--accent-cyan);
+    font-weight: 700;
+    margin-top: 0.2rem;
+}
+
+.benchmark-telemetry-strip {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+    background-color: rgba(0, 0, 0, 0.2);
+    padding: 0.5rem 0.8rem;
+    border-radius: 4px;
+}
+
+.recommendations-box {
+    background-color: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 0.8rem;
+}
+
+.recommendations-list {
+    margin: 0.3rem 0 0 1.2rem;
+    padding: 0;
+}
+
+.badge-green {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--accent-emerald);
+    border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.badge-amber {
+    background: rgba(245, 158, 11, 0.15);
+    color: var(--accent-amber);
+    border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.badge-red {
+    background: rgba(244, 63, 94, 0.15);
+    color: var(--accent-rose);
+    border: 1px solid rgba(244, 63, 94, 0.4);
+}
+
 .badge-warning {
     background: rgba(245, 158, 11, 0.15);
     color: var(--accent-amber);
