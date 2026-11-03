@@ -85,12 +85,12 @@
     - Never expose raw stack traces, local filesystem paths (`/home/...`, `C:\...`), database connection strings or credentials, private key PEM material, or internal SQL fragments to API clients.
     - Redact sensitive tokens and map internal server errors to opaque correlation trace IDs.
 
-15. **Autonomous Agent Phasing & Work Package Breakdown Playbook**:
-    - When decomposing large architectural or multi-layer features into tasks (especially for execution by smaller context-window or subagent LLMs), decompose them into atomic, single-layer work packages:
+15. **Autonomous Agent Phasing & Forgejo Issue Workflow Playbook**:
+    - When decomposing large architectural or multi-layer features into tasks (especially for execution by smaller context-window or subagent LLMs), decompose them into atomic, single-layer work packages tracked directly as **Forgejo Issues** (`https://git.lantea.one/lantea-one/nanoweaver-hrt/issues`):
       - **Phase Sizing (Bounded Architectural Layer)**: Exactly one architectural layer per phase (e.g., Migration & Repository → Service & Gating → REST API Endpoints → Blazor UI → Verification & Documentation). Never conflate schema migrations with UI rendering in a single phase.
-      - **File Contract Independence**: Every work package must specify exact input/output interfaces, concrete types, method signatures, and invariants before code is written, ensuring downstream phases compile against fixed contracts without ambiguity.
+      - **File Contract Independence**: Every work package issue must specify exact input/output interfaces, concrete types, method signatures, and invariants before code is written, ensuring downstream phases compile against fixed contracts without ambiguity.
       - **Downward Ratchet Preservation**: Minimize Roslyn state machine divergence. Always append new methods and minimal-API endpoints to the end of files. Avoid capturing outer local variables in endpoint lambdas. Synchronize `ExcludeByFile` rules across `coverlet.runsettings` and `coverage-full.runsettings`.
-      - **Clean Up Protocol**: Upon successful merge and upstream push of a phase or phase group, remove temporary phase instruction files (e.g., `work-packages/pXX-*.md`) to prevent workspace clutter, while updating `work-packages/README.md` and `docs/release-notes.md` as permanent audit records.
+      - **Forgejo Issue Lifecycle**: Author work package specifications directly as Forgejo Issues. Upon successful verification and upstream merge of a phase or phase group, close the corresponding Forgejo Issue and update `docs/release-notes.md` as permanent audit records.
       - **Interactive Decisions Pattern**: Whenever an architectural fork, scoping ambiguity, or design decision arises, present it to the user as an interactive question form with a clearly justified recommended default option.
 
 ---
@@ -192,12 +192,12 @@ docker compose -f docker-compose.yml -f compose/docker-compose.public-caddy.yml 
 
 ---
 
-## 5. Work Package Breakdown & LLM Phasing Playbook
+## 5. Work Package Breakdown & Forgejo Issue Playbook
 
 To ensure reliable, deterministic contributions from smaller context-window models or autonomous subagents, follow this standardized task decomposition process:
 
 ### 5.1 The 5-Layer Architectural Phase Sizing
-Never assign an LLM agent a task spanning the full vertical stack (schema through UI) in a single prompt. Large compound tasks cause context overflow, missed docblocks, and coverage regressions. Always partition features into 5 discrete phases:
+Never assign an LLM agent a task spanning the full vertical stack (schema through UI) in a single prompt. Large compound tasks cause context overflow, missed docblocks, and coverage regressions. Always partition features into 5 discrete phases tracked via Forgejo Issues (`https://git.lantea.one/lantea-one/nanoweaver-hrt/issues`):
 
 1. **Phase 1: Persistence & Schema Evolution**
    - Implements `IDatabaseMigration` supporting both SQLite and PostgreSQL.
@@ -217,7 +217,7 @@ Never assign an LLM agent a task spanning the full vertical stack (schema throug
 5. **Phase 5: End-to-End Verification, Documentation & Closeout**
    - Runs full 8-gate `./scripts/verify-all.sh` verification.
    - Updates `docs/` Markdown specifications using clean Unicode (zero unescaped single-dollar symbols).
-   - Consolidates phase notes into `work-packages/README.md` and `docs/release-notes.md`, removing temporary `work-packages/pXX-*.md` instruction files.
+   - Closes the active Forgejo Issues and updates `docs/release-notes.md`.
 
 ### 5.2 Downward Coverage Ratchet Invariants for Autonomous Agents
 The compiler-generated state machine ratchet (`scripts/check-coverage-ratchet.py`) prohibits any increase in uncovered lines across Roslyn lambdas (`<<Main>b__4_N>d`) and async state machines (`<Method>d__N`):
@@ -240,8 +240,8 @@ NanoWeaverHrt vendors specialized AI agent definitions within `.agents/` registe
 
 | Agent Identifier | Model | Target Scope | Core Responsibility |
 | :--- | :--- | :--- | :--- |
-| `nanoweaver-hrt-architect` (`architect`) | `pro` | Architecture & Planning | Designs 5-layer work packages in `work-packages/`, cryptographic PKI protocols, and multi-engine persistence. Never writes production code. |
-| `nanoweaver-hrt-coder` (`coder`) | `flash` | Full Repository | Generalist senior software engineer implementing assigned work packages under full AGENTS.md Prime Directives. |
+| `nanoweaver-hrt-architect` (`architect`) | `pro` | Architecture & Planning | Decomposes features into 5-layer work packages published to Forgejo Issues, designs cryptographic PKI protocols, and multi-engine persistence. Never writes production code. |
+| `nanoweaver-hrt-coder` (`coder`) | `flash` | Full Repository | Generalist senior software engineer implementing assigned work package issues under full AGENTS.md Prime Directives. |
 | `nanoweaver-hrt-coder-web-service` | `flash` | `src/NanoWeaverHrt` | Minimal APIs in `Program.cs`, SIMD `System.IO.Pipelines` parsers, multi-engine persistence (SQLite, PostgreSQL, DuckDB, MySQL), and bUnit Razor test suites. |
 | `nanoweaver-hrt-coder-desktop` | `flash` | `src/NanoWeaverHrt.Desktop`, `src/NanoWeaverHrt.Gui.Core` | Avalonia UI 11 / .NET 10 desktop application, MVVM ViewModels, `DesktopTrayIconController`, 18-language localization, and desktop packaging. |
 | `nanoweaver-hrt-coder-android` | `flash` | `src/NanoWeaverHrt.Mobile` (Android) | Android Avalonia lifecycle, `MainActivity`, Android Keystore PKI keys, permissions, and APK packaging. |
