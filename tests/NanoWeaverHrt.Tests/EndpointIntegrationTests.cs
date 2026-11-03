@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using NanoWeaverHrt.Analytics;
 using NanoWeaverHrt.Endocrine;
+using NanoWeaverHrt.Fabrication.Gel;
 using NanoWeaverHrt.Genomics;
 using NanoWeaverHrt.Hardware.Benchmarking;
 using NanoWeaverHrt.Models;
@@ -1296,5 +1297,135 @@ public sealed class EndpointIntegrationTests : IClassFixture<WebApplicationFacto
         // 6. Negative hormone concentration returns 400 Bad Request
         HttpResponseMessage negativeResp = await _client.PostAsJsonAsync("/api/endocrine/closed-loop/simulate", new ClosedLoopSimulationRequest { InitialEstradiolPmolL = -10.0 });
         Assert.Equal(HttpStatusCode.BadRequest, negativeResp.StatusCode);
+    }
+
+    /// <summary>
+    /// Verifies the <c>/api/fabrication/gel/analyze</c> endpoint: handles valid requests with 200 OK
+    /// and rejects invalid dimensions, empty payloads, and out-of-range thresholds with 400 Bad Request.
+    /// </summary>
+    /// <returns>A task representing the asynchronous test execution.</returns>
+    [Fact]
+    public async Task PostFabricationGelAnalyze_ValidationAndExecutionPaths()
+    {
+        // 1. Valid request returns 200 OK with GelAnalysisResult
+        byte[] testImage = new byte[80 * 40];
+        Array.Fill(testImage, (byte)20);
+        GelAnalysisRequest validReq = new()
+        {
+            ImageBytes = testImage,
+            Width = 80,
+            Height = 40,
+            ExpectedLaneCount = 4,
+            LadderType = GelLadderType.OneKbDnaLadder,
+            LadderLaneNumber = 1,
+            BackgroundThreshold = 0.15
+        };
+
+        HttpResponseMessage okResp = await _client.PostAsJsonAsync("/api/fabrication/gel/analyze", validReq);
+        Assert.Equal(HttpStatusCode.OK, okResp.StatusCode);
+        GelAnalysisResult? result = await okResp.Content.ReadFromJsonAsync<GelAnalysisResult>();
+        Assert.NotNull(result);
+        Assert.Equal(4, result.DetectedLaneCount);
+        Assert.Equal(80, result.Width);
+        Assert.Equal(40, result.Height);
+
+        // 2. Null request body returns 400 Bad Request
+        using StringContent nullContent = new("null", Encoding.UTF8, "application/json");
+        HttpResponseMessage nullResp = await _client.PostAsync("/api/fabrication/gel/analyze", nullContent);
+        Assert.Equal(HttpStatusCode.BadRequest, nullResp.StatusCode);
+
+        // 3. Width <= 0 or Height <= 0 returns 400 Bad Request
+        HttpResponseMessage zeroWidthResp = await _client.PostAsJsonAsync("/api/fabrication/gel/analyze", new GelAnalysisRequest
+        {
+            ImageBytes = testImage,
+            Width = 0,
+            Height = 40
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, zeroWidthResp.StatusCode);
+
+        HttpResponseMessage zeroHeightResp = await _client.PostAsJsonAsync("/api/fabrication/gel/analyze", new GelAnalysisRequest
+        {
+            ImageBytes = testImage,
+            Width = 80,
+            Height = 0
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, zeroHeightResp.StatusCode);
+
+        // 4. Empty ImageBytes returns 400 Bad Request
+        HttpResponseMessage emptyBytesResp = await _client.PostAsJsonAsync("/api/fabrication/gel/analyze", new GelAnalysisRequest
+        {
+            ImageBytes = [],
+            Width = 80,
+            Height = 40
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, emptyBytesResp.StatusCode);
+
+        // 5. ExpectedLaneCount <= 0 or > 24 returns 400 Bad Request
+        HttpResponseMessage zeroLanesResp = await _client.PostAsJsonAsync("/api/fabrication/gel/analyze", new GelAnalysisRequest
+        {
+            ImageBytes = testImage,
+            Width = 80,
+            Height = 40,
+            ExpectedLaneCount = 0
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, zeroLanesResp.StatusCode);
+
+        HttpResponseMessage highLanesResp = await _client.PostAsJsonAsync("/api/fabrication/gel/analyze", new GelAnalysisRequest
+        {
+            ImageBytes = testImage,
+            Width = 80,
+            Height = 40,
+            ExpectedLaneCount = 25
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, highLanesResp.StatusCode);
+
+        // 6. BackgroundThreshold < 0 or > 1 returns 400 Bad Request
+        HttpResponseMessage lowBgResp = await _client.PostAsJsonAsync("/api/fabrication/gel/analyze", new GelAnalysisRequest
+        {
+            ImageBytes = testImage,
+            Width = 80,
+            Height = 40,
+            BackgroundThreshold = -0.05
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, lowBgResp.StatusCode);
+
+        HttpResponseMessage highBgResp = await _client.PostAsJsonAsync("/api/fabrication/gel/analyze", new GelAnalysisRequest
+        {
+            ImageBytes = testImage,
+            Width = 80,
+            Height = 40,
+            BackgroundThreshold = 1.05
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, highBgResp.StatusCode);
+
+        // 7. LadderLaneNumber <= 0 or > ExpectedLaneCount returns 400 Bad Request
+        HttpResponseMessage zeroLadderResp = await _client.PostAsJsonAsync("/api/fabrication/gel/analyze", new GelAnalysisRequest
+        {
+            ImageBytes = testImage,
+            Width = 80,
+            Height = 40,
+            ExpectedLaneCount = 4,
+            LadderLaneNumber = 0
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, zeroLadderResp.StatusCode);
+
+        HttpResponseMessage highLadderResp = await _client.PostAsJsonAsync("/api/fabrication/gel/analyze", new GelAnalysisRequest
+        {
+            ImageBytes = testImage,
+            Width = 80,
+            Height = 40,
+            ExpectedLaneCount = 4,
+            LadderLaneNumber = 5
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, highLadderResp.StatusCode);
+
+        // 8. ImageBytes length smaller than Width * Height returns 400 Bad Request
+        HttpResponseMessage shortBufferResp = await _client.PostAsJsonAsync("/api/fabrication/gel/analyze", new GelAnalysisRequest
+        {
+            ImageBytes = new byte[100],
+            Width = 80,
+            Height = 40
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, shortBufferResp.StatusCode);
     }
 }

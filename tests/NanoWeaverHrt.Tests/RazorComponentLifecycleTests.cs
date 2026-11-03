@@ -20,6 +20,7 @@ using NanoWeaverHrt.Components.Pages;
 using NanoWeaverHrt.Configuration;
 using NanoWeaverHrt.Endocrine;
 using NanoWeaverHrt.Fabrication;
+using NanoWeaverHrt.Fabrication.Gel;
 using NanoWeaverHrt.Fabrication.Opentrons;
 using NanoWeaverHrt.Genomics;
 using NanoWeaverHrt.Hardware.Benchmarking;
@@ -96,6 +97,8 @@ public sealed class RazorComponentLifecycleTests : IDisposable
         sc.AddSingleton<IStackServiceManager, StackServiceManager>();
         sc.AddSingleton<IFabricationService, FabricationService>();
         sc.AddSingleton<IOpentronsProtocolGenerator, OpentronsProtocolGenerator>();
+        sc.AddSingleton(typeof(ILogger<>), typeof(NullLogger<>));
+        sc.AddSingleton<IGelAnalysisService, GelAnalysisService>();
         sc.AddSingleton<IDatasetManager, DatasetTransferService>();
         sc.AddSingleton<XyzPipeReader>();
         sc.AddSingleton<DcdPipeReader>();

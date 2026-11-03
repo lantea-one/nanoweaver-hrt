@@ -17,6 +17,7 @@ using NanoWeaverHrt.Configuration;
 using NanoWeaverHrt.Database.Access;
 using NanoWeaverHrt.Endocrine;
 using NanoWeaverHrt.Fabrication;
+using NanoWeaverHrt.Fabrication.Gel;
 using NanoWeaverHrt.Fabrication.Opentrons;
 using NanoWeaverHrt.Genomics;
 using NanoWeaverHrt.Models;
@@ -171,6 +172,11 @@ public class Program
         // WHY:  Transforms DNA origami fabrication packages into executable Opentrons Protocol API v2 Python scripts.
         // HOW:  Registers OpentronsProtocolGenerator as singleton IOpentronsProtocolGenerator into the DI container.
         builder.Services.AddSingleton<IOpentronsProtocolGenerator, OpentronsProtocolGenerator>();
+
+        // WHAT: Registers the automated agarose gel electrophoresis image processing and densitometry service.
+        // WHY:  Quantifies DNA origami folded monomer yield, unannealed staple smear, and quality pass/fail status.
+        // HOW:  Registers GelAnalysisService as singleton IGelAnalysisService into the DI container.
+        builder.Services.AddSingleton<IGelAnalysisService, GelAnalysisService>();
 
         // WHAT: Registers in-process DuckDB columnar analytical query engine for trajectory Parquet analysis.
         // WHY:  Enables zero-copy analytical queries and structural summary metric computation across molecular trajectories.
@@ -4084,6 +4090,118 @@ public class Program
         .WithSummary("Simulates dynamic closed-loop endocrine feedback and LH/FSH suppression using 4th-order Runge-Kutta integration.")
         .WithDescription("Calculates multi-trace hormone trajectories, pituitary gonadotropin negative feedback, aptamer-gated release rates, and time to suppression.")
         .Produces<ClosedLoopSimulationResult>(StatusCodes.Status200OK)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest);
+
+        // ---------------------------------------------------------------------
+        // REST API: Agarose Gel Electrophoresis Image Processing & Band Analysis
+        // ---------------------------------------------------------------------
+        app.MapPost("/api/fabrication/gel/analyze", IResult (
+            GelAnalysisRequest? request,
+            IGelAnalysisService gelService,
+            HttpContext context) =>
+        {
+            // WHAT: Performs automated lane segmentation, peak detection, and nanocarrier quality assessment on gel images.
+            // WHY:  Permits researchers and automated synthesis pipelines to verify folding quality and staple smear fractions.
+            // HOW:  Validates image dimensions and lane parameters, invokes IGelAnalysisService, and returns analytical results.
+            if (request is null)
+            {
+                return TypedResults.BadRequest(new SecureProblemDetails
+                {
+                    Type = SecureExceptionSanitizer.GetProblemType(StatusCodes.Status400BadRequest),
+                    Title = SecureExceptionSanitizer.GetTitle(StatusCodes.Status400BadRequest),
+                    Status = StatusCodes.Status400BadRequest,
+                    Detail = "Request body cannot be null.",
+                    Instance = context.Request.Path,
+                    TraceId = context.TraceIdentifier
+                });
+            }
+
+            if (request.Width <= 0 || request.Height <= 0)
+            {
+                return TypedResults.BadRequest(new SecureProblemDetails
+                {
+                    Type = SecureExceptionSanitizer.GetProblemType(StatusCodes.Status400BadRequest),
+                    Title = SecureExceptionSanitizer.GetTitle(StatusCodes.Status400BadRequest),
+                    Status = StatusCodes.Status400BadRequest,
+                    Detail = "Width and Height must be greater than zero.",
+                    Instance = context.Request.Path,
+                    TraceId = context.TraceIdentifier
+                });
+            }
+
+            if (request.ImageBytes is null || request.ImageBytes.Length == 0)
+            {
+                return TypedResults.BadRequest(new SecureProblemDetails
+                {
+                    Type = SecureExceptionSanitizer.GetProblemType(StatusCodes.Status400BadRequest),
+                    Title = SecureExceptionSanitizer.GetTitle(StatusCodes.Status400BadRequest),
+                    Status = StatusCodes.Status400BadRequest,
+                    Detail = "ImageBytes cannot be empty.",
+                    Instance = context.Request.Path,
+                    TraceId = context.TraceIdentifier
+                });
+            }
+
+            if (request.ExpectedLaneCount <= 0 || request.ExpectedLaneCount > 24)
+            {
+                return TypedResults.BadRequest(new SecureProblemDetails
+                {
+                    Type = SecureExceptionSanitizer.GetProblemType(StatusCodes.Status400BadRequest),
+                    Title = SecureExceptionSanitizer.GetTitle(StatusCodes.Status400BadRequest),
+                    Status = StatusCodes.Status400BadRequest,
+                    Detail = "ExpectedLaneCount must be between 1 and 24.",
+                    Instance = context.Request.Path,
+                    TraceId = context.TraceIdentifier
+                });
+            }
+
+            if (request.BackgroundThreshold < 0.0 || request.BackgroundThreshold > 1.0)
+            {
+                return TypedResults.BadRequest(new SecureProblemDetails
+                {
+                    Type = SecureExceptionSanitizer.GetProblemType(StatusCodes.Status400BadRequest),
+                    Title = SecureExceptionSanitizer.GetTitle(StatusCodes.Status400BadRequest),
+                    Status = StatusCodes.Status400BadRequest,
+                    Detail = "BackgroundThreshold must be between 0.0 and 1.0.",
+                    Instance = context.Request.Path,
+                    TraceId = context.TraceIdentifier
+                });
+            }
+
+            if (request.LadderLaneNumber <= 0 || request.LadderLaneNumber > request.ExpectedLaneCount)
+            {
+                return TypedResults.BadRequest(new SecureProblemDetails
+                {
+                    Type = SecureExceptionSanitizer.GetProblemType(StatusCodes.Status400BadRequest),
+                    Title = SecureExceptionSanitizer.GetTitle(StatusCodes.Status400BadRequest),
+                    Status = StatusCodes.Status400BadRequest,
+                    Detail = "LadderLaneNumber must be between 1 and ExpectedLaneCount.",
+                    Instance = context.Request.Path,
+                    TraceId = context.TraceIdentifier
+                });
+            }
+
+            if (request.ImageBytes.Length < request.Width * request.Height)
+            {
+                return TypedResults.BadRequest(new SecureProblemDetails
+                {
+                    Type = SecureExceptionSanitizer.GetProblemType(StatusCodes.Status400BadRequest),
+                    Title = SecureExceptionSanitizer.GetTitle(StatusCodes.Status400BadRequest),
+                    Status = StatusCodes.Status400BadRequest,
+                    Detail = "ImageBytes length must be at least Width * Height bytes.",
+                    Instance = context.Request.Path,
+                    TraceId = context.TraceIdentifier
+                });
+            }
+
+            GelAnalysisResult result = gelService.AnalyzeGel(request);
+            return TypedResults.Ok(result);
+        })
+        .WithName("AnalyzeAgaroseGel")
+        .WithTags("Fabrication")
+        .WithSummary("Analyzes an agarose gel electrophoresis image for DNA origami nanocarrier band yield and staple smear.")
+        .WithDescription("Segments gel lanes, detects band peaks, calculates relative migration Rf calibrated against DNA ladders, and evaluates folding quality.")
+        .Produces<GelAnalysisResult>(StatusCodes.Status200OK)
         .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest);
 
         app.Run();

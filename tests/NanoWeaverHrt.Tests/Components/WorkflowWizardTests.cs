@@ -5,12 +5,15 @@ using Bunit;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.JSInterop;
 using Moq;
 using NanoWeaverHrt.Components.Pages;
 using NanoWeaverHrt.Configuration;
 using NanoWeaverHrt.Endocrine;
 using NanoWeaverHrt.Fabrication;
+using NanoWeaverHrt.Fabrication.Gel;
 using NanoWeaverHrt.Fabrication.Opentrons;
 using NanoWeaverHrt.Genomics;
 using NanoWeaverHrt.Pipelines;
@@ -59,6 +62,8 @@ public sealed class WorkflowWizardTests : TestContext
         Services.AddSingleton<LammpsCustomPipeReader>();
         Services.AddSingleton<IParquetTrajectoryWriter>(_parquetWriterMock.Object);
         Services.AddSingleton<IOpentronsProtocolGenerator, OpentronsProtocolGenerator>();
+        Services.AddSingleton(typeof(ILogger<>), typeof(NullLogger<>));
+        Services.AddSingleton<IGelAnalysisService, GelAnalysisService>();
     }
 
     /// <summary>
@@ -264,5 +269,35 @@ public sealed class WorkflowWizardTests : TestContext
 
         Assert.Equal(5, cut.Instance.CurrentStep);
         Assert.NotEmpty(cut.FindAll(".opentrons-section"));
+    }
+
+    /// <summary>
+    /// Verifies that the Agarose Gel Quality Inspection section renders in Stage 6 and executes automated densitometry.
+    /// </summary>
+    /// <returns>A task representing the asynchronous test execution.</returns>
+    [Fact]
+    public async Task GelInspectionSection_RendersInStage6AndExecutesDensitometry()
+    {
+        // WHAT: Verifies the Stage 6 Agarose Gel Electrophoresis densitometry section.
+        // WHY:  Fulfills work package requirement to display nanocarrier band metrics and folding quality status.
+        // HOW:  Mounts WorkflowWizard, advances to Stage 6, checks DOM elements, clicks inspect button, and asserts metrics.
+        IRenderedComponent<WorkflowWizard> cut = RenderComponent<WorkflowWizard>();
+
+        await cut.InvokeAsync(() => cut.Instance.SetStep(6));
+
+        Assert.NotEmpty(cut.FindAll(".gel-inspection-section"));
+        Assert.NotNull(cut.Instance.CurrentGelResult);
+        Assert.Equal(8, cut.Instance.CurrentGelResult.DetectedLaneCount);
+        Assert.True(cut.Instance.CurrentGelResult.OverallFoldingSuccessRate >= 65.0);
+
+        // Click re-run gel inspection button
+        var inspectBtn = cut.Find("#btn-run-gel-inspection");
+        await cut.InvokeAsync(() => inspectBtn.Click());
+
+        Assert.NotNull(cut.Instance.CurrentGelResult);
+        Assert.NotEmpty(cut.FindAll(".gel-folding-yield"));
+        Assert.NotEmpty(cut.FindAll(".gel-lane-count"));
+        Assert.NotEmpty(cut.FindAll(".gel-staple-smear"));
+        Assert.NotEmpty(cut.FindAll(".gel-verdict"));
     }
 }
