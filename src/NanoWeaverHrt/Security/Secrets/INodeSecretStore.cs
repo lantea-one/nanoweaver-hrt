@@ -58,4 +58,10 @@ public interface INodeSecretStore
     /// </summary>
     /// <value>One of the <see cref="NodeSecretOrigin"/> values.</value>
     NodeSecretOrigin PhiMasterKeyOrigin { get; }
+
+    /// <summary>
+    /// Loads or generates the 32-byte Ed25519 dataset signing private seed for this sovereign node.
+    /// </summary>
+    /// <returns>A 32-byte private seed array for Ed25519 signing.</returns>
+    byte[] GetDatasetSigningKey();
 }

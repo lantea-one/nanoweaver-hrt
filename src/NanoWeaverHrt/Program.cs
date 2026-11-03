@@ -46,6 +46,7 @@ using NanoWeaverHrt.Security.Access;
 using NanoWeaverHrt.Localization;
 using NanoWeaverHrt.Analytics;
 using NanoWeaverHrt.Hardware.Benchmarking;
+using NanoWeaverHrt.Federation;
 
 namespace NanoWeaverHrt;
 
@@ -179,6 +180,11 @@ public class Program
         // WHY:  Permits cluster operators and researchers to benchmark compute throughput (FP32/FP64) and memory bandwidth before launching workloads.
         // HOW:  Registers AcceleratorBenchmarkService as singleton IAcceleratorBenchmarkService into the DI container.
         builder.Services.AddSingleton<IAcceleratorBenchmarkService, AcceleratorBenchmarkService>();
+
+        // WHAT: Registers the peer-to-peer trajectory federation and sovereign synchronization service.
+        // WHY:  Enables verifiable swarm chunk distribution and cross-laboratory trajectory synchronization.
+        // HOW:  Registers TrajectoryFederationService as singleton ITrajectoryFederationService into the DI container.
+        builder.Services.AddSingleton<ITrajectoryFederationService, TrajectoryFederationService>();
 
         // WHAT: Configures Swagger & OpenAPI generation with XML comments and Swashbuckle annotations.
         // WHY:  Provides interactive API exploration (/swagger) and ReDoc documentation (/documentation).

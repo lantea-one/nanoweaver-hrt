@@ -121,6 +121,9 @@ public sealed class PatientPhiEncryptionTests : IDisposable
 
         /// <inheritdoc/>
         public NodeSecretOrigin PhiMasterKeyOrigin => NodeSecretOrigin.GeneratedFile;
+
+        /// <inheritdoc/>
+        public byte[] GetDatasetSigningKey() => new byte[32];
     }
 
     /// <summary>

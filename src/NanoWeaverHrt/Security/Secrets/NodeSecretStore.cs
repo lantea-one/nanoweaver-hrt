@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using NanoWeaverHrt.Security.Signing;
 
 namespace NanoWeaverHrt.Security.Secrets;
 
@@ -162,6 +163,16 @@ public sealed class NodeSecretStore : INodeSecretStore
 
     /// <inheritdoc/>
     public NodeSecretOrigin PhiMasterKeyOrigin { get; }
+
+    /// <inheritdoc/>
+    public byte[] GetDatasetSigningKey()
+    {
+        // WHAT: Loads or generates the persistent 32-byte Ed25519 dataset signing seed.
+        // WHY:  Provides callers with the asymmetric signing seed for datasets and federation manifests.
+        // HOW:  Calls LoadOrCreateKeyFile using the node keys directory and NodeDatasetSigner.KeyFileName.
+        (byte[] key, _) = LoadOrCreateKeyFile(NodeKeysDirectory, NodeDatasetSigner.KeyFileName);
+        return key;
+    }
 
     /// <summary>
     /// Resolves the directory that holds the key files from configuration, falling back to a derived path.
