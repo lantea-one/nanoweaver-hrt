@@ -1234,4 +1234,67 @@ public sealed class EndpointIntegrationTests : IClassFixture<WebApplicationFacto
         Assert.Equal(HttpStatusCode.InternalServerError, latestResp.StatusCode);
         Assert.Equal("application/problem+json", latestResp.Content.Headers.ContentType?.MediaType);
     }
+
+    /// <summary>
+    /// Verifies POST /api/endocrine/closed-loop/simulate handles valid requests and rejects invalid input ranges with RFC 7807 problem details.
+    /// </summary>
+    [Fact]
+    public async Task SimulateClosedLoopEndocrine_ShouldHandleValidAndInvalidRequests()
+    {
+        // WHAT: Tests the POST /api/endocrine/closed-loop/simulate endpoint.
+        // WHY:  Verifies API contract, numerical simulation execution, and input boundary validation.
+        // HOW:  Posts valid and invalid ClosedLoopSimulationRequest payloads and asserts status codes and response models.
+
+        // 1. Valid MtF request returns 200 OK with trajectory points and suppression
+        ClosedLoopSimulationRequest validReq = new()
+        {
+            InitialEstradiolPmolL = 120.0,
+            InitialTestosteroneNmolL = 18.0,
+            InitialLhIuL = 6.5,
+            InitialFshIuL = 5.0,
+            TargetEstradiolPmolL = 550.0,
+            TargetTestosteroneNmolL = 1.2,
+            TargetState = ToggleState.EstrogenicDominant,
+            TotalHours = 48,
+            StepHours = 2.0,
+            ClearanceMultiplier = 1.0
+        };
+
+        HttpResponseMessage okResp = await _client.PostAsJsonAsync("/api/endocrine/closed-loop/simulate", validReq);
+        Assert.Equal(HttpStatusCode.OK, okResp.StatusCode);
+        ClosedLoopSimulationResult? result = await okResp.Content.ReadFromJsonAsync<ClosedLoopSimulationResult>();
+        Assert.NotNull(result);
+        Assert.NotEmpty(result.Points);
+        Assert.True(result.FinalLhIuL < 1.0);
+        Assert.True(result.FinalFshIuL < 1.5);
+
+        // 2. Null request body returns 400 Bad Request
+        using StringContent nullContent = new("null", Encoding.UTF8, "application/json");
+        HttpResponseMessage nullResp = await _client.PostAsync("/api/endocrine/closed-loop/simulate", nullContent);
+        Assert.Equal(HttpStatusCode.BadRequest, nullResp.StatusCode);
+
+        // 3. Invalid TotalHours (< 1 or > 720) returns 400 Bad Request
+        HttpResponseMessage lowHoursResp = await _client.PostAsJsonAsync("/api/endocrine/closed-loop/simulate", new ClosedLoopSimulationRequest { TotalHours = 0 });
+        Assert.Equal(HttpStatusCode.BadRequest, lowHoursResp.StatusCode);
+        HttpResponseMessage highHoursResp = await _client.PostAsJsonAsync("/api/endocrine/closed-loop/simulate", new ClosedLoopSimulationRequest { TotalHours = 721 });
+        Assert.Equal(HttpStatusCode.BadRequest, highHoursResp.StatusCode);
+
+        // 4. Invalid StepHours (< 0.1, > 24.0, or > TotalHours) returns 400 Bad Request
+        HttpResponseMessage lowStepResp = await _client.PostAsJsonAsync("/api/endocrine/closed-loop/simulate", new ClosedLoopSimulationRequest { StepHours = 0.05 });
+        Assert.Equal(HttpStatusCode.BadRequest, lowStepResp.StatusCode);
+        HttpResponseMessage highStepResp = await _client.PostAsJsonAsync("/api/endocrine/closed-loop/simulate", new ClosedLoopSimulationRequest { StepHours = 25.0 });
+        Assert.Equal(HttpStatusCode.BadRequest, highStepResp.StatusCode);
+        HttpResponseMessage overStepResp = await _client.PostAsJsonAsync("/api/endocrine/closed-loop/simulate", new ClosedLoopSimulationRequest { TotalHours = 2, StepHours = 5.0 });
+        Assert.Equal(HttpStatusCode.BadRequest, overStepResp.StatusCode);
+
+        // 5. Invalid ClearanceMultiplier (< 0.1 or > 5.0) returns 400 Bad Request
+        HttpResponseMessage lowClearanceResp = await _client.PostAsJsonAsync("/api/endocrine/closed-loop/simulate", new ClosedLoopSimulationRequest { ClearanceMultiplier = 0.05 });
+        Assert.Equal(HttpStatusCode.BadRequest, lowClearanceResp.StatusCode);
+        HttpResponseMessage highClearanceResp = await _client.PostAsJsonAsync("/api/endocrine/closed-loop/simulate", new ClosedLoopSimulationRequest { ClearanceMultiplier = 5.5 });
+        Assert.Equal(HttpStatusCode.BadRequest, highClearanceResp.StatusCode);
+
+        // 6. Negative hormone concentration returns 400 Bad Request
+        HttpResponseMessage negativeResp = await _client.PostAsJsonAsync("/api/endocrine/closed-loop/simulate", new ClosedLoopSimulationRequest { InitialEstradiolPmolL = -10.0 });
+        Assert.Equal(HttpStatusCode.BadRequest, negativeResp.StatusCode);
+    }
 }

@@ -107,6 +107,7 @@ public class Program
         builder.Services.AddSingleton<LammpsCustomPipeReader>();
         builder.Services.AddSingleton<IParquetTrajectoryWriter, DuckDbParquetWriter>();
         builder.Services.AddSingleton<EndocrineStateEngine>();
+        builder.Services.AddSingleton<IEndocrineClosedLoopEngine, EndocrineClosedLoopEngine>();
 
         // WHAT: Registers the node secret store ahead of every other security service.
         // WHY:  The bearer-token signing key and the patient-data encryption key are generated on first launch
@@ -3983,6 +3984,107 @@ public class Program
         .Produces<AcceleratorBenchmarkReport>(StatusCodes.Status200OK)
         .ProducesProblem(StatusCodes.Status404NotFound)
         .ProducesProblem(StatusCodes.Status500InternalServerError);
+
+        // ---------------------------------------------------------------------
+        // REST API: Dynamic Closed-Loop Endocrine Simulation & LH/FSH Feedback
+        // ---------------------------------------------------------------------
+        app.MapPost("/api/endocrine/closed-loop/simulate", IResult (
+            ClosedLoopSimulationRequest? request,
+            IEndocrineClosedLoopEngine engine,
+            HttpContext context) =>
+        {
+            // WHAT: Simulates dynamic closed-loop endocrine feedback and pituitary gonadotropin suppression kinetics.
+            // WHY:  Models real-time autonomous hormone delivery and negative feedback on the HPG axis using 4th-order Runge-Kutta numerical integration.
+            // HOW:  Validates input ranges, executes numerical integration via IEndocrineClosedLoopEngine, and returns simulation trajectory points.
+            if (request is null)
+            {
+                return TypedResults.BadRequest(new SecureProblemDetails
+                {
+                    Type = SecureExceptionSanitizer.GetProblemType(StatusCodes.Status400BadRequest),
+                    Title = SecureExceptionSanitizer.GetTitle(StatusCodes.Status400BadRequest),
+                    Status = StatusCodes.Status400BadRequest,
+                    Detail = "Request body cannot be null.",
+                    Instance = context.Request.Path,
+                    TraceId = context.TraceIdentifier
+                });
+            }
+
+            if (request.TotalHours < 1 || request.TotalHours > 720)
+            {
+                return TypedResults.BadRequest(new SecureProblemDetails
+                {
+                    Type = SecureExceptionSanitizer.GetProblemType(StatusCodes.Status400BadRequest),
+                    Title = SecureExceptionSanitizer.GetTitle(StatusCodes.Status400BadRequest),
+                    Status = StatusCodes.Status400BadRequest,
+                    Detail = "TotalHours must be between 1 and 720.",
+                    Instance = context.Request.Path,
+                    TraceId = context.TraceIdentifier
+                });
+            }
+
+            if (request.StepHours < 0.1 || request.StepHours > 24.0)
+            {
+                return TypedResults.BadRequest(new SecureProblemDetails
+                {
+                    Type = SecureExceptionSanitizer.GetProblemType(StatusCodes.Status400BadRequest),
+                    Title = SecureExceptionSanitizer.GetTitle(StatusCodes.Status400BadRequest),
+                    Status = StatusCodes.Status400BadRequest,
+                    Detail = "StepHours must be between 0.1 and 24.0.",
+                    Instance = context.Request.Path,
+                    TraceId = context.TraceIdentifier
+                });
+            }
+
+            if (request.StepHours > request.TotalHours)
+            {
+                return TypedResults.BadRequest(new SecureProblemDetails
+                {
+                    Type = SecureExceptionSanitizer.GetProblemType(StatusCodes.Status400BadRequest),
+                    Title = SecureExceptionSanitizer.GetTitle(StatusCodes.Status400BadRequest),
+                    Status = StatusCodes.Status400BadRequest,
+                    Detail = "StepHours cannot exceed TotalHours.",
+                    Instance = context.Request.Path,
+                    TraceId = context.TraceIdentifier
+                });
+            }
+
+            if (request.ClearanceMultiplier < 0.1 || request.ClearanceMultiplier > 5.0)
+            {
+                return TypedResults.BadRequest(new SecureProblemDetails
+                {
+                    Type = SecureExceptionSanitizer.GetProblemType(StatusCodes.Status400BadRequest),
+                    Title = SecureExceptionSanitizer.GetTitle(StatusCodes.Status400BadRequest),
+                    Status = StatusCodes.Status400BadRequest,
+                    Detail = "ClearanceMultiplier must be between 0.1 and 5.0.",
+                    Instance = context.Request.Path,
+                    TraceId = context.TraceIdentifier
+                });
+            }
+
+            if (request.InitialEstradiolPmolL < 0.0 || request.InitialTestosteroneNmolL < 0.0 ||
+                request.InitialLhIuL < 0.0 || request.InitialFshIuL < 0.0 ||
+                request.TargetEstradiolPmolL < 0.0 || request.TargetTestosteroneNmolL < 0.0)
+            {
+                return TypedResults.BadRequest(new SecureProblemDetails
+                {
+                    Type = SecureExceptionSanitizer.GetProblemType(StatusCodes.Status400BadRequest),
+                    Title = SecureExceptionSanitizer.GetTitle(StatusCodes.Status400BadRequest),
+                    Status = StatusCodes.Status400BadRequest,
+                    Detail = "Hormone concentrations and setpoints cannot be negative.",
+                    Instance = context.Request.Path,
+                    TraceId = context.TraceIdentifier
+                });
+            }
+
+            ClosedLoopSimulationResult result = engine.Simulate(request);
+            return TypedResults.Ok(result);
+        })
+        .WithName("SimulateClosedLoopEndocrine")
+        .WithTags("Endocrine & Pharmacodynamics")
+        .WithSummary("Simulates dynamic closed-loop endocrine feedback and LH/FSH suppression using 4th-order Runge-Kutta integration.")
+        .WithDescription("Calculates multi-trace hormone trajectories, pituitary gonadotropin negative feedback, aptamer-gated release rates, and time to suppression.")
+        .Produces<ClosedLoopSimulationResult>(StatusCodes.Status200OK)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest);
 
         app.Run();
     }

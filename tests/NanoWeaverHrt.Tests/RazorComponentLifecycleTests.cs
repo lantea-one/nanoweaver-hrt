@@ -102,6 +102,7 @@ public sealed class RazorComponentLifecycleTests : IDisposable
         sc.AddSingleton<LammpsCustomPipeReader>();
         sc.AddSingleton<IParquetTrajectoryWriter, DuckDbParquetWriter>();
         sc.AddSingleton<EndocrineStateEngine>();
+        sc.AddSingleton<IEndocrineClosedLoopEngine, EndocrineClosedLoopEngine>();
         sc.AddSingleton<IPharmacogenomicsService, PharmacogenomicsService>();
         sc.AddSingleton<ISimulationCampaignService, SimulationCampaignService>();
         // The authentication service now takes its bearer-token signing key from INodeSecretStore instead of
@@ -520,7 +521,14 @@ public sealed class RazorComponentLifecycleTests : IDisposable
         Assert.Equal("genomic-badge-advisory", InvokeMethodWithResult<string>(dashboard, "GetBadgeClass", ClinicalSeverity.Advisory));
         Assert.Equal("genomic-badge-optimal", InvokeMethodWithResult<string>(dashboard, "GetBadgeClass", ClinicalSeverity.Optimal));
 
-        // 4. Test AfterRender and Chart Rendering
+        // 4. Test Closed-Loop Simulation and sampling
+        InvokeMethod(dashboard, "RunClosedLoopSimulation");
+        RenderComponent(dashboard);
+        var sampledPoints = InvokeMethodWithResult<IEnumerable<ClosedLoopPoint>>(dashboard, "GetSampledClosedLoopPoints");
+        Assert.NotNull(sampledPoints);
+        Assert.NotEmpty(sampledPoints);
+
+        // 5. Test AfterRender and Chart Rendering
         await InvokeAsyncMethod(dashboard, "OnAfterRenderAsync", false);
         await InvokeAsyncMethod(dashboard, "RenderChartAsync");
     }

@@ -1,7 +1,9 @@
 @page "/endocrine"
 @using NanoWeaverHrt.Genomics
+@using NanoWeaverHrt.Endocrine
 @inject EndocrineStateEngine Engine
 @inject IPharmacogenomicsService GenomicsService
+@inject IEndocrineClosedLoopEngine ClosedLoopEngine
 @inject IConfigurationRepository ConfigRepo
 @inject IJSRuntime JS
 @inject IWeaverLocalizer Localizer
@@ -239,6 +241,96 @@
             <canvas id="canvas-anatomical-target" style="width: 100%; height: 340px;"></canvas>
         </div>
     </div>
+
+    <!-- Closed-Loop HPG Axis Dynamic Simulation Panel -->
+    <div class="card panel mt-4">
+        <div class="panel-header">
+            <div>
+                <h3>Closed-Loop HPG Axis Dynamic Simulation</h3>
+                <span class="subtext">Coupled ODE Runge-Kutta (RK4) integration with LH/FSH negative feedback and aptamer release modulation.</span>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <button class="btn btn-sm btn-primary" @onclick="RunClosedLoopSimulation">
+                    ⚡ Recalibrate Closed-Loop Kinetics
+                </button>
+                @if (_closedLoopResult != null)
+                {
+                    <span class="badge @(_closedLoopResult.SteadyStateReached ? "badge-accent" : "badge-outline")">
+                        @(_closedLoopResult.SteadyStateReached ? "STEADY STATE ACHIEVED" : "TRANSIENT DYNAMICS")
+                    </span>
+                }
+            </div>
+        </div>
+
+        @if (_closedLoopResult != null)
+        {
+            <!-- Dynamic Closed-Loop Metrics Bar -->
+            <div class="setpoints-display mt-3" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+                <div class="setpoint-item">
+                    <span class="setpoint-label">FINAL 17β-ESTRADIOL</span>
+                    <span class="setpoint-val font-mono">@_closedLoopResult.FinalEstradiolPmolL.ToString("F1") <small>pmol/L</small></span>
+                </div>
+                <div class="setpoint-item">
+                    <span class="setpoint-label">FINAL TESTOSTERONE</span>
+                    <span class="setpoint-val font-mono">@_closedLoopResult.FinalTestosteroneNmolL.ToString("F2") <small>nmol/L</small></span>
+                </div>
+                <div class="setpoint-item">
+                    <span class="setpoint-label">LH SUPPRESSION</span>
+                    <span class="setpoint-val font-mono @(_closedLoopResult.FinalLhIuL < 1.0 ? "text-success" : "text-warning")">
+                        @_closedLoopResult.FinalLhIuL.ToString("F2") <small>IU/L (@(_closedLoopResult.FinalLhIuL < 1.0 ? "SUPPRESSED" : "ACTIVE"))</small>
+                    </span>
+                </div>
+                <div class="setpoint-item">
+                    <span class="setpoint-label">FSH SUPPRESSION</span>
+                    <span class="setpoint-val font-mono @(_closedLoopResult.FinalFshIuL < 1.5 ? "text-success" : "text-warning")">
+                        @_closedLoopResult.FinalFshIuL.ToString("F2") <small>IU/L (@(_closedLoopResult.FinalFshIuL < 1.5 ? "SUPPRESSED" : "ACTIVE"))</small>
+                    </span>
+                </div>
+                <div class="setpoint-item">
+                    <span class="setpoint-label">CARRIER RELEASE RATE</span>
+                    <span class="setpoint-val font-mono">
+                        @((_closedLoopResult.Points.Count > 0 ? _closedLoopResult.Points[^1].CarrierReleaseRate : 0.0).ToString("F2"))
+                        <small>pmol/(L·h)</small>
+                    </span>
+                </div>
+                <div class="setpoint-item">
+                    <span class="setpoint-label">TIME TO SUPPRESSION</span>
+                    <span class="setpoint-val font-mono">
+                        @(_closedLoopResult.TimeToSuppressionHours >= 0 ? $"{_closedLoopResult.TimeToSuppressionHours:F1} h" : "NOT SUPPRESSED")
+                    </span>
+                </div>
+            </div>
+
+            <!-- Trajectory Sample Table -->
+            <div class="table-container mt-3">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>17β-Estradiol (pmol/L)</th>
+                            <th>Testosterone (nmol/L)</th>
+                            <th>LH (IU/L)</th>
+                            <th>FSH (IU/L)</th>
+                            <th>Aptamer Release Rate</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (ClosedLoopPoint pt in GetSampledClosedLoopPoints())
+                        {
+                            <tr>
+                                <td class="font-mono text-accent">@pt.Hour.ToString("F0") h</td>
+                                <td class="font-mono">@pt.EstradiolPmolL.ToString("F1")</td>
+                                <td class="font-mono">@pt.TestosteroneNmolL.ToString("F2")</td>
+                                <td class="font-mono @(pt.LhIuL < 1.0 ? "text-success" : "")">@pt.LhIuL.ToString("F2")</td>
+                                <td class="font-mono @(pt.FshIuL < 1.5 ? "text-success" : "")">@pt.FshIuL.ToString("F2")</td>
+                                <td class="font-mono text-accent">@pt.CarrierReleaseRate.ToString("F2")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
 </div>
 
 @code {
@@ -271,6 +363,11 @@
     /// Simulated kinetics curve data points over 72 hours.
     /// </summary>
     private IReadOnlyList<HormoneCurvePoint> _kineticsPoints = [];
+
+    /// <summary>
+    /// Simulated closed-loop HPG axis dynamic result.
+    /// </summary>
+    private ClosedLoopSimulationResult? _closedLoopResult;
 
     /// <summary>
     /// List of all available catalog genetic markers.
@@ -362,6 +459,7 @@
             _activeProfile.Regimen);
 
         _kineticsPoints = Engine.SimulateKinetics(72, 4, _genomicProfile);
+        RunClosedLoopSimulation();
     }
 
     /// <summary>
@@ -372,6 +470,7 @@
         _activeProfile = GenomicsService.ApplyGeneticAdjustments(_activeProfile, _genomicProfile);
         Engine.SetActiveProfile(_activeProfile);
         _kineticsPoints = Engine.SimulateKinetics(72, 4, _genomicProfile);
+        RunClosedLoopSimulation();
         await RenderChartAsync();
     }
 
@@ -456,5 +555,50 @@
         _activeProfile = Engine.UpdateToggleState(req);
         ReevaluateGenomics();
         await RenderChartAsync();
+    }
+
+    /// <summary>
+    /// Executes the dynamic closed-loop HPG axis ODE simulation using the current active profile setpoints and genomic clearance.
+    /// </summary>
+    private void RunClosedLoopSimulation()
+    {
+        ClosedLoopSimulationRequest req = new()
+        {
+            TargetState = _activeProfile.TargetState,
+            TargetEstradiolPmolL = _activeProfile.TargetEstradiolPmolL,
+            TargetTestosteroneNmolL = _activeProfile.TargetTestosteroneNmolL,
+            ClearanceMultiplier = _genomicProfile?.OverallClearanceMultiplier ?? 1.0,
+            InitialEstradiolPmolL = _activeProfile.TargetState == ToggleState.EstrogenicDominant ? 120.0 : 600.0,
+            InitialTestosteroneNmolL = _activeProfile.TargetState == ToggleState.EstrogenicDominant ? 18.0 : 1.5,
+            InitialLhIuL = 6.5,
+            InitialFshIuL = 5.0,
+            TotalHours = 72,
+            StepHours = 1.0
+        };
+
+        _closedLoopResult = ClosedLoopEngine.Simulate(req);
+    }
+
+    /// <summary>
+    /// Returns a thinned subset of closed-loop trajectory points suitable for tabular display.
+    /// </summary>
+    /// <returns>A collection of trajectory points sampled across key intervals.</returns>
+    private IEnumerable<ClosedLoopPoint> GetSampledClosedLoopPoints()
+    {
+        if (_closedLoopResult == null)
+        {
+            yield break;
+        }
+
+        int stepInterval = Math.Max(1, _closedLoopResult.Points.Count / 12);
+        for (int i = 0; i < _closedLoopResult.Points.Count; i += stepInterval)
+        {
+            yield return _closedLoopResult.Points[i];
+        }
+
+        if (_closedLoopResult.Points.Count > 0 && (_closedLoopResult.Points.Count - 1) % stepInterval != 0)
+        {
+            yield return _closedLoopResult.Points[^1];
+        }
     }
 }

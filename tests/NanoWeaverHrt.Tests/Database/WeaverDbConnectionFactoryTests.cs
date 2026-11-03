@@ -333,6 +333,10 @@ public sealed class WeaverDbConnectionFactoryTests : IDisposable
         string sqlitePath = Path.Combine(_tempDir, "weaver_config.db");
         Assert.True(File.Exists(sqlitePath));
 
+        using (SqliteConnection connection = new($"Data Source={sqlitePath}"))
+        {
+            SqliteConnection.ClearPool(connection);
+        }
         SqliteConnection.ClearAllPools();
         File.Delete(sqlitePath);
         Assert.False(File.Exists(sqlitePath));
