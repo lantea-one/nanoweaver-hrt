@@ -15,6 +15,7 @@
 >
 > **Contributing, Forking, and Issue Tracking:**  
 > - **All forks, pull requests, issues, and active development MUST be conducted directly on the sovereign [Forgejo repository](https://git.lantea.one/lantea-one/nanoweaver-hrt).**
+> - **Work Packages Mandate:** All architectural tasks, feature milestones, and development work packages MUST be published as and found in [Forgejo Issues](https://git.lantea.one/lantea-one/nanoweaver-hrt/issues). See [CONTRIBUTING.md](CONTRIBUTING.md) for the 5-layer phase sizing rules.
 > - Do **not** fork or submit pull requests on GitHub; downstream mirrors are not the authoritative source of truth and are subject to third-party administrative disruption.
 >
 > ```bash
@@ -260,6 +261,7 @@ npm test
 
 ## 📖 Standards & Legal Disclaimers
 
+- **[CONTRIBUTING.md](CONTRIBUTING.md)**: Universal contributor guide for human engineers and AI agents, detailing solution modifications and the Forgejo Issues work package playbook.
 - **[DISCLAIMER.md](DISCLAIMER.md)**: Formal scientific research, medical non-advice, and BSL-1 biosafety declarations.
 - **[CODING_STANDARDS.md](CODING_STANDARDS.md)**: The "Zero-Ignorance" Open-Bio documentation protocol, requiring 100% docblocks on all members (including private) and the "What / Why / How" commenting triad.
 - **[AGENTS.md](AGENTS.md)**: Universal instructions for AI coding assistants (Claude, Cursor, Copilot, Gemini, ChatGPT).

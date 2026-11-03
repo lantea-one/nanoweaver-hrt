@@ -29,3 +29,7 @@ The primary codebase includes a .NET 10 zero-allocation trajectory parsing micro
    - Do not wrap units (`50 µL`, `100 µM`), chemical formulas (`17β-estradiol`, `Mg²⁺`), or temperatures in raw `$ ... $` tokens; use clean Unicode symbols.
 8. **Universal Pre-Flight Verification**:
    - All code must pass `./scripts/verify-all.sh` cleanly before commit.
+9. **Forgejo Issues & Work Packages Mandate**:
+   - All proposed features, fixes, and development tasks MUST be published as and found in Forgejo Issues (https://git.lantea.one/lantea-one/nanoweaver-hrt/issues).
+   - Work packages follow the 5-layer atomic architecture defined in `CONTRIBUTING.md` and `AGENTS.md`.
+   - Tailored repository agent profiles are configured in `.agents/` for specialized subsystem tasks.

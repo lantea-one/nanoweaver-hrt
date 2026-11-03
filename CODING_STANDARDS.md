@@ -136,8 +136,27 @@ Whenever writing code or comments involving domain concepts, use these analogies
    - Use clean Unicode symbols to guarantee clean rendering on GitHub.com and GitHub Pages without breaking markdown tables. Display equations must use fenced `$$ ... $$` blocks.
 
 4. **Universal Pre-Flight Verification Gate**:
-   - Before committing or concluding any pull request, contributors and AI agents must run:
+   - Before committing or concluding any turn, contributors and AI agents must run:
      ```bash
      ./scripts/verify-all.sh
      ```
-   - All 5 steps must pass cleanly.
+   - All 8 steps must pass cleanly.
+
+---
+
+## 6. Work Packages & Forgejo Issues Mandate
+
+1. **Forgejo Issue Publication**:
+   - All architectural designs, new features, bug fixes, and development tasks **MUST be published as and found in Forgejo Issues** ([https://git.lantea.one/lantea-one/nanoweaver-hrt/issues](https://git.lantea.one/lantea-one/nanoweaver-hrt/issues)).
+   - Local work package files are strictly transient and must be purged once published upstream.
+
+2. **5-Layer Architectural Phase Sizing**:
+   - Work packages must be bounded to a single architectural layer:
+     - **Phase 1**: Persistence & Schema Evolution (`IDatabaseMigration`)
+     - **Phase 2**: Domain Logic & Security Gating (`IService`, Asymmetric PKI)
+     - **Phase 3**: Minimal API Endpoints & Contracts (Appended routes, DTOs, RFC 7807)
+     - **Phase 4**: Sovereign Blazor UI & Client Interactions (`.razor`, bUnit)
+     - **Phase 5**: Verification & Documentation Closeout (`./scripts/verify-all.sh`)
+
+3. **Tailored AI Agents**:
+   - Consult [`.agents/README.md`](.agents/README.md) and [`CONTRIBUTING.md`](CONTRIBUTING.md) for tailored agent roles (`nanoweaver-hrt-architect`, `nanoweaver-hrt-coder`, `nanoweaver-hrt-coder-web-service`, `nanoweaver-hrt-coder-desktop`, `nanoweaver-hrt-coder-android`, `nanoweaver-hrt-coder-ios`, `nanoweaver-hrt-mechanic`).

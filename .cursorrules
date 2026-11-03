@@ -21,3 +21,7 @@
      - Never use raw LaTeX `$ ... $` tokens for units, chemical formulas, or temperatures. Use clean Unicode symbols (`50 µL`, `°C`, `17β-estradiol`, `Mg²⁺`).
   9. Pre-Flight Verification Gate:
      - Always execute `./scripts/verify-all.sh` before finalizing any task.
+  10. Forgejo Issues & Work Packages Mandate:
+     - All planned features, refactors, and development tasks MUST be published as and found in Forgejo Issues (https://git.lantea.one/lantea-one/nanoweaver-hrt/issues).
+     - Decompose multi-layer features into atomic 5-layer work packages following `CONTRIBUTING.md` and `AGENTS.md`.
+     - Use tailored repository agents configured in `.agents/` for specialized tasks.

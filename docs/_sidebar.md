@@ -31,5 +31,7 @@
 ---
 
 * [Forgejo Repository (Authoritative)](https://git.lantea.one/lantea-one/nanoweaver-hrt)
+* [Forgejo Issues & Work Packages](https://git.lantea.one/lantea-one/nanoweaver-hrt/issues)
+* [Contributing Guide](https://git.lantea.one/lantea-one/nanoweaver-hrt/src/branch/main/CONTRIBUTING.md)
 * [GitHub Mirror](https://github.com/lantea-one/nanoweaver-hrt)
 * [MIT License](https://git.lantea.one/lantea-one/nanoweaver-hrt/src/branch/main/LICENSE)
