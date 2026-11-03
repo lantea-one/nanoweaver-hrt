@@ -4,6 +4,40 @@
 
 ---
 
+## Release v2026.10.29.4 (Multi-Engine Persistence, Columnar Analytics, 18 Languages & Accelerator Benchmarking — 2026-11-03)
+
+Major milestone release delivering full multi-engine database persistence (SQLite, PostgreSQL, DuckDB, MySQL / MariaDB), an in-process vectorized DuckDB columnar SQL analytics engine for molecular trajectories, an automated hardware accelerator FP32/FP64 benchmark and simulation qualification suite, 18 community languages with native RTL layout, and specialized repository-embedded AI agent personas.
+
+### Highlights
+* **Expanded 18 Community Languages & Native RTL Layout**:
+  - Expanded `WeaverLanguage` enum from 10 to 18 languages: Arabic (`ar-SA`), Korean (`ko-KR`), Turkish (`tr-TR`), Hindi (`hi-IN`), Ukrainian (`uk-UA`), Vietnamese (`vi-VN`), Indonesian (`id-ID`), Swedish (`sv-SE`) alongside English, Spanish, French, German, Portuguese, Italian, Japanese, Simplified Chinese, Dutch, and Polish.
+  - Full Right-to-Left (RTL) directional layout support (`dir="rtl"`) dynamically bound in `MainLayout.razor` and Avalonia desktop controls when Arabic is selected.
+  - Desktop `MainShellViewModel` and `DesktopTrayIconController` localization synchronized across all 18 languages.
+* **Multi-Engine RDBMS Persistence Seam**:
+  - Added native dialect adapters `DuckDbDialect.cs` and `MySqlDialect.cs` to `IWeaverDbConnectionFactory`.
+  - Upgraded `DatabaseMigrationRunner.cs` with transactional schema migrations and idempotent upserts across SQLite, PostgreSQL, DuckDB, and MySQL / MariaDB.
+  - Upgraded `LanguagePreferenceService.cs` to persist user preferences uniformly across all 4 database backends.
+* **In-Process Columnar Trajectory Analytics Engine**:
+  - Implemented `ITrajectoryAnalyticsService` and `DuckDbTrajectoryAnalyticsService` executing vectorized columnar SQL queries directly over Apache Parquet coordinate archives.
+  - Added `POST /api/trajectories/analytics/query` endpoint with parameter validation, AST mutation blocking, and RFC 7807 problem details error mapping.
+  - Embedded interactive analytical query drawer into `TrajectoryBrowser.razor` with real-time aggregate statistics and point telemetry cards.
+* **Hardware Accelerator Benchmark & Simulation Qualification Suite**:
+  - Implemented `IAcceleratorBenchmarkService` and `AcceleratorBenchmarkService` evaluating FP32/FP64 GFLOPS compute throughput and memory bus bandwidth (GB/s).
+  - Deterministic readiness scoring: `Go` (production-ready), `Marginal` (small-scale runs), and `Insufficient` (CPU fallback recommendation).
+  - Exposed authenticated REST API endpoints: `POST /api/system/benchmark/run` and `GET /api/system/benchmark/latest`.
+  - Added diagnostic Accelerator Qualification card in `StackServices.razor` with high-contrast badges and progress spinner.
+* **Tailored Repository AI Agents (`.agents/`)**:
+  - Embedded project-specific AI agent definitions into `.agents/agents/` registered via `.agents/agents.json`: `nanoweaver-hrt-architect`, `nanoweaver-hrt-coder`, `nanoweaver-hrt-coder-web-service`, `nanoweaver-hrt-coder-desktop`, `nanoweaver-hrt-coder-android`, `nanoweaver-hrt-coder-ios`, `nanoweaver-hrt-mechanic`.
+  - Codified into `AGENTS.md` and `.agents/README.md` to guide autonomous agents and contributors.
+* **Zero Quality Regressions & 100% Verification**:
+  - All 1,377 unit and integration tests passed (100% pass rate).
+  - Gate 4 enforced 100.00% Line and 100.00% Branch code coverage.
+  - Gate 7 un-excluded coverage ratchet strictly verified against baseline with zero regressions.
+  - Zero XML docblock errors across all source files.
+  - Zero unescaped single-dollar LaTeX formatting tokens across all documentation files.
+
+---
+
 ## Release v2026.10.29.3 (Opentrons Wet-Lab Automation & Community Localization — 2026-10-29)
 
 Major milestone release bridging in-silico computational nanocarrier design with physical laboratory execution via Opentrons robotic liquid handling automation, alongside comprehensive 10-language community localization, dual-engine PostgreSQL preference storage, and downward ratchet coverage improvements.

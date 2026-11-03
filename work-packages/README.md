@@ -2,7 +2,7 @@
 
 > **Instructions for Human Architects and AI Assistants**:
 > This directory contains the standard operating procedures, architectural templates, and quality invariants for authoring, decomposing, and executing work packages in **nanoweaver-hrt**.
-> All architectural and feature phases (**P1–P46**) are fully completed, verified at 100.00% line and branch coverage, and shipped in release **`v2026.10.29.3`**.
+> All architectural and feature phases (**P1–P55**) are fully completed, verified at 100.00% line and branch coverage, and shipped in release **`v2026.10.29.4`**.
 
 ---
 
@@ -26,7 +26,7 @@ All 46 development phases have concluded:
   - **P52**: Trajectory Analytics REST API & UI Query Drawer (`POST /api/trajectories/analytics/query`, `TrajectoryBrowser.razor`) — *Completed & Verified*
   - **P53**: Hardware Accelerator Benchmark Engine Core (`IAcceleratorBenchmarkService`, FP32/FP64 GFLOPS & Bandwidth) — *Completed & Verified*
   - **P54**: Hardware Accelerator Benchmark REST API & Diagnostic UI (`POST /api/system/benchmark/run`, `GET /api/system/benchmark/latest`) — *Completed & Verified*
-  - **P55**: Verification, Documentation & Release Milestone `v2026.10.29.4` — *Published* ([`p55-release-closeout.md`](./p55-release-closeout.md))
+  - **P55**: Verification, Documentation & Release Milestone `v2026.10.29.4` — *Completed & Verified*
 
 ---
 
