@@ -5,12 +5,14 @@ using Moq;
 using NanoWeaverHrt.Client.Api;
 using NanoWeaverHrt.Client.Security;
 using NanoWeaverHrt.Client.Storage;
+using NanoWeaverHrt.Compliance;
 using NanoWeaverHrt.Configuration;
 using NanoWeaverHrt.Endocrine;
 using NanoWeaverHrt.Fabrication;
 using NanoWeaverHrt.Fabrication.Gel;
 using NanoWeaverHrt.Fabrication.Opentrons;
 using NanoWeaverHrt.Federation;
+using NanoWeaverHrt.Genomics;
 using NanoWeaverHrt.Hardware.Benchmarking;
 using NanoWeaverHrt.Models;
 using NanoWeaverHrt.Security.Access;
@@ -1489,6 +1491,138 @@ public sealed class NanoWeaverNodeClientTests : IDisposable
 
         _httpHandler.SetResponse("/api/subject-access/grants", HttpStatusCode.InternalServerError, "{}");
         await Assert.ThrowsAsync<NodeApiException>(() => _client.ListSubjectGrantsAsync(_localProfile, "token"));
+    }
+
+    /// <summary>
+    /// Verifies GetComplianceStatusAsync nominal response, null deserialization fallback, and error handling.
+    /// </summary>
+    [Fact]
+    public async Task GetComplianceStatusAsync_NominalAndErrors_BehavesExpectedly()
+    {
+        // WHAT: Tests GetComplianceStatusAsync endpoint communication against /api/compliance/status.
+        // WHY:  Ensures regulatory compliance scorecard retrieval operates cleanly.
+        // HOW:  Mocks /api/compliance/status with JSON, asserts populated report and exception handling.
+        _httpHandler.SetResponse(
+            "/api/compliance/status",
+            HttpStatusCode.OK,
+            """
+            {
+                "encryptionAtRestAlgorithm": "ML-KEM-768 + AES-256-GCM (NIST FIPS 203)",
+                "auditSignatureAlgorithm": "ML-DSA-65 (NIST FIPS 204)",
+                "isEncryptionAtRestActive": true,
+                "isAuditLedgerIntact": true,
+                "auditRecordCount": 42
+            }
+            """);
+
+        ComplianceStatusReport report = await _client.GetComplianceStatusAsync(_localProfile, "token");
+        Assert.NotNull(report);
+        Assert.Equal("ML-KEM-768 + AES-256-GCM (NIST FIPS 203)", report.EncryptionAtRestAlgorithm);
+        Assert.True(report.IsEncryptionAtRestActive);
+        Assert.True(report.IsAuditLedgerIntact);
+        Assert.Equal(42, report.AuditRecordCount);
+
+        _httpHandler.SetResponse("/api/compliance/status", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetComplianceStatusAsync(_localProfile, "token"));
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetComplianceStatusAsync(null!, "token"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetComplianceStatusAsync(_localProfile, ""));
+
+        _httpHandler.SetResponse("/api/compliance/status", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetComplianceStatusAsync(_localProfile, "token"));
+    }
+
+    /// <summary>
+    /// Verifies GetAuditLedgerAsync nominal response with and without limit parameter, empty response, and error paths.
+    /// </summary>
+    [Fact]
+    public async Task GetAuditLedgerAsync_NominalWithLimitAndErrors_BehavesExpectedly()
+    {
+        // WHAT: Tests GetAuditLedgerAsync endpoint communication against /api/compliance/audit-ledger.
+        // WHY:  Ensures FDA 21 CFR Part 11 audit trail querying operates cleanly with optional limit query param.
+        // HOW:  Mocks /api/compliance/audit-ledger with JSON, asserts returned records and exception handling.
+        _httpHandler.SetResponse(
+            "/api/compliance/audit-ledger",
+            HttpStatusCode.OK,
+            """
+            [
+                {
+                    "sequenceNumber": 1,
+                    "previousHash": "0000000000000000000000000000000000000000000000000000000000000000",
+                    "currentHash": "abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234",
+                    "operatorId": "admin",
+                    "action": "UserLogin",
+                    "resource": "/api/auth/token"
+                }
+            ]
+            """);
+
+        IReadOnlyList<AuditRecord> recordsWithLimit = await _client.GetAuditLedgerAsync(_localProfile, "token", 10);
+        Assert.Single(recordsWithLimit);
+        Assert.Equal(1, recordsWithLimit[0].SequenceNumber);
+        Assert.Equal("admin", recordsWithLimit[0].OperatorId);
+
+        IReadOnlyList<AuditRecord> recordsWithoutLimit = await _client.GetAuditLedgerAsync(_localProfile, "token");
+        Assert.Single(recordsWithoutLimit);
+
+        _httpHandler.SetResponse("/api/compliance/audit-ledger", HttpStatusCode.OK, "null");
+        IReadOnlyList<AuditRecord> empty = await _client.GetAuditLedgerAsync(_localProfile, "token");
+        Assert.Empty(empty);
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetAuditLedgerAsync(null!, "token"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetAuditLedgerAsync(_localProfile, ""));
+
+        _httpHandler.SetResponse("/api/compliance/audit-ledger", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetAuditLedgerAsync(_localProfile, "token"));
+    }
+
+    /// <summary>
+    /// Verifies AnalyzeGenomicsAsync nominal response, null deserialization fallback, and error handling.
+    /// </summary>
+    [Fact]
+    public async Task AnalyzeGenomicsAsync_NominalAndErrors_BehavesExpectedly()
+    {
+        // WHAT: Tests AnalyzeGenomicsAsync endpoint communication against /api/genomics/analyze.
+        // WHY:  Ensures patient genetic SNP screening and kinetic modifier computation operates cleanly.
+        // HOW:  Mocks /api/genomics/analyze with JSON, asserts populated profile and exception handling.
+        _httpHandler.SetResponse(
+            "/api/genomics/analyze",
+            HttpStatusCode.OK,
+            """
+            {
+                "patientId": "pt-42",
+                "regimen": "FemaleToMale",
+                "observedMarkers": [],
+                "alerts": [],
+                "hasCriticalAlerts": false,
+                "thrombosisRiskIndex": 1.0,
+                "overallClearanceMultiplier": 1.0,
+                "cpGMethylationMandatory": false,
+                "calculatedAtUtc": "2026-11-04T00:00:00Z"
+            }
+            """);
+
+        GenomicAnalysisRequest req = new()
+        {
+            PatientId = "pt-42",
+            MarkerIds = ["F5-LEIDEN"],
+            Regimen = TherapeuticRegimen.FemaleToMale
+        };
+
+        PatientGenomicProfile profile = await _client.AnalyzeGenomicsAsync(_localProfile, "token", req);
+        Assert.NotNull(profile);
+        Assert.Equal("pt-42", profile.PatientId);
+        Assert.Equal(TherapeuticRegimen.FemaleToMale, profile.Regimen);
+
+        _httpHandler.SetResponse("/api/genomics/analyze", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.AnalyzeGenomicsAsync(_localProfile, "token", req));
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.AnalyzeGenomicsAsync(null!, "token", req));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.AnalyzeGenomicsAsync(_localProfile, "", req));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.AnalyzeGenomicsAsync(_localProfile, "token", null!));
+
+        _httpHandler.SetResponse("/api/genomics/analyze", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.AnalyzeGenomicsAsync(_localProfile, "token", req));
     }
 
     /// <summary>

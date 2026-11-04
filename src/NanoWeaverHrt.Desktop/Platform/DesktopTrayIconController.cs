@@ -12,7 +12,7 @@ namespace NanoWeaverHrt.Desktop.Platform;
 /// // WHY:  Provides non-intrusive status monitoring and localized context menus when the primary dashboard window is hidden.
 /// // HOW:  Captures immutable <see cref="TrayMenuState"/> snapshots and provides localized menu item text via <see cref="IWeaverLocalizer"/>.
 /// </remarks>
-public sealed class DesktopTrayIconController : ITrayIconController
+public sealed class DesktopTrayIconController : ITrayIconController, IDisposable
 {
     /// <summary>
     /// Optional state transition callback for tests and UI runners.
@@ -179,5 +179,16 @@ public sealed class DesktopTrayIconController : ITrayIconController
         string statusText = GetLocalizedLabel(statusKey, statusKey);
         string tooltip = $"NanoWeaver HRT — {statusText}";
         ApplyState(new TrayMenuState(badge, tooltip, isMainWindowVisible, areNotificationsMuted, instanceSummaries));
+    }
+
+    /// <summary>
+    /// Disposes the tray controller, unhooking event subscriptions and releasing resources.
+    /// </summary>
+    public void Dispose()
+    {
+        // WHAT: Disposes the controller and detaches event handlers.
+        // WHY:  Ensures clean teardown without lingering event handler references.
+        // HOW:  Clears StateChanged event subscriptions.
+        StateChanged = null;
     }
 }

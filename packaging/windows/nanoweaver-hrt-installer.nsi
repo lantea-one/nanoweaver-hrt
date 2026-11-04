@@ -12,7 +12,7 @@ Unicode true
 !define PRODUCT_NAME "NanoWeaver HRT"
 !define PRODUCT_PUBLISHER "Lantea Sovereign Research"
 !define PRODUCT_WEB_SITE "https://git.lantea.one/lantea-one/nanoweaver-hrt"
-!define PRODUCT_VERSION "2026.11.04.2"
+!define PRODUCT_VERSION "2026.11.04.3"
 !define PRODUCT_EXE "NanoWeaverHrt.exe"
 !define PRODUCT_UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\NanoWeaverHrt"
 

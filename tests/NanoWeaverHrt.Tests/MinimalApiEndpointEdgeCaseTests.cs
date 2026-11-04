@@ -181,12 +181,37 @@ public sealed class MinimalApiEndpointEdgeCaseTests : IClassFixture<WebApplicati
         // HOW:  POSTs empty MultipartFormDataContent to /api/datasets/import.
         await EnsureUsersProvisionedAsync();
 
+        // 1. Both archive and manifest missing
         using HttpRequestMessage req = new(HttpMethod.Post, "/api/datasets/import");
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _adminToken);
         req.Content = new MultipartFormDataContent();
 
         HttpResponseMessage resp = await _client.SendAsync(req);
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+
+        // 2. Archive present but manifest missing (exercises archive != null && manifest == null branch)
+        using HttpRequestMessage reqArchiveOnly = new(HttpMethod.Post, "/api/datasets/import");
+        reqArchiveOnly.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _adminToken);
+        var archiveForm = new MultipartFormDataContent
+        {
+            { new ByteArrayContent([1, 2, 3]), "archive", "test.tar.gz" }
+        };
+        reqArchiveOnly.Content = archiveForm;
+
+        HttpResponseMessage respArchiveOnly = await _client.SendAsync(reqArchiveOnly);
+        Assert.Equal(HttpStatusCode.BadRequest, respArchiveOnly.StatusCode);
+
+        // 3. Manifest present but archive missing (exercises archive == null && manifest != null branch)
+        using HttpRequestMessage reqManifestOnly = new(HttpMethod.Post, "/api/datasets/import");
+        reqManifestOnly.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _adminToken);
+        var manifestForm = new MultipartFormDataContent
+        {
+            { new ByteArrayContent([1, 2, 3]), "manifest", "manifest.json" }
+        };
+        reqManifestOnly.Content = manifestForm;
+
+        HttpResponseMessage respManifestOnly = await _client.SendAsync(reqManifestOnly);
+        Assert.Equal(HttpStatusCode.BadRequest, respManifestOnly.StatusCode);
     }
 
     /// <summary>
@@ -208,13 +233,13 @@ public sealed class MinimalApiEndpointEdgeCaseTests : IClassFixture<WebApplicati
             Assert.Equal(HttpStatusCode.BadRequest, emptyResp.StatusCode);
         }
 
-        // 2. Already initialized -> 400 conflict (line 1698)
+        // 2. Already initialized with valid key -> 400 conflict with InvalidOperationException
         using (HttpRequestMessage conflictReq = new(HttpMethod.Post, "/api/setup/initialize"))
         {
             conflictReq.Content = JsonContent.Create(new
             {
                 AdminUsername = "second-admin",
-                PublicKeyBase64 = "MCowBQYDK2VwAyEA1234567890abcdef1234567890abcdef1234567890=="
+                PublicKeyBase64 = "MCowBQYDK2VwAyEA1234567890abcdef1234567890abcdef1234567890="
             });
             HttpResponseMessage conflictResp = await _client.SendAsync(conflictReq);
             Assert.Equal(HttpStatusCode.BadRequest, conflictResp.StatusCode);

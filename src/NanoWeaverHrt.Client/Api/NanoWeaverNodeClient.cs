@@ -7,12 +7,14 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using NanoWeaverHrt.Client.Security;
 using NanoWeaverHrt.Client.Storage;
+using NanoWeaverHrt.Compliance;
 using NanoWeaverHrt.Configuration;
 using NanoWeaverHrt.Endocrine;
 using NanoWeaverHrt.Fabrication;
 using NanoWeaverHrt.Fabrication.Gel;
 using NanoWeaverHrt.Fabrication.Opentrons;
 using NanoWeaverHrt.Federation;
+using NanoWeaverHrt.Genomics;
 using NanoWeaverHrt.Hardware.Benchmarking;
 using NanoWeaverHrt.Models;
 using NanoWeaverHrt.Security.Access;
@@ -889,6 +891,97 @@ public sealed class NanoWeaverNodeClient : INanoWeaverNodeClient
 
         List<SubjectGrant>? result = await resp.Content.ReadFromJsonAsync<List<SubjectGrant>>(JsonOptions, ct);
         return (IReadOnlyList<SubjectGrant>?)result ?? [];
+    }
+
+    /// <inheritdoc/>
+    public async Task<ComplianceStatusReport> GetComplianceStatusAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Retrieves regulatory compliance scorecard via GET /api/compliance/status.
+        // WHY:  Allows administrators to audit post-quantum encryption, HIPAA, GDPR, and FDA 21 CFR Part 11 status.
+        // HOW:  Validates arguments, sends GET with Bearer token, and deserializes ComplianceStatusReport.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/compliance/status");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        ComplianceStatusReport? result = await resp.Content.ReadFromJsonAsync<ComplianceStatusReport>(JsonOptions, ct);
+        return result ?? throw new NodeApiException((int)resp.StatusCode, "Empty compliance status response received.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<AuditRecord>> GetAuditLedgerAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        int? limit = null,
+        CancellationToken ct = default)
+    {
+        // WHAT: Retrieves immutable audit ledger records via GET /api/compliance/audit-ledger.
+        // WHY:  Permits verification of FDA 21 CFR Part 11 hash-chained audit trails.
+        // HOW:  Appends optional limit query parameter, sends authenticated GET, and deserializes list.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        string queryString = limit.HasValue ? $"?limit={limit.Value}" : string.Empty;
+        Uri endpointUri = new(baseUri, "/api/compliance/audit-ledger" + queryString);
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        List<AuditRecord>? result = await resp.Content.ReadFromJsonAsync<List<AuditRecord>>(JsonOptions, ct);
+        return (IReadOnlyList<AuditRecord>?)result ?? [];
+    }
+
+    /// <inheritdoc/>
+    public async Task<PatientGenomicProfile> AnalyzeGenomicsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        GenomicAnalysisRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Evaluates genetic markers via POST /api/genomics/analyze.
+        // WHY:  Enables automated risk detection (thrombophilia, AR insensitivity) and kinetic dosage adjustments.
+        // HOW:  Validates inputs, sends POST with JSON request, and deserializes PatientGenomicProfile.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/genomics/analyze");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        PatientGenomicProfile? result = await resp.Content.ReadFromJsonAsync<PatientGenomicProfile>(JsonOptions, ct);
+        return result ?? throw new NodeApiException((int)resp.StatusCode, "Empty genomic analysis response received.");
     }
 
     /// <summary>

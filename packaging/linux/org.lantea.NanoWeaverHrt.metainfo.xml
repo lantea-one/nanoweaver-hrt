@@ -26,6 +26,11 @@
   <url type="bugtracker">https://git.lantea.one/lantea-one/nanoweaver-hrt/issues</url>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="2026.11.04.3" date="2026-11-04">
+      <description>
+        <p>Code-complete milestone: Multi-engine connection resilience, client REST SDK compliance, and desktop tray controller hardening.</p>
+      </description>
+    </release>
     <release version="2026.11.04.2" date="2026-11-04">
       <description>
         <p>Code-complete release with multi-engine DDL compliance, client REST SDK parity, and zero ratchet regressions.</p>

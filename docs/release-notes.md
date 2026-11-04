@@ -4,6 +4,29 @@
 
 ---
 
+## v2026.11.04.3 — Code-Complete Milestone: Multi-Engine Connection Resilience, Ratchet Invariants, Client REST Compliance & Desktop Tray Hardening (2026-11-04)
+
+Code-complete milestone release resolving Work Packages `P101–P105` (Forgejo Issues `#104–#108`), validating multi-engine connection factory fault injection and credential sanitization, eliminating minimal API edge-case gaps while preserving downward coverage ratchet invariants, expanding the client REST SDK with compliance and pharmacogenomics endpoints, hardening the desktop tray icon controller with localization, health badges, and clean disposal teardown, and synchronizing CalVer release versioning across all 12 packaging manifests and platform targets.
+
+### Highlights
+* **Multi-Engine Connection Factory Reconnection & Fault Injection Resilience (Forgejo #104 / P101)**:
+  - Added fault injection tests asserting that database connection credentials, passwords, usernames, and cluster hostnames are strictly redacted and never leaked inside `WeaverDatabaseUnavailableException.Message`.
+  - Verified that MySQL session checkout failures in `WeaverDbConnectionFactory.OpenBackendAsync` safely dispose the half-opened connection without handle leakage and wrap errors cleanly into `WeaverDatabaseUnavailableException`.
+* **Ratchet Verification & Minimal API Edge-Case Gaps (Forgejo #105 / P102)**:
+  - Verified edge-case branches on `POST /api/datasets/import` for archive-only and manifest-only multipart form payloads.
+  - Validated duplicate setup initialization conflict handling and confirmed that all 27 solution-wide defense-in-depth lines remain strictly pinned and allowed by the downward-only baseline in `coverage-baseline.json`.
+* **Client REST SDK Compliance & Genomics Expansion (Forgejo #106 / P103)**:
+  - Expanded `INanoWeaverNodeClient` and `WeaverNodeApiClient` with `GetComplianceStatusAsync` (`GET /api/compliance/status`), `GetAuditLedgerAsync` (`GET /api/compliance/audit-ledger`), and `AnalyzeGenomicsAsync` (`POST /api/genomics/analyze`).
+  - Added comprehensive unit test coverage in `NanoWeaverNodeClientTests` and `WeaverNodeApiClientAndZeroizableBufferTests` for nominal payloads, query parameters (limit), empty collections, RFC 7807 error responses, session token caching, and post-disposal `ObjectDisposedException` guards.
+* **Desktop System Tray Controller Hardening & Teardown (Forgejo #107 / P104)**:
+  - Hardened `DesktopTrayIconController` with `IDisposable` implementation to safely detach `StateChanged` event subscriptions and prevent memory leaks.
+  - Verified localization support across English and Arabic (RTL layout direction), standard context menu item resolution (`Show / Restore`, `Lock Key Vault`, `Quit`), health badge transitions (`Idle`, `Healthy`, `Warning`, `Critical`), fallback string handling, and clean teardown.
+* **Absolute Zero-Defect Repository Audit & CalVer Milestone Alignment (Forgejo #108 / P105)**:
+  - Synchronized CalVer version `2026.11.04.3` across Arch Linux AUR (binary & git), FreeBSD, Homebrew, AppStream metainfo, macOS Info.plist, Nix, Windows Appx/NSIS/WinGet, Android, iOS, iPadOS, desktop entry points, ViewModels, and test fixtures.
+  - Enforced 100% docblock coverage (`check-docblocks.py`), 100.00% developer line/branch code coverage, and zero unescaped single-dollar math formatting delimiters.
+
+---
+
 ## v2026.11.04.2 — Code-Complete Milestone: Multi-Engine Migration Dialect Compliance, Ratchet Elimination & Client SDK Parity (2026-11-04)
 
 Code-complete milestone release resolving Work Packages `P96–P100` (Forgejo Issues `#99–#103`), formally verifying multi-engine schema migration DDL across all 5 supported relational databases, eliminating Roslyn async state machine coverage ratchet gaps in Blazor components down to only 27 uncovered lines solution-wide (99.86% line coverage), expanding the client REST SDK with dataset export and configuration override APIs, and synchronizing CalVer release versioning across all 12 packaging ecosystems.

@@ -6,6 +6,7 @@ using NanoWeaverHrt.Desktop;
 using NanoWeaverHrt.Desktop.Platform;
 using NanoWeaverHrt.Gui.Core.Services;
 using NanoWeaverHrt.Gui.Core.ViewModels;
+using NanoWeaverHrt.Localization;
 using NanoWeaverHrt.Mobile.Platform;
 using Xunit;
 
@@ -309,6 +310,86 @@ public sealed class DesktopAndMobilePlatformTests
     }
 
     /// <summary>
+    /// Verifies localization, right-to-left layout direction, badge transitions, menu resolution, and clean disposal
+    /// in <see cref="DesktopTrayIconController"/>.
+    /// </summary>
+    [Fact]
+    public void DesktopTrayIconController_Localization_Badges_Rtl_And_Teardown()
+    {
+        // WHAT: Tests DesktopTrayIconController localization, badges, RTL layout, and disposal teardown.
+        // WHY:  Issue #107 (P104): Guarantees robust tray controller lifecycle across all supported desktop environments.
+        // HOW:  Mocks IWeaverLocalizer, applies localized states, verifies language switching, checks RTL, and tests Dispose.
+        var localizerMock = new Mock<IWeaverLocalizer>();
+        localizerMock.Setup(l => l.GetString("Tray.Show", WeaverLanguage.English)).Returns("Show Window");
+        localizerMock.Setup(l => l.GetString("Tray.LockVault", WeaverLanguage.English)).Returns("Lock Vault");
+        localizerMock.Setup(l => l.GetString("Tray.Exit", WeaverLanguage.English)).Returns("Exit Program");
+        localizerMock.Setup(l => l.GetString("Status.Warning", WeaverLanguage.English)).Returns("Degraded Cluster");
+
+        using var controller = new DesktopTrayIconController(
+            localizer: localizerMock.Object,
+            language: WeaverLanguage.English);
+
+        Assert.Same(localizerMock.Object, controller.Localizer);
+        Assert.Equal(WeaverLanguage.English, controller.CurrentLanguage);
+        Assert.False(controller.IsRightToLeft);
+
+        Assert.Equal("Show Window", controller.LocalizedShowLabel);
+        Assert.Equal("Lock Vault", controller.LocalizedLockVaultLabel);
+        Assert.Equal("Exit Program", controller.LocalizedExitLabel);
+
+        IReadOnlyList<string> items = controller.GetStandardMenuItems();
+        Assert.Equal(3, items.Count);
+        Assert.Equal(["Show Window", "Lock Vault", "Exit Program"], items);
+
+        // Language switch to Arabic (RTL)
+        controller.SetLanguage(WeaverLanguage.Arabic);
+        Assert.Equal(WeaverLanguage.Arabic, controller.CurrentLanguage);
+        Assert.True(controller.IsRightToLeft);
+
+        // Fallbacks for missing/untranslated keys
+        Assert.Equal("FallbackVal", controller.GetLocalizedLabel("NonExistentKey", "FallbackVal"));
+        Assert.Equal("FallbackVal", controller.GetLocalizedLabel("", "FallbackVal"));
+
+        // Fallback when controller has no localizer
+        using var noLocController = new DesktopTrayIconController();
+        Assert.Equal("FallbackNoLoc", noLocController.GetLocalizedLabel("Key", "FallbackNoLoc"));
+        Assert.Equal("Show / Restore", noLocController.LocalizedShowLabel);
+        Assert.Equal("Lock Key Vault", noLocController.LocalizedLockVaultLabel);
+        Assert.Equal("Quit", noLocController.LocalizedExitLabel);
+
+        // ApplyLocalizedState
+        controller.SetLanguage(WeaverLanguage.English);
+        controller.ApplyLocalizedState(
+            TrayHealthBadge.Warning,
+            "Status.Warning",
+            isMainWindowVisible: false,
+            areNotificationsMuted: true,
+            instanceSummaries: ["Node 1: Throttled"]);
+
+        Assert.Equal(TrayHealthBadge.Warning, controller.CurrentState.Badge);
+        Assert.Equal("NanoWeaver HRT — Degraded Cluster", controller.CurrentState.TooltipText);
+        Assert.False(controller.CurrentState.IsMainWindowVisible);
+        Assert.True(controller.CurrentState.AreNotificationsMuted);
+        Assert.Single(controller.CurrentState.InstanceSummaries);
+
+        // Disposal unhooks StateChanged event
+        int eventCalls = 0;
+        controller.StateChanged += (_, _) => eventCalls++;
+
+        var state1 = new TrayMenuState(TrayHealthBadge.Healthy, "Tip 1", true, false, []);
+        controller.ApplyState(state1);
+        Assert.Equal(1, eventCalls);
+
+        controller.Dispose();
+
+        var state2 = new TrayMenuState(TrayHealthBadge.Critical, "Tip 2", false, false, []);
+        controller.ApplyState(state2);
+        // After Dispose, StateChanged is null so eventCalls remains 1
+        Assert.Equal(1, eventCalls);
+        Assert.Equal(state2, controller.CurrentState);
+    }
+
+    /// <summary>
     /// Verifies mutex acquisition, locking, release, and idempotency in <see cref="SingleInstanceMutexGuard"/>.
     /// </summary>
     [Fact]
@@ -369,17 +450,17 @@ public sealed class DesktopAndMobilePlatformTests
         stdout.GetStringBuilder().Clear();
         int exitCodeVersion = await DesktopProgram.RunAsync(["--version"], stdout, stderr);
         Assert.Equal(0, exitCodeVersion);
-        Assert.Equal("NanoWeaver HRT Desktop 2026.11.04.2", stdout.ToString().Trim());
+        Assert.Equal("NanoWeaver HRT Desktop 2026.11.04.3", stdout.ToString().Trim());
 
         stdout.GetStringBuilder().Clear();
         int exitCodeShortVersion = await DesktopProgram.RunAsync(["-v"], stdout, stderr);
         Assert.Equal(0, exitCodeShortVersion);
-        Assert.Equal("NanoWeaver HRT Desktop 2026.11.04.2", stdout.ToString().Trim());
+        Assert.Equal("NanoWeaver HRT Desktop 2026.11.04.3", stdout.ToString().Trim());
 
         stdout.GetStringBuilder().Clear();
         int exitCodeWordVersion = await DesktopProgram.RunAsync(["version"], stdout, stderr);
         Assert.Equal(0, exitCodeWordVersion);
-        Assert.Equal("NanoWeaver HRT Desktop 2026.11.04.2", stdout.ToString().Trim());
+        Assert.Equal("NanoWeaver HRT Desktop 2026.11.04.3", stdout.ToString().Trim());
         stdout.GetStringBuilder().Clear();
         int exitCodeHelp = await DesktopProgram.RunAsync(["--help"], stdout, stderr);
         Assert.Equal(0, exitCodeHelp);
@@ -398,14 +479,14 @@ public sealed class DesktopAndMobilePlatformTests
         var mockRunner = new Mock<IPlatformProcessRunner>();
         int exitCodeVerifyMock = await DesktopProgram.RunAsync(["--verify-self"], stdout, stderr, mockRunner.Object);
         Assert.Equal(0, exitCodeVerifyMock);
-        Assert.Contains("NanoWeaver HRT Desktop Platform Head v2026.11.04.2-sovereign [Verified]", stdout.ToString());
+        Assert.Contains("NanoWeaver HRT Desktop Platform Head v2026.11.04.3-sovereign [Verified]", stdout.ToString());
         Assert.Contains("NotificationSink: DesktopNativeNotificationSink", stdout.ToString());
 
         // --verify-self with default null runner (covers runner ?? new SystemPlatformProcessRunner())
         stdout.GetStringBuilder().Clear();
         int exitCodeVerifyDefault = await DesktopProgram.RunAsync(["--verify-self"], stdout, stderr);
         Assert.Equal(0, exitCodeVerifyDefault);
-        Assert.Contains("NanoWeaver HRT Desktop Platform Head v2026.11.04.2-sovereign [Verified]", stdout.ToString());
+        Assert.Contains("NanoWeaver HRT Desktop Platform Head v2026.11.04.3-sovereign [Verified]", stdout.ToString());
 
         // --headless-daemon (clean shutdown via cancellation token)
         stdout.GetStringBuilder().Clear();
@@ -614,10 +695,10 @@ public sealed class DesktopAndMobilePlatformTests
         // HOW:  Calls metadata getters, executes VerifySelf, and runs lifecycle loop with cancellation and invalid args.
         Assert.Equal("one.lantea.nanoweaver.hrt", MobileEntryPoint.GetBundleIdentifier());
         Assert.Equal("NanoWeaver HRT", MobileEntryPoint.GetAppDisplayName());
-        Assert.Equal("2026.11.04.2", MobileEntryPoint.GetAppVersion());
+        Assert.Equal("2026.11.04.3", MobileEntryPoint.GetAppVersion());
 
         string report = MobileEntryPoint.VerifySelf();
-        Assert.Contains("NanoWeaver HRT Mobile Platform Head v2026.11.04.2-sovereign [Verified: Android, iOS, iPadOS", report);
+        Assert.Contains("NanoWeaver HRT Mobile Platform Head v2026.11.04.3-sovereign [Verified: Android, iOS, iPadOS", report);
 
         var sink = new MobileNotificationSink("android");
 

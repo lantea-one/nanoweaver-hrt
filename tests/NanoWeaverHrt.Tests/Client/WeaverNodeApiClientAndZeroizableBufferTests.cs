@@ -2,12 +2,14 @@ using Moq;
 using NanoWeaverHrt.Client.Api;
 using NanoWeaverHrt.Client.Security;
 using NanoWeaverHrt.Client.Storage;
+using NanoWeaverHrt.Compliance;
 using NanoWeaverHrt.Configuration;
 using NanoWeaverHrt.Endocrine;
 using NanoWeaverHrt.Fabrication;
 using NanoWeaverHrt.Fabrication.Gel;
 using NanoWeaverHrt.Fabrication.Opentrons;
 using NanoWeaverHrt.Federation;
+using NanoWeaverHrt.Genomics;
 using NanoWeaverHrt.Hardware.Benchmarking;
 using NanoWeaverHrt.Models;
 using NanoWeaverHrt.Security.Access;
@@ -318,6 +320,19 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         innerMock.Setup(i => i.ListSubjectGrantsAsync(profile, "explicit_token", "r1", "s1", It.IsAny<CancellationToken>())).ReturnsAsync(grants);
         innerMock.Setup(i => i.ListSubjectGrantsAsync(profile, "cached_token", "r1", "s1", It.IsAny<CancellationToken>())).ReturnsAsync(grants);
 
+        var compRes = new ComplianceStatusReport { EncryptionAtRestAlgorithm = "ML-KEM-768", AuditSignatureAlgorithm = "ML-DSA-65", IsEncryptionAtRestActive = true, IsAuditLedgerIntact = true, AuditRecordCount = 1 };
+        innerMock.Setup(i => i.GetComplianceStatusAsync(profile, "explicit_token", It.IsAny<CancellationToken>())).ReturnsAsync(compRes);
+        innerMock.Setup(i => i.GetComplianceStatusAsync(profile, "cached_token", It.IsAny<CancellationToken>())).ReturnsAsync(compRes);
+
+        var auditRecords = (IReadOnlyList<AuditRecord>)[new AuditRecord { SequenceNumber = 1 }];
+        innerMock.Setup(i => i.GetAuditLedgerAsync(profile, "explicit_token", 10, It.IsAny<CancellationToken>())).ReturnsAsync(auditRecords);
+        innerMock.Setup(i => i.GetAuditLedgerAsync(profile, "cached_token", 10, It.IsAny<CancellationToken>())).ReturnsAsync(auditRecords);
+
+        var genReq = new GenomicAnalysisRequest { PatientId = "pt1", Regimen = TherapeuticRegimen.FemaleToMale, MarkerIds = [] };
+        var genProfile = new PatientGenomicProfile { PatientId = "pt1", Regimen = TherapeuticRegimen.FemaleToMale, ObservedMarkers = [], Alerts = [], ThrombosisRiskIndex = 1.0, OverallClearanceMultiplier = 1.0, CpGMethylationMandatory = false, CalculatedAtUtc = "2026-11-04T00:00:00Z" };
+        innerMock.Setup(i => i.AnalyzeGenomicsAsync(profile, "explicit_token", genReq, It.IsAny<CancellationToken>())).ReturnsAsync(genProfile);
+        innerMock.Setup(i => i.AnalyzeGenomicsAsync(profile, "cached_token", genReq, It.IsAny<CancellationToken>())).ReturnsAsync(genProfile);
+
         using var client = new WeaverNodeApiClient(innerMock.Object);
 
         // 1. Missing token without cache throws InvalidOperationException
@@ -342,6 +357,9 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.SetConfigurationOverrideAsync(profile, "", cfgReq));
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.DeleteConfigurationOverrideAsync(profile, "", "k1"));
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.ListSubjectGrantsAsync(profile, "", "r1", "s1"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetComplianceStatusAsync(profile, ""));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetAuditLedgerAsync(profile, "", 10));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.AnalyzeGenomicsAsync(profile, "", genReq));
 
         // 2. Call with explicit token
         var snapRes1 = await client.PollSnapshotAsync(profile, "explicit_token");
@@ -403,6 +421,15 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
 
         var grantRes1 = await client.ListSubjectGrantsAsync(profile, "explicit_token", "r1", "s1");
         Assert.Single(grantRes1);
+
+        var compRes1 = await client.GetComplianceStatusAsync(profile, "explicit_token");
+        Assert.True(compRes1.IsAuditLedgerIntact);
+
+        var auditRes1 = await client.GetAuditLedgerAsync(profile, "explicit_token", 10);
+        Assert.Single(auditRes1);
+
+        var genRes1 = await client.AnalyzeGenomicsAsync(profile, "explicit_token", genReq);
+        Assert.Equal("pt1", genRes1.PatientId);
 
         // 3. Set cached token and call with empty token argument
         client.SetSessionToken("cached_token");
@@ -467,6 +494,15 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         var grantRes2 = await client.ListSubjectGrantsAsync(profile, "", "r1", "s1");
         Assert.Single(grantRes2);
 
+        var compRes2 = await client.GetComplianceStatusAsync(profile, "");
+        Assert.True(compRes2.IsAuditLedgerIntact);
+
+        var auditRes2 = await client.GetAuditLedgerAsync(profile, "", 10);
+        Assert.Single(auditRes2);
+
+        var genRes2 = await client.AnalyzeGenomicsAsync(profile, "", genReq);
+        Assert.Equal("pt1", genRes2.PatientId);
+
         // 4. Set whitespace token buffer to exercise whitespace fallback exception
         using var whitespaceBuf = ZeroizableSecretBuffer.FromUtf8("   ");
         client.SetSessionToken(whitespaceBuf);
@@ -516,5 +552,8 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.SetConfigurationOverrideAsync(profile, "token", new ConfigOverrideRequest { Key = "k", Value = "v" }));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.DeleteConfigurationOverrideAsync(profile, "token", "k"));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ListSubjectGrantsAsync(profile, "token", "subj1"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetComplianceStatusAsync(profile, "token"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetAuditLedgerAsync(profile, "token", 10));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.AnalyzeGenomicsAsync(profile, "token", new GenomicAnalysisRequest { PatientId = "pt1", Regimen = TherapeuticRegimen.FemaleToMale }));
     }
 }

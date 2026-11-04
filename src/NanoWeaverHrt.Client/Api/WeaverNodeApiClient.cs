@@ -1,11 +1,13 @@
 using NanoWeaverHrt.Client.Security;
 using NanoWeaverHrt.Client.Storage;
+using NanoWeaverHrt.Compliance;
 using NanoWeaverHrt.Configuration;
 using NanoWeaverHrt.Endocrine;
 using NanoWeaverHrt.Fabrication;
 using NanoWeaverHrt.Fabrication.Gel;
 using NanoWeaverHrt.Fabrication.Opentrons;
 using NanoWeaverHrt.Federation;
+using NanoWeaverHrt.Genomics;
 using NanoWeaverHrt.Hardware.Benchmarking;
 using NanoWeaverHrt.Models;
 using NanoWeaverHrt.Security.Access;
@@ -475,6 +477,50 @@ public sealed class WeaverNodeApiClient : INanoWeaverNodeClient, IDisposable
         ThrowIfDisposed();
         string effectiveToken = ResolveBearerToken(bearerToken);
         return _innerClient.ListSubjectGrantsAsync(profile, effectiveToken, researcher, subject, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<ComplianceStatusReport> GetComplianceStatusAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Queries compliance status report using provided or cached session token.
+        // WHY:  Allows checking regulatory scorecards without managing raw Bearer strings.
+        // HOW:  Resolves effective token, delegates to _innerClient.GetComplianceStatusAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GetComplianceStatusAsync(profile, effectiveToken, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<AuditRecord>> GetAuditLedgerAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        int? limit = null,
+        CancellationToken ct = default)
+    {
+        // WHAT: Queries immutable audit log records using provided or cached session token.
+        // WHY:  Permits verification of FDA 21 CFR Part 11 hash-chained audit trails.
+        // HOW:  Resolves effective token, delegates to _innerClient.GetAuditLedgerAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GetAuditLedgerAsync(profile, effectiveToken, limit, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<PatientGenomicProfile> AnalyzeGenomicsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        GenomicAnalysisRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches genomic analysis request using provided or cached session token.
+        // WHY:  Calculates kinetic modifiers and alerts from patient SNPs.
+        // HOW:  Resolves effective token, delegates to _innerClient.AnalyzeGenomicsAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.AnalyzeGenomicsAsync(profile, effectiveToken, request, ct);
     }
 
     /// <inheritdoc/>

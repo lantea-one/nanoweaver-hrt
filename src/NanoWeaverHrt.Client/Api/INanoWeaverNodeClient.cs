@@ -1,10 +1,12 @@
 using NanoWeaverHrt.Client.Storage;
+using NanoWeaverHrt.Compliance;
 using NanoWeaverHrt.Configuration;
 using NanoWeaverHrt.Endocrine;
 using NanoWeaverHrt.Fabrication;
 using NanoWeaverHrt.Fabrication.Gel;
 using NanoWeaverHrt.Fabrication.Opentrons;
 using NanoWeaverHrt.Federation;
+using NanoWeaverHrt.Genomics;
 using NanoWeaverHrt.Hardware.Benchmarking;
 using NanoWeaverHrt.Models;
 using NanoWeaverHrt.Security.Access;
@@ -304,5 +306,45 @@ public interface INanoWeaverNodeClient
         string bearerToken,
         string? researcher = null,
         string? subject = null,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Retrieves current regulatory compliance scorecard and post-quantum encryption status via GET /api/compliance/status (Administrator role required).
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Regulatory compliance and cryptographic status scorecard.</returns>
+    Task<ComplianceStatusReport> GetComplianceStatusAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Retrieves FDA 21 CFR Part 11 immutable hash-chained audit log records via GET /api/compliance/audit-ledger (Administrator role required).
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="limit">Maximum number of audit records to retrieve (defaults to 100).</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Collection of signed audit ledger records.</returns>
+    Task<IReadOnlyList<AuditRecord>> GetAuditLedgerAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        int? limit = null,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Evaluates patient genetic markers and generates clinical severity-tiered call-out alerts via POST /api/genomics/analyze.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="request">Genomic analysis request specifying patient ID, marker IDs, and HRT regimen.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Synthesized patient genomic profile containing severity alerts and kinetic adjustments.</returns>
+    Task<PatientGenomicProfile> AnalyzeGenomicsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        GenomicAnalysisRequest request,
         CancellationToken ct = default);
 }

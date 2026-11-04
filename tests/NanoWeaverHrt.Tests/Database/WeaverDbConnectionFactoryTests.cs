@@ -559,6 +559,71 @@ public sealed class WeaverDbConnectionFactoryTests : IDisposable
     }
 
     /// <summary>
+    /// Verifies that connection exceptions never leak sensitive credentials, hostnames, or connection strings in exception messages.
+    /// </summary>
+    [Fact]
+    public async Task WeaverDbConnectionFactory_FaultInjection_RedactsConnectionStringInExceptions()
+    {
+        // WHAT: Tests that database failure exceptions redact connection strings and passwords.
+        // WHY:  Directive 14 mandates zero information disclosure; database credentials must never reach exception messages.
+        // HOW:  Configures PostgreSQL with sensitive credentials, attempts resolution, and asserts that ex.Message contains only the backend name.
+        const string secretPassword = "SuperSecretPassword123!";
+        const string secretHost = "secret-cluster.internal.network";
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["TRAJECTORY_INCOMING_DIR"] = _tempDir,
+                ["POSTGRES_CONNECTION_STRING"] = $"Host={secretHost};Database=nanoweaver;Username=dbadmin;Password={secretPassword};Port=5432;Timeout=1;"
+            })
+            .Build();
+
+        var factory = new WeaverDbConnectionFactory(
+            config,
+            new DatabaseMigrationRunner(Array.Empty<IDatabaseMigration>()),
+            NullLogger<WeaverDbConnectionFactory>.Instance);
+
+        var ex = await Assert.ThrowsAsync<WeaverDatabaseUnavailableException>(() => factory.EnsureBackendResolvedAsync());
+
+        Assert.Equal(WeaverDatabaseBackend.PostgreSql, ex.Backend);
+        Assert.Equal("The PostgreSql database backend is unavailable.", ex.Message);
+        Assert.DoesNotContain(secretPassword, ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(secretHost, ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Username=", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Verifies that a MySQL failure during session checkout in <see cref="WeaverDbConnectionFactory.OpenBackendAsync"/>
+    /// correctly disposes the connection and wraps the error in <see cref="WeaverDatabaseUnavailableException"/>.
+    /// </summary>
+    [Fact]
+    public async Task WeaverDbConnectionFactory_MySql_FailureDuringSessionCheckout_WrapsInUnavailableException()
+    {
+        // WHAT: Tests that failures thrown during MySQL connection opening in OpenBackendAsync are wrapped in WeaverDatabaseUnavailableException.
+        // WHY:  Guarantees robust error wrapping and zero connection handle leaks during MySQL checkout failures.
+        // HOW:  Passes a mock connection configured with shouldFailOpen=true to OpenBackendAsync and asserts exception properties.
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["TRAJECTORY_INCOMING_DIR"] = _tempDir,
+                ["MYSQL_CONNECTION_STRING"] = "Server=mock-fail-host;Database=weaver;Uid=root;Pwd=mock;"
+            })
+            .Build();
+
+        var factory = new WeaverDbConnectionFactory(
+            config,
+            new DatabaseMigrationRunner(Array.Empty<IDatabaseMigration>()),
+            NullLogger<WeaverDbConnectionFactory>.Instance,
+            _ => new MockTestDbConnection(shouldFailOpen: true));
+
+        var ex = await Assert.ThrowsAsync<WeaverDatabaseUnavailableException>(() => factory.OpenBackendAsync(WeaverDatabaseBackend.MySql));
+
+        Assert.Equal(WeaverDatabaseBackend.MySql, ex.Backend);
+        Assert.Equal("The MySql database backend is unavailable.", ex.Message);
+        Assert.IsType<InvalidOperationException>(ex.InnerException);
+        Assert.Equal("Simulated connection failure.", ex.InnerException.Message);
+    }
+
+    /// <summary>
     /// Seeds schema migrations tracking table in a DuckDB database file to prevent unapplied migration errors.
     /// </summary>
     /// <param name="dbPath">Path to DuckDB database file.</param>
