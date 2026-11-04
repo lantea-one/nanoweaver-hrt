@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
-  "seeded_from_commit": "15807349fc447f2e68db5228a6d2897d8b76504e",
+  "seeded_from_commit": "572baadd91b3ba5ea2be15f0e21467cb142d3140",
   "seeded_on_utc": "2026-11-04",
   "measurement": {
     "runsettings": "coverage-full.runsettings",
     "weaver_test_postgres": "unset"
   },
-  "line_rate": 99.86,
-  "branch_rate": 98.08,
+  "line_rate": 99.87,
+  "branch_rate": 98.15,
   "uncovered_lines_total": 27,
   "classes": {
     "NanoWeaverHrt.Program/<>c": 1,

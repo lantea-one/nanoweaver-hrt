@@ -11,6 +11,7 @@ using NanoWeaverHrt.Genomics;
 using NanoWeaverHrt.Hardware.Benchmarking;
 using NanoWeaverHrt.Models;
 using NanoWeaverHrt.Security.Access;
+using NanoWeaverHrt.Services.Stack;
 
 namespace NanoWeaverHrt.Client.Api;
 
@@ -627,5 +628,149 @@ public interface INanoWeaverNodeClient
     Task<ShareKeyConsumeResult> RedeemShareKeyAsync(
         InstanceProfile profile,
         RedeemShareKeyRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Retrieves a single cohort group record by its identifier via GET /api/subject-groups/{groupId}.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="groupId">Identifier of the cohort group.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The <see cref="SubjectGroup"/> record details.</returns>
+    Task<SubjectGroup> GetSubjectGroupAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string groupId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Updates the display name or description of an existing cohort group via PUT /api/subject-groups/{groupId}.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="groupId">Identifier of the cohort group to update.</param>
+    /// <param name="request">Payload containing updated group name and optional description.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The updated <see cref="SubjectGroup"/> record.</returns>
+    Task<SubjectGroup> UpdateSubjectGroupAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string groupId,
+        UpdateSubjectGroupRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Lists all patient subjects accessible to the current authenticated caller via GET /api/subject-access/my-subjects.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>List of accessible subject usernames with effective access levels.</returns>
+    Task<IReadOnlyList<AccessibleSubjectItem>> ListMySubjectsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Retrieves standard built-in DNA origami fabrication presets via GET /api/fabrication/presets.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>List of sample DNA origami architectures and geometries.</returns>
+    Task<IReadOnlyList<DnaOrigamiSample>> GetFabricationPresetsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Synthesizes staple routing manifest, annealing schedule, and SHA-256 hash via POST /api/fabrication/generate.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="request">Fabrication parameters specifying scaffold sequence, geometry, and target dissociation constant.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Synthesized <see cref="FabricationPackage"/> ready for pipetting.</returns>
+    Task<FabricationPackage> GenerateFabricationProtocolAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        FabricationGenerateRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Retrieves standard clinical genetic panels for rapid patient profiling via GET /api/genomics/presets.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>List of preset clinical genomic profiles.</returns>
+    Task<IReadOnlyList<PatientGenomicProfile>> GetGenomicPresetsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Retrieves catalog of clinically characterized pharmacogenomic markers via GET /api/genomics/markers.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>List of genetic markers and risk alleles.</returns>
+    Task<IReadOnlyList<GeneticMarker>> GetGenomicMarkersAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Retrieves real-time status and health telemetry for all container services via GET /api/services.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>List of runtime statuses for database, cache, and simulation engines.</returns>
+    Task<IReadOnlyList<StackServiceInfo>> GetStackServicesAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Tests connectivity and latency to a single stack dependency via POST /api/services/ping/{serviceId}.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="serviceId">Identifier of target service.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Refreshed health and latency metrics for the service.</returns>
+    Task<StackServiceInfo> PingStackServiceAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string serviceId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Calculates pharmacodynamic hormone concentration stabilization curves over a 72-hour horizon via GET /api/endocrine/kinetics.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Chronological sequence of simulated hormone concentration curve points.</returns>
+    Task<IReadOnlyList<HormoneCurvePoint>> GetEndocrineKineticsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Toggles synthetic endocrine regulatory setpoints between Estrogenic and Androgenic dominance via POST /api/endocrine/toggle.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="request">Request specifying target dominance regime and setpoint adjustments.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Updated target endocrine profile.</returns>
+    Task<EndocrineTargetProfile> ToggleEndocrineSwitchAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        ToggleSwitchRequest request,
         CancellationToken ct = default);
 }

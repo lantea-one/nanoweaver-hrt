@@ -4,6 +4,39 @@
 
 ---
 
+## v2026.11.04.7 — Code-Complete Milestone: Full Client REST SDK Parity (Subject Access, Fabrication, Stack Services, Endocrine Kinetics) & Platform Diagnostics Hardening (2026-11-04)
+
+Code-complete milestone release resolving Work Packages `P121–P125` (Forgejo Issues `#124–#128`), expanding the client REST SDK with 11 new endpoints covering cohort group introspection, updates, subject group grants, fabrication origami presets, nanocarrier synthesis protocol generation, clinical genomic panels, stack service telemetry and health pinging, and dynamic endocrine kinetics and molecular switch toggles; hardening desktop tray controller notification resilience under process runner execution failures; and synchronizing CalVer release versioning across all 12 packaging manifests and platform targets.
+
+### Highlights
+* **Client REST SDK Expansion: Cohort Group Detail, Update & Subject Introspection (Forgejo #124 / P121)**:
+  - Extended `INanoWeaverNodeClient`, `NanoWeaverNodeClient`, and `WeaverNodeApiClient` with 3 cohort and subject introspection methods:
+    1. `GetSubjectGroupAsync` (`GET /api/subject-groups/{groupId}`)
+    2. `UpdateSubjectGroupAsync` (`PUT /api/subject-groups/{groupId}`)
+    3. `ListMySubjectsAsync` (`GET /api/subject-access/my-subjects`)
+  - Added comprehensive unit tests in `NanoWeaverNodeClientTests.cs` and `WeaverNodeApiClientAndZeroizableBufferTests.cs` verifying authenticated retrieval, payload mutations, and RFC 7807 error propagation.
+* **Client REST SDK Expansion: Fabrication Presets & Synthesis Protocol Generation (Forgejo #125 / P122)**:
+  - Added direct REST client methods for nanocarrier synthesis and pharmacogenomic profiling:
+    1. `GetFabricationPresetsAsync` (`GET /api/fabrication/presets`)
+    2. `GenerateFabricationProtocolAsync` (`POST /api/fabrication/generate`)
+    3. `GetGenomicPresetsAsync` (`GET /api/genomics/presets`)
+    4. `GetGenomicMarkersAsync` (`GET /api/genomics/markers`)
+  - Validated deterministic serialization and deserialization of DNA origami nanocarrier chassis, staples, and pharmacogenomic marker catalogs.
+* **Client REST SDK Expansion: Stack Services Telemetry & Endocrine Kinetics (Forgejo #126 / P123)**:
+  - Added direct REST client methods for system infrastructure and endocrine state simulation:
+    1. `GetStackServicesAsync` (`GET /api/services`)
+    2. `PingStackServiceAsync` (`POST /api/services/ping/{serviceId}`)
+    3. `GetEndocrineKineticsAsync` (`GET /api/endocrine/kinetics`)
+    4. `ToggleEndocrineSwitchAsync` (`POST /api/endocrine/toggle`)
+  - Added unit test fixtures validating multi-service health state inspection and closed-loop hormone curve point evaluation.
+* **Desktop Tray Controller Notification Resilience & Instance Manager Status Tests (Forgejo #127 / P124)**:
+  - Added test suites verifying `DesktopTrayIconController` state transitions across all `TrayHealthBadge` values (`Idle`, `Healthy`, `Warning`, `Critical`) and event dispatch integrity.
+  - Added test suites verifying `DesktopNativeNotificationSink` resilience across Linux (`notify-send`), macOS (`osascript`), and Windows (`powershell`) when underlying platform process runners return failure or encounter execution errors.
+  - Hardened `InstanceManagerViewModel` status messaging, exception suppression, and `IsBusy` reset behavior when repository initialization or profile listing fails.
+* **Absolute Zero-Defect Repository Audit & CalVer Milestone Alignment (Forgejo #128 / P125)**:
+  - Synchronized CalVer version `2026.11.04.7` across Arch Linux AUR (binary & git), FreeBSD, Homebrew, AppStream metainfo, macOS Info.plist, Nix, Windows Appx/NSIS/WinGet, Android, iOS, iPadOS, desktop entry points, ViewModels, and test fixtures.
+  - Passed all 8 checks of the Universal Pre-Flight Verification Gate (`./scripts/verify-all.sh`) with 100.00% line and branch coverage.
+
 ## v2026.11.04.6 — Code-Complete Milestone: Zero NotImplementedException Policy, Client REST SDK Cohort & Peering Parity, and ViewModel Diagnostics Hardening (2026-11-04)
 
 Code-complete milestone release resolving Work Packages `P116–P120` (Forgejo Issues `#119–#123`), enforcing an absolute zero `NotImplementedException` policy across all production and test assemblies, expanding the client REST SDK with cohort membership management, group-level researcher access grants, share key generation, and peering token redemption, hardening desktop and mobile UI ViewModels against selection resets, whitespace inputs, and multi-field search filtering, and synchronizing CalVer release versioning across all 12 packaging manifests and platform targets.

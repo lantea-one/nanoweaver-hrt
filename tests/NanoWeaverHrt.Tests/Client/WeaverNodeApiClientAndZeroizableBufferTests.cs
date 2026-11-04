@@ -15,6 +15,7 @@ using NanoWeaverHrt.Hardware.Benchmarking;
 using NanoWeaverHrt.Models;
 using NanoWeaverHrt.Security.Access;
 using NanoWeaverHrt.Security.Authentication;
+using NanoWeaverHrt.Services.Stack;
 using Xunit;
 
 namespace NanoWeaverHrt.Tests.Client;
@@ -416,6 +417,62 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         var redeemRes = new ShareKeyConsumeResult { Success = true, Message = "Token redeemed.", Record = null, PeerSessionToken = "jwt" };
         innerMock.Setup(i => i.RedeemShareKeyAsync(profile, redeemReq, It.IsAny<CancellationToken>())).ReturnsAsync(redeemRes);
 
+        var updateGrpReq = new UpdateSubjectGroupRequest { Name = "Updated Cohort" };
+        innerMock.Setup(i => i.GetSubjectGroupAsync(profile, "explicit_token", "grp1", It.IsAny<CancellationToken>())).ReturnsAsync(subjGroupRec);
+        innerMock.Setup(i => i.GetSubjectGroupAsync(profile, "cached_token", "grp1", It.IsAny<CancellationToken>())).ReturnsAsync(subjGroupRec);
+        innerMock.Setup(i => i.UpdateSubjectGroupAsync(profile, "explicit_token", "grp1", updateGrpReq, It.IsAny<CancellationToken>())).ReturnsAsync(subjGroupRec);
+        innerMock.Setup(i => i.UpdateSubjectGroupAsync(profile, "cached_token", "grp1", updateGrpReq, It.IsAny<CancellationToken>())).ReturnsAsync(subjGroupRec);
+
+        var mySubjects = new[] { new AccessibleSubjectItem { SubjectUsername = "s1", EffectiveLevel = SubjectAccessLevel.FullReadAccess } };
+        innerMock.Setup(i => i.ListMySubjectsAsync(profile, "explicit_token", It.IsAny<CancellationToken>())).ReturnsAsync(mySubjects);
+        innerMock.Setup(i => i.ListMySubjectsAsync(profile, "cached_token", It.IsAny<CancellationToken>())).ReturnsAsync(mySubjects);
+
+        var fabPresets = new FabricationService().GetPresetSamples();
+        innerMock.Setup(i => i.GetFabricationPresetsAsync(profile, "explicit_token", It.IsAny<CancellationToken>())).ReturnsAsync(fabPresets);
+        innerMock.Setup(i => i.GetFabricationPresetsAsync(profile, "cached_token", It.IsAny<CancellationToken>())).ReturnsAsync(fabPresets);
+
+        var fabGenReq = new FabricationGenerateRequest { SequenceOrSampleId = "6hb" };
+        FabricationService fabService = new();
+        var fabPkg = fabService.GenerateFabricationPackage(fabPresets[0].Id, TherapeuticRegimen.MaleToFemale, "Hexagonal 6-Helix Bundle Nanotube (6HB)", 4.2);
+        innerMock.Setup(i => i.GenerateFabricationProtocolAsync(profile, "explicit_token", fabGenReq, It.IsAny<CancellationToken>())).ReturnsAsync(fabPkg);
+        innerMock.Setup(i => i.GenerateFabricationProtocolAsync(profile, "cached_token", fabGenReq, It.IsAny<CancellationToken>())).ReturnsAsync(fabPkg);
+
+        var pharmaService = new PharmacogenomicsService();
+        var genPresets = new[] { pharmaService.AnalyzeProfile("pt1", Array.Empty<string>(), TherapeuticRegimen.MaleToFemale) };
+        innerMock.Setup(i => i.GetGenomicPresetsAsync(profile, "explicit_token", It.IsAny<CancellationToken>())).ReturnsAsync(genPresets);
+        innerMock.Setup(i => i.GetGenomicPresetsAsync(profile, "cached_token", It.IsAny<CancellationToken>())).ReturnsAsync(genPresets);
+
+        var genMarkers = pharmaService.GetCatalog();
+        innerMock.Setup(i => i.GetGenomicMarkersAsync(profile, "explicit_token", It.IsAny<CancellationToken>())).ReturnsAsync(genMarkers);
+        innerMock.Setup(i => i.GetGenomicMarkersAsync(profile, "cached_token", It.IsAny<CancellationToken>())).ReturnsAsync(genMarkers);
+
+        var stackInfo = new StackServiceInfo
+        {
+            ServiceId = "valkey",
+            DisplayName = "Valkey",
+            RoleDescription = "Cache",
+            EndpointOrLocation = "valkey://127.0.0.1:6379",
+            Health = ServiceHealthState.Healthy,
+            StatusMessage = "Operational",
+            TechnologyStack = "Valkey"
+        };
+        var stackSvcs = new[] { stackInfo };
+        innerMock.Setup(i => i.GetStackServicesAsync(profile, "explicit_token", It.IsAny<CancellationToken>())).ReturnsAsync(stackSvcs);
+        innerMock.Setup(i => i.GetStackServicesAsync(profile, "cached_token", It.IsAny<CancellationToken>())).ReturnsAsync(stackSvcs);
+
+        innerMock.Setup(i => i.PingStackServiceAsync(profile, "explicit_token", "valkey", It.IsAny<CancellationToken>())).ReturnsAsync(stackInfo);
+        innerMock.Setup(i => i.PingStackServiceAsync(profile, "cached_token", "valkey", It.IsAny<CancellationToken>())).ReturnsAsync(stackInfo);
+
+        EndocrineStateEngine stateEngine = new();
+        var kinetics = stateEngine.SimulateKinetics();
+        innerMock.Setup(i => i.GetEndocrineKineticsAsync(profile, "explicit_token", It.IsAny<CancellationToken>())).ReturnsAsync(kinetics);
+        innerMock.Setup(i => i.GetEndocrineKineticsAsync(profile, "cached_token", It.IsAny<CancellationToken>())).ReturnsAsync(kinetics);
+
+        var toggleReq = new ToggleSwitchRequest { TargetState = ToggleState.EstrogenicDominant };
+        var toggleRes = stateEngine.GetActiveProfile();
+        innerMock.Setup(i => i.ToggleEndocrineSwitchAsync(profile, "explicit_token", toggleReq, It.IsAny<CancellationToken>())).ReturnsAsync(toggleRes);
+        innerMock.Setup(i => i.ToggleEndocrineSwitchAsync(profile, "cached_token", toggleReq, It.IsAny<CancellationToken>())).ReturnsAsync(toggleRes);
+
         using var client = new WeaverNodeApiClient(innerMock.Object);
 
         // 1. Missing token without cache throws InvalidOperationException
@@ -462,6 +519,17 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.CreateGroupGrantAsync(profile, "", "grp1", groupGrantReq));
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.RevokeGroupGrantAsync(profile, "", "grp1", "r1"));
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.CreateShareKeyAsync(profile, "", createShareKeyReq));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetSubjectGroupAsync(profile, "", "grp1"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.UpdateSubjectGroupAsync(profile, "", "grp1", updateGrpReq));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.ListMySubjectsAsync(profile, ""));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetFabricationPresetsAsync(profile, ""));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.GenerateFabricationProtocolAsync(profile, "", fabGenReq));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetGenomicPresetsAsync(profile, ""));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetGenomicMarkersAsync(profile, ""));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetStackServicesAsync(profile, ""));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.PingStackServiceAsync(profile, "", "valkey"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetEndocrineKineticsAsync(profile, ""));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.ToggleEndocrineSwitchAsync(profile, "", toggleReq));
 
         // 2. Call with explicit token
         var snapRes1 = await client.PollSnapshotAsync(profile, "explicit_token");
@@ -585,6 +653,39 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
 
         var redeemRes1 = await client.RedeemShareKeyAsync(profile, redeemReq);
         Assert.True(redeemRes1.Success);
+
+        var grpDetail1 = await client.GetSubjectGroupAsync(profile, "explicit_token", "grp1");
+        Assert.Equal("grp1", grpDetail1.Id);
+
+        var updatedGrp1 = await client.UpdateSubjectGroupAsync(profile, "explicit_token", "grp1", updateGrpReq);
+        Assert.Equal("grp1", updatedGrp1.Id);
+
+        var mySubj1 = await client.ListMySubjectsAsync(profile, "explicit_token");
+        Assert.Single(mySubj1);
+
+        var fabPresets1 = await client.GetFabricationPresetsAsync(profile, "explicit_token");
+        Assert.Equal(fabPresets.Count, fabPresets1.Count);
+
+        var fabGen1 = await client.GenerateFabricationProtocolAsync(profile, "explicit_token", fabGenReq);
+        Assert.Equal(fabPkg.PackageId, fabGen1.PackageId);
+
+        var genPresets1 = await client.GetGenomicPresetsAsync(profile, "explicit_token");
+        Assert.Single(genPresets1);
+
+        var genMarkers1 = await client.GetGenomicMarkersAsync(profile, "explicit_token");
+        Assert.Equal(genMarkers.Count, genMarkers1.Count);
+
+        var stackSvcs1 = await client.GetStackServicesAsync(profile, "explicit_token");
+        Assert.Single(stackSvcs1);
+
+        var pingSvc1 = await client.PingStackServiceAsync(profile, "explicit_token", "valkey");
+        Assert.Equal("valkey", pingSvc1.ServiceId);
+
+        var kinetics1 = await client.GetEndocrineKineticsAsync(profile, "explicit_token");
+        Assert.Equal(kinetics.Count, kinetics1.Count);
+
+        var toggleProf1 = await client.ToggleEndocrineSwitchAsync(profile, "explicit_token", toggleReq);
+        Assert.Equal(toggleRes.TargetState, toggleProf1.TargetState);
 
         // 3. Set cached token and call with empty token argument
         client.SetSessionToken("cached_token");
@@ -711,6 +812,39 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         var redeemRes2 = await client.RedeemShareKeyAsync(profile, redeemReq);
         Assert.True(redeemRes2.Success);
 
+        var grpDetail2 = await client.GetSubjectGroupAsync(profile, "", "grp1");
+        Assert.Equal("grp1", grpDetail2.Id);
+
+        var updatedGrp2 = await client.UpdateSubjectGroupAsync(profile, "", "grp1", updateGrpReq);
+        Assert.Equal("grp1", updatedGrp2.Id);
+
+        var mySubj2 = await client.ListMySubjectsAsync(profile, "");
+        Assert.Single(mySubj2);
+
+        var fabPresets2 = await client.GetFabricationPresetsAsync(profile, "");
+        Assert.Equal(fabPresets.Count, fabPresets2.Count);
+
+        var fabGen2 = await client.GenerateFabricationProtocolAsync(profile, "", fabGenReq);
+        Assert.Equal(fabPkg.PackageId, fabGen2.PackageId);
+
+        var genPresets2 = await client.GetGenomicPresetsAsync(profile, "");
+        Assert.Single(genPresets2);
+
+        var genMarkers2 = await client.GetGenomicMarkersAsync(profile, "");
+        Assert.Equal(genMarkers.Count, genMarkers2.Count);
+
+        var stackSvcs2 = await client.GetStackServicesAsync(profile, "");
+        Assert.Single(stackSvcs2);
+
+        var pingSvc2 = await client.PingStackServiceAsync(profile, "", "valkey");
+        Assert.Equal("valkey", pingSvc2.ServiceId);
+
+        var kinetics2 = await client.GetEndocrineKineticsAsync(profile, "");
+        Assert.Equal(kinetics.Count, kinetics2.Count);
+
+        var toggleProf2 = await client.ToggleEndocrineSwitchAsync(profile, "", toggleReq);
+        Assert.Equal(toggleRes.TargetState, toggleProf2.TargetState);
+
         // 4. Set whitespace token buffer to exercise whitespace fallback exception
         using var whitespaceBuf = ZeroizableSecretBuffer.FromUtf8("   ");
         client.SetSessionToken(whitespaceBuf);
@@ -783,5 +917,16 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.RevokeGroupGrantAsync(profile, "token", "grp1", "r1"));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.CreateShareKeyAsync(profile, "token", new CreateShareKeyRequest()));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.RedeemShareKeyAsync(profile, new RedeemShareKeyRequest { Token = "tok" }));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetSubjectGroupAsync(profile, "token", "grp1"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.UpdateSubjectGroupAsync(profile, "token", "grp1", new UpdateSubjectGroupRequest { Name = "Updated" }));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ListMySubjectsAsync(profile, "token"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetFabricationPresetsAsync(profile, "token"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GenerateFabricationProtocolAsync(profile, "token", new FabricationGenerateRequest { SequenceOrSampleId = "6hb" }));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetGenomicPresetsAsync(profile, "token"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetGenomicMarkersAsync(profile, "token"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetStackServicesAsync(profile, "token"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.PingStackServiceAsync(profile, "token", "valkey"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetEndocrineKineticsAsync(profile, "token"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ToggleEndocrineSwitchAsync(profile, "token", new ToggleSwitchRequest { TargetState = ToggleState.EstrogenicDominant }));
     }
 }

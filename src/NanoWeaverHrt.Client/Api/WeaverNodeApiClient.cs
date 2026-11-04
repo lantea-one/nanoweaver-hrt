@@ -12,6 +12,7 @@ using NanoWeaverHrt.Genomics;
 using NanoWeaverHrt.Hardware.Benchmarking;
 using NanoWeaverHrt.Models;
 using NanoWeaverHrt.Security.Access;
+using NanoWeaverHrt.Services.Stack;
 
 namespace NanoWeaverHrt.Client.Api;
 
@@ -821,6 +822,166 @@ public sealed class WeaverNodeApiClient : INanoWeaverNodeClient, IDisposable
         // HOW:  Validates non-disposed state and delegates to _innerClient.RedeemShareKeyAsync.
         ThrowIfDisposed();
         return _innerClient.RedeemShareKeyAsync(profile, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<SubjectGroup> GetSubjectGroupAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string groupId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/subject-groups/{groupId} using provided or cached session token.
+        // WHY:  Allows inspecting cohort group details with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.GetSubjectGroupAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GetSubjectGroupAsync(profile, effectiveToken, groupId, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<SubjectGroup> UpdateSubjectGroupAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string groupId,
+        UpdateSubjectGroupRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches PUT /api/subject-groups/{groupId} using provided or cached session token.
+        // WHY:  Allows updating cohort group details with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.UpdateSubjectGroupAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.UpdateSubjectGroupAsync(profile, effectiveToken, groupId, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<AccessibleSubjectItem>> ListMySubjectsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/subject-access/my-subjects using provided or cached session token.
+        // WHY:  Allows retrieving caller accessible subjects with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.ListMySubjectsAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.ListMySubjectsAsync(profile, effectiveToken, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<DnaOrigamiSample>> GetFabricationPresetsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/fabrication/presets using provided or cached session token.
+        // WHY:  Allows retrieving origami sample presets with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.GetFabricationPresetsAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GetFabricationPresetsAsync(profile, effectiveToken, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<FabricationPackage> GenerateFabricationProtocolAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        FabricationGenerateRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/fabrication/generate using provided or cached session token.
+        // WHY:  Allows generating staple routing protocols with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.GenerateFabricationProtocolAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GenerateFabricationProtocolAsync(profile, effectiveToken, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<PatientGenomicProfile>> GetGenomicPresetsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/genomics/presets using provided or cached session token.
+        // WHY:  Allows loading clinical genomic presets with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.GetGenomicPresetsAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GetGenomicPresetsAsync(profile, effectiveToken, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<GeneticMarker>> GetGenomicMarkersAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/genomics/markers using provided or cached session token.
+        // WHY:  Allows loading clinical marker reference panels with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.GetGenomicMarkersAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GetGenomicMarkersAsync(profile, effectiveToken, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<StackServiceInfo>> GetStackServicesAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/services using provided or cached session token.
+        // WHY:  Allows monitoring container stack telemetry with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.GetStackServicesAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GetStackServicesAsync(profile, effectiveToken, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<StackServiceInfo> PingStackServiceAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string serviceId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/services/ping/{serviceId} using provided or cached session token.
+        // WHY:  Allows latency probing individual services with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.PingStackServiceAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.PingStackServiceAsync(profile, effectiveToken, serviceId, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<HormoneCurvePoint>> GetEndocrineKineticsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/endocrine/kinetics using provided or cached session token.
+        // WHY:  Allows retrieving pharmacodynamic curves with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.GetEndocrineKineticsAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GetEndocrineKineticsAsync(profile, effectiveToken, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<EndocrineTargetProfile> ToggleEndocrineSwitchAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        ToggleSwitchRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/endocrine/toggle using provided or cached session token.
+        // WHY:  Allows toggling endocrine profiles with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.ToggleEndocrineSwitchAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.ToggleEndocrineSwitchAsync(profile, effectiveToken, request, ct);
     }
 
     /// <inheritdoc/>

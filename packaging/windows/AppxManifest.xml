@@ -8,7 +8,7 @@
   <Identity
     Name="NanoWeaverHrt"
     Publisher="CN=NanoWeaver HRT Release Engineering, O=Lantea Sovereign Research, C=US"
-    Version="2026.11.04.6"
+    Version="2026.11.04.7"
     ProcessorArchitecture="x64" />
 
   <Properties>

@@ -1,5 +1,5 @@
 PackageIdentifier: Lantea.NanoWeaverHrt
-PackageVersion: 2026.11.04.6
+PackageVersion: 2026.11.04.7
 PackageName: NanoWeaver HRT Desktop
 Publisher: Lantea
 License: MIT
@@ -8,7 +8,7 @@ PackageUrl: https://git.lantea.one/lantea-one/nanoweaver-hrt
 Installers:
   - Architecture: x64
     InstallerType: nullsoft
-    InstallerUrl: https://git.lantea.one/lantea-one/nanoweaver-hrt/releases/download/v2026.11.04.6/nanoweaver-hrt-desktop-installer.exe
+    InstallerUrl: https://git.lantea.one/lantea-one/nanoweaver-hrt/releases/download/v2026.11.04.7/nanoweaver-hrt-desktop-installer.exe
     InstallerSha256: 0000000000000000000000000000000000000000000000000000000000000000
 ManifestType: singleton
 ManifestVersion: 1.6.0

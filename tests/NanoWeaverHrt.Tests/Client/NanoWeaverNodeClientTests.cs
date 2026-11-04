@@ -18,6 +18,7 @@ using NanoWeaverHrt.Hardware.Benchmarking;
 using NanoWeaverHrt.Models;
 using NanoWeaverHrt.Security.Access;
 using NanoWeaverHrt.Security.Authentication;
+using NanoWeaverHrt.Services.Stack;
 using Xunit;
 
 namespace NanoWeaverHrt.Tests.Client;
@@ -2258,6 +2259,294 @@ public sealed class NanoWeaverNodeClientTests : IDisposable
 
         _httpHandler.SetResponse("/api/share-keys/redeem", HttpStatusCode.InternalServerError, "{}");
         await Assert.ThrowsAsync<NodeApiException>(() => _client.RedeemShareKeyAsync(_localProfile, redeemReq));
+    }
+
+    /// <summary>
+    /// Verifies extended client SDK endpoints for subject access, fabrication, stack telemetry, and hormone kinetics.
+    /// </summary>
+    [Fact]
+    public async Task ExtendedClientSdkEndpoints_NominalAndErrors_BehavesExpectedly()
+    {
+        // WHAT: Tests extended INanoWeaverNodeClient methods across nominal, null fallback, parameter guard, and error branches.
+        // WHY:  Issue #124-#126 (P121-P123): Ensures 100% test coverage across all newly exposed REST client operations.
+        // HOW:  Configures StubHttpMessageHandler routes with representative JSON and asserts responses and exceptions.
+
+        // 1. GetSubjectGroupAsync
+        _httpHandler.SetResponse(
+            "/api/subject-groups/grp-alpha",
+            HttpStatusCode.OK,
+            """
+            {
+                "id": "grp-alpha",
+                "name": "Alpha Cohort",
+                "description": "Primary study cohort",
+                "createdBy": "admin",
+                "createdAtUtc": "2026-11-04T00:00:00Z"
+            }
+            """);
+
+        SubjectGroup grp = await _client.GetSubjectGroupAsync(_localProfile, "token", "grp-alpha");
+        Assert.NotNull(grp);
+        Assert.Equal("grp-alpha", grp.Id);
+        Assert.Equal("Alpha Cohort", grp.Name);
+
+        _httpHandler.SetResponse("/api/subject-groups/grp-alpha", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.GetSubjectGroupAsync(_localProfile, "token", "grp-alpha"));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetSubjectGroupAsync(null!, "token", "grp-alpha"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetSubjectGroupAsync(_localProfile, "", "grp-alpha"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetSubjectGroupAsync(_localProfile, "token", ""));
+
+        _httpHandler.SetResponse("/api/subject-groups/grp-alpha", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetSubjectGroupAsync(_localProfile, "token", "grp-alpha"));
+
+        // 2. UpdateSubjectGroupAsync
+        UpdateSubjectGroupRequest updateGrpReq = new()
+        {
+            Name = "Alpha Cohort Renamed",
+            Description = "Updated study cohort"
+        };
+
+        _httpHandler.SetResponse(
+            "/api/subject-groups/grp-alpha",
+            HttpStatusCode.OK,
+            """
+            {
+                "id": "grp-alpha",
+                "name": "Alpha Cohort Renamed",
+                "description": "Updated study cohort",
+                "createdBy": "admin",
+                "createdAtUtc": "2026-11-04T00:00:00Z"
+            }
+            """);
+
+        SubjectGroup updatedGrp = await _client.UpdateSubjectGroupAsync(_localProfile, "token", "grp-alpha", updateGrpReq);
+        Assert.NotNull(updatedGrp);
+        Assert.Equal("Alpha Cohort Renamed", updatedGrp.Name);
+
+        _httpHandler.SetResponse("/api/subject-groups/grp-alpha", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.UpdateSubjectGroupAsync(_localProfile, "token", "grp-alpha", updateGrpReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.UpdateSubjectGroupAsync(null!, "token", "grp-alpha", updateGrpReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.UpdateSubjectGroupAsync(_localProfile, "", "grp-alpha", updateGrpReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.UpdateSubjectGroupAsync(_localProfile, "token", "", updateGrpReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.UpdateSubjectGroupAsync(_localProfile, "token", "grp-alpha", null!));
+
+        _httpHandler.SetResponse("/api/subject-groups/grp-alpha", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.UpdateSubjectGroupAsync(_localProfile, "token", "grp-alpha", updateGrpReq));
+
+        // 3. ListMySubjectsAsync
+        _httpHandler.SetResponse(
+            "/api/subject-access/my-subjects",
+            HttpStatusCode.OK,
+            """
+            [
+                {
+                    "subjectUsername": "patient_01",
+                    "effectiveLevel": "FullReadAccess"
+                }
+            ]
+            """);
+
+        IReadOnlyList<AccessibleSubjectItem> mySubjects = await _client.ListMySubjectsAsync(_localProfile, "token");
+        Assert.Single(mySubjects);
+        Assert.Equal("patient_01", mySubjects[0].SubjectUsername);
+        Assert.Equal(SubjectAccessLevel.FullReadAccess, mySubjects[0].EffectiveLevel);
+
+        _httpHandler.SetResponse("/api/subject-access/my-subjects", HttpStatusCode.OK, "null");
+        IReadOnlyList<AccessibleSubjectItem> emptyMySubjects = await _client.ListMySubjectsAsync(_localProfile, "token");
+        Assert.Empty(emptyMySubjects);
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.ListMySubjectsAsync(null!, "token"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.ListMySubjectsAsync(_localProfile, ""));
+
+        _httpHandler.SetResponse("/api/subject-access/my-subjects", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.ListMySubjectsAsync(_localProfile, "token"));
+
+        // 4. GetFabricationPresetsAsync
+        DnaOrigamiSample sampleSample = new FabricationService().GetPresetSamples()[0];
+        _httpHandler.SetResponse(
+            "/api/fabrication/presets",
+            HttpStatusCode.OK,
+            JsonSerializer.Serialize(new[] { sampleSample }, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        IReadOnlyList<DnaOrigamiSample> presets = await _client.GetFabricationPresetsAsync(_localProfile, "token");
+        Assert.Single(presets);
+        Assert.Equal(sampleSample.Id, presets[0].Id);
+
+        _httpHandler.SetResponse("/api/fabrication/presets", HttpStatusCode.OK, "null");
+        IReadOnlyList<DnaOrigamiSample> emptyPresets = await _client.GetFabricationPresetsAsync(_localProfile, "token");
+        Assert.Empty(emptyPresets);
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetFabricationPresetsAsync(null!, "token"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetFabricationPresetsAsync(_localProfile, ""));
+
+        _httpHandler.SetResponse("/api/fabrication/presets", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetFabricationPresetsAsync(_localProfile, "token"));
+
+        // 5. GenerateFabricationProtocolAsync
+        FabricationGenerateRequest fabReq = new()
+        {
+            SequenceOrSampleId = "6hb-nanotube",
+            Regimen = TherapeuticRegimen.MaleToFemale,
+            Geometry = "Hexagonal 6-Helix Bundle Nanotube (6HB)",
+            TargetKd = 4.2
+        };
+
+        FabricationService fabService = new();
+        FabricationPackage samplePkg = fabService.GenerateFabricationPackage(fabService.GetPresetSamples()[0].Id, TherapeuticRegimen.MaleToFemale, "Hexagonal 6-Helix Bundle Nanotube (6HB)", 4.2);
+        _httpHandler.SetResponse(
+            "/api/fabrication/generate",
+            HttpStatusCode.OK,
+            JsonSerializer.Serialize(samplePkg, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        FabricationPackage fabPkg = await _client.GenerateFabricationProtocolAsync(_localProfile, "token", fabReq);
+        Assert.NotNull(fabPkg);
+        Assert.Equal(samplePkg.PackageId, fabPkg.PackageId);
+
+        _httpHandler.SetResponse("/api/fabrication/generate", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.GenerateFabricationProtocolAsync(_localProfile, "token", fabReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GenerateFabricationProtocolAsync(null!, "token", fabReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GenerateFabricationProtocolAsync(_localProfile, "", fabReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GenerateFabricationProtocolAsync(_localProfile, "token", null!));
+
+        _httpHandler.SetResponse("/api/fabrication/generate", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GenerateFabricationProtocolAsync(_localProfile, "token", fabReq));
+
+        // 6. GetGenomicPresetsAsync
+        PatientGenomicProfile sampleGenProfile = new PharmacogenomicsService().AnalyzeProfile("preset_thrombophilia", Array.Empty<string>(), TherapeuticRegimen.MaleToFemale);
+        _httpHandler.SetResponse(
+            "/api/genomics/presets",
+            HttpStatusCode.OK,
+            JsonSerializer.Serialize(new[] { sampleGenProfile }, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        IReadOnlyList<PatientGenomicProfile> genPresets = await _client.GetGenomicPresetsAsync(_localProfile, "token");
+        Assert.Single(genPresets);
+        Assert.Equal("preset_thrombophilia", genPresets[0].PatientId);
+
+        _httpHandler.SetResponse("/api/genomics/presets", HttpStatusCode.OK, "null");
+        IReadOnlyList<PatientGenomicProfile> emptyGenPresets = await _client.GetGenomicPresetsAsync(_localProfile, "token");
+        Assert.Empty(emptyGenPresets);
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetGenomicPresetsAsync(null!, "token"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetGenomicPresetsAsync(_localProfile, ""));
+
+        _httpHandler.SetResponse("/api/genomics/presets", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetGenomicPresetsAsync(_localProfile, "token"));
+
+        // 7. GetGenomicMarkersAsync
+        GeneticMarker sampleMarker = GeneticMarker.CreateExample();
+        _httpHandler.SetResponse(
+            "/api/genomics/markers",
+            HttpStatusCode.OK,
+            JsonSerializer.Serialize(new[] { sampleMarker }, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        IReadOnlyList<GeneticMarker> markers = await _client.GetGenomicMarkersAsync(_localProfile, "token");
+        Assert.Single(markers);
+        Assert.Equal(sampleMarker.MarkerId, markers[0].MarkerId);
+
+        _httpHandler.SetResponse("/api/genomics/markers", HttpStatusCode.OK, "null");
+        IReadOnlyList<GeneticMarker> emptyMarkers = await _client.GetGenomicMarkersAsync(_localProfile, "token");
+        Assert.Empty(emptyMarkers);
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetGenomicMarkersAsync(null!, "token"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetGenomicMarkersAsync(_localProfile, ""));
+
+        _httpHandler.SetResponse("/api/genomics/markers", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetGenomicMarkersAsync(_localProfile, "token"));
+
+        // 8. GetStackServicesAsync
+        StackServiceInfo sampleSvc = new()
+        {
+            ServiceId = "valkey-cache",
+            DisplayName = "Valkey In-Memory Cache",
+            RoleDescription = "Cache",
+            EndpointOrLocation = "valkey://127.0.0.1:6379",
+            Health = ServiceHealthState.Healthy,
+            StatusMessage = "Operational",
+            TechnologyStack = "Valkey"
+        };
+        _httpHandler.SetResponse(
+            "/api/services",
+            HttpStatusCode.OK,
+            JsonSerializer.Serialize(new[] { sampleSvc }, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        IReadOnlyList<StackServiceInfo> svcs = await _client.GetStackServicesAsync(_localProfile, "token");
+        Assert.Single(svcs);
+        Assert.Equal(sampleSvc.ServiceId, svcs[0].ServiceId);
+
+        _httpHandler.SetResponse("/api/services", HttpStatusCode.OK, "null");
+        IReadOnlyList<StackServiceInfo> emptySvcs = await _client.GetStackServicesAsync(_localProfile, "token");
+        Assert.Empty(emptySvcs);
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetStackServicesAsync(null!, "token"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetStackServicesAsync(_localProfile, ""));
+
+        _httpHandler.SetResponse("/api/services", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetStackServicesAsync(_localProfile, "token"));
+
+        // 9. PingStackServiceAsync
+        _httpHandler.SetResponse(
+            $"/api/services/ping/{sampleSvc.ServiceId}",
+            HttpStatusCode.OK,
+            JsonSerializer.Serialize(sampleSvc, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        StackServiceInfo pingResult = await _client.PingStackServiceAsync(_localProfile, "token", sampleSvc.ServiceId);
+        Assert.NotNull(pingResult);
+        Assert.Equal(sampleSvc.ServiceId, pingResult.ServiceId);
+
+        _httpHandler.SetResponse($"/api/services/ping/{sampleSvc.ServiceId}", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.PingStackServiceAsync(_localProfile, "token", sampleSvc.ServiceId));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.PingStackServiceAsync(null!, "token", sampleSvc.ServiceId));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.PingStackServiceAsync(_localProfile, "", sampleSvc.ServiceId));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.PingStackServiceAsync(_localProfile, "token", ""));
+
+        _httpHandler.SetResponse($"/api/services/ping/{sampleSvc.ServiceId}", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.PingStackServiceAsync(_localProfile, "token", sampleSvc.ServiceId));
+
+        // 10. GetEndocrineKineticsAsync
+        EndocrineStateEngine stateEngine = new();
+        IReadOnlyList<HormoneCurvePoint> sampleKinetics = stateEngine.SimulateKinetics();
+        _httpHandler.SetResponse(
+            "/api/endocrine/kinetics",
+            HttpStatusCode.OK,
+            JsonSerializer.Serialize(sampleKinetics, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        IReadOnlyList<HormoneCurvePoint> kinetics = await _client.GetEndocrineKineticsAsync(_localProfile, "token");
+        Assert.NotEmpty(kinetics);
+        Assert.Equal(sampleKinetics[0].Hour, kinetics[0].Hour);
+        Assert.Equal(sampleKinetics[0].EstradiolPmolL, kinetics[0].EstradiolPmolL);
+
+        _httpHandler.SetResponse("/api/endocrine/kinetics", HttpStatusCode.OK, "null");
+        IReadOnlyList<HormoneCurvePoint> emptyKinetics = await _client.GetEndocrineKineticsAsync(_localProfile, "token");
+        Assert.Empty(emptyKinetics);
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetEndocrineKineticsAsync(null!, "token"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetEndocrineKineticsAsync(_localProfile, ""));
+
+        _httpHandler.SetResponse("/api/endocrine/kinetics", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetEndocrineKineticsAsync(_localProfile, "token"));
+
+        // 11. ToggleEndocrineSwitchAsync
+        ToggleSwitchRequest toggleReq = new() { TargetState = ToggleState.EstrogenicDominant };
+        EndocrineTargetProfile sampleTargetProf = stateEngine.GetActiveProfile();
+
+        _httpHandler.SetResponse(
+            "/api/endocrine/toggle",
+            HttpStatusCode.OK,
+            JsonSerializer.Serialize(sampleTargetProf, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        EndocrineTargetProfile targetProf = await _client.ToggleEndocrineSwitchAsync(_localProfile, "token", toggleReq);
+        Assert.NotNull(targetProf);
+        Assert.Equal(sampleTargetProf.TargetState, targetProf.TargetState);
+        Assert.Equal(sampleTargetProf.TargetEstradiolPmolL, targetProf.TargetEstradiolPmolL);
+
+        _httpHandler.SetResponse("/api/endocrine/toggle", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.ToggleEndocrineSwitchAsync(_localProfile, "token", toggleReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.ToggleEndocrineSwitchAsync(null!, "token", toggleReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.ToggleEndocrineSwitchAsync(_localProfile, "", toggleReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.ToggleEndocrineSwitchAsync(_localProfile, "token", null!));
+
+        _httpHandler.SetResponse("/api/endocrine/toggle", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.ToggleEndocrineSwitchAsync(_localProfile, "token", toggleReq));
     }
 
     /// <summary>

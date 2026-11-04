@@ -19,6 +19,7 @@ using NanoWeaverHrt.Genomics;
 using NanoWeaverHrt.Hardware.Benchmarking;
 using NanoWeaverHrt.Models;
 using NanoWeaverHrt.Security.Access;
+using NanoWeaverHrt.Services.Stack;
 
 namespace NanoWeaverHrt.Client.Api;
 
@@ -1591,6 +1592,335 @@ public sealed class NanoWeaverNodeClient : INanoWeaverNodeClient
 
         ShareKeyConsumeResult? result = await resp.Content.ReadFromJsonAsync<ShareKeyConsumeResult>(JsonOptions, ct);
         return result ?? throw new InvalidOperationException("Endpoint returned empty or null share key redemption payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<SubjectGroup> GetSubjectGroupAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string groupId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/subject-groups/{groupId} to fetch group metadata.
+        // WHY:  Allows inspecting cohort group details and properties.
+        // HOW:  Validates inputs, sends authenticated GET request, and deserializes SubjectGroup.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(groupId);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/subject-groups/{Uri.EscapeDataString(groupId)}");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        SubjectGroup? group = await resp.Content.ReadFromJsonAsync<SubjectGroup>(JsonOptions, ct);
+        return group ?? throw new InvalidOperationException("Endpoint returned empty or null subject group payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<SubjectGroup> UpdateSubjectGroupAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string groupId,
+        UpdateSubjectGroupRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches PUT /api/subject-groups/{groupId} to update group name and description.
+        // WHY:  Allows administrators and managing researchers to update cohort group attributes.
+        // HOW:  Validates inputs, sends authenticated PUT with JSON payload, and deserializes updated SubjectGroup.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(groupId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/subject-groups/{Uri.EscapeDataString(groupId)}");
+
+        using HttpRequestMessage req = new(HttpMethod.Put, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        SubjectGroup? group = await resp.Content.ReadFromJsonAsync<SubjectGroup>(JsonOptions, ct);
+        return group ?? throw new InvalidOperationException("Endpoint returned empty or null subject group payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<AccessibleSubjectItem>> ListMySubjectsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/subject-access/my-subjects to list caller accessible subjects.
+        // WHY:  Allows clients to populate subject dropdowns filtered to authorized patient identifiers.
+        // HOW:  Validates inputs, sends authenticated GET request, and deserializes AccessibleSubjectItem list.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/subject-access/my-subjects");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        List<AccessibleSubjectItem>? list = await resp.Content.ReadFromJsonAsync<List<AccessibleSubjectItem>>(JsonOptions, ct);
+        return (IReadOnlyList<AccessibleSubjectItem>?)list ?? [];
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<DnaOrigamiSample>> GetFabricationPresetsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/fabrication/presets to fetch standard scaffold geometries.
+        // WHY:  Allows clients to display built-in sample designs for immediate origami routing.
+        // HOW:  Validates inputs, sends authenticated GET request, and deserializes DnaOrigamiSample list.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/fabrication/presets");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        List<DnaOrigamiSample>? list = await resp.Content.ReadFromJsonAsync<List<DnaOrigamiSample>>(JsonOptions, ct);
+        return (IReadOnlyList<DnaOrigamiSample>?)list ?? [];
+    }
+
+    /// <inheritdoc/>
+    public async Task<FabricationPackage> GenerateFabricationProtocolAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        FabricationGenerateRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/fabrication/generate to synthesize staple routes and thermal ramp.
+        // WHY:  Allows generating a complete wet-lab DNA origami fabrication package with SHA-256 integrity.
+        // HOW:  Validates inputs, posts serialized JSON payload with Bearer header, and deserializes FabricationPackage.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/fabrication/generate");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        FabricationPackage? pkg = await resp.Content.ReadFromJsonAsync<FabricationPackage>(JsonOptions, ct);
+        return pkg ?? throw new InvalidOperationException("Endpoint returned empty or null fabrication package payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<PatientGenomicProfile>> GetGenomicPresetsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/genomics/presets to fetch standard genetic test panels.
+        // WHY:  Allows clinicians and researchers to load preset clinical panels for screening.
+        // HOW:  Validates inputs, sends authenticated GET request, and deserializes PatientGenomicProfile list.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/genomics/presets");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        List<PatientGenomicProfile>? list = await resp.Content.ReadFromJsonAsync<List<PatientGenomicProfile>>(JsonOptions, ct);
+        return (IReadOnlyList<PatientGenomicProfile>?)list ?? [];
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<GeneticMarker>> GetGenomicMarkersAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/genomics/markers to fetch clinically characterized pharmacogenomic markers.
+        // WHY:  Provides reference marker details including Factor V Leiden, Prothrombin, and AR CAG alleles.
+        // HOW:  Validates inputs, sends authenticated GET request, and deserializes GeneticMarker list.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/genomics/markers");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        List<GeneticMarker>? list = await resp.Content.ReadFromJsonAsync<List<GeneticMarker>>(JsonOptions, ct);
+        return (IReadOnlyList<GeneticMarker>?)list ?? [];
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<StackServiceInfo>> GetStackServicesAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/services to retrieve container health, status, and telemetry.
+        // WHY:  Allows monitoring database, simulation engine, and cache readiness across cluster instances.
+        // HOW:  Validates inputs, sends authenticated GET request, and deserializes StackServiceInfo list.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/services");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        List<StackServiceInfo>? list = await resp.Content.ReadFromJsonAsync<List<StackServiceInfo>>(JsonOptions, ct);
+        return (IReadOnlyList<StackServiceInfo>?)list ?? [];
+    }
+
+    /// <inheritdoc/>
+    public async Task<StackServiceInfo> PingStackServiceAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string serviceId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/services/ping/{serviceId} to test connectivity and latency to a single service.
+        // WHY:  Enables diagnostic socket verification for individual microservice containers.
+        // HOW:  Validates inputs, sends authenticated POST request, and deserializes StackServiceInfo.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(serviceId);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/services/ping/{Uri.EscapeDataString(serviceId)}");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        StackServiceInfo? info = await resp.Content.ReadFromJsonAsync<StackServiceInfo>(JsonOptions, ct);
+        return info ?? throw new InvalidOperationException("Endpoint returned empty or null stack service info payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<HormoneCurvePoint>> GetEndocrineKineticsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/endocrine/kinetics to calculate 72-hour hormone concentration curves.
+        // WHY:  Powers visualizer charts for estradiol, testosterone, and progesterone stabilization curves.
+        // HOW:  Validates inputs, sends authenticated GET request, and deserializes HormoneCurvePoint list.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/endocrine/kinetics");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        List<HormoneCurvePoint>? list = await resp.Content.ReadFromJsonAsync<List<HormoneCurvePoint>>(JsonOptions, ct);
+        return (IReadOnlyList<HormoneCurvePoint>?)list ?? [];
+    }
+
+    /// <inheritdoc/>
+    public async Task<EndocrineTargetProfile> ToggleEndocrineSwitchAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        ToggleSwitchRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/endocrine/toggle to switch between Estrogenic and Androgenic setpoints.
+        // WHY:  Allows updating hormonal target profiles with bistable feedback loop calculations.
+        // HOW:  Validates inputs, posts serialized JSON payload with Bearer header, and deserializes EndocrineTargetProfile.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/endocrine/toggle");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        EndocrineTargetProfile? target = await resp.Content.ReadFromJsonAsync<EndocrineTargetProfile>(JsonOptions, ct);
+        return target ?? throw new InvalidOperationException("Endpoint returned empty or null endocrine profile payload.");
     }
 
     /// <summary>
