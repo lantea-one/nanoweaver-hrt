@@ -4,6 +4,34 @@
 
 ---
 
+## v2026.11.04.1 — Multi-Engine Database Stress, Client REST SDK Parity & Coverage Ratchet Hardening (2026-11-04)
+
+Milestone release resolving Work Packages `P91–P95` (Forgejo Issues `#94–#98`), driving downward un-excluded coverage ratchet gaps, expanding the desktop and mobile HTTP REST client SDK (`INanoWeaverNodeClient` and `WeaverNodeApiClient`), integrating Freedesktop Flatpak sandbox assets, executing multi-engine database concurrency and transaction rollback stress testing, and synchronizing CI/CD workflow pipelines.
+
+### Highlights
+* **Minimal API & Security Coverage Ratchet Hardening (Forgejo #94 / P91)**:
+  - Validated edge-case branches in `Program.cs` for duplicate first-launch initialization (`POST /api/setup/initialize` 400 rejection with sanitized RFC 7807 problem details).
+  - Validated cross-subject patient authorization boundaries across user profiles, addresses, contacts, DNA blueprints, imports, and kinetics results (`403 Forbidden` and zero-disclosure `404 Not Found`).
+  - Added full test coverage for `MainLayout.razor` idle watcher DOM exception recovery and automated session expiration routing.
+  - Added constructor and property boundary tests for `Login.WeaverSignInResult` and `SetupWizard` fingerprint formatting.
+* **Mobile & Desktop Client REST SDK Expansion (Forgejo #95 / P92)**:
+  - Expanded `INanoWeaverNodeClient` and `WeaverNodeApiClient` with 10 production endpoints: closed-loop endocrine simulation, P2P swarm federation peer discovery, manifest generation and verification, gel densitometry analysis, hardware accelerator benchmarking, Opentrons automated protocol synthesis, and patient digitized DNA/regimen querying.
+  - Added `UnifiedMobileBiometricVault.DownloadAndCachePatientPackageAsync` to securely download and cache patient digital DNA blueprints in-memory after biometric unlock.
+  - Added unit test suites verifying token propagation, null payload validation, and zeroizable secret memory buffer disposal.
+* **Flatpak Manifest & AUR Git CalVer Alignment (Forgejo #96 / P93)**:
+  - Integrated Freedesktop assets (desktop icon, `.desktop` entry, and AppStream metainfo) into `packaging/flatpak/one.lantea.nanoweaver.hrt.yml`.
+  - Aligned Arch Linux AUR Git package (`nanoweaver-hrt-desktop-git`) PKGBUILD and `.SRCINFO` to CalVer base `2026.11.03.2.r0`.
+  - Documented Flatpak build/install workflows and AppStream XML validation in `docs/desktop-and-mobile-gui.md`.
+* **Multi-Engine Database Connection Pool, Rollback & Concurrency Stress (Forgejo #97 / P94)**:
+  - Validated transaction lifecycle rollback behavior under simulated migration failure across SQLite and recording connection delegates.
+  - Verified concurrent connection pool stability under 50 simultaneous worker threads executing parallel read/write queries without lock contention or pool exhaustion.
+  - Tested DuckDB in-memory initialization and scalar execution paths.
+* **CI/CD Workflow Alignment & Sovereign Release Documentation (Forgejo #98 / P95)**:
+  - Harmonized GitHub Actions workflow (`.github/workflows/build-and-deploy.yml`) and Sovereign Forgejo workflow (`.forgejo/workflows/build-and-deploy.yml`) across all 8 verification gates.
+  - Aligned release notes, package versions, and documentation parity.
+
+---
+
 ## v2026.11.03.2 — Full-Repository Hardening, Multi-Engine Parity & Scientific Fidelity Release (2026-11-03)
 
 Major milestone release completing Work Packages `P61–P90` (Forgejo Issues `#64–#93`, incorporating `P61–P85` / `#64–#88` and `P86–P90` / `#89–#93`), delivering rigorous multi-engine database persistence, FIPS-compliant post-quantum cryptography, advanced closed-loop endocrine feedback modeling, zero-allocation gel densitometry, Opentrons automation, and hardware-backed mobile enclaves.

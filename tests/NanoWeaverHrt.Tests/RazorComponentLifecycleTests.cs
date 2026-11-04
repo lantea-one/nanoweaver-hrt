@@ -749,6 +749,73 @@ public sealed class RazorComponentLifecycleTests : IDisposable
     }
 
     /// <summary>
+    /// Verifies Login.WeaverSignInResult constructor and property records.
+    /// </summary>
+    [Fact]
+    public void Login_WeaverSignInResult_ConstructorAndProperties_BehavesExpectedly()
+    {
+        // WHAT: Tests Login.WeaverSignInResult record instantiation and field access.
+        // WHY:  Covers internal record members and properties in Login.razor.
+        // HOW:  Constructs success and error instances, verifying equality, Ok, Error, Token, and User.
+        var user = new UserAccount { Username = "alice", Role = UserRole.Researcher };
+        var res1 = new Login.WeaverSignInResult(true, null, "jwt_token", user);
+        Assert.True(res1.Ok);
+        Assert.Null(res1.Error);
+        Assert.Equal("jwt_token", res1.Token);
+        Assert.Equal(user, res1.User);
+
+        var res2 = new Login.WeaverSignInResult(false, "Invalid challenge", null, null);
+        Assert.False(res2.Ok);
+        Assert.Equal("Invalid challenge", res2.Error);
+        Assert.Null(res2.Token);
+        Assert.Null(res2.User);
+
+        Assert.NotEqual(res1, res2);
+    }
+
+    /// <summary>
+    /// Verifies SetupWizard internal edge validations, fingerprint formatting, and key copy handling.
+    /// </summary>
+    [Fact]
+    public void SetupWizard_EdgeCaseValidations_HandlesExpectedBranches()
+    {
+        // WHAT: Tests ProceedToStep3, GetFingerprint, and CopyPrivateKey boundary conditions in SetupWizard.
+        // WHY:  Covers uncovered edge-case branches in SetupWizard.razor.
+        // HOW:  Instantiates SetupWizard, uses reflection to test private validation methods.
+        SetupWizard wizard = new();
+
+        // 1. GetFingerprint with empty/null returns "N/A"
+        MethodInfo? getFpMethod = typeof(SetupWizard).GetMethod("GetFingerprint", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(getFpMethod);
+        string fpEmpty = (string)getFpMethod.Invoke(wizard, null)!;
+        Assert.Equal("N/A", fpEmpty);
+
+        // 2. ProceedToStep3 when _keyOption == 0 and _generatedBundle == null
+        MethodInfo? proceedMethod = typeof(SetupWizard).GetMethod("ProceedToStep3", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(proceedMethod);
+        proceedMethod.Invoke(wizard, null);
+
+        FieldInfo? errField = typeof(SetupWizard).GetField("_errorMessage", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(errField);
+        string? err1 = (string?)errField.GetValue(wizard);
+        Assert.Contains("Generate High-Security Keypair", err1);
+
+        // 3. ProceedToStep3 when _keyOption == 1 and _customPublicKeyText is whitespace
+        FieldInfo? optField = typeof(SetupWizard).GetField("_keyOption", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(optField);
+        optField.SetValue(wizard, 1);
+        proceedMethod.Invoke(wizard, null);
+        string? err2 = (string?)errField.GetValue(wizard);
+        Assert.Contains("provide your public key text", err2);
+
+        // 4. CopyPrivateKey when _generatedBundle is null returns without error
+        MethodInfo? copyMethod = typeof(SetupWizard).GetMethod("CopyPrivateKey", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(copyMethod);
+        Task copyTask = (Task)copyMethod.Invoke(wizard, null)!;
+        Assert.True(copyTask.IsCompleted);
+    }
+
+    /// <summary>
     /// Headless in-memory component renderer that assigns render handles and enables StateHasChanged dispatch.
     /// </summary>
     private sealed class TestRenderer : Renderer

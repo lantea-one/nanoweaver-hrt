@@ -5,6 +5,13 @@ using Moq;
 using NanoWeaverHrt.Client.Api;
 using NanoWeaverHrt.Client.Security;
 using NanoWeaverHrt.Client.Storage;
+using NanoWeaverHrt.Endocrine;
+using NanoWeaverHrt.Fabrication;
+using NanoWeaverHrt.Fabrication.Gel;
+using NanoWeaverHrt.Fabrication.Opentrons;
+using NanoWeaverHrt.Federation;
+using NanoWeaverHrt.Hardware.Benchmarking;
+using NanoWeaverHrt.Models;
 using Xunit;
 
 namespace NanoWeaverHrt.Tests.Client;
@@ -841,6 +848,456 @@ public sealed class NanoWeaverNodeClientTests : IDisposable
 
         _httpHandler.SetResponse("/api/endocrine/profile", HttpStatusCode.OK, "null");
         await Assert.ThrowsAsync<NodeApiException>(() => _client.GetEndocrineProfileAsync(_localProfile, "token"));
+    }
+
+    /// <summary>
+    /// Verifies SimulateClosedLoopEndocrineAsync nominal simulation and error handling.
+    /// </summary>
+    [Fact]
+    public async Task SimulateClosedLoopEndocrineAsync_NominalAndErrors_BehavesExpectedly()
+    {
+        // WHAT: Tests SimulateClosedLoopEndocrineAsync for successful dispatch and edge errors.
+        // WHY:  Ensures numerical simulation parameters are validated and results are parsed.
+        // HOW:  Stubs /api/endocrine/closed-loop/simulate, tests happy path and invalid inputs.
+        var req = new ClosedLoopSimulationRequest { TotalHours = 24, StepHours = 1.0 };
+        _httpHandler.SetResponse(
+            "/api/endocrine/closed-loop/simulate",
+            HttpStatusCode.OK,
+            """
+            {
+                "points": [],
+                "finalEstradiolPmolL": 550.0,
+                "finalTestosteroneNmolL": 1.2,
+                "finalLhIuL": 0.5,
+                "finalFshIuL": 0.8,
+                "steadyStateReached": true,
+                "timeToSuppressionHours": 12.5
+            }
+            """);
+
+        ClosedLoopSimulationResult res = await _client.SimulateClosedLoopEndocrineAsync(_localProfile, "token", req);
+        Assert.True(res.SteadyStateReached);
+        Assert.Equal(12.5, res.TimeToSuppressionHours);
+
+        // Validation & Errors
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.SimulateClosedLoopEndocrineAsync(null!, "token", req));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.SimulateClosedLoopEndocrineAsync(_localProfile, "", req));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.SimulateClosedLoopEndocrineAsync(_localProfile, "token", null!));
+
+        _httpHandler.SetResponse("/api/endocrine/closed-loop/simulate", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.SimulateClosedLoopEndocrineAsync(_localProfile, "token", req));
+
+        _httpHandler.SetResponse("/api/endocrine/closed-loop/simulate", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.SimulateClosedLoopEndocrineAsync(_localProfile, "token", req));
+    }
+
+    /// <summary>
+    /// Verifies DiscoverFederationPeersAsync nominal list retrieval and error handling.
+    /// </summary>
+    [Fact]
+    public async Task DiscoverFederationPeersAsync_NominalAndErrors_BehavesExpectedly()
+    {
+        // WHAT: Tests DiscoverFederationPeersAsync for peer list querying and error handling.
+        // WHY:  Enables decentralized swarm topology inspection.
+        // HOW:  Stubs /api/federation/peers with peers, empty, null, and server error.
+        _httpHandler.SetResponse(
+            "/api/federation/peers",
+            HttpStatusCode.OK,
+            """
+            [
+                {
+                    "nodeId": "peer-01",
+                    "endpointUri": "http://10.0.0.1:5000",
+                    "publicKeyBase64": "pubKeyBase64Data",
+                    "algorithm": "Ed25519",
+                    "latencyMilliseconds": 14.2,
+                    "lastSeenUtc": "2026-10-28T12:00:00Z"
+                }
+            ]
+            """);
+
+        IReadOnlyList<FederationPeerNode> peers = await _client.DiscoverFederationPeersAsync(_localProfile, "token");
+        Assert.Single(peers);
+        Assert.Equal("peer-01", peers[0].NodeId);
+
+        // Null response returns empty list
+        _httpHandler.SetResponse("/api/federation/peers", HttpStatusCode.OK, "null");
+        IReadOnlyList<FederationPeerNode> emptyPeers = await _client.DiscoverFederationPeersAsync(_localProfile, "token");
+        Assert.Empty(emptyPeers);
+
+        // Errors
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.DiscoverFederationPeersAsync(null!, "token"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.DiscoverFederationPeersAsync(_localProfile, ""));
+
+        _httpHandler.SetResponse("/api/federation/peers", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.DiscoverFederationPeersAsync(_localProfile, "token"));
+    }
+
+    /// <summary>
+    /// Verifies BuildFederationManifestAsync nominal execution and error handling.
+    /// </summary>
+    [Fact]
+    public async Task BuildFederationManifestAsync_NominalAndErrors_BehavesExpectedly()
+    {
+        // WHAT: Tests BuildFederationManifestAsync for trajectory chunk manifest synthesis.
+        // WHY:  Ensures trajectory files can be chunked and signed for P2P distribution.
+        // HOW:  Stubs /api/federation/manifests/build and tests validation and errors.
+        var req = new FederationBuildManifestRequest { TrajectoryFileName = "run1.xyz" };
+        _httpHandler.SetResponse(
+            "/api/federation/manifests/build",
+            HttpStatusCode.OK,
+            """
+            {
+                "datasetName": "run1.xyz",
+                "totalSizeBytes": 2048,
+                "chunkSizeBytes": 1024,
+                "totalChunks": 2,
+                "chunks": [],
+                "signingNodeId": "node-1",
+                "signatureAlgorithm": "Ed25519",
+                "signatureBase64": "sig123",
+                "manifestTimestampUtc": "2026-10-28T12:00:00Z"
+            }
+            """);
+
+        TrajectoryFederationManifest manifest = await _client.BuildFederationManifestAsync(_localProfile, "token", req);
+        Assert.Equal("run1.xyz", manifest.DatasetName);
+        Assert.Equal(2, manifest.TotalChunks);
+
+        // Validation & Errors
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.BuildFederationManifestAsync(null!, "token", req));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.BuildFederationManifestAsync(_localProfile, "", req));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.BuildFederationManifestAsync(_localProfile, "token", null!));
+
+        _httpHandler.SetResponse("/api/federation/manifests/build", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.BuildFederationManifestAsync(_localProfile, "token", req));
+
+        _httpHandler.SetResponse("/api/federation/manifests/build", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.BuildFederationManifestAsync(_localProfile, "token", req));
+    }
+
+    /// <summary>
+    /// Verifies VerifyFederationManifestAsync nominal execution and error handling.
+    /// </summary>
+    [Fact]
+    public async Task VerifyFederationManifestAsync_NominalAndErrors_BehavesExpectedly()
+    {
+        // WHAT: Tests VerifyFederationManifestAsync for cryptographic manifest validation.
+        // WHY:  Guarantees integrity of received swarm trajectory manifests.
+        // HOW:  Stubs /api/federation/manifests/verify and verifies response and errors.
+        var manifest = new TrajectoryFederationManifest
+        {
+            DatasetName = "traj.xyz",
+            TotalSizeBytes = 1024,
+            ChunkSizeBytes = 1024,
+            TotalChunks = 1,
+            Chunks = [],
+            SigningNodeId = "node-1",
+            SignatureAlgorithm = "Ed25519",
+            SignatureBase64 = "sig",
+            ManifestTimestampUtc = DateTimeOffset.UtcNow
+        };
+
+        _httpHandler.SetResponse(
+            "/api/federation/manifests/verify",
+            HttpStatusCode.OK,
+            """
+            {
+                "isValid": true,
+                "trajectoryId": "traj.xyz",
+                "chunkCount": 1,
+                "totalSizeBytes": 1024
+            }
+            """);
+
+        FederationVerifyManifestResponse res = await _client.VerifyFederationManifestAsync(_localProfile, "token", manifest);
+        Assert.True(res.IsValid);
+        Assert.Equal("traj.xyz", res.TrajectoryId);
+
+        // Validation & Errors
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.VerifyFederationManifestAsync(null!, "token", manifest));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.VerifyFederationManifestAsync(_localProfile, "", manifest));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.VerifyFederationManifestAsync(_localProfile, "token", null!));
+
+        _httpHandler.SetResponse("/api/federation/manifests/verify", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.VerifyFederationManifestAsync(_localProfile, "token", manifest));
+
+        _httpHandler.SetResponse("/api/federation/manifests/verify", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.VerifyFederationManifestAsync(_localProfile, "token", manifest));
+    }
+
+    /// <summary>
+    /// Verifies AnalyzeGelAsync nominal processing and error handling.
+    /// </summary>
+    [Fact]
+    public async Task AnalyzeGelAsync_NominalAndErrors_BehavesExpectedly()
+    {
+        // WHAT: Tests AnalyzeGelAsync for gel image processing and quality metrics.
+        // WHY:  Validates automated DNA origami folding yield analysis via REST.
+        // HOW:  Stubs /api/fabrication/gel/analyze and verifies deserialization and validation.
+        var req = new GelAnalysisRequest
+        {
+            ImageBytes = [1, 2, 3, 4],
+            Width = 2,
+            Height = 2,
+            ExpectedLaneCount = 1,
+            BackgroundThreshold = 0.1,
+            LadderLaneNumber = 1
+        };
+
+        _httpHandler.SetResponse(
+            "/api/fabrication/gel/analyze",
+            HttpStatusCode.OK,
+            """
+            {
+                "width": 2,
+                "height": 2,
+                "detectedLaneCount": 1,
+                "overallFoldingSuccessRate": 95.0,
+                "lanes": []
+            }
+            """);
+
+        GelAnalysisResult res = await _client.AnalyzeGelAsync(_localProfile, "token", req);
+        Assert.Equal(1, res.DetectedLaneCount);
+        Assert.Equal(95.0, res.OverallFoldingSuccessRate);
+
+        // Validation & Errors
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.AnalyzeGelAsync(null!, "token", req));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.AnalyzeGelAsync(_localProfile, "", req));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.AnalyzeGelAsync(_localProfile, "token", null!));
+
+        _httpHandler.SetResponse("/api/fabrication/gel/analyze", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.AnalyzeGelAsync(_localProfile, "token", req));
+
+        _httpHandler.SetResponse("/api/fabrication/gel/analyze", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.AnalyzeGelAsync(_localProfile, "token", req));
+    }
+
+    /// <summary>
+    /// Verifies RunBenchmarkAsync nominal execution and error handling.
+    /// </summary>
+    [Fact]
+    public async Task RunBenchmarkAsync_NominalAndErrors_BehavesExpectedly()
+    {
+        // WHAT: Tests RunBenchmarkAsync for on-demand hardware accelerator qualification.
+        // WHY:  Ensures compute benchmarks can be initiated from client API.
+        // HOW:  Stubs /api/system/benchmark/run and verifies report deserialization.
+        _httpHandler.SetResponse(
+            "/api/system/benchmark/run",
+            HttpStatusCode.OK,
+            """
+            {
+                "deviceName": "Intel Arc A770",
+                "driverVersion": "31.0",
+                "singlePrecisionGflops": 19500.0,
+                "doublePrecisionGflops": 1200.0,
+                "memoryBandwidthGigaBytesPerSecond": 512.0,
+                "temperatureCelsius": 55.0,
+                "powerUsageWatts": 225.0,
+                "readiness": "Go",
+                "benchmarkedAtUtc": "2026-10-28T12:00:00Z",
+                "benchmarkTimestampUtc": "2026-10-28T12:00:00Z",
+                "recommendations": []
+            }
+            """);
+
+        AcceleratorBenchmarkReport report = await _client.RunBenchmarkAsync(_localProfile, "token");
+        Assert.Equal("Intel Arc A770", report.DeviceName);
+        Assert.Equal(19500.0, report.SinglePrecisionGflops);
+
+        // Validation & Errors
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.RunBenchmarkAsync(null!, "token"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.RunBenchmarkAsync(_localProfile, ""));
+
+        _httpHandler.SetResponse("/api/system/benchmark/run", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.RunBenchmarkAsync(_localProfile, "token"));
+
+        _httpHandler.SetResponse("/api/system/benchmark/run", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.RunBenchmarkAsync(_localProfile, "token"));
+    }
+
+    /// <summary>
+    /// Verifies GetLatestBenchmarkAsync nominal retrieval, 404 null return, and error handling.
+    /// </summary>
+    [Fact]
+    public async Task GetLatestBenchmarkAsync_NominalNotFoundAndErrors_BehavesExpectedly()
+    {
+        // WHAT: Tests GetLatestBenchmarkAsync for cached report querying and 404 handling.
+        // WHY:  Allows clients to inspect hardware readiness without triggering compute tests.
+        // HOW:  Stubs /api/system/benchmark/latest with 200, 404, and 500 status codes.
+        _httpHandler.SetResponse(
+            "/api/system/benchmark/latest",
+            HttpStatusCode.OK,
+            """
+            {
+                "deviceName": "NVIDIA RTX 4090",
+                "driverVersion": "535.0",
+                "singlePrecisionGflops": 82500.0,
+                "doublePrecisionGflops": 2500.0,
+                "memoryBandwidthGigaBytesPerSecond": 1008.0,
+                "temperatureCelsius": 62.0,
+                "powerUsageWatts": 450.0,
+                "readiness": "Go",
+                "benchmarkedAtUtc": "2026-10-28T12:00:00Z",
+                "benchmarkTimestampUtc": "2026-10-28T12:00:00Z",
+                "recommendations": []
+            }
+            """);
+
+        AcceleratorBenchmarkReport? report = await _client.GetLatestBenchmarkAsync(_localProfile, "token");
+        Assert.NotNull(report);
+        Assert.Equal("NVIDIA RTX 4090", report.DeviceName);
+
+        // 404 returns null cleanly
+        _httpHandler.SetResponse("/api/system/benchmark/latest", HttpStatusCode.NotFound, "{}");
+        AcceleratorBenchmarkReport? absentReport = await _client.GetLatestBenchmarkAsync(_localProfile, "token");
+        Assert.Null(absentReport);
+
+        // Validation & Errors
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetLatestBenchmarkAsync(null!, "token"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetLatestBenchmarkAsync(_localProfile, ""));
+
+        _httpHandler.SetResponse("/api/system/benchmark/latest", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetLatestBenchmarkAsync(_localProfile, "token"));
+    }
+
+    /// <summary>
+    /// Verifies GenerateOpentronsProtocolAsync nominal execution and error handling.
+    /// </summary>
+    [Fact]
+    public async Task GenerateOpentronsProtocolAsync_NominalAndErrors_BehavesExpectedly()
+    {
+        // WHAT: Tests GenerateOpentronsProtocolAsync for OT-2/Flex script generation.
+        // WHY:  Automates wet-lab pipetting script synthesis from client.
+        // HOW:  Stubs /api/fabrication/opentrons/generate and asserts returned script.
+        var req = new GenerateOpentronsScriptRequest
+        {
+            SequenceOrSampleId = "sample-1",
+            Regimen = TherapeuticRegimen.MaleToFemale
+        };
+
+        _httpHandler.SetResponse(
+            "/api/fabrication/opentrons/generate",
+            HttpStatusCode.OK,
+            """
+            {
+                "pythonScript": "# metadata\nfrom opentrons import protocol_api\n",
+                "scriptSha256": "sha123",
+                "transferCount": 8,
+                "sourcePlatesRequired": 1,
+                "tipRacksRequired": 1,
+                "hasThermocyclerRamp": true,
+                "estimatedRunDurationMinutes": 45.0
+            }
+            """);
+
+        OpentronsProtocolResult res = await _client.GenerateOpentronsProtocolAsync(_localProfile, "token", req);
+        Assert.Contains("protocol_api", res.PythonScript);
+        Assert.Equal(8, res.TransferCount);
+
+        // Validation & Errors
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GenerateOpentronsProtocolAsync(null!, "token", req));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GenerateOpentronsProtocolAsync(_localProfile, "", req));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GenerateOpentronsProtocolAsync(_localProfile, "token", null!));
+
+        _httpHandler.SetResponse("/api/fabrication/opentrons/generate", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GenerateOpentronsProtocolAsync(_localProfile, "token", req));
+
+        _httpHandler.SetResponse("/api/fabrication/opentrons/generate", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GenerateOpentronsProtocolAsync(_localProfile, "token", req));
+    }
+
+    /// <summary>
+    /// Verifies GetPatientDnaRegimensAsync nominal retrieval and error handling.
+    /// </summary>
+    [Fact]
+    public async Task GetPatientDnaRegimensAsync_NominalAndErrors_BehavesExpectedly()
+    {
+        // WHAT: Tests GetPatientDnaRegimensAsync for downloading complete patient Digital DNA packages.
+        // WHY:  Supplies scaffold sequences, staples, and provenance to client devices.
+        // HOW:  Stubs /api/patient/dna with and without query params and verifies package.
+        _httpHandler.SetResponse(
+            "/api/patient/dna",
+            HttpStatusCode.OK,
+            """
+            {
+                "patientId": "patient-01",
+                "regimen": "MaleToFemale",
+                "scaffoldFasta": "ACGTACGT",
+                "provenanceSha256": "manifest_hash_123"
+            }
+            """);
+
+        PatientDigitalDnaPackage pkg1 = await _client.GetPatientDnaRegimensAsync(_localProfile, "token");
+        Assert.Equal("patient-01", pkg1.PatientId);
+        Assert.Equal("ACGTACGT", pkg1.ScaffoldFasta);
+
+        _httpHandler.SetResponse(
+            "/api/patient/dna",
+            HttpStatusCode.OK,
+            """
+            {
+                "patientId": "patient-custom",
+                "regimen": "FemaleToMale",
+                "scaffoldFasta": "TGCATGCA",
+                "provenanceSha256": "manifest_hash_456"
+            }
+            """);
+
+        PatientDigitalDnaPackage pkg2 = await _client.GetPatientDnaRegimensAsync(_localProfile, "token", "patient-custom");
+        Assert.Equal("patient-custom", pkg2.PatientId);
+        Assert.Equal("TGCATGCA", pkg2.ScaffoldFasta);
+
+        // Validation & Errors
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetPatientDnaRegimensAsync(null!, "token"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetPatientDnaRegimensAsync(_localProfile, ""));
+
+        _httpHandler.SetResponse("/api/patient/dna", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetPatientDnaRegimensAsync(_localProfile, "token"));
+
+        _httpHandler.SetResponse("/api/patient/dna", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetPatientDnaRegimensAsync(_localProfile, "token"));
+    }
+
+    /// <summary>
+    /// Verifies GetPatientDigitalDnaAsync nominal record retrieval and error handling.
+    /// </summary>
+    [Fact]
+    public async Task GetPatientDigitalDnaAsync_NominalAndErrors_BehavesExpectedly()
+    {
+        // WHAT: Tests GetPatientDigitalDnaAsync for patient DNA record collection querying.
+        // WHY:  Allows reviewing digitized DNA nanocarrier blueprints in client UI.
+        // HOW:  Stubs /api/patients/{username}/dna, asserts parsed records, null response handling, and errors.
+        _httpHandler.SetResponse(
+            "/api/patients/patient-01/dna",
+            HttpStatusCode.OK,
+            """
+            [
+                {
+                    "id": "rec-01",
+                    "username": "patient-01",
+                    "title": "Hexagonal Nanotube Carrier"
+                }
+            ]
+            """);
+
+        IReadOnlyList<PatientDigitalDnaRecord> records = await _client.GetPatientDigitalDnaAsync(_localProfile, "token", "patient-01");
+        Assert.Single(records);
+        Assert.Equal("rec-01", records[0].Id);
+
+        // Null response returns empty list
+        _httpHandler.SetResponse("/api/patients/patient-01/dna", HttpStatusCode.OK, "null");
+        IReadOnlyList<PatientDigitalDnaRecord> emptyRecords = await _client.GetPatientDigitalDnaAsync(_localProfile, "token", "patient-01");
+        Assert.Empty(emptyRecords);
+
+        // Validation & Errors
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetPatientDigitalDnaAsync(null!, "token", "patient-01"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetPatientDigitalDnaAsync(_localProfile, "", "patient-01"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetPatientDigitalDnaAsync(_localProfile, "token", ""));
+
+        _httpHandler.SetResponse("/api/patients/patient-01/dna", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetPatientDigitalDnaAsync(_localProfile, "token", "patient-01"));
     }
 
     /// <summary>

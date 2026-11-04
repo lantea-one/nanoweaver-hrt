@@ -17,6 +17,10 @@ modules:
     build-commands:
       - dotnet publish src/NanoWeaverHrt.Desktop/NanoWeaverHrt.Desktop.csproj -c Release -o /app/lib/nanoweaver-hrt-desktop
       - ln -s /app/lib/nanoweaver-hrt-desktop/NanoWeaverHrt.Desktop /app/bin/nanoweaver-hrt-desktop
+      - install -Dm644 packaging/linux/nanoweaver-hrt-desktop.svg /app/share/icons/hicolor/scalable/apps/one.lantea.nanoweaver.hrt.svg
+      - install -Dm644 packaging/linux/org.lantea.NanoWeaverHrt.metainfo.xml /app/share/metainfo/one.lantea.nanoweaver.hrt.metainfo.xml
+      - install -Dm644 packaging/linux/nanoweaver-hrt-desktop.desktop /app/share/applications/one.lantea.nanoweaver.hrt.desktop
+      - sed -i 's|Exec=/usr/bin/nanoweaver-hrt-desktop|Exec=nanoweaver-hrt-desktop|g; s|Icon=nanoweaver-hrt-desktop|Icon=one.lantea.nanoweaver.hrt|g' /app/share/applications/one.lantea.nanoweaver.hrt.desktop
     sources:
       - type: git
         url: https://git.lantea.one/lantea-one/nanoweaver-hrt.git

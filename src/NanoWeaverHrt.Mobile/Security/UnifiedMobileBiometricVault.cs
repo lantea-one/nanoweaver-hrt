@@ -1,5 +1,9 @@
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using System.Text;
+using NanoWeaverHrt.Client.Api;
+using NanoWeaverHrt.Client.Storage;
+using NanoWeaverHrt.Models;
 
 namespace NanoWeaverHrt.Mobile.Security;
 
@@ -129,6 +133,36 @@ public sealed class UnifiedMobileBiometricVault : IDisposable
             plaintextPayload = null;
             return false;
         }
+    }
+
+    /// <summary>
+    /// Downloads and securely caches a patient DNA digital package in volatile memory using an authenticated client.
+    /// </summary>
+    /// <param name="client">Authenticated REST API client.</param>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="patientId">Target patient identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The downloaded patient digital DNA package.</returns>
+    public async Task<PatientDigitalDnaPackage> DownloadAndCachePatientPackageAsync(
+        INanoWeaverNodeClient client,
+        InstanceProfile profile,
+        string bearerToken,
+        string patientId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Downloads patient digital DNA package and caches its scaffold bytes in volatile memory.
+        // WHY:  Permits mobile clients to load genomic regimens into the zeroizable biometric vault on demand.
+        // HOW:  Awaits client.GetPatientDnaRegimensAsync, serializes payload to UTF-8 bytes, and stores via CacheDecryptedRegimen.
+        ArgumentNullException.ThrowIfNull(client);
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(patientId);
+
+        PatientDigitalDnaPackage package = await client.GetPatientDnaRegimensAsync(profile, bearerToken, patientId, ct).ConfigureAwait(false);
+        byte[] payloadBytes = Encoding.UTF8.GetBytes(package.ScaffoldFasta);
+        CacheDecryptedRegimen(patientId, payloadBytes);
+        return package;
     }
 
     /// <summary>

@@ -38,6 +38,9 @@ public sealed class DatabaseMigrationRunnerTests
         /// <summary>Gets the list of created commands.</summary>
         public List<RecordingDbCommand> CreatedCommands { get; } = new();
 
+        /// <summary>Gets the list of created transactions.</summary>
+        public List<RecordingDbTransaction> CreatedTransactions { get; } = new();
+
         /// <summary>Gets or sets the applied version numbers returned by reader queries.</summary>
         public List<long> AppliedVersionsToReturn { get; set; } = new();
 
@@ -58,7 +61,11 @@ public sealed class DatabaseMigrationRunnerTests
         /// <param name="isolationLevel">Isolation level.</param>
         /// <returns>A new <see cref="RecordingDbTransaction"/> instance.</returns>
         protected override DbTransaction BeginDbTransaction(IsolationLevel isolationLevel)
-            => new RecordingDbTransaction(this);
+        {
+            RecordingDbTransaction tx = new(this);
+            CreatedTransactions.Add(tx);
+            return tx;
+        }
 
         /// <summary>Changes the database.</summary>
         /// <param name="databaseName">Database name.</param>
@@ -104,11 +111,17 @@ public sealed class DatabaseMigrationRunnerTests
         /// <summary>Gets the isolation level.</summary>
         public override IsolationLevel IsolationLevel => IsolationLevel.ReadCommitted;
 
+        /// <summary>Gets a value indicating whether Commit was called.</summary>
+        public bool Committed { get; private set; }
+
+        /// <summary>Gets a value indicating whether Rollback was called.</summary>
+        public bool RolledBack { get; private set; }
+
         /// <summary>Commits the transaction.</summary>
-        public override void Commit() { }
+        public override void Commit() => Committed = true;
 
         /// <summary>Rolls back the transaction.</summary>
-        public override void Rollback() { }
+        public override void Rollback() => RolledBack = true;
     }
 
     /// <summary>
@@ -646,5 +659,83 @@ public sealed class DatabaseMigrationRunnerTests
         Assert.Contains("preference_key", sql);
         Assert.Contains("preference_value", sql);
         Assert.Contains("updated_at_utc", sql);
+    }
+
+    /// <summary>
+    /// Test migration that throws during UpAsync to verify rollback invariants.
+    /// </summary>
+    private sealed class FailingTestMigration : DatabaseMigrationBase
+    {
+        /// <summary>Gets the migration version.</summary>
+        public override long Version => 999;
+
+        /// <summary>Gets the migration name.</summary>
+        public override string Name => "999_FailingRollbackTest";
+
+        /// <summary>Emits SQL.</summary>
+        /// <param name="dialect">Dialect identifier.</param>
+        /// <returns>DDL string.</returns>
+        public override string GetSql(string dialect) => "CREATE TABLE test_rollback (id INTEGER);";
+
+        /// <summary>
+        /// Executes migration and throws intentional exception.
+        /// </summary>
+        /// <param name="conn">Database connection.</param>
+        /// <param name="tx">Database transaction.</param>
+        /// <param name="dialect">Dialect identifier.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>A task representing the failed asynchronous operation.</returns>
+        public override Task UpAsync(DbConnection conn, DbTransaction? tx, string dialect, CancellationToken ct = default)
+        {
+            // WHAT: Throws an unhandled exception mid-migration.
+            // WHY:  Forces DatabaseMigrationRunner into its catch and rollback block.
+            // HOW:  Throws InvalidOperationException directly.
+            throw new InvalidOperationException("Simulated catastrophic migration failure");
+        }
+    }
+
+    /// <summary>
+    /// Verifies that when a migration throws an exception, the transaction is rolled back and the version is not recorded.
+    /// </summary>
+    [Fact]
+    public async Task ApplyPendingMigrationsAsync_MigrationThrows_RollsBackTransactionAndLeavesCleanSchema()
+    {
+        // WHAT: Tests transaction rollback on migration failure with recording test doubles.
+        // WHY:  Fulfills Issue #97 (P94): Guarantees atomicity and prevents half-applied migrations in tracking table.
+        // HOW:  Passes a failing migration, runs ApplyPendingMigrationsAsync, asserts exception, and asserts rollback.
+        RecordingDbConnection conn = new();
+        using DatabaseMigrationRunner runner = new(new IDatabaseMigration[] { new FailingTestMigration() });
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => runner.ApplyPendingMigrationsAsync(conn, "sqlite"));
+        Assert.Equal("Simulated catastrophic migration failure", ex.Message);
+
+        Assert.Single(conn.CreatedTransactions);
+        Assert.True(conn.CreatedTransactions[0].RolledBack);
+        Assert.False(conn.CreatedTransactions[0].Committed);
+    }
+
+    /// <summary>
+    /// Verifies that SQLite rolls back actual schema mutations when a migration throws.
+    /// </summary>
+    [Fact]
+    public async Task ApplyPendingMigrationsAsync_RealSqlite_RollsBackOnFailure()
+    {
+        // WHAT: Tests real SQLite database transaction rollback on migration failure.
+        // WHY:  Fulfills Issue #97 (P94): Confirms SQLite database file remains uncorrupted after an aborted migration.
+        // HOW:  Uses an in-memory SQLite connection, runs a failing migration, verifies table was not created and migration was not recorded.
+        await using var conn = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:");
+        await conn.OpenAsync();
+
+        using DatabaseMigrationRunner runner = new(new IDatabaseMigration[] { new FailingTestMigration() });
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => runner.ApplyPendingMigrationsAsync(conn, "sqlite"));
+
+        IReadOnlyList<long> applied = await runner.GetAppliedVersionsAsync(conn, "sqlite");
+        Assert.Empty(applied);
+
+        await using var checkCmd = conn.CreateCommand();
+        checkCmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='test_rollback';";
+        var result = await checkCmd.ExecuteScalarAsync();
+        Assert.Null(result);
     }
 }

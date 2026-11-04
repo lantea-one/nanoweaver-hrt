@@ -90,6 +90,15 @@ sudo dnf install ./nanoweaver-hrt-desktop-amd64.rpm
 sudo dnf install ./nanoweaver-hrt-desktop-arm64.rpm
 ```
 
+#### Flatpak (Universal Sandboxed Linux Application)
+```bash
+# 1. Build and install local Flatpak bundle:
+flatpak-builder --user --install --force-clean build-dir packaging/flatpak/one.lantea.nanoweaver.hrt.yml
+
+# 2. Run the application:
+flatpak run one.lantea.nanoweaver.hrt
+```
+
 ---
 
 ### 2.2 macOS (`NanoWeaverHrt.dmg`)
@@ -143,7 +152,7 @@ Add-AppxPackage -Path NanoWeaverHrt.msix
 All release assets are continuously published on every push to `main` and tagged release:
 - **Continuous Rolling Nightly Release**: Tagged `nightly`, providing immediate access to the latest master build with direct `.exe`, `.dmg`, `.deb`, `.rpm`, and mobile package downloads.
 - **Tagged CalVer Releases**: Permanent releases minted using the `v<yyyy>.<mm>.<dd>.<increment>` convention (e.g. `v2026.10.29.1`, `v2026.10.29.2`).
-- Direct downloads are hosted on the Sovereign Forgejo instance (`https://git.lantea.one/lantea-one/nanoweaver-hrt/releases`) and mirrored on GitHub Releases.
+- Direct downloads are published to the Sovereign Forgejo instance (`https://git.lantea.one/lantea-one/nanoweaver-hrt/releases`) as the authoritative release registry, with release artifacts mirrored to the external GitHub repository.
 
 ---
 
@@ -183,7 +192,7 @@ Under the CA/Browser Forum Baseline Requirements and RFC 5280:
    - Public anchor committed directly to the repository under `docs/assets/keys/nanoweaver-codesign-root-ca.crt`.
 2. **Automated 90-Day Short-Lived Leaf Certificates (`nanoweaver-codesign-leaf.crt`)**:
    - Exactly matches the security posture of Let's Encrypt 90-day certificates.
-   - Automatically rotated every month via scheduled Forgejo Actions (`.forgejo/workflows/rotate-codesign-certs.yml`) and GitHub Actions (`.github/workflows/rotate-codesign-certs.yml`).
+   - Automatically rotated every month via scheduled Forgejo Actions (`.forgejo/workflows/rotate-codesign-certs.yml`) and mirrored for external verification via GitHub Actions (`.github/workflows/rotate-codesign-certs.yml`).
    - Enforces strict `id-kp-codeSigning` EKU and digital signature key usage.
 3. **OpenPGP / GPG Archive Signing Key (`nanoweaver-archive-keyring.asc`)**:
    - Signs Linux packages, Debian `Release` files, RPM headers, and master `SHA256SUMS` manifests.

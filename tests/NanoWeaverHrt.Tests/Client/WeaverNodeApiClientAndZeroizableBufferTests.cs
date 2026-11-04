@@ -2,6 +2,13 @@ using Moq;
 using NanoWeaverHrt.Client.Api;
 using NanoWeaverHrt.Client.Security;
 using NanoWeaverHrt.Client.Storage;
+using NanoWeaverHrt.Endocrine;
+using NanoWeaverHrt.Fabrication;
+using NanoWeaverHrt.Fabrication.Gel;
+using NanoWeaverHrt.Fabrication.Opentrons;
+using NanoWeaverHrt.Federation;
+using NanoWeaverHrt.Hardware.Benchmarking;
+using NanoWeaverHrt.Models;
 using Xunit;
 
 namespace NanoWeaverHrt.Tests.Client;
@@ -202,6 +209,89 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         innerMock.Setup(i => i.GetEndocrineProfileAsync(profile, "explicit_token", It.IsAny<CancellationToken>())).ReturnsAsync(endocrine);
         innerMock.Setup(i => i.GetEndocrineProfileAsync(profile, "cached_token", It.IsAny<CancellationToken>())).ReturnsAsync(endocrine);
 
+        var closedLoopReq = new ClosedLoopSimulationRequest { TotalHours = 24, StepHours = 1.0 };
+        var closedLoopRes = new ClosedLoopSimulationResult { SteadyStateReached = true, TimeToSuppressionHours = 12.0 };
+        innerMock.Setup(i => i.SimulateClosedLoopEndocrineAsync(profile, "explicit_token", closedLoopReq, It.IsAny<CancellationToken>())).ReturnsAsync(closedLoopRes);
+        innerMock.Setup(i => i.SimulateClosedLoopEndocrineAsync(profile, "cached_token", closedLoopReq, It.IsAny<CancellationToken>())).ReturnsAsync(closedLoopRes);
+
+        var peers = (IReadOnlyList<FederationPeerNode>)[new FederationPeerNode
+        {
+            NodeId = "p1",
+            EndpointUri = "http://127.0.0.1:5000",
+            PublicKeyBase64 = "pub",
+            Algorithm = NanoWeaverHrt.Security.Authentication.KeyAlgorithm.Ed25519,
+            LatencyMilliseconds = 12.5,
+            LastSeenUtc = DateTimeOffset.UtcNow
+        }];
+        innerMock.Setup(i => i.DiscoverFederationPeersAsync(profile, "explicit_token", It.IsAny<CancellationToken>())).ReturnsAsync(peers);
+        innerMock.Setup(i => i.DiscoverFederationPeersAsync(profile, "cached_token", It.IsAny<CancellationToken>())).ReturnsAsync(peers);
+
+        var buildReq = new FederationBuildManifestRequest { TrajectoryFileName = "run.xyz" };
+        var manifest = new TrajectoryFederationManifest
+        {
+            DatasetName = "run.xyz",
+            TotalSizeBytes = 1024,
+            ChunkSizeBytes = 1024,
+            TotalChunks = 1,
+            Chunks = [],
+            SigningNodeId = "node-1",
+            SignatureAlgorithm = "Ed25519",
+            SignatureBase64 = "sig",
+            ManifestTimestampUtc = DateTimeOffset.UtcNow
+        };
+        innerMock.Setup(i => i.BuildFederationManifestAsync(profile, "explicit_token", buildReq, It.IsAny<CancellationToken>())).ReturnsAsync(manifest);
+        innerMock.Setup(i => i.BuildFederationManifestAsync(profile, "cached_token", buildReq, It.IsAny<CancellationToken>())).ReturnsAsync(manifest);
+
+        var verifyRes = new FederationVerifyManifestResponse { IsValid = true, TrajectoryId = "run.xyz" };
+        innerMock.Setup(i => i.VerifyFederationManifestAsync(profile, "explicit_token", manifest, It.IsAny<CancellationToken>())).ReturnsAsync(verifyRes);
+        innerMock.Setup(i => i.VerifyFederationManifestAsync(profile, "cached_token", manifest, It.IsAny<CancellationToken>())).ReturnsAsync(verifyRes);
+
+        var gelReq = new GelAnalysisRequest { ImageBytes = [1, 2], Width = 1, Height = 1, ExpectedLaneCount = 1, BackgroundThreshold = 0.1, LadderLaneNumber = 1 };
+        var gelRes = new GelAnalysisResult { DetectedLaneCount = 1, OverallFoldingSuccessRate = 95.0, Lanes = [] };
+        innerMock.Setup(i => i.AnalyzeGelAsync(profile, "explicit_token", gelReq, It.IsAny<CancellationToken>())).ReturnsAsync(gelRes);
+        innerMock.Setup(i => i.AnalyzeGelAsync(profile, "cached_token", gelReq, It.IsAny<CancellationToken>())).ReturnsAsync(gelRes);
+
+        var benchmarkRep = new AcceleratorBenchmarkReport
+        {
+            DeviceName = "GPU",
+            DriverVersion = "1.0",
+            SinglePrecisionGflops = 1000.0,
+            DoublePrecisionGflops = 100.0,
+            MemoryBandwidthGigaBytesPerSecond = 100.0,
+            TemperatureCelsius = 45.0,
+            PowerUsageWatts = 150.0,
+            Readiness = HardwareReadinessScore.Go,
+            BenchmarkTimestampUtc = DateTimeOffset.UtcNow,
+            Recommendations = []
+        };
+        innerMock.Setup(i => i.RunBenchmarkAsync(profile, "explicit_token", It.IsAny<CancellationToken>())).ReturnsAsync(benchmarkRep);
+        innerMock.Setup(i => i.RunBenchmarkAsync(profile, "cached_token", It.IsAny<CancellationToken>())).ReturnsAsync(benchmarkRep);
+
+        innerMock.Setup(i => i.GetLatestBenchmarkAsync(profile, "explicit_token", It.IsAny<CancellationToken>())).ReturnsAsync(benchmarkRep);
+        innerMock.Setup(i => i.GetLatestBenchmarkAsync(profile, "cached_token", It.IsAny<CancellationToken>())).ReturnsAsync(benchmarkRep);
+
+        var opentronsReq = new GenerateOpentronsScriptRequest { SequenceOrSampleId = "s1" };
+        var opentronsRes = new OpentronsProtocolResult
+        {
+            PythonScript = "# code",
+            ScriptSha256 = "sha",
+            TransferCount = 1,
+            SourcePlatesRequired = 1,
+            TipRacksRequired = 1,
+            HasThermocyclerRamp = true,
+            EstimatedRunDurationMinutes = 10.0
+        };
+        innerMock.Setup(i => i.GenerateOpentronsProtocolAsync(profile, "explicit_token", opentronsReq, It.IsAny<CancellationToken>())).ReturnsAsync(opentronsRes);
+        innerMock.Setup(i => i.GenerateOpentronsProtocolAsync(profile, "cached_token", opentronsReq, It.IsAny<CancellationToken>())).ReturnsAsync(opentronsRes);
+
+        var dnaPkg = new PatientDigitalDnaPackage { PatientId = "pt1", ScaffoldFasta = "ATCG", NanocarrierGeometry = "Hexagonal Nanotube", ProvenanceSha256 = "sha256" };
+        innerMock.Setup(i => i.GetPatientDnaRegimensAsync(profile, "explicit_token", "pt1", It.IsAny<CancellationToken>())).ReturnsAsync(dnaPkg);
+        innerMock.Setup(i => i.GetPatientDnaRegimensAsync(profile, "cached_token", "pt1", It.IsAny<CancellationToken>())).ReturnsAsync(dnaPkg);
+
+        var dnaRecs = (IReadOnlyList<PatientDigitalDnaRecord>)[new PatientDigitalDnaRecord { Id = "rec1", Username = "pt1" }];
+        innerMock.Setup(i => i.GetPatientDigitalDnaAsync(profile, "explicit_token", "pt1", It.IsAny<CancellationToken>())).ReturnsAsync(dnaRecs);
+        innerMock.Setup(i => i.GetPatientDigitalDnaAsync(profile, "cached_token", "pt1", It.IsAny<CancellationToken>())).ReturnsAsync(dnaRecs);
+
         using var client = new WeaverNodeApiClient(innerMock.Object);
 
         // 1. Missing token without cache throws InvalidOperationException
@@ -210,6 +300,16 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetTelemetryAsync(profile, ""));
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetCampaignsAsync(profile, ""));
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetEndocrineProfileAsync(profile, ""));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.SimulateClosedLoopEndocrineAsync(profile, "", closedLoopReq));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.DiscoverFederationPeersAsync(profile, ""));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.BuildFederationManifestAsync(profile, "", buildReq));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.VerifyFederationManifestAsync(profile, "", manifest));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.AnalyzeGelAsync(profile, "", gelReq));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.RunBenchmarkAsync(profile, ""));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetLatestBenchmarkAsync(profile, ""));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.GenerateOpentronsProtocolAsync(profile, "", opentronsReq));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetPatientDnaRegimensAsync(profile, "", "pt1"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetPatientDigitalDnaAsync(profile, "", "pt1"));
 
         // 2. Call with explicit token
         var snapRes1 = await client.PollSnapshotAsync(profile, "explicit_token");
@@ -226,6 +326,36 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
 
         var endRes1 = await client.GetEndocrineProfileAsync(profile, "explicit_token");
         Assert.Equal("MtF", endRes1.Dominance);
+
+        var clRes1 = await client.SimulateClosedLoopEndocrineAsync(profile, "explicit_token", closedLoopReq);
+        Assert.True(clRes1.SteadyStateReached);
+
+        var peerRes1 = await client.DiscoverFederationPeersAsync(profile, "explicit_token");
+        Assert.Single(peerRes1);
+
+        var bldRes1 = await client.BuildFederationManifestAsync(profile, "explicit_token", buildReq);
+        Assert.Equal("run.xyz", bldRes1.DatasetName);
+
+        var verRes1 = await client.VerifyFederationManifestAsync(profile, "explicit_token", manifest);
+        Assert.True(verRes1.IsValid);
+
+        var gelRes1 = await client.AnalyzeGelAsync(profile, "explicit_token", gelReq);
+        Assert.Equal(1, gelRes1.DetectedLaneCount);
+
+        var bmRes1 = await client.RunBenchmarkAsync(profile, "explicit_token");
+        Assert.Equal("GPU", bmRes1.DeviceName);
+
+        var bmLtRes1 = await client.GetLatestBenchmarkAsync(profile, "explicit_token");
+        Assert.NotNull(bmLtRes1);
+
+        var otRes1 = await client.GenerateOpentronsProtocolAsync(profile, "explicit_token", opentronsReq);
+        Assert.Equal("# code", otRes1.PythonScript);
+
+        var dnaPkgRes1 = await client.GetPatientDnaRegimensAsync(profile, "explicit_token", "pt1");
+        Assert.Equal("pt1", dnaPkgRes1.PatientId);
+
+        var dnaRecRes1 = await client.GetPatientDigitalDnaAsync(profile, "explicit_token", "pt1");
+        Assert.Single(dnaRecRes1);
 
         // 3. Set cached token and call with empty token argument
         client.SetSessionToken("cached_token");
@@ -244,6 +374,36 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
 
         var endRes2 = await client.GetEndocrineProfileAsync(profile, "");
         Assert.Equal("MtF", endRes2.Dominance);
+
+        var clRes2 = await client.SimulateClosedLoopEndocrineAsync(profile, "", closedLoopReq);
+        Assert.True(clRes2.SteadyStateReached);
+
+        var peerRes2 = await client.DiscoverFederationPeersAsync(profile, "");
+        Assert.Single(peerRes2);
+
+        var bldRes2 = await client.BuildFederationManifestAsync(profile, "", buildReq);
+        Assert.Equal("run.xyz", bldRes2.DatasetName);
+
+        var verRes2 = await client.VerifyFederationManifestAsync(profile, "", manifest);
+        Assert.True(verRes2.IsValid);
+
+        var gelRes2 = await client.AnalyzeGelAsync(profile, "", gelReq);
+        Assert.Equal(1, gelRes2.DetectedLaneCount);
+
+        var bmRes2 = await client.RunBenchmarkAsync(profile, "");
+        Assert.Equal("GPU", bmRes2.DeviceName);
+
+        var bmLtRes2 = await client.GetLatestBenchmarkAsync(profile, "");
+        Assert.NotNull(bmLtRes2);
+
+        var otRes2 = await client.GenerateOpentronsProtocolAsync(profile, "", opentronsReq);
+        Assert.Equal("# code", otRes2.PythonScript);
+
+        var dnaPkgRes2 = await client.GetPatientDnaRegimensAsync(profile, "", "pt1");
+        Assert.Equal("pt1", dnaPkgRes2.PatientId);
+
+        var dnaRecRes2 = await client.GetPatientDigitalDnaAsync(profile, "", "pt1");
+        Assert.Single(dnaRecRes2);
 
         // 4. Set whitespace token buffer to exercise whitespace fallback exception
         using var whitespaceBuf = ZeroizableSecretBuffer.FromUtf8("   ");
@@ -278,5 +438,15 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetTelemetryAsync(profile, "token"));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetCampaignsAsync(profile, "token"));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetEndocrineProfileAsync(profile, "token"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.SimulateClosedLoopEndocrineAsync(profile, "token", new ClosedLoopSimulationRequest()));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.DiscoverFederationPeersAsync(profile, "token"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.BuildFederationManifestAsync(profile, "token", new FederationBuildManifestRequest { TrajectoryFileName = "run.xyz" }));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.VerifyFederationManifestAsync(profile, "token", new TrajectoryFederationManifest { DatasetName = "run.xyz", TotalSizeBytes = 1, ChunkSizeBytes = 1, TotalChunks = 1, Chunks = [], SigningNodeId = "n", SignatureAlgorithm = "Ed25519", SignatureBase64 = "s", ManifestTimestampUtc = DateTimeOffset.UtcNow }));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.AnalyzeGelAsync(profile, "token", new GelAnalysisRequest { ImageBytes = [1], Width = 1, Height = 1, ExpectedLaneCount = 1, BackgroundThreshold = 0.1, LadderLaneNumber = 1 }));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.RunBenchmarkAsync(profile, "token"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetLatestBenchmarkAsync(profile, "token"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GenerateOpentronsProtocolAsync(profile, "token", new GenerateOpentronsScriptRequest { SequenceOrSampleId = "s1" }));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetPatientDnaRegimensAsync(profile, "token"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetPatientDigitalDnaAsync(profile, "token", "pt1"));
     }
 }

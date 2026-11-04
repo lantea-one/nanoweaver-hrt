@@ -1,5 +1,12 @@
 using NanoWeaverHrt.Client.Security;
 using NanoWeaverHrt.Client.Storage;
+using NanoWeaverHrt.Endocrine;
+using NanoWeaverHrt.Fabrication;
+using NanoWeaverHrt.Fabrication.Gel;
+using NanoWeaverHrt.Fabrication.Opentrons;
+using NanoWeaverHrt.Federation;
+using NanoWeaverHrt.Hardware.Benchmarking;
+using NanoWeaverHrt.Models;
 
 namespace NanoWeaverHrt.Client.Api;
 
@@ -230,6 +237,153 @@ public sealed class WeaverNodeApiClient : INanoWeaverNodeClient, IDisposable
         ThrowIfDisposed();
         string effectiveToken = ResolveBearerToken(bearerToken);
         return _innerClient.GetEndocrineProfileAsync(profile, effectiveToken, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<ClosedLoopSimulationResult> SimulateClosedLoopEndocrineAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        ClosedLoopSimulationRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches closed-loop numerical integration parameters using provided or cached session token.
+        // WHY:  Models real-time endocrine feedback trajectories from client GUI.
+        // HOW:  Resolves effective token, delegates to _innerClient.SimulateClosedLoopEndocrineAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.SimulateClosedLoopEndocrineAsync(profile, effectiveToken, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<FederationPeerNode>> DiscoverFederationPeersAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Discovers active P2P swarm peers using provided or cached session token.
+        // WHY:  Permits swarm monitoring without explicit token management in GUI layers.
+        // HOW:  Resolves effective token, delegates to _innerClient.DiscoverFederationPeersAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.DiscoverFederationPeersAsync(profile, effectiveToken, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<TrajectoryFederationManifest> BuildFederationManifestAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        FederationBuildManifestRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Builds a federation manifest for a trajectory file using provided or cached token.
+        // WHY:  Allows client to initiate swarm distribution jobs.
+        // HOW:  Resolves effective token, delegates to _innerClient.BuildFederationManifestAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.BuildFederationManifestAsync(profile, effectiveToken, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<FederationVerifyManifestResponse> VerifyFederationManifestAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        TrajectoryFederationManifest manifest,
+        CancellationToken ct = default)
+    {
+        // WHAT: Verifies federation manifest signatures and Merkle chunk integrity.
+        // WHY:  Ensures untampered trajectory data before peer transfer.
+        // HOW:  Resolves effective token, delegates to _innerClient.VerifyFederationManifestAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.VerifyFederationManifestAsync(profile, effectiveToken, manifest, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<GelAnalysisResult> AnalyzeGelAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        GelAnalysisRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Analyzes gel electrophoresis images using provided or cached session token.
+        // WHY:  Enables automated folding quality verification from client UI.
+        // HOW:  Resolves effective token, delegates to _innerClient.AnalyzeGelAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.AnalyzeGelAsync(profile, effectiveToken, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<AcceleratorBenchmarkReport> RunBenchmarkAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Executes on-demand hardware benchmark using provided or cached session token.
+        // WHY:  Evaluates GPU/NPU compute performance before running heavy workloads.
+        // HOW:  Resolves effective token, delegates to _innerClient.RunBenchmarkAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.RunBenchmarkAsync(profile, effectiveToken, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<AcceleratorBenchmarkReport?> GetLatestBenchmarkAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Fetches most recent hardware benchmark report using provided or cached token.
+        // WHY:  Supplies hardware readiness status to dashboard cards.
+        // HOW:  Resolves effective token, delegates to _innerClient.GetLatestBenchmarkAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GetLatestBenchmarkAsync(profile, effectiveToken, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<OpentronsProtocolResult> GenerateOpentronsProtocolAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        GenerateOpentronsScriptRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Synthesizes Opentrons liquid handler protocol scripts using provided or cached token.
+        // WHY:  Enables automated pipetting script export from client workspace.
+        // HOW:  Resolves effective token, delegates to _innerClient.GenerateOpentronsProtocolAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GenerateOpentronsProtocolAsync(profile, effectiveToken, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<PatientDigitalDnaPackage> GetPatientDnaRegimensAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string? patientId = null,
+        CancellationToken ct = default)
+    {
+        // WHAT: Downloads patient Digital DNA package using provided or cached session token.
+        // WHY:  Provides patient nanocarrier sequences and annealing schedules.
+        // HOW:  Resolves effective token, delegates to _innerClient.GetPatientDnaRegimensAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GetPatientDnaRegimensAsync(profile, effectiveToken, patientId, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<PatientDigitalDnaRecord>> GetPatientDigitalDnaAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        CancellationToken ct = default)
+    {
+        // WHAT: Retrieves digitized DNA blueprint records for a patient using provided or cached token.
+        // WHY:  Allows reviewing clinical nanocarrier records in the client application.
+        // HOW:  Resolves effective token, delegates to _innerClient.GetPatientDigitalDnaAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GetPatientDigitalDnaAsync(profile, effectiveToken, username, ct);
     }
 
     /// <inheritdoc/>

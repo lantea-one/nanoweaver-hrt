@@ -1428,4 +1428,152 @@ public sealed class EndpointIntegrationTests : IClassFixture<WebApplicationFacto
         });
         Assert.Equal(HttpStatusCode.BadRequest, shortBufferResp.StatusCode);
     }
+
+    /// <summary>
+    /// Verifies that POST /api/datasets/import returns 400 Bad Request when archive or manifest is missing.
+    /// </summary>
+    [Fact]
+    public async Task ImportDataset_NullArchiveOrManifest_Returns400BadRequest()
+    {
+        // WHAT: Tests POST /api/datasets/import when only one of the two multipart form files is provided.
+        // WHY:  Ensures line 747 in Program.cs handles archive == null || manifest == null branches.
+        // HOW:  Posts multipart form with only archive, then only manifest, asserting 400 Bad Request.
+        string token = await ProvisionUserAndGetTokenAsync("admin-import-tester", UserRole.Administrator);
+        using HttpClient client = CreateClientWithBearer(token);
+
+        // 1. Only archive file provided (manifest is null)
+        using (MultipartFormDataContent form1 = new())
+        {
+            form1.Add(new ByteArrayContent("TEST_ARCHIVE"u8.ToArray()), "archive", "test.tar.gz");
+            HttpResponseMessage resp1 = await client.PostAsync("/api/datasets/import", form1);
+            Assert.Equal(HttpStatusCode.BadRequest, resp1.StatusCode);
+        }
+
+        // 2. Only manifest file provided (archive is null)
+        using (MultipartFormDataContent form2 = new())
+        {
+            form2.Add(new ByteArrayContent("{}"u8.ToArray()), "manifest", "manifest.json");
+            HttpResponseMessage resp2 = await client.PostAsync("/api/datasets/import", form2);
+            Assert.Equal(HttpStatusCode.BadRequest, resp2.StatusCode);
+        }
+    }
+
+    /// <summary>
+    /// Verifies that POST /api/setup/initialize returns 400 Bad Request with RFC 7807 problem details when setup has already completed.
+    /// </summary>
+    [Fact]
+    public async Task InitializeSetup_WhenAlreadyCompleted_Returns400ProblemDetails()
+    {
+        // WHAT: Dispatches POST /api/setup/initialize on an already-configured instance.
+        // WHY:  Exercises lines 1763-1772 in Program.cs where setup conflict InvalidOperationException is caught.
+        // HOW:  Sends InitialSetupRequest; expects 400 Bad Request with RFC 7807 problem details.
+        HttpClient client = _factory.CreateClient();
+        var setupReq = new InitialSetupRequest
+        {
+            AdminUsername = "admin-late",
+            AccessGate = AccessGate.ApiWeb,
+            PublicKeyBase64 = Convert.ToBase64String(new byte[32]),
+            Algorithm = KeyAlgorithm.Ed25519
+        };
+
+        HttpResponseMessage resp = await client.PostAsJsonAsync("/api/setup/initialize", setupReq);
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+
+        string body = await resp.Content.ReadAsStringAsync();
+        Assert.Contains("System has already completed initial Administrator setup.", body);
+    }
+
+    /// <summary>
+    /// Verifies that non-admin patient accounts attempting cross-subject access on User Profiles, Addresses, and Contacts receive 403 Forbidden.
+    /// </summary>
+    [Fact]
+    public async Task UserProfilesAndContacts_ForbiddenCrossAccess_Returns403()
+    {
+        // WHAT: Tests authorization gating on /api/users/{username}/* routes.
+        // WHY:  Exercises lines 2035, 2075, 2119, 2154, 2202, 2244, 2279, 2327 403 Forbidden branches.
+        // HOW:  Provisions patient-charlie and patient-dana; uses charlie's client to access dana's resources.
+        string tokenCharlie = await ProvisionUserAndGetTokenAsync("patient-charlie", UserRole.Patient);
+        using HttpClient clientCharlie = CreateClientWithBearer(tokenCharlie);
+
+        // 1. GET /api/users/patient-dana/profile
+        HttpResponseMessage getProfResp = await clientCharlie.GetAsync("/api/users/patient-dana/profile");
+        Assert.Equal(HttpStatusCode.Forbidden, getProfResp.StatusCode);
+
+        // 2. PUT /api/users/patient-dana/profile
+        HttpResponseMessage putProfResp = await clientCharlie.PutAsJsonAsync("/api/users/patient-dana/profile", new UserProfile { Username = "patient-dana" });
+        Assert.Equal(HttpStatusCode.Forbidden, putProfResp.StatusCode);
+
+        // 3. GET /api/users/patient-dana/addresses
+        HttpResponseMessage getAddrResp = await clientCharlie.GetAsync("/api/users/patient-dana/addresses");
+        Assert.Equal(HttpStatusCode.Forbidden, getAddrResp.StatusCode);
+
+        // 4. POST /api/users/patient-dana/addresses
+        HttpResponseMessage postAddrResp = await clientCharlie.PostAsJsonAsync("/api/users/patient-dana/addresses", new PatientAddress { AddressLine1 = "123 St" });
+        Assert.Equal(HttpStatusCode.Forbidden, postAddrResp.StatusCode);
+
+        // 5. DELETE /api/users/patient-dana/addresses/addr-1
+        HttpResponseMessage delAddrResp = await clientCharlie.DeleteAsync("/api/users/patient-dana/addresses/addr-1");
+        Assert.Equal(HttpStatusCode.Forbidden, delAddrResp.StatusCode);
+
+        // 6. GET /api/users/patient-dana/contacts
+        HttpResponseMessage getContResp = await clientCharlie.GetAsync("/api/users/patient-dana/contacts");
+        Assert.Equal(HttpStatusCode.Forbidden, getContResp.StatusCode);
+
+        // 7. POST /api/users/patient-dana/contacts
+        HttpResponseMessage postContResp = await clientCharlie.PostAsJsonAsync("/api/users/patient-dana/contacts", new PatientContact { ContactName = "Dana Emergency", PhoneNumber = "555-1234" });
+        Assert.Equal(HttpStatusCode.Forbidden, postContResp.StatusCode);
+
+        // 8. DELETE /api/users/patient-dana/contacts/cont-1
+        HttpResponseMessage delContResp = await clientCharlie.DeleteAsync("/api/users/patient-dana/contacts/cont-1");
+        Assert.Equal(HttpStatusCode.Forbidden, delContResp.StatusCode);
+    }
+
+    /// <summary>
+    /// Verifies that unauthorized patient callers querying other patients' DNA, imports, and results receive 403 or 404 access rejections.
+    /// </summary>
+    [Fact]
+    public async Task PatientDnaImportsAndResults_ForbiddenCrossAccess_Returns403Or404()
+    {
+        // WHAT: Tests access gating on /api/patients/{username}/* routes.
+        // WHY:  Exercises 403 Forbidden branches across Patient DNA, Patient Imports, and Patient Results endpoints.
+        // HOW:  Provisions patient-eve and patient-frank; attempts cross-patient access with eve's token.
+        string tokenEve = await ProvisionUserAndGetTokenAsync("patient-eve", UserRole.Patient);
+        using HttpClient clientEve = CreateClientWithBearer(tokenEve);
+
+        // 1. GET /api/patients/patient-frank/dna
+        HttpResponseMessage getDnaResp = await clientEve.GetAsync("/api/patients/patient-frank/dna");
+        Assert.True(getDnaResp.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.NotFound);
+
+        // 2. GET /api/patients/patient-frank/dna/dna-1
+        HttpResponseMessage getDnaIdResp = await clientEve.GetAsync("/api/patients/patient-frank/dna/dna-1");
+        Assert.True(getDnaIdResp.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.NotFound);
+
+        // 3. POST /api/patients/patient-frank/dna
+        HttpResponseMessage postDnaResp = await clientEve.PostAsJsonAsync("/api/patients/patient-frank/dna", new CreatePatientDnaRequest { Title = "Hexagonal Nanotube" });
+        Assert.True(postDnaResp.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.NotFound);
+
+        // 4. GET /api/patients/patient-frank/imports
+        HttpResponseMessage getImpResp = await clientEve.GetAsync("/api/patients/patient-frank/imports");
+        Assert.True(getImpResp.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.NotFound);
+
+        // 5. GET /api/patients/patient-frank/imports/imp-1
+        HttpResponseMessage getImpIdResp = await clientEve.GetAsync("/api/patients/patient-frank/imports/imp-1");
+        Assert.True(getImpIdResp.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.NotFound);
+
+        // 6. POST /api/patients/patient-frank/imports
+        HttpResponseMessage postImpResp = await clientEve.PostAsJsonAsync("/api/patients/patient-frank/imports", new CreatePatientImportRequest { FileName = "frank.fasta", SequenceOrData = "ATCG" });
+        Assert.True(postImpResp.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.NotFound);
+
+        // 7. GET /api/patients/patient-frank/results
+        HttpResponseMessage getResResp = await clientEve.GetAsync("/api/patients/patient-frank/results");
+        Assert.True(getResResp.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.NotFound);
+
+        // 8. GET /api/patients/patient-frank/results/res-1
+        HttpResponseMessage getResIdResp = await clientEve.GetAsync("/api/patients/patient-frank/results/res-1");
+        Assert.True(getResIdResp.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.NotFound);
+
+        // 9. POST /api/patients/patient-frank/results
+        HttpResponseMessage postResResp = await clientEve.PostAsJsonAsync("/api/patients/patient-frank/results", new CreatePatientResultRequest { Title = "Kinetics", ResultType = "EndocrineKinetics", Summary = "Test" });
+        Assert.True(postResResp.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.NotFound);
+    }
 }

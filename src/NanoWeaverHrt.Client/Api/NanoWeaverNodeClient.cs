@@ -7,6 +7,13 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using NanoWeaverHrt.Client.Security;
 using NanoWeaverHrt.Client.Storage;
+using NanoWeaverHrt.Endocrine;
+using NanoWeaverHrt.Fabrication;
+using NanoWeaverHrt.Fabrication.Gel;
+using NanoWeaverHrt.Fabrication.Opentrons;
+using NanoWeaverHrt.Federation;
+using NanoWeaverHrt.Hardware.Benchmarking;
+using NanoWeaverHrt.Models;
 
 namespace NanoWeaverHrt.Client.Api;
 
@@ -21,7 +28,8 @@ public sealed class NanoWeaverNodeClient : INanoWeaverNodeClient
     /// </summary>
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
-        PropertyNameCaseInsensitive = true
+        PropertyNameCaseInsensitive = true,
+        Converters = { new JsonStringEnumConverter() }
     };
 
     /// <summary>
@@ -373,6 +381,322 @@ public sealed class NanoWeaverNodeClient : INanoWeaverNodeClient
 
         EndocrineProfileSummary? result = await resp.Content.ReadFromJsonAsync<EndocrineProfileSummary>(JsonOptions, ct);
         return result ?? throw new NodeApiException((int)resp.StatusCode, "Empty endocrine profile response received.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<ClosedLoopSimulationResult> SimulateClosedLoopEndocrineAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        ClosedLoopSimulationRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches closed-loop numerical integration parameters to POST /api/endocrine/closed-loop/simulate.
+        // WHY:  Allows desktop and mobile clients to model dynamic LH/FSH feedback trajectories.
+        // HOW:  Validates inputs, sets Bearer header, serializes request JSON, and returns ClosedLoopSimulationResult.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/endocrine/closed-loop/simulate");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        ClosedLoopSimulationResult? result = await resp.Content.ReadFromJsonAsync<ClosedLoopSimulationResult>(JsonOptions, ct);
+        return result ?? throw new NodeApiException((int)resp.StatusCode, "Empty simulation result response received.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<FederationPeerNode>> DiscoverFederationPeersAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Discovers active P2P trajectory federation peers from GET /api/federation/peers.
+        // WHY:  Enables clients to visualize swarm topology and distributed node health.
+        // HOW:  Validates arguments, sends authenticated GET request, and deserializes peer list.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/federation/peers");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        List<FederationPeerNode>? result = await resp.Content.ReadFromJsonAsync<List<FederationPeerNode>>(JsonOptions, ct);
+        return (IReadOnlyList<FederationPeerNode>?)result ?? [];
+    }
+
+    /// <inheritdoc/>
+    public async Task<TrajectoryFederationManifest> BuildFederationManifestAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        FederationBuildManifestRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Builds and signs a Merkle chunk manifest via POST /api/federation/manifests/build.
+        // WHY:  Prepares local simulation trajectories for decentralized P2P federation transfer.
+        // HOW:  Validates arguments, posts request payload with Bearer token, and deserializes manifest.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/federation/manifests/build");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        TrajectoryFederationManifest? result = await resp.Content.ReadFromJsonAsync<TrajectoryFederationManifest>(JsonOptions, ct);
+        return result ?? throw new NodeApiException((int)resp.StatusCode, "Empty federation manifest response received.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<FederationVerifyManifestResponse> VerifyFederationManifestAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        TrajectoryFederationManifest manifest,
+        CancellationToken ct = default)
+    {
+        // WHAT: Cryptographically verifies a federation manifest via POST /api/federation/manifests/verify.
+        // WHY:  Guarantees integrity of incoming trajectory chunk trees before accepting payloads.
+        // HOW:  Validates arguments, posts manifest payload with Bearer header, and deserializes response.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentNullException.ThrowIfNull(manifest);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/federation/manifests/verify");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(manifest, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        FederationVerifyManifestResponse? result = await resp.Content.ReadFromJsonAsync<FederationVerifyManifestResponse>(JsonOptions, ct);
+        return result ?? throw new NodeApiException((int)resp.StatusCode, "Empty federation verification response received.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<GelAnalysisResult> AnalyzeGelAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        GelAnalysisRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Submits agarose gel electrophoresis image data to POST /api/fabrication/gel/analyze.
+        // WHY:  Performs automated lane detection, band segmentation, and folding yield quantification.
+        // HOW:  Validates inputs, transmits request payload with Bearer token, and deserializes analysis result.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/fabrication/gel/analyze");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        GelAnalysisResult? result = await resp.Content.ReadFromJsonAsync<GelAnalysisResult>(JsonOptions, ct);
+        return result ?? throw new NodeApiException((int)resp.StatusCode, "Empty gel analysis response received.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<AcceleratorBenchmarkReport> RunBenchmarkAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Triggers an on-demand accelerator hardware qualification run via POST /api/system/benchmark/run.
+        // WHY:  Measures FP32/FP64 TFLOPS and memory bandwidth before launching large-scale simulations.
+        // HOW:  Validates profile and token, posts empty content with Bearer header, and deserializes report.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/system/benchmark/run");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        AcceleratorBenchmarkReport? result = await resp.Content.ReadFromJsonAsync<AcceleratorBenchmarkReport>(JsonOptions, ct);
+        return result ?? throw new NodeApiException((int)resp.StatusCode, "Empty accelerator benchmark response received.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<AcceleratorBenchmarkReport?> GetLatestBenchmarkAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Fetches the most recent cached accelerator qualification report via GET /api/system/benchmark/latest.
+        // WHY:  Allows client dashboards to display accelerator readiness without re-running compute tests.
+        // HOW:  Validates inputs, sends GET with Bearer header; returns null on 404 NotFound, or deserializes report.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/system/benchmark/latest");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (resp.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        return await resp.Content.ReadFromJsonAsync<AcceleratorBenchmarkReport>(JsonOptions, ct);
+    }
+
+    /// <inheritdoc/>
+    public async Task<OpentronsProtocolResult> GenerateOpentronsProtocolAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        GenerateOpentronsScriptRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Generates an Opentrons Protocol API v2 script via POST /api/fabrication/opentrons/generate.
+        // WHY:  Automates wet-lab DNA origami stoichiometric liquid handling pipetting.
+        // HOW:  Validates inputs, posts script generation parameters with Bearer header, and deserializes protocol result.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/fabrication/opentrons/generate");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        OpentronsProtocolResult? result = await resp.Content.ReadFromJsonAsync<OpentronsProtocolResult>(JsonOptions, ct);
+        return result ?? throw new NodeApiException((int)resp.StatusCode, "Empty Opentrons protocol response received.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<PatientDigitalDnaPackage> GetPatientDnaRegimensAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string? patientId = null,
+        CancellationToken ct = default)
+    {
+        // WHAT: Fetches a patient-specific Digital DNA blueprint package via GET /api/patient/dna.
+        // WHY:  Retrieves synthesized staple routing, annealing ramps, and SHA-256 provenance for the client.
+        // HOW:  Constructs endpoint with optional patientId query param, sends GET with Bearer token, and deserializes package.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        string relativePath = string.IsNullOrWhiteSpace(patientId)
+            ? "/api/patient/dna"
+            : $"/api/patient/dna?patientId={Uri.EscapeDataString(patientId)}";
+
+        Uri endpointUri = new(baseUri, relativePath);
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        PatientDigitalDnaPackage? result = await resp.Content.ReadFromJsonAsync<PatientDigitalDnaPackage>(JsonOptions, ct);
+        return result ?? throw new NodeApiException((int)resp.StatusCode, "Empty patient DNA package response received.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<PatientDigitalDnaRecord>> GetPatientDigitalDnaAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        CancellationToken ct = default)
+    {
+        // WHAT: Queries persistent digitized DNA records for a patient via GET /api/patients/{username}/dna.
+        // WHY:  Allows reviewing stored nanocarrier architecture records and clinical regimens.
+        // HOW:  Validates arguments, sends GET with Bearer header, and deserializes list of records.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/patients/{Uri.EscapeDataString(username)}/dna");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        List<PatientDigitalDnaRecord>? result = await resp.Content.ReadFromJsonAsync<List<PatientDigitalDnaRecord>>(JsonOptions, ct);
+        return (IReadOnlyList<PatientDigitalDnaRecord>?)result ?? [];
     }
 
     /// <summary>

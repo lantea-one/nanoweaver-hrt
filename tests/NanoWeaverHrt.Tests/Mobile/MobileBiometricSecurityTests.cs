@@ -1,7 +1,12 @@
 using System.Security.Cryptography;
+using System.Text;
+using Moq;
+using NanoWeaverHrt.Client.Api;
+using NanoWeaverHrt.Client.Storage;
 using NanoWeaverHrt.Gui.Core.Services;
 using NanoWeaverHrt.Mobile.Platform;
 using NanoWeaverHrt.Mobile.Security;
+using NanoWeaverHrt.Models;
 using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Crypto.Signers;
 using Xunit;
@@ -1249,5 +1254,62 @@ public sealed class MobileBiometricSecurityTests
         {
             MobileEntryPoint.BiometricVault = originalVault;
         }
+    }
+
+    /// <summary>
+    /// Verifies DownloadAndCachePatientPackageAsync downloads patient DNA blueprints and caches them in volatile memory.
+    /// </summary>
+    [Fact]
+    public async Task UnifiedMobileBiometricVault_DownloadAndCachePatientPackageAsync_DownloadsAndCachesInRAM()
+    {
+        // WHAT: Tests DownloadAndCachePatientPackageAsync integration with INanoWeaverNodeClient.
+        // WHY:  Guarantees genomic blueprints are loaded into the zeroizable biometric vault on mobile clients.
+        // HOW:  Mocks GetPatientDnaRegimensAsync, executes download, verifies package metadata and decrypted buffer.
+        using var vault = new UnifiedMobileBiometricVault();
+        var clientMock = new Mock<INanoWeaverNodeClient>();
+        var profile = new InstanceProfile(
+            "node-1",
+            "Node 1",
+            "http://127.0.0.1:5000",
+            true,
+            "patient-1",
+            "Patient",
+            "Ed25519",
+            "pub",
+            "env",
+            false,
+            10,
+            DateTimeOffset.UtcNow,
+            null);
+
+        var expectedPackage = new PatientDigitalDnaPackage
+        {
+            PatientId = "patient-1",
+            ScaffoldFasta = "ATCG-SCAFFOLD-12345",
+            NanocarrierGeometry = "Hexagonal Nanotube",
+            ProvenanceSha256 = "sha256-provenance-digest"
+        };
+
+        clientMock.Setup(c => c.GetPatientDnaRegimensAsync(profile, "token-xyz", "patient-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expectedPackage);
+
+        // Nominal download and caching
+        PatientDigitalDnaPackage downloaded = await vault.DownloadAndCachePatientPackageAsync(
+            clientMock.Object,
+            profile,
+            "token-xyz",
+            "patient-1");
+
+        Assert.Equal("patient-1", downloaded.PatientId);
+        Assert.Equal(1, vault.CachedCount);
+        Assert.True(vault.TryGetDecryptedRegimen("patient-1", out byte[]? cachedPayload));
+        Assert.NotNull(cachedPayload);
+        Assert.Equal("ATCG-SCAFFOLD-12345", Encoding.UTF8.GetString(cachedPayload));
+
+        // Argument validation guards
+        await Assert.ThrowsAsync<ArgumentNullException>(() => vault.DownloadAndCachePatientPackageAsync(null!, profile, "token", "patient-1"));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => vault.DownloadAndCachePatientPackageAsync(clientMock.Object, null!, "token", "patient-1"));
+        await Assert.ThrowsAsync<ArgumentException>(() => vault.DownloadAndCachePatientPackageAsync(clientMock.Object, profile, "", "patient-1"));
+        await Assert.ThrowsAsync<ArgumentException>(() => vault.DownloadAndCachePatientPackageAsync(clientMock.Object, profile, "token", ""));
     }
 }

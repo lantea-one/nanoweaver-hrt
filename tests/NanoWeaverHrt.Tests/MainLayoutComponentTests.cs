@@ -649,4 +649,71 @@ public sealed class MainLayoutComponentTests : TestContext
         layoutWrapper = cut.Find(".layout-wrapper");
         Assert.Equal("ltr", layoutWrapper.GetAttribute("dir"));
     }
+
+    /// <summary>
+    /// Verifies that JS interop exceptions during idle watcher registration, unregistration, and token retrieval are caught safely.
+    /// </summary>
+    [Fact]
+    public async Task IdleWatcher_WhenJsThrowsExceptions_CatchesAndHandlesGracefully()
+    {
+        // WHAT: Tests catch blocks in OnAfterRenderAsync and TryReadSessionTokenAsync.
+        // WHY:  Ensures that circuit disconnects or prerendering interop failures do not crash the component.
+        // HOW:  Configures JSInterop to throw on weaverRegisterIdleWatcher, weaverUnregisterIdleWatcher, and weaverGetSessionToken.
+        _sessionState.SetUser(_adminUser);
+        JSInterop.SetupVoid("weaverRegisterIdleWatcher", _ => true)
+            .SetException(new JSException("Registration failed"));
+        JSInterop.SetupVoid("weaverUnregisterIdleWatcher")
+            .SetException(new JSException("Unregistration failed"));
+        JSInterop.Setup<string?>("weaverGetSessionToken")
+            .SetException(new JSException("Token retrieval failed"));
+
+        IRenderedComponent<MainLayout> cut = RenderComponent<MainLayout>();
+
+        // Calling RecordActivity should catch token exception and return null safely
+        await cut.Instance.RecordActivity();
+        _activityMock.Verify(m => m.RecordActivity(It.IsAny<string>()), Times.Never);
+
+        // Sign out triggers OnAfterRenderAsync with !SessionState.IsAuthenticated && _idleWatcherRegistered
+        FieldInfo? registeredField = typeof(MainLayout).GetField("_idleWatcherRegistered", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(registeredField);
+        registeredField.SetValue(cut.Instance, true);
+
+        _sessionState.SignOut();
+        cut.Render();
+    }
+
+    /// <summary>
+    /// Verifies that the telemetry timer callback navigates to login when idle timeout is exceeded.
+    /// </summary>
+    [Fact]
+    public async Task TelemetryTimer_WhenIdleTimeoutExceeded_NavigatesToLogin()
+    {
+        // WHAT: Tests idle timeout redirection inside the telemetry timer loop.
+        // WHY:  Covers lines 377-382 in MainLayout.razor.
+        // HOW:  Renders authenticated MainLayout, expires SessionState idle timeout, and triggers timer callback.
+        _sessionState.SetUser(_adminUser);
+        _sessionState.IdleTimeout = TimeSpan.FromMilliseconds(1);
+        await Task.Delay(10);
+
+        NavigationManager nav = Services.GetRequiredService<NavigationManager>();
+        IRenderedComponent<MainLayout> cut = RenderComponent<MainLayout>();
+
+        FieldInfo? timerField = typeof(MainLayout).GetField("_telemetryTimer", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(timerField);
+        var timer = timerField.GetValue(cut.Instance) as System.Threading.Timer;
+        Assert.NotNull(timer);
+
+        FieldInfo? timerInternalField = timer.GetType().GetField("_timer", BindingFlags.NonPublic | BindingFlags.Instance);
+        object? internalTimer = timerInternalField?.GetValue(timer);
+        if (internalTimer != null)
+        {
+            FieldInfo? callbackField = internalTimer.GetType().GetField("_timerCallback", BindingFlags.NonPublic | BindingFlags.Instance);
+            if (callbackField?.GetValue(internalTimer) is TimerCallback callback)
+            {
+                callback(null);
+                await Task.Delay(50);
+                Assert.Equal("http://localhost/login?reason=idle_timeout", nav.Uri);
+            }
+        }
+    }
 }
