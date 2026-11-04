@@ -132,7 +132,7 @@ Explore the comprehensive guides and references below:
 17. [**REST API Reference**](api-reference.md)
     * Full endpoint catalog, request/response JSON schemas, and test suite execution.
 18. [**Release Notes & Architecture Evolution**](release-notes.md)
-    * Phase 2 post-quantum cryptographic upgrades, transport boundary enforcement, column-level PHI encryption, and releases v2026.10.29.1, v2026.10.29.2, and v2026.10.29.3.
+    * Post-quantum cryptographic upgrades, multi-engine database persistence, client REST SDK parity, and milestone releases through v2026.11.04.2.
 19. [**Scientific Research & Legal Disclaimer**](disclaimer.md)
     * Formal scientific research scope, medical non-advice, and BSL-1 biosafety declarations.
 
