@@ -1,3 +1,4 @@
+using System.Text.Json;
 using NanoWeaverHrt.Analytics;
 using NanoWeaverHrt.Client.Security;
 using NanoWeaverHrt.Client.Storage;
@@ -12,6 +13,8 @@ using NanoWeaverHrt.Genomics;
 using NanoWeaverHrt.Hardware.Benchmarking;
 using NanoWeaverHrt.Models;
 using NanoWeaverHrt.Security.Access;
+using NanoWeaverHrt.Security.Authentication;
+using NanoWeaverHrt.Security.Models;
 using NanoWeaverHrt.Services.Stack;
 
 namespace NanoWeaverHrt.Client.Api;
@@ -982,6 +985,434 @@ public sealed class WeaverNodeApiClient : INanoWeaverNodeClient, IDisposable
         ThrowIfDisposed();
         string effectiveToken = ResolveBearerToken(bearerToken);
         return _innerClient.ToggleEndocrineSwitchAsync(profile, effectiveToken, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<UserAccount>> ListUsersAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/users using provided or cached session token.
+        // WHY:  Allows enumerating user accounts with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.ListUsersAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.ListUsersAsync(profile, effectiveToken, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<UserAccount> CreateUserAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CreateUserRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/users using provided or cached session token.
+        // WHY:  Allows creating user accounts with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.CreateUserAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.CreateUserAsync(profile, effectiveToken, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task DeleteUserAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches DELETE /api/users/{username} using provided or cached session token.
+        // WHY:  Allows deleting user accounts with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.DeleteUserAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.DeleteUserAsync(profile, effectiveToken, username, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<UserProfile> GetUserProfileAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/users/{username}/profile using provided or cached session token.
+        // WHY:  Allows fetching demographic and clinical profiles with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.GetUserProfileAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GetUserProfileAsync(profile, effectiveToken, username, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<UserProfile> UpdateUserProfileAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        UserProfile userProfile,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches PUT /api/users/{username}/profile using provided or cached session token.
+        // WHY:  Allows updating user profile metadata with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.UpdateUserProfileAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.UpdateUserProfileAsync(profile, effectiveToken, username, userProfile, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<PatientAddress>> ListUserAddressesAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/users/{username}/addresses using provided or cached session token.
+        // WHY:  Allows retrieving registered addresses with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.ListUserAddressesAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.ListUserAddressesAsync(profile, effectiveToken, username, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<PatientAddress> AddUserAddressAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        PatientAddress address,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/users/{username}/addresses using provided or cached session token.
+        // WHY:  Allows adding or updating addresses with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.AddUserAddressAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.AddUserAddressAsync(profile, effectiveToken, username, address, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task DeleteUserAddressAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        string addressId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches DELETE /api/users/{username}/addresses/{id} using provided or cached session token.
+        // WHY:  Allows removing addresses with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.DeleteUserAddressAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.DeleteUserAddressAsync(profile, effectiveToken, username, addressId, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<PatientContact>> ListUserContactsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/users/{username}/contacts using provided or cached session token.
+        // WHY:  Allows retrieving emergency outreach contacts with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.ListUserContactsAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.ListUserContactsAsync(profile, effectiveToken, username, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<PatientContact> AddUserContactAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        PatientContact contact,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/users/{username}/contacts using provided or cached session token.
+        // WHY:  Allows recording caregiver relationships with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.AddUserContactAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.AddUserContactAsync(profile, effectiveToken, username, contact, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task DeleteUserContactAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        string contactId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches DELETE /api/users/{username}/contacts/{id} using provided or cached session token.
+        // WHY:  Allows removing emergency contacts with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.DeleteUserContactAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.DeleteUserContactAsync(profile, effectiveToken, username, contactId, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<PatientDigitalDnaRecord> GetPatientDigitalDnaRecordAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        string id,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/patients/{username}/dna/{id} using provided or cached session token.
+        // WHY:  Allows retrieving digitized DNA blueprints with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.GetPatientDigitalDnaRecordAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GetPatientDigitalDnaRecordAsync(profile, effectiveToken, username, id, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task DeletePatientDigitalDnaAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        string id,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches DELETE /api/patients/{username}/dna/{id} using provided or cached session token.
+        // WHY:  Allows deleting digitized DNA blueprints with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.DeletePatientDigitalDnaAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.DeletePatientDigitalDnaAsync(profile, effectiveToken, username, id, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<PatientDnaImportRecord>> ListPatientImportsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/patients/{username}/imports using provided or cached session token.
+        // WHY:  Allows retrieving imported sequence files with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.ListPatientImportsAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.ListPatientImportsAsync(profile, effectiveToken, username, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<PatientDnaImportRecord> GetPatientImportAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        string id,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/patients/{username}/imports/{id} using provided or cached session token.
+        // WHY:  Allows retrieving a specific sequence import record with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.GetPatientImportAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GetPatientImportAsync(profile, effectiveToken, username, id, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<PatientDnaImportRecord> CreatePatientImportAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        CreatePatientImportRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/patients/{username}/imports using provided or cached session token.
+        // WHY:  Allows uploading sequence data or variant panels with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.CreatePatientImportAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.CreatePatientImportAsync(profile, effectiveToken, username, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task DeletePatientImportAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        string id,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches DELETE /api/patients/{username}/imports/{id} using provided or cached session token.
+        // WHY:  Allows removing sequence import records with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.DeletePatientImportAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.DeletePatientImportAsync(profile, effectiveToken, username, id, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<PatientResultRecord>> ListPatientClinicalResultsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        string? resultType = null,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/patients/{username}/results using provided or cached session token.
+        // WHY:  Allows retrieving simulation and clinical outcome records with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.ListPatientClinicalResultsAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.ListPatientClinicalResultsAsync(profile, effectiveToken, username, resultType, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<PatientResultRecord> GetPatientClinicalResultAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        string id,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/patients/{username}/results/{id} using provided or cached session token.
+        // WHY:  Allows retrieving a specific simulation or clinical result record with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.GetPatientClinicalResultAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GetPatientClinicalResultAsync(profile, effectiveToken, username, id, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<PatientResultRecord> CreatePatientClinicalResultAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        CreatePatientResultRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/patients/{username}/results using provided or cached session token.
+        // WHY:  Allows registering new clinical or simulation results with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.CreatePatientClinicalResultAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.CreatePatientClinicalResultAsync(profile, effectiveToken, username, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task DeletePatientClinicalResultAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        string id,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches DELETE /api/patients/{username}/results/{id} using provided or cached session token.
+        // WHY:  Allows removing clinical or simulation results with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.DeletePatientClinicalResultAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.DeletePatientClinicalResultAsync(profile, effectiveToken, username, id, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<UserAccount> GetCurrentUserAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/auth/me using provided or cached session token.
+        // WHY:  Allows retrieving current user account identity with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.GetCurrentUserAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GetCurrentUserAsync(profile, effectiveToken, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task LogoutAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/auth/logout using provided or cached session token.
+        // WHY:  Allows invalidating interactive session with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.LogoutAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.LogoutAsync(profile, effectiveToken, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<SetupStatusResponse> GetSetupStatusAsync(
+        InstanceProfile profile,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/setup/status to inspect first-launch setup requirements.
+        // WHY:  Allows checking node initialization state without requiring authentication.
+        // HOW:  Asserts non-disposed state, delegates to _innerClient.GetSetupStatusAsync.
+        ThrowIfDisposed();
+        return _innerClient.GetSetupStatusAsync(profile, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task CryptoShredUserAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CryptoShredRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/compliance/crypto-shred using provided or cached session token.
+        // WHY:  Allows destroying subject decryption keys with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.CryptoShredUserAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.CryptoShredUserAsync(profile, effectiveToken, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<DeIdentificationResult> DeIdentifyDatasetAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        DeIdentifyRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/compliance/de-identify using provided or cached session token.
+        // WHY:  Allows de-identifying subject data with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.DeIdentifyDatasetAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.DeIdentifyDatasetAsync(profile, effectiveToken, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<EncryptedEnvelope> EncryptRecordAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        EncryptRecordRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/compliance/encrypt-record using provided or cached session token.
+        // WHY:  Allows post-quantum envelope encryption with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.EncryptRecordAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.EncryptRecordAsync(profile, effectiveToken, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<JsonElement> DecryptRecordAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        DecryptRecordRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/compliance/decrypt-record using provided or cached session token.
+        // WHY:  Allows post-quantum envelope decryption with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.DecryptRecordAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.DecryptRecordAsync(profile, effectiveToken, request, ct);
     }
 
     /// <inheritdoc/>

@@ -2,7 +2,7 @@ class NanoweaverHrt < Formula
   desc "Decentralized Synthetic Biology & DNA Origami Research Platform"
   homepage "https://git.lantea.one/lantea-one/nanoweaver-hrt"
   url "https://git.lantea.one/lantea-one/nanoweaver-hrt.git", branch: "main"
-  version "2026.11.04.7"
+  version "2026.11.04.8"
   license "MIT"
 
   depends_on "dotnet" => :build

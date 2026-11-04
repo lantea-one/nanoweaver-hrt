@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
           package="one.lantea.nanoweaver.hrt"
           android:versionCode="1"
-          android:versionName="2026.11.04.7">
+          android:versionName="2026.11.04.8">
 
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="34" />
 

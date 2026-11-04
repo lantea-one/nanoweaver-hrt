@@ -18,6 +18,7 @@ using NanoWeaverHrt.Hardware.Benchmarking;
 using NanoWeaverHrt.Models;
 using NanoWeaverHrt.Security.Access;
 using NanoWeaverHrt.Security.Authentication;
+using NanoWeaverHrt.Security.Models;
 using NanoWeaverHrt.Services.Stack;
 using Xunit;
 
@@ -2547,6 +2548,530 @@ public sealed class NanoWeaverNodeClientTests : IDisposable
 
         _httpHandler.SetResponse("/api/endocrine/toggle", HttpStatusCode.InternalServerError, "{}");
         await Assert.ThrowsAsync<NodeApiException>(() => _client.ToggleEndocrineSwitchAsync(_localProfile, "token", toggleReq));
+    }
+
+    /// <summary>
+    /// Verifies nominal responses and fault conditions for User Management, Profile, Address, and Contact client SDK endpoints.
+    /// </summary>
+    /// <returns>A task representing asynchronous test completion.</returns>
+    [Fact]
+    public async Task UserManagementAndPatientDirectoryEndpoints_NominalAndErrors_BehavesExpectedly()
+    {
+        // WHAT: Test nominal and fault execution branches for user accounts, demographic profiles, addresses, and contacts.
+        // WHY:  Issue #129 (P126): Ensures client SDK provides comprehensive coverage for administrative and self-service directory routes.
+        // HOW:  Mocks HTTP responses with JSON payloads, tests success, null, argument validation, and HTTP error responses.
+        UserAccount sampleUser = new UserAccount().GetExamples();
+        CreateUserRequest sampleCreateReq = new CreateUserRequest().GetExamples();
+        UserProfile sampleProfile = new UserProfile().GetExamples();
+        PatientAddress sampleAddress = new PatientAddress().GetExamples();
+        PatientContact sampleContact = new PatientContact().GetExamples();
+
+        // 1. ListUsersAsync
+        _httpHandler.SetResponse(
+            "/api/users",
+            HttpStatusCode.OK,
+            JsonSerializer.Serialize(new[] { sampleUser }, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        IReadOnlyList<UserAccount> users = await _client.ListUsersAsync(_localProfile, "token");
+        Assert.Single(users);
+        Assert.Equal(sampleUser.Username, users[0].Username);
+
+        _httpHandler.SetResponse("/api/users", HttpStatusCode.OK, "null");
+        IReadOnlyList<UserAccount> emptyUsers = await _client.ListUsersAsync(_localProfile, "token");
+        Assert.Empty(emptyUsers);
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.ListUsersAsync(null!, "token"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.ListUsersAsync(_localProfile, ""));
+        _httpHandler.SetResponse("/api/users", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.ListUsersAsync(_localProfile, "token"));
+
+        // 2. CreateUserAsync
+        _httpHandler.SetResponse(
+            "/api/users",
+            HttpStatusCode.Created,
+            JsonSerializer.Serialize(sampleUser, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        UserAccount createdUser = await _client.CreateUserAsync(_localProfile, "token", sampleCreateReq);
+        Assert.Equal(sampleUser.Username, createdUser.Username);
+
+        _httpHandler.SetResponse("/api/users", HttpStatusCode.Created, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.CreateUserAsync(_localProfile, "token", sampleCreateReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.CreateUserAsync(null!, "token", sampleCreateReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.CreateUserAsync(_localProfile, "", sampleCreateReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.CreateUserAsync(_localProfile, "token", null!));
+        _httpHandler.SetResponse("/api/users", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.CreateUserAsync(_localProfile, "token", sampleCreateReq));
+
+        // 3. DeleteUserAsync
+        _httpHandler.SetResponse($"/api/users/{sampleUser.Username}", HttpStatusCode.OK, "{}");
+        await _client.DeleteUserAsync(_localProfile, "token", sampleUser.Username);
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.DeleteUserAsync(null!, "token", sampleUser.Username));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.DeleteUserAsync(_localProfile, "", sampleUser.Username));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.DeleteUserAsync(_localProfile, "token", ""));
+        _httpHandler.SetResponse($"/api/users/{sampleUser.Username}", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.DeleteUserAsync(_localProfile, "token", sampleUser.Username));
+
+        // 4. GetUserProfileAsync
+        _httpHandler.SetResponse(
+            $"/api/users/{sampleUser.Username}/profile",
+            HttpStatusCode.OK,
+            JsonSerializer.Serialize(sampleProfile, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        UserProfile profile = await _client.GetUserProfileAsync(_localProfile, "token", sampleUser.Username);
+        Assert.Equal(sampleProfile.Username, profile.Username);
+
+        _httpHandler.SetResponse($"/api/users/{sampleUser.Username}/profile", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.GetUserProfileAsync(_localProfile, "token", sampleUser.Username));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetUserProfileAsync(null!, "token", sampleUser.Username));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetUserProfileAsync(_localProfile, "", sampleUser.Username));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetUserProfileAsync(_localProfile, "token", ""));
+        _httpHandler.SetResponse($"/api/users/{sampleUser.Username}/profile", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetUserProfileAsync(_localProfile, "token", sampleUser.Username));
+
+        // 5. UpdateUserProfileAsync
+        _httpHandler.SetResponse(
+            $"/api/users/{sampleUser.Username}/profile",
+            HttpStatusCode.OK,
+            JsonSerializer.Serialize(sampleProfile, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        UserProfile updatedProfile = await _client.UpdateUserProfileAsync(_localProfile, "token", sampleUser.Username, sampleProfile);
+        Assert.Equal(sampleProfile.Username, updatedProfile.Username);
+
+        _httpHandler.SetResponse($"/api/users/{sampleUser.Username}/profile", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.UpdateUserProfileAsync(_localProfile, "token", sampleUser.Username, sampleProfile));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.UpdateUserProfileAsync(null!, "token", sampleUser.Username, sampleProfile));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.UpdateUserProfileAsync(_localProfile, "", sampleUser.Username, sampleProfile));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.UpdateUserProfileAsync(_localProfile, "token", "", sampleProfile));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.UpdateUserProfileAsync(_localProfile, "token", sampleUser.Username, null!));
+        _httpHandler.SetResponse($"/api/users/{sampleUser.Username}/profile", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.UpdateUserProfileAsync(_localProfile, "token", sampleUser.Username, sampleProfile));
+
+        // 6. ListUserAddressesAsync
+        _httpHandler.SetResponse(
+            $"/api/users/{sampleUser.Username}/addresses",
+            HttpStatusCode.OK,
+            JsonSerializer.Serialize(new[] { sampleAddress }, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        IReadOnlyList<PatientAddress> addresses = await _client.ListUserAddressesAsync(_localProfile, "token", sampleUser.Username);
+        Assert.Single(addresses);
+        Assert.Equal(sampleAddress.Id, addresses[0].Id);
+
+        _httpHandler.SetResponse($"/api/users/{sampleUser.Username}/addresses", HttpStatusCode.OK, "null");
+        IReadOnlyList<PatientAddress> emptyAddresses = await _client.ListUserAddressesAsync(_localProfile, "token", sampleUser.Username);
+        Assert.Empty(emptyAddresses);
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.ListUserAddressesAsync(null!, "token", sampleUser.Username));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.ListUserAddressesAsync(_localProfile, "", sampleUser.Username));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.ListUserAddressesAsync(_localProfile, "token", ""));
+        _httpHandler.SetResponse($"/api/users/{sampleUser.Username}/addresses", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.ListUserAddressesAsync(_localProfile, "token", sampleUser.Username));
+
+        // 7. AddUserAddressAsync
+        _httpHandler.SetResponse(
+            $"/api/users/{sampleUser.Username}/addresses",
+            HttpStatusCode.Created,
+            JsonSerializer.Serialize(sampleAddress, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        PatientAddress createdAddress = await _client.AddUserAddressAsync(_localProfile, "token", sampleUser.Username, sampleAddress);
+        Assert.Equal(sampleAddress.Id, createdAddress.Id);
+
+        _httpHandler.SetResponse($"/api/users/{sampleUser.Username}/addresses", HttpStatusCode.Created, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.AddUserAddressAsync(_localProfile, "token", sampleUser.Username, sampleAddress));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.AddUserAddressAsync(null!, "token", sampleUser.Username, sampleAddress));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.AddUserAddressAsync(_localProfile, "", sampleUser.Username, sampleAddress));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.AddUserAddressAsync(_localProfile, "token", "", sampleAddress));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.AddUserAddressAsync(_localProfile, "token", sampleUser.Username, null!));
+        _httpHandler.SetResponse($"/api/users/{sampleUser.Username}/addresses", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.AddUserAddressAsync(_localProfile, "token", sampleUser.Username, sampleAddress));
+
+        // 8. DeleteUserAddressAsync
+        _httpHandler.SetResponse($"/api/users/{sampleUser.Username}/addresses/{sampleAddress.Id}", HttpStatusCode.OK, "{}");
+        await _client.DeleteUserAddressAsync(_localProfile, "token", sampleUser.Username, sampleAddress.Id);
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.DeleteUserAddressAsync(null!, "token", sampleUser.Username, sampleAddress.Id));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.DeleteUserAddressAsync(_localProfile, "", sampleUser.Username, sampleAddress.Id));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.DeleteUserAddressAsync(_localProfile, "token", "", sampleAddress.Id));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.DeleteUserAddressAsync(_localProfile, "token", sampleUser.Username, ""));
+        _httpHandler.SetResponse($"/api/users/{sampleUser.Username}/addresses/{sampleAddress.Id}", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.DeleteUserAddressAsync(_localProfile, "token", sampleUser.Username, sampleAddress.Id));
+
+        // 9. ListUserContactsAsync
+        _httpHandler.SetResponse(
+            $"/api/users/{sampleUser.Username}/contacts",
+            HttpStatusCode.OK,
+            JsonSerializer.Serialize(new[] { sampleContact }, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        IReadOnlyList<PatientContact> contacts = await _client.ListUserContactsAsync(_localProfile, "token", sampleUser.Username);
+        Assert.Single(contacts);
+        Assert.Equal(sampleContact.Id, contacts[0].Id);
+
+        _httpHandler.SetResponse($"/api/users/{sampleUser.Username}/contacts", HttpStatusCode.OK, "null");
+        IReadOnlyList<PatientContact> emptyContacts = await _client.ListUserContactsAsync(_localProfile, "token", sampleUser.Username);
+        Assert.Empty(emptyContacts);
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.ListUserContactsAsync(null!, "token", sampleUser.Username));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.ListUserContactsAsync(_localProfile, "", sampleUser.Username));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.ListUserContactsAsync(_localProfile, "token", ""));
+        _httpHandler.SetResponse($"/api/users/{sampleUser.Username}/contacts", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.ListUserContactsAsync(_localProfile, "token", sampleUser.Username));
+
+        // 10. AddUserContactAsync
+        _httpHandler.SetResponse(
+            $"/api/users/{sampleUser.Username}/contacts",
+            HttpStatusCode.Created,
+            JsonSerializer.Serialize(sampleContact, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        PatientContact createdContact = await _client.AddUserContactAsync(_localProfile, "token", sampleUser.Username, sampleContact);
+        Assert.Equal(sampleContact.Id, createdContact.Id);
+
+        _httpHandler.SetResponse($"/api/users/{sampleUser.Username}/contacts", HttpStatusCode.Created, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.AddUserContactAsync(_localProfile, "token", sampleUser.Username, sampleContact));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.AddUserContactAsync(null!, "token", sampleUser.Username, sampleContact));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.AddUserContactAsync(_localProfile, "", sampleUser.Username, sampleContact));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.AddUserContactAsync(_localProfile, "token", "", sampleContact));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.AddUserContactAsync(_localProfile, "token", sampleUser.Username, null!));
+        _httpHandler.SetResponse($"/api/users/{sampleUser.Username}/contacts", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.AddUserContactAsync(_localProfile, "token", sampleUser.Username, sampleContact));
+
+        // 11. DeleteUserContactAsync
+        _httpHandler.SetResponse($"/api/users/{sampleUser.Username}/contacts/{sampleContact.Id}", HttpStatusCode.OK, "{}");
+        await _client.DeleteUserContactAsync(_localProfile, "token", sampleUser.Username, sampleContact.Id);
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.DeleteUserContactAsync(null!, "token", sampleUser.Username, sampleContact.Id));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.DeleteUserContactAsync(_localProfile, "", sampleUser.Username, sampleContact.Id));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.DeleteUserContactAsync(_localProfile, "token", "", sampleContact.Id));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.DeleteUserContactAsync(_localProfile, "token", sampleUser.Username, ""));
+        _httpHandler.SetResponse($"/api/users/{sampleUser.Username}/contacts/{sampleContact.Id}", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.DeleteUserContactAsync(_localProfile, "token", sampleUser.Username, sampleContact.Id));
+    }
+
+    /// <summary>
+    /// Verifies nominal responses and fault conditions for Patient Digital DNA, Import Archives, and Clinical Results client SDK endpoints.
+    /// </summary>
+    /// <returns>A task representing asynchronous test completion.</returns>
+    [Fact]
+    public async Task PatientClinicalDataEndpoints_NominalAndErrors_BehavesExpectedly()
+    {
+        // WHAT: Tests nominal and fault execution branches for digitized DNA blueprints, import archives, and clinical assay results.
+        // WHY:  Issue #130 (P127): Guarantees client REST SDK provides full endpoint coverage for patient clinical records.
+        // HOW:  Mocks HTTP responses with JSON payloads, tests success, null handling, argument validation, and HTTP error responses.
+        PatientDigitalDnaRecord sampleDna = new PatientDigitalDnaRecord().GetExamples();
+        PatientDnaImportRecord sampleImport = new PatientDnaImportRecord().GetExamples();
+        CreatePatientImportRequest sampleImportReq = new()
+        {
+            FileName = "patient_scaffold_variant.fasta",
+            SequenceOrData = ">sample_sequence\nATGCGATCGATCGATCGATCGATCGATCGATC"
+        };
+        PatientResultRecord sampleResult = new PatientResultRecord().GetExamples();
+        CreatePatientResultRequest sampleResultReq = new()
+        {
+            ResultType = "EndocrineKinetics",
+            Title = "Endocrine Steady-State Target Kinetics",
+            Summary = "Target setpoints calibrated for Anterior Pituitary Gonadotrope."
+        };
+        string username = "patient1";
+
+        // 1. GetPatientDigitalDnaRecordAsync
+        _httpHandler.SetResponse(
+            $"/api/patients/{username}/dna/{sampleDna.Id}",
+            HttpStatusCode.OK,
+            JsonSerializer.Serialize(sampleDna, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        PatientDigitalDnaRecord fetchedDna = await _client.GetPatientDigitalDnaRecordAsync(_localProfile, "token", username, sampleDna.Id);
+        Assert.Equal(sampleDna.Id, fetchedDna.Id);
+
+        _httpHandler.SetResponse($"/api/patients/{username}/dna/{sampleDna.Id}", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.GetPatientDigitalDnaRecordAsync(_localProfile, "token", username, sampleDna.Id));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetPatientDigitalDnaRecordAsync(null!, "token", username, sampleDna.Id));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetPatientDigitalDnaRecordAsync(_localProfile, "", username, sampleDna.Id));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetPatientDigitalDnaRecordAsync(_localProfile, "token", "", sampleDna.Id));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetPatientDigitalDnaRecordAsync(_localProfile, "token", username, ""));
+        _httpHandler.SetResponse($"/api/patients/{username}/dna/{sampleDna.Id}", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetPatientDigitalDnaRecordAsync(_localProfile, "token", username, sampleDna.Id));
+
+        // 2. DeletePatientDigitalDnaAsync
+        _httpHandler.SetResponse($"/api/patients/{username}/dna/{sampleDna.Id}", HttpStatusCode.OK, "{}");
+        await _client.DeletePatientDigitalDnaAsync(_localProfile, "token", username, sampleDna.Id);
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.DeletePatientDigitalDnaAsync(null!, "token", username, sampleDna.Id));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.DeletePatientDigitalDnaAsync(_localProfile, "", username, sampleDna.Id));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.DeletePatientDigitalDnaAsync(_localProfile, "token", "", sampleDna.Id));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.DeletePatientDigitalDnaAsync(_localProfile, "token", username, ""));
+        _httpHandler.SetResponse($"/api/patients/{username}/dna/{sampleDna.Id}", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.DeletePatientDigitalDnaAsync(_localProfile, "token", username, sampleDna.Id));
+
+        // 3. ListPatientImportsAsync
+        _httpHandler.SetResponse(
+            $"/api/patients/{username}/imports",
+            HttpStatusCode.OK,
+            JsonSerializer.Serialize(new[] { sampleImport }, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        IReadOnlyList<PatientDnaImportRecord> imports = await _client.ListPatientImportsAsync(_localProfile, "token", username);
+        Assert.Single(imports);
+        Assert.Equal(sampleImport.Id, imports[0].Id);
+
+        _httpHandler.SetResponse($"/api/patients/{username}/imports", HttpStatusCode.OK, "null");
+        IReadOnlyList<PatientDnaImportRecord> emptyImports = await _client.ListPatientImportsAsync(_localProfile, "token", username);
+        Assert.Empty(emptyImports);
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.ListPatientImportsAsync(null!, "token", username));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.ListPatientImportsAsync(_localProfile, "", username));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.ListPatientImportsAsync(_localProfile, "token", ""));
+        _httpHandler.SetResponse($"/api/patients/{username}/imports", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.ListPatientImportsAsync(_localProfile, "token", username));
+
+        // 4. GetPatientImportAsync
+        _httpHandler.SetResponse(
+            $"/api/patients/{username}/imports/{sampleImport.Id}",
+            HttpStatusCode.OK,
+            JsonSerializer.Serialize(sampleImport, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        PatientDnaImportRecord fetchedImport = await _client.GetPatientImportAsync(_localProfile, "token", username, sampleImport.Id);
+        Assert.Equal(sampleImport.Id, fetchedImport.Id);
+
+        _httpHandler.SetResponse($"/api/patients/{username}/imports/{sampleImport.Id}", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.GetPatientImportAsync(_localProfile, "token", username, sampleImport.Id));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetPatientImportAsync(null!, "token", username, sampleImport.Id));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetPatientImportAsync(_localProfile, "", username, sampleImport.Id));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetPatientImportAsync(_localProfile, "token", "", sampleImport.Id));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetPatientImportAsync(_localProfile, "token", username, ""));
+        _httpHandler.SetResponse($"/api/patients/{username}/imports/{sampleImport.Id}", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetPatientImportAsync(_localProfile, "token", username, sampleImport.Id));
+
+        // 5. CreatePatientImportAsync
+        _httpHandler.SetResponse(
+            $"/api/patients/{username}/imports",
+            HttpStatusCode.Created,
+            JsonSerializer.Serialize(sampleImport, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        PatientDnaImportRecord createdImport = await _client.CreatePatientImportAsync(_localProfile, "token", username, sampleImportReq);
+        Assert.Equal(sampleImport.Id, createdImport.Id);
+
+        _httpHandler.SetResponse($"/api/patients/{username}/imports", HttpStatusCode.Created, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.CreatePatientImportAsync(_localProfile, "token", username, sampleImportReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.CreatePatientImportAsync(null!, "token", username, sampleImportReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.CreatePatientImportAsync(_localProfile, "", username, sampleImportReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.CreatePatientImportAsync(_localProfile, "token", "", sampleImportReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.CreatePatientImportAsync(_localProfile, "token", username, null!));
+        _httpHandler.SetResponse($"/api/patients/{username}/imports", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.CreatePatientImportAsync(_localProfile, "token", username, sampleImportReq));
+
+        // 6. DeletePatientImportAsync
+        _httpHandler.SetResponse($"/api/patients/{username}/imports/{sampleImport.Id}", HttpStatusCode.OK, "{}");
+        await _client.DeletePatientImportAsync(_localProfile, "token", username, sampleImport.Id);
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.DeletePatientImportAsync(null!, "token", username, sampleImport.Id));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.DeletePatientImportAsync(_localProfile, "", username, sampleImport.Id));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.DeletePatientImportAsync(_localProfile, "token", "", sampleImport.Id));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.DeletePatientImportAsync(_localProfile, "token", username, ""));
+        _httpHandler.SetResponse($"/api/patients/{username}/imports/{sampleImport.Id}", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.DeletePatientImportAsync(_localProfile, "token", username, sampleImport.Id));
+
+        // 7. ListPatientClinicalResultsAsync (both with and without resultType)
+        _httpHandler.SetResponse(
+            $"/api/patients/{username}/results",
+            HttpStatusCode.OK,
+            JsonSerializer.Serialize(new[] { sampleResult }, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        IReadOnlyList<PatientResultRecord> resultsNoFilter = await _client.ListPatientClinicalResultsAsync(_localProfile, "token", username);
+        Assert.Single(resultsNoFilter);
+
+        _httpHandler.SetResponse(
+            $"/api/patients/{username}/results?resultType=oxdna",
+            HttpStatusCode.OK,
+            JsonSerializer.Serialize(new[] { sampleResult }, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        IReadOnlyList<PatientResultRecord> resultsFiltered = await _client.ListPatientClinicalResultsAsync(_localProfile, "token", username, "oxdna");
+        Assert.Single(resultsFiltered);
+
+        _httpHandler.SetResponse($"/api/patients/{username}/results", HttpStatusCode.OK, "null");
+        IReadOnlyList<PatientResultRecord> emptyResults = await _client.ListPatientClinicalResultsAsync(_localProfile, "token", username);
+        Assert.Empty(emptyResults);
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.ListPatientClinicalResultsAsync(null!, "token", username));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.ListPatientClinicalResultsAsync(_localProfile, "", username));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.ListPatientClinicalResultsAsync(_localProfile, "token", ""));
+        _httpHandler.SetResponse($"/api/patients/{username}/results", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.ListPatientClinicalResultsAsync(_localProfile, "token", username));
+
+        // 8. GetPatientClinicalResultAsync
+        _httpHandler.SetResponse(
+            $"/api/patients/{username}/results/{sampleResult.Id}",
+            HttpStatusCode.OK,
+            JsonSerializer.Serialize(sampleResult, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        PatientResultRecord fetchedResult = await _client.GetPatientClinicalResultAsync(_localProfile, "token", username, sampleResult.Id);
+        Assert.Equal(sampleResult.Id, fetchedResult.Id);
+
+        _httpHandler.SetResponse($"/api/patients/{username}/results/{sampleResult.Id}", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.GetPatientClinicalResultAsync(_localProfile, "token", username, sampleResult.Id));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetPatientClinicalResultAsync(null!, "token", username, sampleResult.Id));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetPatientClinicalResultAsync(_localProfile, "", username, sampleResult.Id));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetPatientClinicalResultAsync(_localProfile, "token", "", sampleResult.Id));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetPatientClinicalResultAsync(_localProfile, "token", username, ""));
+        _httpHandler.SetResponse($"/api/patients/{username}/results/{sampleResult.Id}", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetPatientClinicalResultAsync(_localProfile, "token", username, sampleResult.Id));
+
+        // 9. CreatePatientClinicalResultAsync
+        _httpHandler.SetResponse(
+            $"/api/patients/{username}/results",
+            HttpStatusCode.Created,
+            JsonSerializer.Serialize(sampleResult, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        PatientResultRecord createdResult = await _client.CreatePatientClinicalResultAsync(_localProfile, "token", username, sampleResultReq);
+        Assert.Equal(sampleResult.Id, createdResult.Id);
+
+        _httpHandler.SetResponse($"/api/patients/{username}/results", HttpStatusCode.Created, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.CreatePatientClinicalResultAsync(_localProfile, "token", username, sampleResultReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.CreatePatientClinicalResultAsync(null!, "token", username, sampleResultReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.CreatePatientClinicalResultAsync(_localProfile, "", username, sampleResultReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.CreatePatientClinicalResultAsync(_localProfile, "token", "", sampleResultReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.CreatePatientClinicalResultAsync(_localProfile, "token", username, null!));
+        _httpHandler.SetResponse($"/api/patients/{username}/results", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.CreatePatientClinicalResultAsync(_localProfile, "token", username, sampleResultReq));
+
+        // 10. DeletePatientClinicalResultAsync
+        _httpHandler.SetResponse($"/api/patients/{username}/results/{sampleResult.Id}", HttpStatusCode.OK, "{}");
+        await _client.DeletePatientClinicalResultAsync(_localProfile, "token", username, sampleResult.Id);
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.DeletePatientClinicalResultAsync(null!, "token", username, sampleResult.Id));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.DeletePatientClinicalResultAsync(_localProfile, "", username, sampleResult.Id));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.DeletePatientClinicalResultAsync(_localProfile, "token", "", sampleResult.Id));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.DeletePatientClinicalResultAsync(_localProfile, "token", username, ""));
+        _httpHandler.SetResponse($"/api/patients/{username}/results/{sampleResult.Id}", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.DeletePatientClinicalResultAsync(_localProfile, "token", username, sampleResult.Id));
+    }
+
+    /// <summary>
+    /// Verifies nominal responses and fault conditions for Identity Introspection, Session Invalidation, and Setup Status client SDK endpoints.
+    /// </summary>
+    /// <returns>A task representing asynchronous test completion.</returns>
+    [Fact]
+    public async Task IdentityAndSetupEndpoints_NominalAndErrors_BehavesExpectedly()
+    {
+        // WHAT: Tests nominal and error execution paths for GetCurrentUserAsync, LogoutAsync, and GetSetupStatusAsync.
+        // WHY:  Issue #131 (P128): Ensures client REST SDK properly supports auth identity inspection and setup gating.
+        // HOW:  Mocks HTTP responses with serialized models, validates argument guards, null handling, and error response mapping.
+        UserAccount sampleUser = new UserAccount().GetExamples();
+        SetupStatusResponse sampleStatus = new SetupStatusResponse().GetExamples();
+
+        // 1. GetCurrentUserAsync
+        _httpHandler.SetResponse(
+            "/api/auth/me",
+            HttpStatusCode.OK,
+            JsonSerializer.Serialize(sampleUser, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        UserAccount user = await _client.GetCurrentUserAsync(_localProfile, "token");
+        Assert.Equal(sampleUser.Username, user.Username);
+
+        _httpHandler.SetResponse("/api/auth/me", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.GetCurrentUserAsync(_localProfile, "token"));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetCurrentUserAsync(null!, "token"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetCurrentUserAsync(_localProfile, ""));
+        _httpHandler.SetResponse("/api/auth/me", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetCurrentUserAsync(_localProfile, "token"));
+
+        // 2. LogoutAsync
+        _httpHandler.SetResponse("/api/auth/logout", HttpStatusCode.OK, "{}");
+        await _client.LogoutAsync(_localProfile, "token");
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.LogoutAsync(null!, "token"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.LogoutAsync(_localProfile, ""));
+        _httpHandler.SetResponse("/api/auth/logout", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.LogoutAsync(_localProfile, "token"));
+
+        // 3. GetSetupStatusAsync
+        _httpHandler.SetResponse(
+            "/api/setup/status",
+            HttpStatusCode.OK,
+            JsonSerializer.Serialize(sampleStatus, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        SetupStatusResponse status = await _client.GetSetupStatusAsync(_localProfile);
+        Assert.Equal(sampleStatus.SetupRequired, status.SetupRequired);
+
+        _httpHandler.SetResponse("/api/setup/status", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.GetSetupStatusAsync(_localProfile));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetSetupStatusAsync(null!));
+        _httpHandler.SetResponse("/api/setup/status", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetSetupStatusAsync(_localProfile));
+    }
+
+    /// <summary>
+    /// Verifies nominal responses and fault conditions for Compliance Cryptographic Shredding and Record Encryption client SDK endpoints.
+    /// </summary>
+    /// <returns>A task representing asynchronous test completion.</returns>
+    [Fact]
+    public async Task ComplianceAndCryptoShredEndpoints_NominalAndErrors_BehavesExpectedly()
+    {
+        // WHAT: Tests nominal and error execution paths for CryptoShredUserAsync, DeIdentifyDatasetAsync, EncryptRecordAsync, and DecryptRecordAsync.
+        // WHY:  Issue #132 (P129): Ensures post-quantum encryption at rest and GDPR erasure endpoints are covered by client SDK.
+        // HOW:  Mocks HTTP responses with serialized models, validates argument guards, null handling, and error response mapping.
+        CryptoShredRequest shredReq = new CryptoShredRequest().GetExamples();
+        DeIdentifyRequest deIdReq = new DeIdentifyRequest().GetExamples();
+        DeIdentificationResult deIdRes = new DeIdentificationResult().GetExamples();
+        EncryptRecordRequest encReq = new EncryptRecordRequest().GetExamples();
+        EncryptedEnvelope sampleEnv = new EncryptedEnvelope().GetExamples();
+        DecryptRecordRequest decReq = new DecryptRecordRequest().GetExamples();
+
+        // 1. CryptoShredUserAsync
+        _httpHandler.SetResponse("/api/compliance/crypto-shred", HttpStatusCode.OK, "{}");
+        await _client.CryptoShredUserAsync(_localProfile, "token", shredReq);
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.CryptoShredUserAsync(null!, "token", shredReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.CryptoShredUserAsync(_localProfile, "", shredReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.CryptoShredUserAsync(_localProfile, "token", null!));
+        _httpHandler.SetResponse("/api/compliance/crypto-shred", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.CryptoShredUserAsync(_localProfile, "token", shredReq));
+
+        // 2. DeIdentifyDatasetAsync
+        _httpHandler.SetResponse(
+            "/api/compliance/de-identify",
+            HttpStatusCode.OK,
+            JsonSerializer.Serialize(deIdRes, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        DeIdentificationResult deIdentified = await _client.DeIdentifyDatasetAsync(_localProfile, "token", deIdReq);
+        Assert.Equal(deIdRes.PseudonymSubjectId, deIdentified.PseudonymSubjectId);
+
+        _httpHandler.SetResponse("/api/compliance/de-identify", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.DeIdentifyDatasetAsync(_localProfile, "token", deIdReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.DeIdentifyDatasetAsync(null!, "token", deIdReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.DeIdentifyDatasetAsync(_localProfile, "", deIdReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.DeIdentifyDatasetAsync(_localProfile, "token", null!));
+        _httpHandler.SetResponse("/api/compliance/de-identify", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.DeIdentifyDatasetAsync(_localProfile, "token", deIdReq));
+
+        // 3. EncryptRecordAsync
+        _httpHandler.SetResponse(
+            "/api/compliance/encrypt-record",
+            HttpStatusCode.OK,
+            JsonSerializer.Serialize(sampleEnv, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        EncryptedEnvelope envelope = await _client.EncryptRecordAsync(_localProfile, "token", encReq);
+        Assert.Equal(sampleEnv.KeyId, envelope.KeyId);
+
+        _httpHandler.SetResponse("/api/compliance/encrypt-record", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.EncryptRecordAsync(_localProfile, "token", encReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.EncryptRecordAsync(null!, "token", encReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.EncryptRecordAsync(_localProfile, "", encReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.EncryptRecordAsync(_localProfile, "token", null!));
+        _httpHandler.SetResponse("/api/compliance/encrypt-record", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.EncryptRecordAsync(_localProfile, "token", encReq));
+
+        // 4. DecryptRecordAsync
+        _httpHandler.SetResponse(
+            "/api/compliance/decrypt-record",
+            HttpStatusCode.OK,
+            "{\"testProp\":\"testVal\"}");
+
+        JsonElement decrypted = await _client.DecryptRecordAsync(_localProfile, "token", decReq);
+        Assert.Equal("testVal", decrypted.GetProperty("testProp").GetString());
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.DecryptRecordAsync(null!, "token", decReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.DecryptRecordAsync(_localProfile, "", decReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.DecryptRecordAsync(_localProfile, "token", null!));
+        _httpHandler.SetResponse("/api/compliance/decrypt-record", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.DecryptRecordAsync(_localProfile, "token", decReq));
     }
 
     /// <summary>

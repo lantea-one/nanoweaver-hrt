@@ -1336,7 +1336,7 @@ public sealed class GuiViewModelsTests
         var vm = new AboutViewModel();
 
         Assert.Equal("NanoWeaver HRT", vm.AppName);
-        Assert.Equal("2026.11.04.7-sovereign", vm.Version);
+        Assert.Equal("2026.11.04.8-sovereign", vm.Version);
         Assert.NotEmpty(vm.Description);
         Assert.NotEmpty(vm.OSDescription);
         Assert.NotEmpty(vm.Architecture);

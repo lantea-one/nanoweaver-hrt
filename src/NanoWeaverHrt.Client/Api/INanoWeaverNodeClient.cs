@@ -1,3 +1,4 @@
+using System.Text.Json;
 using NanoWeaverHrt.Analytics;
 using NanoWeaverHrt.Client.Storage;
 using NanoWeaverHrt.Compliance;
@@ -11,6 +12,8 @@ using NanoWeaverHrt.Genomics;
 using NanoWeaverHrt.Hardware.Benchmarking;
 using NanoWeaverHrt.Models;
 using NanoWeaverHrt.Security.Access;
+using NanoWeaverHrt.Security.Authentication;
+using NanoWeaverHrt.Security.Models;
 using NanoWeaverHrt.Services.Stack;
 
 namespace NanoWeaverHrt.Client.Api;
@@ -772,5 +775,415 @@ public interface INanoWeaverNodeClient
         InstanceProfile profile,
         string bearerToken,
         ToggleSwitchRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Lists all registered sovereign user accounts via GET /api/users.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Collection of registered user accounts.</returns>
+    Task<IReadOnlyList<UserAccount>> ListUsersAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Provisions a new sovereign user account with an existing public key via POST /api/users.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="request">User account creation parameters.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Created user account record.</returns>
+    Task<UserAccount> CreateUserAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CreateUserRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Revokes and permanently deletes a user account via DELETE /api/users/{username}.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="username">Username of account to delete.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task representing asynchronous completion.</returns>
+    Task DeleteUserAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Retrieves demographic, clinical, and pronoun profile data for a user via GET /api/users/{username}/profile.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="username">Target username.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Demographic and clinical user profile.</returns>
+    Task<UserProfile> GetUserProfileAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Creates or updates demographic, clinical, and pronoun profile data for a user via PUT /api/users/{username}/profile.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="username">Target username.</param>
+    /// <param name="userProfile">Updated profile payload.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Updated user profile.</returns>
+    Task<UserProfile> UpdateUserProfileAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        UserProfile userProfile,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Retrieves all structured addresses registered for a user via GET /api/users/{username}/addresses.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="username">Target username.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Collection of registered addresses.</returns>
+    Task<IReadOnlyList<PatientAddress>> ListUserAddressesAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Adds or updates a structured address record for a user via POST /api/users/{username}/addresses.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="username">Target username.</param>
+    /// <param name="address">Address to persist.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Persisted address record.</returns>
+    Task<PatientAddress> AddUserAddressAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        PatientAddress address,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Deletes an address record for a user via DELETE /api/users/{username}/addresses/{id}.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="username">Target username.</param>
+    /// <param name="addressId">Identifier of the address to delete.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task representing asynchronous completion.</returns>
+    Task DeleteUserAddressAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        string addressId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Retrieves emergency and caregiver contacts for a user via GET /api/users/{username}/contacts.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="username">Target username.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Collection of emergency and caregiver contacts.</returns>
+    Task<IReadOnlyList<PatientContact>> ListUserContactsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Adds or updates an emergency or caregiver contact for a user via POST /api/users/{username}/contacts.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="username">Target username.</param>
+    /// <param name="contact">Contact to persist.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Persisted contact record.</returns>
+    Task<PatientContact> AddUserContactAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        PatientContact contact,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Deletes an emergency contact record for a user via DELETE /api/users/{username}/contacts/{id}.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="username">Target username.</param>
+    /// <param name="contactId">Identifier of contact to remove.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task representing asynchronous completion.</returns>
+    Task DeleteUserContactAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        string contactId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Retrieves a specific digitized DNA blueprint by ID via GET /api/patients/{username}/dna/{id}.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="username">Target patient username.</param>
+    /// <param name="id">Identifier of the DNA record.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Digitized DNA record.</returns>
+    Task<PatientDigitalDnaRecord> GetPatientDigitalDnaRecordAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        string id,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Removes a digitized DNA blueprint record by ID via DELETE /api/patients/{username}/dna/{id}.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="username">Target patient username.</param>
+    /// <param name="id">Identifier of the DNA record.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task representing asynchronous completion.</returns>
+    Task DeletePatientDigitalDnaAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        string id,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Lists all imported sequence and dataset files for a patient via GET /api/patients/{username}/imports.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="username">Target patient username.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Collection of imported sequence records.</returns>
+    Task<IReadOnlyList<PatientDnaImportRecord>> ListPatientImportsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Retrieves an imported sequence or dataset record by ID via GET /api/patients/{username}/imports/{id}.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="username">Target patient username.</param>
+    /// <param name="id">Identifier of the import record.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Imported sequence record.</returns>
+    Task<PatientDnaImportRecord> GetPatientImportAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        string id,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Imports DNA sequence data or variant panels for a patient via POST /api/patients/{username}/imports.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="username">Target patient username.</param>
+    /// <param name="request">Import payload containing file name and sequence data.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Created import record.</returns>
+    Task<PatientDnaImportRecord> CreatePatientImportAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        CreatePatientImportRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Deletes an imported sequence or dataset record by ID via DELETE /api/patients/{username}/imports/{id}.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="username">Target patient username.</param>
+    /// <param name="id">Identifier of the import record to delete.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task representing asynchronous completion.</returns>
+    Task DeletePatientImportAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        string id,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Lists all simulation and clinical results for a patient via GET /api/patients/{username}/results.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="username">Target patient username.</param>
+    /// <param name="resultType">Optional result type filter.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Collection of clinical and simulation result records.</returns>
+    Task<IReadOnlyList<PatientResultRecord>> ListPatientClinicalResultsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        string? resultType = null,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Retrieves a specific simulation or clinical result record by ID via GET /api/patients/{username}/results/{id}.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="username">Target patient username.</param>
+    /// <param name="id">Identifier of the result record.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Clinical or simulation result record.</returns>
+    Task<PatientResultRecord> GetPatientClinicalResultAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        string id,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Registers a new simulation or clinical result record via POST /api/patients/{username}/results.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="username">Target patient username.</param>
+    /// <param name="request">Result registration payload.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Created result record.</returns>
+    Task<PatientResultRecord> CreatePatientClinicalResultAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        CreatePatientResultRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Deletes a simulation or clinical result record by ID via DELETE /api/patients/{username}/results/{id}.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="username">Target patient username.</param>
+    /// <param name="id">Identifier of result record to delete.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task representing asynchronous completion.</returns>
+    Task DeletePatientClinicalResultAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        string id,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Retrieves identity claims and account details for the authenticated user via GET /api/auth/me.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Current authenticated user account.</returns>
+    Task<UserAccount> GetCurrentUserAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Terminates the interactive session via POST /api/auth/logout.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task representing asynchronous completion.</returns>
+    Task LogoutAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Evaluates whether the first-launch setup wizard is required via GET /api/setup/status.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Setup status payload indicating if initial administrator provisioning is needed.</returns>
+    Task<SetupStatusResponse> GetSetupStatusAsync(
+        InstanceProfile profile,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Executes cryptographic destruction of subject decryption keys via POST /api/compliance/crypto-shred.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="request">Crypto-shred payload specifying target subject ID.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task representing asynchronous completion.</returns>
+    Task CryptoShredUserAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CryptoShredRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Applies HIPAA Safe Harbor de-identification and GINA/GDPR Article 9 consent validation via POST /api/compliance/de-identify.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="request">De-identification request containing subject identifier and genomic sequence.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>De-identification result containing pseudonymized identifier and sanitized payload.</returns>
+    Task<DeIdentificationResult> DeIdentifyDatasetAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        DeIdentifyRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Envelope-encrypts an arbitrary JSON payload under a subject's post-quantum ML-KEM-768 key via POST /api/compliance/encrypt-record.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="request">Encryption request containing subject ID and payload object.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Post-quantum encrypted envelope.</returns>
+    Task<EncryptedEnvelope> EncryptRecordAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        EncryptRecordRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Decrypts an authenticated post-quantum envelope under a subject's post-quantum ML-KEM-768 key via POST /api/compliance/decrypt-record.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="request">Decryption request containing subject ID and encrypted envelope.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Decrypted JSON element payload.</returns>
+    Task<JsonElement> DecryptRecordAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        DecryptRecordRequest request,
         CancellationToken ct = default);
 }

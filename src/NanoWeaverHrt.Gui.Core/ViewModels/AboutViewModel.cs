@@ -30,7 +30,7 @@ public sealed class AboutViewModel : INotifyPropertyChanged
     /// <summary>
     /// Gets the application version tag.
     /// </summary>
-    public string Version => "2026.11.04.7-sovereign";
+    public string Version => "2026.11.04.8-sovereign";
 
     /// <summary>
     /// Gets the project description string.

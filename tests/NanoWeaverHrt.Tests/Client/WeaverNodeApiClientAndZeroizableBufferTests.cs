@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Moq;
 using NanoWeaverHrt.Analytics;
 using NanoWeaverHrt.Client.Api;
@@ -15,6 +16,7 @@ using NanoWeaverHrt.Hardware.Benchmarking;
 using NanoWeaverHrt.Models;
 using NanoWeaverHrt.Security.Access;
 using NanoWeaverHrt.Security.Authentication;
+using NanoWeaverHrt.Security.Models;
 using NanoWeaverHrt.Services.Stack;
 using Xunit;
 
@@ -473,6 +475,119 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         innerMock.Setup(i => i.ToggleEndocrineSwitchAsync(profile, "explicit_token", toggleReq, It.IsAny<CancellationToken>())).ReturnsAsync(toggleRes);
         innerMock.Setup(i => i.ToggleEndocrineSwitchAsync(profile, "cached_token", toggleReq, It.IsAny<CancellationToken>())).ReturnsAsync(toggleRes);
 
+        UserAccount sampleUser = new UserAccount().GetExamples();
+        CreateUserRequest sampleCreateReq = new CreateUserRequest().GetExamples();
+        UserProfile sampleProfile = new UserProfile().GetExamples();
+        PatientAddress sampleAddress = new PatientAddress().GetExamples();
+        PatientContact sampleContact = new PatientContact().GetExamples();
+
+        innerMock.Setup(i => i.ListUsersAsync(profile, "explicit_token", It.IsAny<CancellationToken>())).ReturnsAsync(new[] { sampleUser });
+        innerMock.Setup(i => i.ListUsersAsync(profile, "cached_token", It.IsAny<CancellationToken>())).ReturnsAsync(new[] { sampleUser });
+
+        innerMock.Setup(i => i.CreateUserAsync(profile, "explicit_token", sampleCreateReq, It.IsAny<CancellationToken>())).ReturnsAsync(sampleUser);
+        innerMock.Setup(i => i.CreateUserAsync(profile, "cached_token", sampleCreateReq, It.IsAny<CancellationToken>())).ReturnsAsync(sampleUser);
+
+        innerMock.Setup(i => i.DeleteUserAsync(profile, "explicit_token", "user1", It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        innerMock.Setup(i => i.DeleteUserAsync(profile, "cached_token", "user1", It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+        innerMock.Setup(i => i.GetUserProfileAsync(profile, "explicit_token", "user1", It.IsAny<CancellationToken>())).ReturnsAsync(sampleProfile);
+        innerMock.Setup(i => i.GetUserProfileAsync(profile, "cached_token", "user1", It.IsAny<CancellationToken>())).ReturnsAsync(sampleProfile);
+
+        innerMock.Setup(i => i.UpdateUserProfileAsync(profile, "explicit_token", "user1", sampleProfile, It.IsAny<CancellationToken>())).ReturnsAsync(sampleProfile);
+        innerMock.Setup(i => i.UpdateUserProfileAsync(profile, "cached_token", "user1", sampleProfile, It.IsAny<CancellationToken>())).ReturnsAsync(sampleProfile);
+
+        innerMock.Setup(i => i.ListUserAddressesAsync(profile, "explicit_token", "user1", It.IsAny<CancellationToken>())).ReturnsAsync(new[] { sampleAddress });
+        innerMock.Setup(i => i.ListUserAddressesAsync(profile, "cached_token", "user1", It.IsAny<CancellationToken>())).ReturnsAsync(new[] { sampleAddress });
+
+        innerMock.Setup(i => i.AddUserAddressAsync(profile, "explicit_token", "user1", sampleAddress, It.IsAny<CancellationToken>())).ReturnsAsync(sampleAddress);
+        innerMock.Setup(i => i.AddUserAddressAsync(profile, "cached_token", "user1", sampleAddress, It.IsAny<CancellationToken>())).ReturnsAsync(sampleAddress);
+
+        innerMock.Setup(i => i.DeleteUserAddressAsync(profile, "explicit_token", "user1", "addr1", It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        innerMock.Setup(i => i.DeleteUserAddressAsync(profile, "cached_token", "user1", "addr1", It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+        innerMock.Setup(i => i.ListUserContactsAsync(profile, "explicit_token", "user1", It.IsAny<CancellationToken>())).ReturnsAsync(new[] { sampleContact });
+        innerMock.Setup(i => i.ListUserContactsAsync(profile, "cached_token", "user1", It.IsAny<CancellationToken>())).ReturnsAsync(new[] { sampleContact });
+
+        innerMock.Setup(i => i.AddUserContactAsync(profile, "explicit_token", "user1", sampleContact, It.IsAny<CancellationToken>())).ReturnsAsync(sampleContact);
+        innerMock.Setup(i => i.AddUserContactAsync(profile, "cached_token", "user1", sampleContact, It.IsAny<CancellationToken>())).ReturnsAsync(sampleContact);
+
+        innerMock.Setup(i => i.DeleteUserContactAsync(profile, "explicit_token", "user1", "ct1", It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        innerMock.Setup(i => i.DeleteUserContactAsync(profile, "cached_token", "user1", "ct1", It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+        PatientDigitalDnaRecord sampleDna = new PatientDigitalDnaRecord().GetExamples();
+        PatientDnaImportRecord sampleImport = new PatientDnaImportRecord().GetExamples();
+        CreatePatientImportRequest sampleImportReq = new()
+        {
+            FileName = "patient_scaffold_variant.fasta",
+            SequenceOrData = ">sample\nATGC"
+        };
+        PatientResultRecord sampleResult = new PatientResultRecord().GetExamples();
+        CreatePatientResultRequest sampleResultReq = new()
+        {
+            ResultType = "EndocrineKinetics",
+            Title = "Sample Title",
+            Summary = "Sample Summary"
+        };
+        SetupStatusResponse sampleStatus = new SetupStatusResponse().GetExamples();
+        CryptoShredRequest shredReq = new CryptoShredRequest().GetExamples();
+        DeIdentifyRequest deIdReq = new DeIdentifyRequest().GetExamples();
+        DeIdentificationResult deIdRes = new DeIdentificationResult().GetExamples();
+        EncryptRecordRequest encReq = new EncryptRecordRequest().GetExamples();
+        EncryptedEnvelope sampleEnv = new EncryptedEnvelope().GetExamples();
+        DecryptRecordRequest decReq = new DecryptRecordRequest().GetExamples();
+        using var jsonDoc = JsonDocument.Parse("{\"k\":\"v\"}");
+        JsonElement sampleJsonElement = jsonDoc.RootElement.Clone();
+
+        innerMock.Setup(i => i.GetPatientDigitalDnaRecordAsync(profile, "explicit_token", "user1", "dna1", It.IsAny<CancellationToken>())).ReturnsAsync(sampleDna);
+        innerMock.Setup(i => i.GetPatientDigitalDnaRecordAsync(profile, "cached_token", "user1", "dna1", It.IsAny<CancellationToken>())).ReturnsAsync(sampleDna);
+
+        innerMock.Setup(i => i.DeletePatientDigitalDnaAsync(profile, "explicit_token", "user1", "dna1", It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        innerMock.Setup(i => i.DeletePatientDigitalDnaAsync(profile, "cached_token", "user1", "dna1", It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+        innerMock.Setup(i => i.ListPatientImportsAsync(profile, "explicit_token", "user1", It.IsAny<CancellationToken>())).ReturnsAsync(new[] { sampleImport });
+        innerMock.Setup(i => i.ListPatientImportsAsync(profile, "cached_token", "user1", It.IsAny<CancellationToken>())).ReturnsAsync(new[] { sampleImport });
+
+        innerMock.Setup(i => i.GetPatientImportAsync(profile, "explicit_token", "user1", "imp1", It.IsAny<CancellationToken>())).ReturnsAsync(sampleImport);
+        innerMock.Setup(i => i.GetPatientImportAsync(profile, "cached_token", "user1", "imp1", It.IsAny<CancellationToken>())).ReturnsAsync(sampleImport);
+
+        innerMock.Setup(i => i.CreatePatientImportAsync(profile, "explicit_token", "user1", sampleImportReq, It.IsAny<CancellationToken>())).ReturnsAsync(sampleImport);
+        innerMock.Setup(i => i.CreatePatientImportAsync(profile, "cached_token", "user1", sampleImportReq, It.IsAny<CancellationToken>())).ReturnsAsync(sampleImport);
+
+        innerMock.Setup(i => i.DeletePatientImportAsync(profile, "explicit_token", "user1", "imp1", It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        innerMock.Setup(i => i.DeletePatientImportAsync(profile, "cached_token", "user1", "imp1", It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+        innerMock.Setup(i => i.ListPatientClinicalResultsAsync(profile, "explicit_token", "user1", null, It.IsAny<CancellationToken>())).ReturnsAsync(new[] { sampleResult });
+        innerMock.Setup(i => i.ListPatientClinicalResultsAsync(profile, "cached_token", "user1", null, It.IsAny<CancellationToken>())).ReturnsAsync(new[] { sampleResult });
+
+        innerMock.Setup(i => i.GetPatientClinicalResultAsync(profile, "explicit_token", "user1", "res1", It.IsAny<CancellationToken>())).ReturnsAsync(sampleResult);
+        innerMock.Setup(i => i.GetPatientClinicalResultAsync(profile, "cached_token", "user1", "res1", It.IsAny<CancellationToken>())).ReturnsAsync(sampleResult);
+
+        innerMock.Setup(i => i.CreatePatientClinicalResultAsync(profile, "explicit_token", "user1", sampleResultReq, It.IsAny<CancellationToken>())).ReturnsAsync(sampleResult);
+        innerMock.Setup(i => i.CreatePatientClinicalResultAsync(profile, "cached_token", "user1", sampleResultReq, It.IsAny<CancellationToken>())).ReturnsAsync(sampleResult);
+
+        innerMock.Setup(i => i.DeletePatientClinicalResultAsync(profile, "explicit_token", "user1", "res1", It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        innerMock.Setup(i => i.DeletePatientClinicalResultAsync(profile, "cached_token", "user1", "res1", It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+        innerMock.Setup(i => i.GetCurrentUserAsync(profile, "explicit_token", It.IsAny<CancellationToken>())).ReturnsAsync(sampleUser);
+        innerMock.Setup(i => i.GetCurrentUserAsync(profile, "cached_token", It.IsAny<CancellationToken>())).ReturnsAsync(sampleUser);
+
+        innerMock.Setup(i => i.LogoutAsync(profile, "explicit_token", It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        innerMock.Setup(i => i.LogoutAsync(profile, "cached_token", It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+        innerMock.Setup(i => i.GetSetupStatusAsync(profile, It.IsAny<CancellationToken>())).ReturnsAsync(sampleStatus);
+
+        innerMock.Setup(i => i.CryptoShredUserAsync(profile, "explicit_token", shredReq, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        innerMock.Setup(i => i.CryptoShredUserAsync(profile, "cached_token", shredReq, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+        innerMock.Setup(i => i.DeIdentifyDatasetAsync(profile, "explicit_token", deIdReq, It.IsAny<CancellationToken>())).ReturnsAsync(deIdRes);
+        innerMock.Setup(i => i.DeIdentifyDatasetAsync(profile, "cached_token", deIdReq, It.IsAny<CancellationToken>())).ReturnsAsync(deIdRes);
+
+        innerMock.Setup(i => i.EncryptRecordAsync(profile, "explicit_token", encReq, It.IsAny<CancellationToken>())).ReturnsAsync(sampleEnv);
+        innerMock.Setup(i => i.EncryptRecordAsync(profile, "cached_token", encReq, It.IsAny<CancellationToken>())).ReturnsAsync(sampleEnv);
+
+        innerMock.Setup(i => i.DecryptRecordAsync(profile, "explicit_token", decReq, It.IsAny<CancellationToken>())).ReturnsAsync(sampleJsonElement);
+        innerMock.Setup(i => i.DecryptRecordAsync(profile, "cached_token", decReq, It.IsAny<CancellationToken>())).ReturnsAsync(sampleJsonElement);
+
         using var client = new WeaverNodeApiClient(innerMock.Object);
 
         // 1. Missing token without cache throws InvalidOperationException
@@ -530,6 +645,33 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.PingStackServiceAsync(profile, "", "valkey"));
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetEndocrineKineticsAsync(profile, ""));
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.ToggleEndocrineSwitchAsync(profile, "", toggleReq));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.ListUsersAsync(profile, ""));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.CreateUserAsync(profile, "", sampleCreateReq));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.DeleteUserAsync(profile, "", "user1"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetUserProfileAsync(profile, "", "user1"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.UpdateUserProfileAsync(profile, "", "user1", sampleProfile));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.ListUserAddressesAsync(profile, "", "user1"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.AddUserAddressAsync(profile, "", "user1", sampleAddress));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.DeleteUserAddressAsync(profile, "", "user1", "addr1"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.ListUserContactsAsync(profile, "", "user1"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.AddUserContactAsync(profile, "", "user1", sampleContact));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.DeleteUserContactAsync(profile, "", "user1", "ct1"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetPatientDigitalDnaRecordAsync(profile, "", "user1", "dna1"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.DeletePatientDigitalDnaAsync(profile, "", "user1", "dna1"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.ListPatientImportsAsync(profile, "", "user1"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetPatientImportAsync(profile, "", "user1", "imp1"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.CreatePatientImportAsync(profile, "", "user1", sampleImportReq));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.DeletePatientImportAsync(profile, "", "user1", "imp1"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.ListPatientClinicalResultsAsync(profile, "", "user1"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetPatientClinicalResultAsync(profile, "", "user1", "res1"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.CreatePatientClinicalResultAsync(profile, "", "user1", sampleResultReq));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.DeletePatientClinicalResultAsync(profile, "", "user1", "res1"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetCurrentUserAsync(profile, ""));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.LogoutAsync(profile, ""));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.CryptoShredUserAsync(profile, "", shredReq));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.DeIdentifyDatasetAsync(profile, "", deIdReq));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.EncryptRecordAsync(profile, "", encReq));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.DecryptRecordAsync(profile, "", decReq));
 
         // 2. Call with explicit token
         var snapRes1 = await client.PollSnapshotAsync(profile, "explicit_token");
@@ -686,6 +828,82 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
 
         var toggleProf1 = await client.ToggleEndocrineSwitchAsync(profile, "explicit_token", toggleReq);
         Assert.Equal(toggleRes.TargetState, toggleProf1.TargetState);
+
+        var users1 = await client.ListUsersAsync(profile, "explicit_token");
+        Assert.Single(users1);
+
+        var createdUser1 = await client.CreateUserAsync(profile, "explicit_token", sampleCreateReq);
+        Assert.Equal(sampleUser.Username, createdUser1.Username);
+
+        await client.DeleteUserAsync(profile, "explicit_token", "user1");
+
+        var profile1 = await client.GetUserProfileAsync(profile, "explicit_token", "user1");
+        Assert.Equal(sampleProfile.Username, profile1.Username);
+
+        var updatedProf1 = await client.UpdateUserProfileAsync(profile, "explicit_token", "user1", sampleProfile);
+        Assert.Equal(sampleProfile.Username, updatedProf1.Username);
+
+        var addresses1 = await client.ListUserAddressesAsync(profile, "explicit_token", "user1");
+        Assert.Single(addresses1);
+
+        var addedAddr1 = await client.AddUserAddressAsync(profile, "explicit_token", "user1", sampleAddress);
+        Assert.Equal(sampleAddress.Id, addedAddr1.Id);
+
+        await client.DeleteUserAddressAsync(profile, "explicit_token", "user1", "addr1");
+
+        var contacts1 = await client.ListUserContactsAsync(profile, "explicit_token", "user1");
+        Assert.Single(contacts1);
+
+        var addedCt1 = await client.AddUserContactAsync(profile, "explicit_token", "user1", sampleContact);
+        Assert.Equal(sampleContact.Id, addedCt1.Id);
+
+        await client.DeleteUserContactAsync(profile, "explicit_token", "user1", "ct1");
+
+        var dna1 = await client.GetPatientDigitalDnaRecordAsync(profile, "explicit_token", "user1", "dna1");
+        Assert.Equal(sampleDna.Id, dna1.Id);
+
+        await client.DeletePatientDigitalDnaAsync(profile, "explicit_token", "user1", "dna1");
+
+        var imports1 = await client.ListPatientImportsAsync(profile, "explicit_token", "user1");
+        Assert.Single(imports1);
+
+        var imp1 = await client.GetPatientImportAsync(profile, "explicit_token", "user1", "imp1");
+        Assert.Equal(sampleImport.Id, imp1.Id);
+
+        var createdImp1 = await client.CreatePatientImportAsync(profile, "explicit_token", "user1", sampleImportReq);
+        Assert.Equal(sampleImport.Id, createdImp1.Id);
+
+        await client.DeletePatientImportAsync(profile, "explicit_token", "user1", "imp1");
+
+        var results1 = await client.ListPatientClinicalResultsAsync(profile, "explicit_token", "user1");
+        Assert.Single(results1);
+
+        var res1 = await client.GetPatientClinicalResultAsync(profile, "explicit_token", "user1", "res1");
+        Assert.Equal(sampleResult.Id, res1.Id);
+
+        var createdRes1 = await client.CreatePatientClinicalResultAsync(profile, "explicit_token", "user1", sampleResultReq);
+        Assert.Equal(sampleResult.Id, createdRes1.Id);
+
+        await client.DeletePatientClinicalResultAsync(profile, "explicit_token", "user1", "res1");
+
+        var me1 = await client.GetCurrentUserAsync(profile, "explicit_token");
+        Assert.Equal(sampleUser.Username, me1.Username);
+
+        await client.LogoutAsync(profile, "explicit_token");
+
+        var setupStatus1 = await client.GetSetupStatusAsync(profile);
+        Assert.Equal(sampleStatus.SetupRequired, setupStatus1.SetupRequired);
+
+        await client.CryptoShredUserAsync(profile, "explicit_token", shredReq);
+
+        var deId1 = await client.DeIdentifyDatasetAsync(profile, "explicit_token", deIdReq);
+        Assert.Equal(deIdRes.PseudonymSubjectId, deId1.PseudonymSubjectId);
+
+        var enc1 = await client.EncryptRecordAsync(profile, "explicit_token", encReq);
+        Assert.Equal(sampleEnv.KeyId, enc1.KeyId);
+
+        var dec1 = await client.DecryptRecordAsync(profile, "explicit_token", decReq);
+        Assert.Equal("v", dec1.GetProperty("k").GetString());
 
         // 3. Set cached token and call with empty token argument
         client.SetSessionToken("cached_token");
@@ -845,6 +1063,82 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         var toggleProf2 = await client.ToggleEndocrineSwitchAsync(profile, "", toggleReq);
         Assert.Equal(toggleRes.TargetState, toggleProf2.TargetState);
 
+        var users2 = await client.ListUsersAsync(profile, "");
+        Assert.Single(users2);
+
+        var createdUser2 = await client.CreateUserAsync(profile, "", sampleCreateReq);
+        Assert.Equal(sampleUser.Username, createdUser2.Username);
+
+        await client.DeleteUserAsync(profile, "", "user1");
+
+        var profile2 = await client.GetUserProfileAsync(profile, "", "user1");
+        Assert.Equal(sampleProfile.Username, profile2.Username);
+
+        var updatedProf2 = await client.UpdateUserProfileAsync(profile, "", "user1", sampleProfile);
+        Assert.Equal(sampleProfile.Username, updatedProf2.Username);
+
+        var addresses2 = await client.ListUserAddressesAsync(profile, "", "user1");
+        Assert.Single(addresses2);
+
+        var addedAddr2 = await client.AddUserAddressAsync(profile, "", "user1", sampleAddress);
+        Assert.Equal(sampleAddress.Id, addedAddr2.Id);
+
+        await client.DeleteUserAddressAsync(profile, "", "user1", "addr1");
+
+        var contacts2 = await client.ListUserContactsAsync(profile, "", "user1");
+        Assert.Single(contacts2);
+
+        var addedCt2 = await client.AddUserContactAsync(profile, "", "user1", sampleContact);
+        Assert.Equal(sampleContact.Id, addedCt2.Id);
+
+        await client.DeleteUserContactAsync(profile, "", "user1", "ct1");
+
+        var dna2 = await client.GetPatientDigitalDnaRecordAsync(profile, "", "user1", "dna1");
+        Assert.Equal(sampleDna.Id, dna2.Id);
+
+        await client.DeletePatientDigitalDnaAsync(profile, "", "user1", "dna1");
+
+        var imports2 = await client.ListPatientImportsAsync(profile, "", "user1");
+        Assert.Single(imports2);
+
+        var imp2 = await client.GetPatientImportAsync(profile, "", "user1", "imp1");
+        Assert.Equal(sampleImport.Id, imp2.Id);
+
+        var createdImp2 = await client.CreatePatientImportAsync(profile, "", "user1", sampleImportReq);
+        Assert.Equal(sampleImport.Id, createdImp2.Id);
+
+        await client.DeletePatientImportAsync(profile, "", "user1", "imp1");
+
+        var results2 = await client.ListPatientClinicalResultsAsync(profile, "", "user1");
+        Assert.Single(results2);
+
+        var res2 = await client.GetPatientClinicalResultAsync(profile, "", "user1", "res1");
+        Assert.Equal(sampleResult.Id, res2.Id);
+
+        var createdRes2 = await client.CreatePatientClinicalResultAsync(profile, "", "user1", sampleResultReq);
+        Assert.Equal(sampleResult.Id, createdRes2.Id);
+
+        await client.DeletePatientClinicalResultAsync(profile, "", "user1", "res1");
+
+        var me2 = await client.GetCurrentUserAsync(profile, "");
+        Assert.Equal(sampleUser.Username, me2.Username);
+
+        await client.LogoutAsync(profile, "");
+
+        var setupStatus2 = await client.GetSetupStatusAsync(profile);
+        Assert.Equal(sampleStatus.SetupRequired, setupStatus2.SetupRequired);
+
+        await client.CryptoShredUserAsync(profile, "", shredReq);
+
+        var deId2 = await client.DeIdentifyDatasetAsync(profile, "", deIdReq);
+        Assert.Equal(deIdRes.PseudonymSubjectId, deId2.PseudonymSubjectId);
+
+        var enc2 = await client.EncryptRecordAsync(profile, "", encReq);
+        Assert.Equal(sampleEnv.KeyId, enc2.KeyId);
+
+        var dec2 = await client.DecryptRecordAsync(profile, "", decReq);
+        Assert.Equal("v", dec2.GetProperty("k").GetString());
+
         // 4. Set whitespace token buffer to exercise whitespace fallback exception
         using var whitespaceBuf = ZeroizableSecretBuffer.FromUtf8("   ");
         client.SetSessionToken(whitespaceBuf);
@@ -928,5 +1222,33 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.PingStackServiceAsync(profile, "token", "valkey"));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetEndocrineKineticsAsync(profile, "token"));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ToggleEndocrineSwitchAsync(profile, "token", new ToggleSwitchRequest { TargetState = ToggleState.EstrogenicDominant }));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ListUsersAsync(profile, "token"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.CreateUserAsync(profile, "token", new CreateUserRequest().GetExamples()));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.DeleteUserAsync(profile, "token", "user1"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetUserProfileAsync(profile, "token", "user1"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.UpdateUserProfileAsync(profile, "token", "user1", new UserProfile().GetExamples()));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ListUserAddressesAsync(profile, "token", "user1"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.AddUserAddressAsync(profile, "token", "user1", new PatientAddress().GetExamples()));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.DeleteUserAddressAsync(profile, "token", "user1", "addr1"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ListUserContactsAsync(profile, "token", "user1"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.AddUserContactAsync(profile, "token", "user1", new PatientContact().GetExamples()));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.DeleteUserContactAsync(profile, "token", "user1", "ct1"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetPatientDigitalDnaRecordAsync(profile, "token", "user1", "dna1"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.DeletePatientDigitalDnaAsync(profile, "token", "user1", "dna1"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ListPatientImportsAsync(profile, "token", "user1"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetPatientImportAsync(profile, "token", "user1", "imp1"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.CreatePatientImportAsync(profile, "token", "user1", new CreatePatientImportRequest { FileName = "f", SequenceOrData = "s" }));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.DeletePatientImportAsync(profile, "token", "user1", "imp1"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ListPatientClinicalResultsAsync(profile, "token", "user1"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetPatientClinicalResultAsync(profile, "token", "user1", "res1"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.CreatePatientClinicalResultAsync(profile, "token", "user1", new CreatePatientResultRequest { ResultType = "r", Title = "t", Summary = "s" }));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.DeletePatientClinicalResultAsync(profile, "token", "user1", "res1"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetCurrentUserAsync(profile, "token"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.LogoutAsync(profile, "token"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetSetupStatusAsync(profile));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.CryptoShredUserAsync(profile, "token", new CryptoShredRequest().GetExamples()));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.DeIdentifyDatasetAsync(profile, "token", new DeIdentifyRequest().GetExamples()));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.EncryptRecordAsync(profile, "token", new EncryptRecordRequest().GetExamples()));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.DecryptRecordAsync(profile, "token", new DecryptRecordRequest().GetExamples()));
     }
 }

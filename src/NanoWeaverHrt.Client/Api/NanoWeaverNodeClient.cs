@@ -19,6 +19,8 @@ using NanoWeaverHrt.Genomics;
 using NanoWeaverHrt.Hardware.Benchmarking;
 using NanoWeaverHrt.Models;
 using NanoWeaverHrt.Security.Access;
+using NanoWeaverHrt.Security.Authentication;
+using NanoWeaverHrt.Security.Models;
 using NanoWeaverHrt.Services.Stack;
 
 namespace NanoWeaverHrt.Client.Api;
@@ -1921,6 +1923,874 @@ public sealed class NanoWeaverNodeClient : INanoWeaverNodeClient
 
         EndocrineTargetProfile? target = await resp.Content.ReadFromJsonAsync<EndocrineTargetProfile>(JsonOptions, ct);
         return target ?? throw new InvalidOperationException("Endpoint returned empty or null endocrine profile payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<UserAccount>> ListUsersAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/users to list all registered sovereign users.
+        // WHY:  Permits administrative enumeration of active accounts and permissions.
+        // HOW:  Validates inputs, executes GET request with Bearer token, and deserializes list.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/users");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        List<UserAccount>? list = await resp.Content.ReadFromJsonAsync<List<UserAccount>>(JsonOptions, ct);
+        return (IReadOnlyList<UserAccount>?)list ?? [];
+    }
+
+    /// <inheritdoc/>
+    public async Task<UserAccount> CreateUserAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CreateUserRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/users to provision a new user account.
+        // WHY:  Allows administrators to provision new accounts with cryptographic keys.
+        // HOW:  Validates inputs, posts serialized JSON payload, and deserializes created account.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/users");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        UserAccount? user = await resp.Content.ReadFromJsonAsync<UserAccount>(JsonOptions, ct);
+        return user ?? throw new InvalidOperationException("Endpoint returned empty or null user account payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task DeleteUserAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches DELETE /api/users/{username} to revoke a user account.
+        // WHY:  Supports permanent decommissioning of revoked patient or researcher identities.
+        // HOW:  Validates inputs, issues DELETE request, and verifies successful response status.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/users/{Uri.EscapeDataString(username)}");
+
+        using HttpRequestMessage req = new(HttpMethod.Delete, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<UserProfile> GetUserProfileAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/users/{username}/profile to fetch demographic and clinical profile data.
+        // WHY:  Provides personalized regimen details, pronoun preferences, and clinical baseline data.
+        // HOW:  Validates inputs, issues GET request with Bearer authorization, and deserializes UserProfile.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/users/{Uri.EscapeDataString(username)}/profile");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        UserProfile? prof = await resp.Content.ReadFromJsonAsync<UserProfile>(JsonOptions, ct);
+        return prof ?? throw new InvalidOperationException("Endpoint returned empty or null user profile payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<UserProfile> UpdateUserProfileAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        UserProfile userProfile,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches PUT /api/users/{username}/profile to create or update profile metadata.
+        // WHY:  Allows patients and clinicians to maintain up-to-date demographic and clinical regimen data.
+        // HOW:  Validates inputs, issues PUT request with JSON payload, and deserializes updated profile.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+        ArgumentNullException.ThrowIfNull(userProfile);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/users/{Uri.EscapeDataString(username)}/profile");
+
+        using HttpRequestMessage req = new(HttpMethod.Put, endpointUri)
+        {
+            Content = JsonContent.Create(userProfile, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        UserProfile? prof = await resp.Content.ReadFromJsonAsync<UserProfile>(JsonOptions, ct);
+        return prof ?? throw new InvalidOperationException("Endpoint returned empty or null user profile payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<PatientAddress>> ListUserAddressesAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/users/{username}/addresses to retrieve registered user addresses.
+        // WHY:  Supplies shipping and physical contact destinations for digital fabrication samples.
+        // HOW:  Validates inputs, executes GET request with Bearer authorization, and deserializes list.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/users/{Uri.EscapeDataString(username)}/addresses");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        List<PatientAddress>? list = await resp.Content.ReadFromJsonAsync<List<PatientAddress>>(JsonOptions, ct);
+        return (IReadOnlyList<PatientAddress>?)list ?? [];
+    }
+
+    /// <inheritdoc/>
+    public async Task<PatientAddress> AddUserAddressAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        PatientAddress address,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/users/{username}/addresses to add or update an address record.
+        // WHY:  Supports recording and modifying structured geographic addresses.
+        // HOW:  Validates inputs, posts serialized JSON payload, and deserializes stored address.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+        ArgumentNullException.ThrowIfNull(address);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/users/{Uri.EscapeDataString(username)}/addresses");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(address, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        PatientAddress? addr = await resp.Content.ReadFromJsonAsync<PatientAddress>(JsonOptions, ct);
+        return addr ?? throw new InvalidOperationException("Endpoint returned empty or null patient address payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task DeleteUserAddressAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        string addressId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches DELETE /api/users/{username}/addresses/{id} to remove an address.
+        // WHY:  Permits removing stale or revoked patient residential locations.
+        // HOW:  Validates inputs, issues DELETE request, and verifies successful response status.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+        ArgumentException.ThrowIfNullOrWhiteSpace(addressId);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/users/{Uri.EscapeDataString(username)}/addresses/{Uri.EscapeDataString(addressId)}");
+
+        using HttpRequestMessage req = new(HttpMethod.Delete, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<PatientContact>> ListUserContactsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/users/{username}/contacts to retrieve emergency outreach contacts.
+        // WHY:  Maintains critical contact relationships for monitoring adverse endocrine events.
+        // HOW:  Validates inputs, executes GET request with Bearer authorization, and deserializes list.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/users/{Uri.EscapeDataString(username)}/contacts");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        List<PatientContact>? list = await resp.Content.ReadFromJsonAsync<List<PatientContact>>(JsonOptions, ct);
+        return (IReadOnlyList<PatientContact>?)list ?? [];
+    }
+
+    /// <inheritdoc/>
+    public async Task<PatientContact> AddUserContactAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        PatientContact contact,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/users/{username}/contacts to add or update an emergency contact.
+        // WHY:  Allows patients and clinicians to configure emergency contacts with relationship metadata.
+        // HOW:  Validates inputs, posts serialized JSON payload, and deserializes stored contact.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+        ArgumentNullException.ThrowIfNull(contact);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/users/{Uri.EscapeDataString(username)}/contacts");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(contact, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        PatientContact? saved = await resp.Content.ReadFromJsonAsync<PatientContact>(JsonOptions, ct);
+        return saved ?? throw new InvalidOperationException("Endpoint returned empty or null patient contact payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task DeleteUserContactAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        string contactId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches DELETE /api/users/{username}/contacts/{id} to remove an emergency contact.
+        // WHY:  Allows patients and administrators to revoke obsolete emergency contacts.
+        // HOW:  Validates inputs, issues DELETE request, and verifies successful response status.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+        ArgumentException.ThrowIfNullOrWhiteSpace(contactId);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/users/{Uri.EscapeDataString(username)}/contacts/{Uri.EscapeDataString(contactId)}");
+
+        using HttpRequestMessage req = new(HttpMethod.Delete, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<PatientDigitalDnaRecord> GetPatientDigitalDnaRecordAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        string id,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/patients/{username}/dna/{id} to retrieve a digitized DNA blueprint.
+        // WHY:  Supplies detailed staple sequences, annealing schedules, and provenance for review or fabrication.
+        // HOW:  Validates inputs, issues GET request with Bearer authorization, and deserializes PatientDigitalDnaRecord.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/patients/{Uri.EscapeDataString(username)}/dna/{Uri.EscapeDataString(id)}");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        PatientDigitalDnaRecord? rec = await resp.Content.ReadFromJsonAsync<PatientDigitalDnaRecord>(JsonOptions, ct);
+        return rec ?? throw new InvalidOperationException("Endpoint returned empty or null patient DNA payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task DeletePatientDigitalDnaAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        string id,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches DELETE /api/patients/{username}/dna/{id} to delete a digitized DNA blueprint.
+        // WHY:  Allows removing invalid or superseded nanocarrier blueprints from the dossier.
+        // HOW:  Validates inputs, issues DELETE request, and verifies successful response status.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/patients/{Uri.EscapeDataString(username)}/dna/{Uri.EscapeDataString(id)}");
+
+        using HttpRequestMessage req = new(HttpMethod.Delete, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<PatientDnaImportRecord>> ListPatientImportsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/patients/{username}/imports to retrieve imported sequence files.
+        // WHY:  Provides an audit archive of uploaded genomic sequences, FASTA datasets, and variant panels.
+        // HOW:  Validates inputs, executes GET request with Bearer authorization, and deserializes list.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/patients/{Uri.EscapeDataString(username)}/imports");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        List<PatientDnaImportRecord>? list = await resp.Content.ReadFromJsonAsync<List<PatientDnaImportRecord>>(JsonOptions, ct);
+        return (IReadOnlyList<PatientDnaImportRecord>?)list ?? [];
+    }
+
+    /// <inheritdoc/>
+    public async Task<PatientDnaImportRecord> GetPatientImportAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        string id,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/patients/{username}/imports/{id} to retrieve a specific sequence import record.
+        // WHY:  Supplies raw sequence content and metadata for downstream alignment or origami folding.
+        // HOW:  Validates inputs, issues GET request with Bearer authorization, and deserializes PatientDnaImportRecord.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/patients/{Uri.EscapeDataString(username)}/imports/{Uri.EscapeDataString(id)}");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        PatientDnaImportRecord? rec = await resp.Content.ReadFromJsonAsync<PatientDnaImportRecord>(JsonOptions, ct);
+        return rec ?? throw new InvalidOperationException("Endpoint returned empty or null patient import payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<PatientDnaImportRecord> CreatePatientImportAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        CreatePatientImportRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/patients/{username}/imports to upload sequence data or variant panels.
+        // WHY:  Allows clinicians and researchers to import raw genomic datasets into the patient dossier.
+        // HOW:  Validates inputs, posts serialized JSON payload, and deserializes created import record.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/patients/{Uri.EscapeDataString(username)}/imports");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        PatientDnaImportRecord? rec = await resp.Content.ReadFromJsonAsync<PatientDnaImportRecord>(JsonOptions, ct);
+        return rec ?? throw new InvalidOperationException("Endpoint returned empty or null patient import payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task DeletePatientImportAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        string id,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches DELETE /api/patients/{username}/imports/{id} to delete an imported sequence record.
+        // WHY:  Supports removal of erroneous or superseded raw sequence imports.
+        // HOW:  Validates inputs, issues DELETE request, and verifies successful response status.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/patients/{Uri.EscapeDataString(username)}/imports/{Uri.EscapeDataString(id)}");
+
+        using HttpRequestMessage req = new(HttpMethod.Delete, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<PatientResultRecord>> ListPatientClinicalResultsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        string? resultType = null,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/patients/{username}/results to retrieve simulation and clinical outcome records.
+        // WHY:  Allows reviewing synthesis packages, oxDNA/LAMMPS simulations, and clinical laboratory assays.
+        // HOW:  Validates inputs, builds route with optional resultType query parameter, and executes GET request.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        string relative = string.IsNullOrWhiteSpace(resultType)
+            ? $"/api/patients/{Uri.EscapeDataString(username)}/results"
+            : $"/api/patients/{Uri.EscapeDataString(username)}/results?resultType={Uri.EscapeDataString(resultType)}";
+        Uri endpointUri = new(baseUri, relative);
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        List<PatientResultRecord>? list = await resp.Content.ReadFromJsonAsync<List<PatientResultRecord>>(JsonOptions, ct);
+        return (IReadOnlyList<PatientResultRecord>?)list ?? [];
+    }
+
+    /// <inheritdoc/>
+    public async Task<PatientResultRecord> GetPatientClinicalResultAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        string id,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/patients/{username}/results/{id} to retrieve a specific result record.
+        // WHY:  Supplies metrics, charts, and outcome parameters for a single clinical or simulation assay.
+        // HOW:  Validates inputs, issues GET request with Bearer authorization, and deserializes PatientResultRecord.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/patients/{Uri.EscapeDataString(username)}/results/{Uri.EscapeDataString(id)}");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        PatientResultRecord? rec = await resp.Content.ReadFromJsonAsync<PatientResultRecord>(JsonOptions, ct);
+        return rec ?? throw new InvalidOperationException("Endpoint returned empty or null patient clinical result payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<PatientResultRecord> CreatePatientClinicalResultAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        CreatePatientResultRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/patients/{username}/results to register a new simulation or clinical result.
+        // WHY:  Enables saving physical lab assays and custom simulation outcomes to the patient dossier.
+        // HOW:  Validates inputs, posts serialized JSON payload, and deserializes created result record.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/patients/{Uri.EscapeDataString(username)}/results");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        PatientResultRecord? rec = await resp.Content.ReadFromJsonAsync<PatientResultRecord>(JsonOptions, ct);
+        return rec ?? throw new InvalidOperationException("Endpoint returned empty or null patient clinical result payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task DeletePatientClinicalResultAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        string id,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches DELETE /api/patients/{username}/results/{id} to delete a simulation or clinical result.
+        // WHY:  Supports removal of invalid, test, or superseded result records.
+        // HOW:  Validates inputs, issues DELETE request, and verifies successful response status.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/patients/{Uri.EscapeDataString(username)}/results/{Uri.EscapeDataString(id)}");
+
+        using HttpRequestMessage req = new(HttpMethod.Delete, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<UserAccount> GetCurrentUserAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/auth/me to fetch identity and claims of current authenticated session.
+        // WHY:  Allows desktop/mobile clients to inspect role permissions and active username.
+        // HOW:  Validates inputs, issues GET request with Bearer authorization, and deserializes UserAccount.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/auth/me");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        UserAccount? user = await resp.Content.ReadFromJsonAsync<UserAccount>(JsonOptions, ct);
+        return user ?? throw new InvalidOperationException("Endpoint returned empty or null current user payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task LogoutAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/auth/logout to invalidate the session.
+        // WHY:  Ensures node-side session state and cookies are cleared upon explicit logout.
+        // HOW:  Validates inputs, issues POST request with Bearer authorization, and asserts success.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/auth/logout");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = new StringContent("{}", Encoding.UTF8, "application/json")
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<SetupStatusResponse> GetSetupStatusAsync(
+        InstanceProfile profile,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/setup/status to determine if first-launch setup wizard is required.
+        // WHY:  Allows clients to detect uninitialized nodes before prompting for authentication.
+        // HOW:  Validates profile, issues unauthenticated GET request, and deserializes SetupStatusResponse.
+        ArgumentNullException.ThrowIfNull(profile);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/setup/status");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        SetupStatusResponse? status = await resp.Content.ReadFromJsonAsync<SetupStatusResponse>(JsonOptions, ct);
+        return status ?? throw new InvalidOperationException("Endpoint returned empty or null setup status payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task CryptoShredUserAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CryptoShredRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/compliance/crypto-shred to destroy subject decryption keys per GDPR Article 17.
+        // WHY:  Irreversibly renders historical subject health records unrecoverable upon patient request.
+        // HOW:  Validates inputs, posts serialized CryptoShredRequest, and asserts success.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/compliance/crypto-shred");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<DeIdentificationResult> DeIdentifyDatasetAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        DeIdentifyRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/compliance/de-identify for HIPAA Safe Harbor and GINA de-identification.
+        // WHY:  Ensures patient identifiers and genomic datasets are scrubbed before secondary research use.
+        // HOW:  Validates inputs, posts serialized DeIdentifyRequest, and deserializes DeIdentificationResult.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/compliance/de-identify");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        DeIdentificationResult? result = await resp.Content.ReadFromJsonAsync<DeIdentificationResult>(JsonOptions, ct);
+        return result ?? throw new InvalidOperationException("Endpoint returned empty or null de-identification result payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<EncryptedEnvelope> EncryptRecordAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        EncryptRecordRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/compliance/encrypt-record to envelope-encrypt health records under ML-KEM-768.
+        // WHY:  Protects sensitive demographic and endocrine records with post-quantum confidentiality.
+        // HOW:  Validates inputs, posts serialized EncryptRecordRequest, and deserializes EncryptedEnvelope.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/compliance/encrypt-record");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        EncryptedEnvelope? envelope = await resp.Content.ReadFromJsonAsync<EncryptedEnvelope>(JsonOptions, ct);
+        return envelope ?? throw new InvalidOperationException("Endpoint returned empty or null encrypted envelope payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<JsonElement> DecryptRecordAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        DecryptRecordRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/compliance/decrypt-record to decrypt an authenticated post-quantum envelope.
+        // WHY:  Enables authorized clients to decrypt encrypted health records using subject keys.
+        // HOW:  Validates inputs, posts serialized DecryptRecordRequest, and deserializes decrypted JsonElement.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/compliance/decrypt-record");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        JsonElement element = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOptions, ct);
+        return element;
     }
 
     /// <summary>

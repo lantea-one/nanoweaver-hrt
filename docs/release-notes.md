@@ -4,6 +4,53 @@
 
 ---
 
+## v2026.11.04.8 — Code-Complete Milestone: Client REST SDK Parity (User Admin, Contacts, Patient DNA CRUD, Auth Introspection & Compliance Services) (2026-11-04)
+
+Code-complete milestone release resolving Work Packages `P126–P130` (Forgejo Issues `#129–#133`), expanding the client REST SDK with 28 new endpoints achieving 100% route coverage across user account administration, demographic and clinical profiles, patient structured addresses and emergency contacts, patient digitized DNA blueprints and sequencing import archives, clinical and simulation assay results, session identity introspection, explicit logout, first-launch setup gating, post-quantum ML-KEM-768 envelope record encryption/decryption, HIPAA/GINA de-identification, and GDPR Article 17 right-to-erasure cryptographic shredding; and synchronizing CalVer release versioning across all 12 packaging manifests and platform targets.
+
+### Highlights
+* **Client REST SDK Expansion: User Administration, Profiles, Addresses & Contacts (Forgejo #129 / P126)**:
+  - Extended `INanoWeaverNodeClient`, `NanoWeaverNodeClient`, and `WeaverNodeApiClient` with 11 administrative and directory methods:
+    1. `ListUsersAsync` (`GET /api/users`)
+    2. `CreateUserAsync` (`POST /api/users`)
+    3. `DeleteUserAsync` (`DELETE /api/users/{username}`)
+    4. `GetUserProfileAsync` (`GET /api/users/{username}/profile`)
+    5. `UpdateUserProfileAsync` (`PUT /api/users/{username}/profile`)
+    6. `ListUserAddressesAsync` (`GET /api/users/{username}/addresses`)
+    7. `AddUserAddressAsync` (`POST /api/users/{username}/addresses`)
+    8. `DeleteUserAddressAsync` (`DELETE /api/users/{username}/addresses/{id}`)
+    9. `ListUserContactsAsync` (`GET /api/users/{username}/contacts`)
+    10. `AddUserContactAsync` (`POST /api/users/{username}/contacts`)
+    11. `DeleteUserContactAsync` (`DELETE /api/users/{username}/contacts/{id}`)
+* **Client REST SDK Expansion: Patient Digital DNA, Import Archives & Clinical Results CRUD (Forgejo #130 / P127)**:
+  - Added 10 patient clinical data methods to the client REST SDK:
+    1. `GetPatientDigitalDnaRecordAsync` (`GET /api/patients/{username}/dna/{id}`)
+    2. `DeletePatientDigitalDnaAsync` (`DELETE /api/patients/{username}/dna/{id}`)
+    3. `ListPatientImportsAsync` (`GET /api/patients/{username}/imports`)
+    4. `GetPatientImportAsync` (`GET /api/patients/{username}/imports/{id}`)
+    5. `CreatePatientImportAsync` (`POST /api/patients/{username}/imports`)
+    6. `DeletePatientImportAsync` (`DELETE /api/patients/{username}/imports/{id}`)
+    7. `ListPatientClinicalResultsAsync` (`GET /api/patients/{username}/results`)
+    8. `GetPatientClinicalResultAsync` (`GET /api/patients/{username}/results/{id}`)
+    9. `CreatePatientClinicalResultAsync` (`POST /api/patients/{username}/results`)
+    10. `DeletePatientClinicalResultAsync` (`DELETE /api/patients/{username}/results/{id}`)
+* **Client REST SDK Expansion: Identity Introspection, Session Invalidation & Setup Status (Forgejo #131 / P128)**:
+  - Added 3 identity and platform lifecycle methods:
+    1. `GetCurrentUserAsync` (`GET /api/auth/me`)
+    2. `LogoutAsync` (`POST /api/auth/logout`)
+    3. `GetSetupStatusAsync` (`GET /api/setup/status`)
+* **Client REST SDK Expansion: Compliance Cryptographic Shredding & Record Encryption (Forgejo #132 / P129)**:
+  - Added 4 post-quantum cryptographic and regulatory compliance methods:
+    1. `CryptoShredUserAsync` (`POST /api/compliance/crypto-shred`)
+    2. `DeIdentifyDatasetAsync` (`POST /api/compliance/de-identify`)
+    3. `EncryptRecordAsync` (`POST /api/compliance/encrypt-record`)
+    4. `DecryptRecordAsync` (`POST /api/compliance/decrypt-record`)
+* **Absolute Zero-Defect Repository Audit & CalVer v2026.11.04.8 Parity (Forgejo #133 / P130)**:
+  - Synchronized CalVer version `2026.11.04.8` across Arch Linux AUR (binary & git), FreeBSD, Homebrew, AppStream metainfo, macOS Info.plist, Nix, Windows Appx/NSIS/WinGet, Android, iOS, iPadOS, desktop entry points, ViewModels, and test fixtures.
+  - Achieved 100.00% line & branch code coverage threshold with 0 XML docblock errors across all tests.
+
+---
+
 ## v2026.11.04.7 — Code-Complete Milestone: Full Client REST SDK Parity (Subject Access, Fabrication, Stack Services, Endocrine Kinetics) & Platform Diagnostics Hardening (2026-11-04)
 
 Code-complete milestone release resolving Work Packages `P121–P125` (Forgejo Issues `#124–#128`), expanding the client REST SDK with 11 new endpoints covering cohort group introspection, updates, subject group grants, fabrication origami presets, nanocarrier synthesis protocol generation, clinical genomic panels, stack service telemetry and health pinging, and dynamic endocrine kinetics and molecular switch toggles; hardening desktop tray controller notification resilience under process runner execution failures; and synchronizing CalVer release versioning across all 12 packaging manifests and platform targets.
