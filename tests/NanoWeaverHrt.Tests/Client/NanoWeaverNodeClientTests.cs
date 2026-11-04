@@ -1,7 +1,9 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using Moq;
+using NanoWeaverHrt;
 using NanoWeaverHrt.Analytics;
 using NanoWeaverHrt.Client.Api;
 using NanoWeaverHrt.Client.Security;
@@ -3075,6 +3077,361 @@ public sealed class NanoWeaverNodeClientTests : IDisposable
     }
 
     /// <summary>
+    /// Verifies nominal responses and fault conditions for dataset archive lifecycle endpoints.
+    /// </summary>
+    /// <returns>A task representing asynchronous test completion.</returns>
+    [Fact]
+    public async Task DatasetArchiveEndpoints_NominalAndErrors_BehavesExpectedly()
+    {
+        // WHAT: Tests nominal and error execution paths for ImportDatasetArchiveAsync, ExportEncryptedDatasetAsync,
+        //       ListExportedDatasetBundlesAsync, DeleteExportedDatasetBundleAsync, DownloadDatasetArchiveAsync, and DownloadTrajectoryAsync.
+        // WHY:  Issue #134 (P131): Guarantees 100% test coverage across dataset bundle lifecycle operations.
+        // HOW:  Mocks HTTP responses with serialized models, validates argument guards, null handling, and error response mapping.
+        DatasetImportResponse sampleImportRes = new DatasetImportResponse().GetExamples();
+        ExportEncryptedDatasetResult sampleExportRes = new ExportEncryptedDatasetResult().GetExamples();
+        ExportEncryptedDatasetRequest exportReq = new() { TrajectoryFileName = "traj.xyz", SubjectId = "sub_42" };
+        List<ExportFileItem> sampleExportList = [new ExportFileItem { Name = "a", SizeBytes = 1, SizeFormatted = "1B", LastModifiedUtc = "now", Category = "Archive" }.GetExamples()];
+        byte[] dummyArchive = [0x1f, 0x8b, 0x08, 0x00];
+        byte[] dummyManifest = Encoding.UTF8.GetBytes("{}");
+        byte[] dummyFileBytes = [0x01, 0x02, 0x03, 0x04];
+
+        // 1. ImportDatasetArchiveAsync
+        _httpHandler.SetResponse(
+            "/api/datasets/import",
+            HttpStatusCode.OK,
+            JsonSerializer.Serialize(sampleImportRes, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        DatasetImportResponse importRes = await _client.ImportDatasetArchiveAsync(
+            _localProfile, "token", dummyArchive, "archive.tar.gz", dummyManifest, "manifest.json");
+        Assert.Equal(sampleImportRes.Message, importRes.Message);
+        Assert.Equal(sampleImportRes.Provenance, importRes.Provenance);
+
+        _httpHandler.SetResponse("/api/datasets/import", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.ImportDatasetArchiveAsync(_localProfile, "token", dummyArchive, "a.tar.gz", dummyManifest, "m.json"));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.ImportDatasetArchiveAsync(null!, "token", dummyArchive, "a.tar.gz", dummyManifest, "m.json"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.ImportDatasetArchiveAsync(_localProfile, "", dummyArchive, "a.tar.gz", dummyManifest, "m.json"));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.ImportDatasetArchiveAsync(_localProfile, "token", null!, "a.tar.gz", dummyManifest, "m.json"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.ImportDatasetArchiveAsync(_localProfile, "token", dummyArchive, "", dummyManifest, "m.json"));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.ImportDatasetArchiveAsync(_localProfile, "token", dummyArchive, "a.tar.gz", null!, "m.json"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.ImportDatasetArchiveAsync(_localProfile, "token", dummyArchive, "a.tar.gz", dummyManifest, ""));
+        _httpHandler.SetResponse("/api/datasets/import", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.ImportDatasetArchiveAsync(_localProfile, "token", dummyArchive, "a.tar.gz", dummyManifest, "m.json"));
+
+        // 2. ExportEncryptedDatasetAsync
+        _httpHandler.SetResponse(
+            "/api/datasets/export-encrypted",
+            HttpStatusCode.OK,
+            JsonSerializer.Serialize(sampleExportRes, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        ExportEncryptedDatasetResult exportRes = await _client.ExportEncryptedDatasetAsync(_localProfile, "token", exportReq);
+        Assert.Equal(sampleExportRes.BundlePath, exportRes.BundlePath);
+        Assert.Equal(sampleExportRes.Algorithm, exportRes.Algorithm);
+
+        _httpHandler.SetResponse("/api/datasets/export-encrypted", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.ExportEncryptedDatasetAsync(_localProfile, "token", exportReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.ExportEncryptedDatasetAsync(null!, "token", exportReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.ExportEncryptedDatasetAsync(_localProfile, "", exportReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.ExportEncryptedDatasetAsync(_localProfile, "token", null!));
+        _httpHandler.SetResponse("/api/datasets/export-encrypted", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.ExportEncryptedDatasetAsync(_localProfile, "token", exportReq));
+
+        // 3. ListExportedDatasetBundlesAsync
+        _httpHandler.SetResponse(
+            "/api/datasets/exports",
+            HttpStatusCode.OK,
+            JsonSerializer.Serialize(sampleExportList, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        IReadOnlyList<ExportFileItem> exports = await _client.ListExportedDatasetBundlesAsync(_localProfile, "token");
+        Assert.Single(exports);
+        Assert.Equal(sampleExportList[0].Name, exports[0].Name);
+
+        _httpHandler.SetResponse("/api/datasets/exports", HttpStatusCode.OK, "null");
+        IReadOnlyList<ExportFileItem> emptyExports = await _client.ListExportedDatasetBundlesAsync(_localProfile, "token");
+        Assert.Empty(emptyExports);
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.ListExportedDatasetBundlesAsync(null!, "token"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.ListExportedDatasetBundlesAsync(_localProfile, ""));
+        _httpHandler.SetResponse("/api/datasets/exports", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.ListExportedDatasetBundlesAsync(_localProfile, "token"));
+
+        // 4. DeleteExportedDatasetBundleAsync
+        _httpHandler.SetResponse("/api/datasets/exports/bundle.tar.gz", HttpStatusCode.OK, "{}");
+        await _client.DeleteExportedDatasetBundleAsync(_localProfile, "token", "bundle.tar.gz");
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.DeleteExportedDatasetBundleAsync(null!, "token", "bundle.tar.gz"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.DeleteExportedDatasetBundleAsync(_localProfile, "", "bundle.tar.gz"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.DeleteExportedDatasetBundleAsync(_localProfile, "token", ""));
+        _httpHandler.SetResponse("/api/datasets/exports/bundle.tar.gz", HttpStatusCode.NotFound, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.DeleteExportedDatasetBundleAsync(_localProfile, "token", "bundle.tar.gz"));
+
+        // 5. DownloadDatasetArchiveAsync
+        _httpHandler.SetByteResponse("/api/datasets/download/bundle.tar.gz", HttpStatusCode.OK, dummyFileBytes);
+        byte[] downloadedArchive = await _client.DownloadDatasetArchiveAsync(_localProfile, "token", "bundle.tar.gz");
+        Assert.Equal(dummyFileBytes, downloadedArchive);
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.DownloadDatasetArchiveAsync(null!, "token", "bundle.tar.gz"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.DownloadDatasetArchiveAsync(_localProfile, "", "bundle.tar.gz"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.DownloadDatasetArchiveAsync(_localProfile, "token", ""));
+        _httpHandler.SetResponse("/api/datasets/download/bundle.tar.gz", HttpStatusCode.NotFound, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.DownloadDatasetArchiveAsync(_localProfile, "token", "bundle.tar.gz"));
+
+        // 6. DownloadTrajectoryAsync
+        _httpHandler.SetByteResponse("/api/trajectories/download/traj.xyz", HttpStatusCode.OK, dummyFileBytes);
+        byte[] downloadedTraj = await _client.DownloadTrajectoryAsync(_localProfile, "token", "traj.xyz");
+        Assert.Equal(dummyFileBytes, downloadedTraj);
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.DownloadTrajectoryAsync(null!, "token", "traj.xyz"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.DownloadTrajectoryAsync(_localProfile, "", "traj.xyz"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.DownloadTrajectoryAsync(_localProfile, "token", ""));
+        _httpHandler.SetResponse("/api/trajectories/download/traj.xyz", HttpStatusCode.NotFound, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.DownloadTrajectoryAsync(_localProfile, "token", "traj.xyz"));
+    }
+
+    /// <summary>
+    /// Verifies nominal responses and fault conditions for setup bootstrap and system telemetry endpoints.
+    /// </summary>
+    /// <returns>A task representing asynchronous test completion.</returns>
+    [Fact]
+    public async Task SetupAndTelemetryEndpoints_NominalAndErrors_BehavesExpectedly()
+    {
+        // WHAT: Tests nominal and error execution paths for InitializeSetupAdminAsync, GetSystemHealthAsync, and GetEventBusMetricsAsync.
+        // WHY:  Issue #135 (P132): Ensures first-launch setup bootstrapping and event bus telemetry are covered by client SDK.
+        // HOW:  Mocks HTTP responses with serialized models, validates argument guards, null handling, and error response mapping.
+        InitialSetupRequest setupReq = new InitialSetupRequest().GetExamples();
+        AuthTokenResponse sampleAuthToken = new AuthTokenResponse().GetExamples();
+        SystemHealthOverview sampleHealth = new()
+        {
+            Status = "Healthy",
+            TimestampUtc = DateTimeOffset.UtcNow,
+            Version = "1.0.0",
+            Uptime = "0d 4h 12m 30s",
+            UptimeSeconds = 15150.0,
+            SetupRequired = false,
+            AuthenticatedSession = false,
+            Description = "High-level system health status."
+        };
+        EventBusTelemetry sampleBus = new EventBusTelemetry
+        {
+            IsInternalBusActive = true,
+            IsValkeyConnected = true,
+            IsDistributedCache = true,
+            ValkeyEndpoint = "endpoint",
+            OutboundEventsCount = 0,
+            InboundEventsCount = 0,
+            ActiveSubscribers = []
+        }.GetExamples();
+
+        // 1. InitializeSetupAdminAsync
+        _httpHandler.SetResponse(
+            "/api/setup/initialize",
+            HttpStatusCode.OK,
+            JsonSerializer.Serialize(sampleAuthToken, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        AuthTokenResponse setupRes = await _client.InitializeSetupAdminAsync(_localProfile, setupReq);
+        Assert.Equal(sampleAuthToken.Token, setupRes.Token);
+        Assert.Equal(sampleAuthToken.TokenType, setupRes.TokenType);
+
+        _httpHandler.SetResponse("/api/setup/initialize", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.InitializeSetupAdminAsync(_localProfile, setupReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.InitializeSetupAdminAsync(null!, setupReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.InitializeSetupAdminAsync(_localProfile, null!));
+        _httpHandler.SetResponse("/api/setup/initialize", HttpStatusCode.BadRequest, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.InitializeSetupAdminAsync(_localProfile, setupReq));
+
+        // 2. GetSystemHealthAsync (both unauthenticated and authenticated)
+        _httpHandler.SetResponse(
+            "/api/system/health",
+            HttpStatusCode.OK,
+            JsonSerializer.Serialize(sampleHealth, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        SystemHealthOverview health1 = await _client.GetSystemHealthAsync(_localProfile);
+        Assert.Equal(sampleHealth.Status, health1.Status);
+        Assert.Equal(sampleHealth.Version, health1.Version);
+
+        SystemHealthOverview health2 = await _client.GetSystemHealthAsync(_localProfile, "bearer_token");
+        Assert.Equal(sampleHealth.Status, health2.Status);
+
+        _httpHandler.SetResponse("/api/system/health", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.GetSystemHealthAsync(_localProfile));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetSystemHealthAsync(null!));
+        _httpHandler.SetResponse("/api/system/health", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetSystemHealthAsync(_localProfile));
+
+        // 3. GetEventBusMetricsAsync
+        _httpHandler.SetResponse(
+            "/api/system/event-bus",
+            HttpStatusCode.OK,
+            JsonSerializer.Serialize(sampleBus, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        EventBusTelemetry busRes = await _client.GetEventBusMetricsAsync(_localProfile, "token");
+        Assert.Equal(sampleBus.IsInternalBusActive, busRes.IsInternalBusActive);
+        Assert.Equal(sampleBus.ValkeyEndpoint, busRes.ValkeyEndpoint);
+
+        _httpHandler.SetResponse("/api/system/event-bus", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.GetEventBusMetricsAsync(_localProfile, "token"));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetEventBusMetricsAsync(null!, "token"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetEventBusMetricsAsync(_localProfile, ""));
+        _httpHandler.SetResponse("/api/system/event-bus", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetEventBusMetricsAsync(_localProfile, "token"));
+    }
+
+    /// <summary>
+    /// Verifies nominal responses and fault conditions for trajectory parser, parquet export, and endocrine affinity endpoints.
+    /// </summary>
+    /// <returns>A task representing asynchronous test completion.</returns>
+    [Fact]
+    public async Task ScientificParserAndEndocrineAnalysisEndpoints_NominalAndErrors_BehavesExpectedly()
+    {
+        // WHAT: Tests nominal and error execution paths for ProcessTrajectoryCoordinatesAsync, ExportCoordinatesParquetAsync,
+        //       AnalyzeTrajectoryEndocrineAsync, and GetSimulationCampaignConfigAsync.
+        // WHY:  Issue #136 (P133): Guarantees coverage across high-throughput parser, Parquet serialization, and endocrine analysis routes.
+        // HOW:  Mocks HTTP responses with serialized models, validates argument guards, null handling, and error response mapping.
+        TrajectoryParserProcessResult sampleParser = new TrajectoryParserProcessResult().GetExamples();
+        TrajectoryParquetExportResult sampleParquet = new TrajectoryParquetExportResult().GetExamples();
+        AptamerTrajectoryMetrics sampleMetrics = new AptamerTrajectoryMetrics
+        {
+            TrajectoryFileName = "traj.xyz",
+            FramesAnalyzed = 100,
+            AverageContactsPerFrame = 2.0,
+            BindingOccupancyRatio = 0.9,
+            StabilityVerdict = "Stable"
+        }.GetExamples();
+        SimulationInputDeckResult sampleDeck = new SimulationInputDeckResult().GetExamples();
+
+        // 1. ProcessTrajectoryCoordinatesAsync
+        _httpHandler.SetResponse(
+            "/api/parser/process/traj.xyz",
+            HttpStatusCode.OK,
+            JsonSerializer.Serialize(sampleParser, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        TrajectoryParserProcessResult parserRes = await _client.ProcessTrajectoryCoordinatesAsync(_localProfile, "token", "traj.xyz");
+        Assert.Equal(sampleParser.FileName, parserRes.FileName);
+        Assert.Equal(sampleParser.FramesParsed, parserRes.FramesParsed);
+
+        _httpHandler.SetResponse("/api/parser/process/traj.xyz", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.ProcessTrajectoryCoordinatesAsync(_localProfile, "token", "traj.xyz"));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.ProcessTrajectoryCoordinatesAsync(null!, "token", "traj.xyz"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.ProcessTrajectoryCoordinatesAsync(_localProfile, "", "traj.xyz"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.ProcessTrajectoryCoordinatesAsync(_localProfile, "token", ""));
+        _httpHandler.SetResponse("/api/parser/process/traj.xyz", HttpStatusCode.NotFound, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.ProcessTrajectoryCoordinatesAsync(_localProfile, "token", "traj.xyz"));
+
+        // 2. ExportCoordinatesParquetAsync
+        _httpHandler.SetResponse(
+            "/api/parser/export-parquet/traj.xyz",
+            HttpStatusCode.OK,
+            JsonSerializer.Serialize(sampleParquet, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        TrajectoryParquetExportResult parquetRes = await _client.ExportCoordinatesParquetAsync(_localProfile, "token", "traj.xyz");
+        Assert.Equal(sampleParquet.ParquetFile, parquetRes.ParquetFile);
+        Assert.Equal(sampleParquet.TotalRecordsSerialized, parquetRes.TotalRecordsSerialized);
+
+        _httpHandler.SetResponse("/api/parser/export-parquet/traj.xyz", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.ExportCoordinatesParquetAsync(_localProfile, "token", "traj.xyz"));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.ExportCoordinatesParquetAsync(null!, "token", "traj.xyz"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.ExportCoordinatesParquetAsync(_localProfile, "", "traj.xyz"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.ExportCoordinatesParquetAsync(_localProfile, "token", ""));
+        _httpHandler.SetResponse("/api/parser/export-parquet/traj.xyz", HttpStatusCode.NotFound, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.ExportCoordinatesParquetAsync(_localProfile, "token", "traj.xyz"));
+
+        // 3. AnalyzeTrajectoryEndocrineAsync
+        _httpHandler.SetResponse(
+            "/api/endocrine/analyze/traj.xyz",
+            HttpStatusCode.OK,
+            JsonSerializer.Serialize(sampleMetrics, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        AptamerTrajectoryMetrics metricsRes = await _client.AnalyzeTrajectoryEndocrineAsync(_localProfile, "token", "traj.xyz");
+        Assert.Equal(sampleMetrics.TrajectoryFileName, metricsRes.TrajectoryFileName);
+        Assert.Equal(sampleMetrics.StabilityVerdict, metricsRes.StabilityVerdict);
+
+        _httpHandler.SetResponse("/api/endocrine/analyze/traj.xyz", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.AnalyzeTrajectoryEndocrineAsync(_localProfile, "token", "traj.xyz"));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.AnalyzeTrajectoryEndocrineAsync(null!, "token", "traj.xyz"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.AnalyzeTrajectoryEndocrineAsync(_localProfile, "", "traj.xyz"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.AnalyzeTrajectoryEndocrineAsync(_localProfile, "token", ""));
+        _httpHandler.SetResponse("/api/endocrine/analyze/traj.xyz", HttpStatusCode.NotFound, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.AnalyzeTrajectoryEndocrineAsync(_localProfile, "token", "traj.xyz"));
+
+        // 4. GetSimulationCampaignConfigAsync
+        _httpHandler.SetResponse(
+            "/api/simulations/configs/CAMPAIGN_SERUM_STABILITY",
+            HttpStatusCode.OK,
+            JsonSerializer.Serialize(sampleDeck, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        SimulationInputDeckResult deckRes = await _client.GetSimulationCampaignConfigAsync(_localProfile, "token", "CAMPAIGN_SERUM_STABILITY");
+        Assert.Equal(sampleDeck.CampaignId, deckRes.CampaignId);
+        Assert.Equal(sampleDeck.InputDeck, deckRes.InputDeck);
+
+        _httpHandler.SetResponse("/api/simulations/configs/CAMPAIGN_SERUM_STABILITY", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.GetSimulationCampaignConfigAsync(_localProfile, "token", "CAMPAIGN_SERUM_STABILITY"));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetSimulationCampaignConfigAsync(null!, "token", "CAMPAIGN_SERUM_STABILITY"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetSimulationCampaignConfigAsync(_localProfile, "", "CAMPAIGN_SERUM_STABILITY"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetSimulationCampaignConfigAsync(_localProfile, "token", ""));
+        _httpHandler.SetResponse("/api/simulations/configs/CAMPAIGN_SERUM_STABILITY", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetSimulationCampaignConfigAsync(_localProfile, "token", "CAMPAIGN_SERUM_STABILITY"));
+    }
+
+    /// <summary>
+    /// Verifies nominal responses and fault conditions for precision pharmacogenomic adjustments, Opentrons downloads, and federation chunks.
+    /// </summary>
+    /// <returns>A task representing asynchronous test completion.</returns>
+    [Fact]
+    public async Task PharmacogenomicAndFabricationEndpoints_NominalAndErrors_BehavesExpectedly()
+    {
+        // WHAT: Tests nominal and error execution paths for ApplyGenomicAdjustmentsAsync, DownloadOpentronsScriptAsync, and GetFederationChunkAsync.
+        // WHY:  Issue #137 (P134): Guarantees coverage across precision genomics, automation robot protocols, and P2P swarm chunks.
+        // HOW:  Mocks HTTP responses with serialized models, validates argument guards, null handling, and error response mapping.
+        GenomicAnalysisRequest genomicReq = new GenomicAnalysisRequest().GetExamples();
+        GenomicAdjustmentResult sampleGenomicRes = new GenomicAdjustmentResult().GetExamples();
+        GenerateOpentronsScriptRequest opentronsReq = new GenerateOpentronsScriptRequest { SequenceOrSampleId = "s1" }.GetExamples();
+        byte[] dummyScriptBytes = Encoding.UTF8.GetBytes("# Opentrons protocol script");
+        byte[] dummyChunkBytes = [0xaa, 0xbb, 0xcc, 0xdd];
+
+        // 1. ApplyGenomicAdjustmentsAsync
+        _httpHandler.SetResponse(
+            "/api/genomics/apply-adjustments",
+            HttpStatusCode.OK,
+            JsonSerializer.Serialize(sampleGenomicRes, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        GenomicAdjustmentResult genomicRes = await _client.ApplyGenomicAdjustmentsAsync(_localProfile, "token", genomicReq);
+        Assert.NotNull(genomicRes.GenomicProfile);
+        Assert.NotNull(genomicRes.AdjustedEndocrineProfile);
+
+        _httpHandler.SetResponse("/api/genomics/apply-adjustments", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.ApplyGenomicAdjustmentsAsync(_localProfile, "token", genomicReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.ApplyGenomicAdjustmentsAsync(null!, "token", genomicReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.ApplyGenomicAdjustmentsAsync(_localProfile, "", genomicReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.ApplyGenomicAdjustmentsAsync(_localProfile, "token", null!));
+        _httpHandler.SetResponse("/api/genomics/apply-adjustments", HttpStatusCode.BadRequest, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.ApplyGenomicAdjustmentsAsync(_localProfile, "token", genomicReq));
+
+        // 2. DownloadOpentronsScriptAsync
+        _httpHandler.SetByteResponse("/api/fabrication/opentrons/download", HttpStatusCode.OK, dummyScriptBytes, "text/x-python");
+        byte[] script = await _client.DownloadOpentronsScriptAsync(_localProfile, "token", opentronsReq);
+        Assert.Equal(dummyScriptBytes, script);
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.DownloadOpentronsScriptAsync(null!, "token", opentronsReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.DownloadOpentronsScriptAsync(_localProfile, "", opentronsReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.DownloadOpentronsScriptAsync(_localProfile, "token", null!));
+        _httpHandler.SetResponse("/api/fabrication/opentrons/download", HttpStatusCode.BadRequest, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.DownloadOpentronsScriptAsync(_localProfile, "token", opentronsReq));
+
+        // 3. GetFederationChunkAsync (without index and with index)
+        _httpHandler.SetByteResponse("/api/federation/chunks/traj.xyz", HttpStatusCode.OK, dummyChunkBytes);
+        byte[] chunk1 = await _client.GetFederationChunkAsync(_localProfile, "token", "traj.xyz");
+        Assert.Equal(dummyChunkBytes, chunk1);
+
+        byte[] chunk2 = await _client.GetFederationChunkAsync(_localProfile, "token", "traj.xyz", chunkIndex: 3);
+        Assert.Equal(dummyChunkBytes, chunk2);
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetFederationChunkAsync(null!, "token", "traj.xyz"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetFederationChunkAsync(_localProfile, "", "traj.xyz"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetFederationChunkAsync(_localProfile, "token", ""));
+        _httpHandler.SetResponse("/api/federation/chunks/traj.xyz", HttpStatusCode.NotFound, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetFederationChunkAsync(_localProfile, "token", "traj.xyz"));
+    }
+
+    /// <summary>
     /// Verifies NodeApiException constructors, properties, and sensitive credential masking.
     /// </summary>
     [Fact]
@@ -3260,6 +3617,54 @@ public sealed class NanoWeaverNodeClientTests : IDisposable
         Assert.Equal(now, endo.LastUpdatedUtc);
         Assert.NotNull(endo.ToString());
         Assert.Equal(endo, endo with { });
+
+        DatasetImportResponse importResp = new DatasetImportResponse().GetExamples();
+        Assert.Equal("Dataset successfully verified and imported.", importResp.Message);
+        Assert.Equal("signed", importResp.Provenance);
+        Assert.NotNull(importResp.Manifest);
+        Assert.NotNull(importResp.SignerKeyId);
+        Assert.NotNull(importResp.ToString());
+        Assert.Equal(importResp, importResp with { });
+
+        ExportEncryptedDatasetResult exportResult = new ExportEncryptedDatasetResult().GetExamples();
+        Assert.Contains("enc.tar.gz", exportResult.BundlePath);
+        Assert.Equal("ML-KEM-768+AES-256-GCM", exportResult.Algorithm);
+        Assert.Equal("sub_patient_42", exportResult.SubjectId);
+        Assert.NotNull(exportResult.Message);
+        Assert.NotNull(exportResult.ToString());
+        Assert.Equal(exportResult, exportResult with { });
+
+        SimulationInputDeckResult inputDeckResult = new SimulationInputDeckResult().GetExamples();
+        Assert.Equal("CAMPAIGN_SERUM_STABILITY", inputDeckResult.CampaignId);
+        Assert.Contains("oxDNA", inputDeckResult.InputDeck);
+        Assert.NotNull(inputDeckResult.ToString());
+        Assert.Equal(inputDeckResult, inputDeckResult with { });
+
+        TrajectoryParserProcessResult parserResult = new TrajectoryParserProcessResult().GetExamples();
+        Assert.Equal("nanocarrier-production.xyz", parserResult.FileName);
+        Assert.Equal("XYZ", parserResult.Format);
+        Assert.Equal(10000, parserResult.FramesParsed);
+        Assert.Equal(8400000, parserResult.TotalAtomsProcessed);
+        Assert.Equal(142, parserResult.ElapsedMilliseconds);
+        Assert.Equal(70422.5, parserResult.FramesPerSecond);
+        Assert.NotNull(parserResult.ToString());
+        Assert.Equal(parserResult, parserResult with { });
+
+        TrajectoryParquetExportResult parquetResult = new TrajectoryParquetExportResult().GetExamples();
+        Assert.Equal("nanocarrier-production.xyz", parquetResult.SourceFile);
+        Assert.Equal("nanocarrier-production.parquet", parquetResult.ParquetFile);
+        Assert.Equal("XYZ", parquetResult.Format);
+        Assert.Equal(8400000, parquetResult.TotalRecordsSerialized);
+        Assert.Equal(12582912, parquetResult.FileSizeBytes);
+        Assert.Equal(310, parquetResult.ElapsedMilliseconds);
+        Assert.NotNull(parquetResult.ToString());
+        Assert.Equal(parquetResult, parquetResult with { });
+
+        GenomicAdjustmentResult genomicResult = new GenomicAdjustmentResult().GetExamples();
+        Assert.NotNull(genomicResult.GenomicProfile);
+        Assert.NotNull(genomicResult.AdjustedEndocrineProfile);
+        Assert.NotNull(genomicResult.ToString());
+        Assert.Equal(genomicResult, genomicResult with { });
     }
 
     /// <summary>
@@ -3292,6 +3697,28 @@ public sealed class NanoWeaverNodeClientTests : IDisposable
             _routes[path] = _ => new HttpResponseMessage(statusCode)
             {
                 Content = new StringContent(content, Encoding.UTF8, "application/json")
+            };
+        }
+
+        /// <summary>
+        /// Configures a stubbed binary byte response for a specific URI path suffix.
+        /// </summary>
+        /// <param name="path">The URI path suffix to match.</param>
+        /// <param name="statusCode">The HTTP status code to return.</param>
+        /// <param name="bytes">The response byte array.</param>
+        /// <param name="mediaType">The MIME media type.</param>
+        public void SetByteResponse(string path, HttpStatusCode statusCode, byte[] bytes, string mediaType = "application/octet-stream")
+        {
+            // WHAT: Stubs a binary byte response for a route.
+            // WHY:  Allows tests to return arbitrary raw byte payloads.
+            // HOW:  Registers a response generator returning ByteArrayContent.
+            _exceptions.Remove(path);
+            _routes[path] = _ => new HttpResponseMessage(statusCode)
+            {
+                Content = new ByteArrayContent(bytes)
+                {
+                    Headers = { ContentType = new MediaTypeHeaderValue(mediaType) }
+                }
             };
         }
 

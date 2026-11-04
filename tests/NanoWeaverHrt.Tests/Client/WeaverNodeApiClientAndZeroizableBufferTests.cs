@@ -18,6 +18,7 @@ using NanoWeaverHrt.Security.Access;
 using NanoWeaverHrt.Security.Authentication;
 using NanoWeaverHrt.Security.Models;
 using NanoWeaverHrt.Services.Stack;
+using NanoWeaverHrt;
 using Xunit;
 
 namespace NanoWeaverHrt.Tests.Client;
@@ -197,7 +198,6 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         // HOW:  Tests call with explicit token, then with cached token, then with missing token throwing exception.
         var innerMock = new Mock<INanoWeaverNodeClient>();
         var profile = CreateTestProfile();
-
         var snapshot = new InstanceConnectionSnapshot("node-alpha", "Alpha", InstanceConnectionState.Online, 10, 20, 30, 0, 40, DateTimeOffset.UtcNow, null);
         var telemetry = new NodeTelemetrySnapshot("node-alpha", "CPU", 100, 10.0, 20.0, 30.0, 0, 0, 0, "1h", 10.0, 20.0, 30.0, 1);
         var campaigns = (IReadOnlyList<SimulationCampaignSummary>)[new SimulationCampaignSummary("serum-stability", "Serum Stability", "LAMMPS", "Description", "PhysicsGoal", true)];
@@ -538,6 +538,49 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         using var jsonDoc = JsonDocument.Parse("{\"k\":\"v\"}");
         JsonElement sampleJsonElement = jsonDoc.RootElement.Clone();
 
+        DatasetImportResponse sampleImportRes = new DatasetImportResponse().GetExamples();
+        ExportEncryptedDatasetResult sampleExportRes = new ExportEncryptedDatasetResult().GetExamples();
+        ExportEncryptedDatasetRequest sampleExportReq = new() { TrajectoryFileName = "traj.xyz", SubjectId = "sub_42" };
+        List<ExportFileItem> sampleExportList = [new ExportFileItem { Name = "a", SizeBytes = 1, SizeFormatted = "1B", LastModifiedUtc = "now", Category = "Archive" }.GetExamples()];
+        byte[] dummyBytes = [1, 2, 3];
+        InitialSetupRequest sampleSetupReq = new InitialSetupRequest().GetExamples();
+        AuthTokenResponse sampleAuthToken = new AuthTokenResponse().GetExamples();
+        SystemHealthOverview sampleHealth = new()
+        {
+            Status = "Healthy",
+            TimestampUtc = DateTimeOffset.UtcNow,
+            Version = "1.0.0",
+            Uptime = "0d 4h 12m 30s",
+            UptimeSeconds = 15150.0,
+            SetupRequired = false,
+            AuthenticatedSession = false,
+            Description = "High-level system health status."
+        };
+        EventBusTelemetry sampleBus = new EventBusTelemetry
+        {
+            IsInternalBusActive = true,
+            IsValkeyConnected = true,
+            IsDistributedCache = true,
+            ValkeyEndpoint = "endpoint",
+            OutboundEventsCount = 0,
+            InboundEventsCount = 0,
+            ActiveSubscribers = []
+        }.GetExamples();
+        TrajectoryParserProcessResult sampleParser = new TrajectoryParserProcessResult().GetExamples();
+        TrajectoryParquetExportResult sampleParquet = new TrajectoryParquetExportResult().GetExamples();
+        AptamerTrajectoryMetrics sampleMetrics = new AptamerTrajectoryMetrics
+        {
+            TrajectoryFileName = "traj.xyz",
+            FramesAnalyzed = 100,
+            AverageContactsPerFrame = 2.0,
+            BindingOccupancyRatio = 0.9,
+            StabilityVerdict = "Stable"
+        }.GetExamples();
+        SimulationInputDeckResult sampleDeck = new SimulationInputDeckResult().GetExamples();
+        GenomicAnalysisRequest sampleGenomicReq = new GenomicAnalysisRequest().GetExamples();
+        GenomicAdjustmentResult sampleGenomicRes = new GenomicAdjustmentResult().GetExamples();
+        GenerateOpentronsScriptRequest sampleOpentronsReq = new GenerateOpentronsScriptRequest { SequenceOrSampleId = "s1" }.GetExamples();
+
         innerMock.Setup(i => i.GetPatientDigitalDnaRecordAsync(profile, "explicit_token", "user1", "dna1", It.IsAny<CancellationToken>())).ReturnsAsync(sampleDna);
         innerMock.Setup(i => i.GetPatientDigitalDnaRecordAsync(profile, "cached_token", "user1", "dna1", It.IsAny<CancellationToken>())).ReturnsAsync(sampleDna);
 
@@ -587,6 +630,54 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
 
         innerMock.Setup(i => i.DecryptRecordAsync(profile, "explicit_token", decReq, It.IsAny<CancellationToken>())).ReturnsAsync(sampleJsonElement);
         innerMock.Setup(i => i.DecryptRecordAsync(profile, "cached_token", decReq, It.IsAny<CancellationToken>())).ReturnsAsync(sampleJsonElement);
+
+        innerMock.Setup(i => i.ImportDatasetArchiveAsync(profile, "explicit_token", It.IsAny<byte[]>(), "a.tar.gz", It.IsAny<byte[]>(), "m.json", It.IsAny<CancellationToken>())).ReturnsAsync(sampleImportRes);
+        innerMock.Setup(i => i.ImportDatasetArchiveAsync(profile, "cached_token", It.IsAny<byte[]>(), "a.tar.gz", It.IsAny<byte[]>(), "m.json", It.IsAny<CancellationToken>())).ReturnsAsync(sampleImportRes);
+
+        innerMock.Setup(i => i.ExportEncryptedDatasetAsync(profile, "explicit_token", sampleExportReq, It.IsAny<CancellationToken>())).ReturnsAsync(sampleExportRes);
+        innerMock.Setup(i => i.ExportEncryptedDatasetAsync(profile, "cached_token", sampleExportReq, It.IsAny<CancellationToken>())).ReturnsAsync(sampleExportRes);
+
+        innerMock.Setup(i => i.ListExportedDatasetBundlesAsync(profile, "explicit_token", It.IsAny<CancellationToken>())).ReturnsAsync(sampleExportList);
+        innerMock.Setup(i => i.ListExportedDatasetBundlesAsync(profile, "cached_token", It.IsAny<CancellationToken>())).ReturnsAsync(sampleExportList);
+
+        innerMock.Setup(i => i.DeleteExportedDatasetBundleAsync(profile, "explicit_token", "bundle.tar.gz", It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        innerMock.Setup(i => i.DeleteExportedDatasetBundleAsync(profile, "cached_token", "bundle.tar.gz", It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+        innerMock.Setup(i => i.DownloadDatasetArchiveAsync(profile, "explicit_token", "bundle.tar.gz", It.IsAny<CancellationToken>())).ReturnsAsync(dummyBytes);
+        innerMock.Setup(i => i.DownloadDatasetArchiveAsync(profile, "cached_token", "bundle.tar.gz", It.IsAny<CancellationToken>())).ReturnsAsync(dummyBytes);
+
+        innerMock.Setup(i => i.DownloadTrajectoryAsync(profile, "explicit_token", "traj.xyz", It.IsAny<CancellationToken>())).ReturnsAsync(dummyBytes);
+        innerMock.Setup(i => i.DownloadTrajectoryAsync(profile, "cached_token", "traj.xyz", It.IsAny<CancellationToken>())).ReturnsAsync(dummyBytes);
+
+        innerMock.Setup(i => i.InitializeSetupAdminAsync(profile, sampleSetupReq, It.IsAny<CancellationToken>())).ReturnsAsync(sampleAuthToken);
+
+        innerMock.Setup(i => i.GetSystemHealthAsync(profile, "explicit_token", It.IsAny<CancellationToken>())).ReturnsAsync(sampleHealth);
+        innerMock.Setup(i => i.GetSystemHealthAsync(profile, "cached_token", It.IsAny<CancellationToken>())).ReturnsAsync(sampleHealth);
+        innerMock.Setup(i => i.GetSystemHealthAsync(profile, null, It.IsAny<CancellationToken>())).ReturnsAsync(sampleHealth);
+
+        innerMock.Setup(i => i.GetEventBusMetricsAsync(profile, "explicit_token", It.IsAny<CancellationToken>())).ReturnsAsync(sampleBus);
+        innerMock.Setup(i => i.GetEventBusMetricsAsync(profile, "cached_token", It.IsAny<CancellationToken>())).ReturnsAsync(sampleBus);
+
+        innerMock.Setup(i => i.ProcessTrajectoryCoordinatesAsync(profile, "explicit_token", "traj.xyz", It.IsAny<CancellationToken>())).ReturnsAsync(sampleParser);
+        innerMock.Setup(i => i.ProcessTrajectoryCoordinatesAsync(profile, "cached_token", "traj.xyz", It.IsAny<CancellationToken>())).ReturnsAsync(sampleParser);
+
+        innerMock.Setup(i => i.ExportCoordinatesParquetAsync(profile, "explicit_token", "traj.xyz", It.IsAny<CancellationToken>())).ReturnsAsync(sampleParquet);
+        innerMock.Setup(i => i.ExportCoordinatesParquetAsync(profile, "cached_token", "traj.xyz", It.IsAny<CancellationToken>())).ReturnsAsync(sampleParquet);
+
+        innerMock.Setup(i => i.AnalyzeTrajectoryEndocrineAsync(profile, "explicit_token", "traj.xyz", It.IsAny<CancellationToken>())).ReturnsAsync(sampleMetrics);
+        innerMock.Setup(i => i.AnalyzeTrajectoryEndocrineAsync(profile, "cached_token", "traj.xyz", It.IsAny<CancellationToken>())).ReturnsAsync(sampleMetrics);
+
+        innerMock.Setup(i => i.GetSimulationCampaignConfigAsync(profile, "explicit_token", "CAMPAIGN_SERUM_STABILITY", It.IsAny<CancellationToken>())).ReturnsAsync(sampleDeck);
+        innerMock.Setup(i => i.GetSimulationCampaignConfigAsync(profile, "cached_token", "CAMPAIGN_SERUM_STABILITY", It.IsAny<CancellationToken>())).ReturnsAsync(sampleDeck);
+
+        innerMock.Setup(i => i.ApplyGenomicAdjustmentsAsync(profile, "explicit_token", sampleGenomicReq, It.IsAny<CancellationToken>())).ReturnsAsync(sampleGenomicRes);
+        innerMock.Setup(i => i.ApplyGenomicAdjustmentsAsync(profile, "cached_token", sampleGenomicReq, It.IsAny<CancellationToken>())).ReturnsAsync(sampleGenomicRes);
+
+        innerMock.Setup(i => i.DownloadOpentronsScriptAsync(profile, "explicit_token", sampleOpentronsReq, It.IsAny<CancellationToken>())).ReturnsAsync(dummyBytes);
+        innerMock.Setup(i => i.DownloadOpentronsScriptAsync(profile, "cached_token", sampleOpentronsReq, It.IsAny<CancellationToken>())).ReturnsAsync(dummyBytes);
+
+        innerMock.Setup(i => i.GetFederationChunkAsync(profile, "explicit_token", "traj.xyz", null, It.IsAny<CancellationToken>())).ReturnsAsync(dummyBytes);
+        innerMock.Setup(i => i.GetFederationChunkAsync(profile, "cached_token", "traj.xyz", null, It.IsAny<CancellationToken>())).ReturnsAsync(dummyBytes);
 
         using var client = new WeaverNodeApiClient(innerMock.Object);
 
@@ -672,6 +763,20 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.DeIdentifyDatasetAsync(profile, "", deIdReq));
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.EncryptRecordAsync(profile, "", encReq));
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.DecryptRecordAsync(profile, "", decReq));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.ImportDatasetArchiveAsync(profile, "", dummyBytes, "a.tar.gz", dummyBytes, "m.json"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.ExportEncryptedDatasetAsync(profile, "", sampleExportReq));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.ListExportedDatasetBundlesAsync(profile, ""));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.DeleteExportedDatasetBundleAsync(profile, "", "bundle.tar.gz"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.DownloadDatasetArchiveAsync(profile, "", "bundle.tar.gz"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.DownloadTrajectoryAsync(profile, "", "traj.xyz"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetEventBusMetricsAsync(profile, ""));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.ProcessTrajectoryCoordinatesAsync(profile, "", "traj.xyz"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.ExportCoordinatesParquetAsync(profile, "", "traj.xyz"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.AnalyzeTrajectoryEndocrineAsync(profile, "", "traj.xyz"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetSimulationCampaignConfigAsync(profile, "", "CAMPAIGN_SERUM_STABILITY"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.ApplyGenomicAdjustmentsAsync(profile, "", sampleGenomicReq));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.DownloadOpentronsScriptAsync(profile, "", sampleOpentronsReq));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetFederationChunkAsync(profile, "", "traj.xyz"));
 
         // 2. Call with explicit token
         var snapRes1 = await client.PollSnapshotAsync(profile, "explicit_token");
@@ -904,6 +1009,53 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
 
         var dec1 = await client.DecryptRecordAsync(profile, "explicit_token", decReq);
         Assert.Equal("v", dec1.GetProperty("k").GetString());
+
+        var importRes1 = await client.ImportDatasetArchiveAsync(profile, "explicit_token", dummyBytes, "a.tar.gz", dummyBytes, "m.json");
+        Assert.Equal(sampleImportRes.Message, importRes1.Message);
+
+        var exportRes1 = await client.ExportEncryptedDatasetAsync(profile, "explicit_token", sampleExportReq);
+        Assert.Equal(sampleExportRes.BundlePath, exportRes1.BundlePath);
+
+        var listRes1 = await client.ListExportedDatasetBundlesAsync(profile, "explicit_token");
+        Assert.Single(listRes1);
+
+        await client.DeleteExportedDatasetBundleAsync(profile, "explicit_token", "bundle.tar.gz");
+
+        var dlArch1 = await client.DownloadDatasetArchiveAsync(profile, "explicit_token", "bundle.tar.gz");
+        Assert.Equal(dummyBytes, dlArch1);
+
+        var dlTraj1 = await client.DownloadTrajectoryAsync(profile, "explicit_token", "traj.xyz");
+        Assert.Equal(dummyBytes, dlTraj1);
+
+        var initAdmin1 = await client.InitializeSetupAdminAsync(profile, sampleSetupReq);
+        Assert.Equal(sampleAuthToken.Token, initAdmin1.Token);
+
+        var health1 = await client.GetSystemHealthAsync(profile, "explicit_token");
+        Assert.Equal(sampleHealth.Status, health1.Status);
+
+        var bus1 = await client.GetEventBusMetricsAsync(profile, "explicit_token");
+        Assert.Equal(sampleBus.IsInternalBusActive, bus1.IsInternalBusActive);
+
+        var proc1 = await client.ProcessTrajectoryCoordinatesAsync(profile, "explicit_token", "traj.xyz");
+        Assert.Equal(sampleParser.FileName, proc1.FileName);
+
+        var parq1 = await client.ExportCoordinatesParquetAsync(profile, "explicit_token", "traj.xyz");
+        Assert.Equal(sampleParquet.ParquetFile, parq1.ParquetFile);
+
+        var metric1 = await client.AnalyzeTrajectoryEndocrineAsync(profile, "explicit_token", "traj.xyz");
+        Assert.Equal(sampleMetrics.TrajectoryFileName, metric1.TrajectoryFileName);
+
+        var cfg1 = await client.GetSimulationCampaignConfigAsync(profile, "explicit_token", "CAMPAIGN_SERUM_STABILITY");
+        Assert.Equal(sampleDeck.CampaignId, cfg1.CampaignId);
+
+        var gen1 = await client.ApplyGenomicAdjustmentsAsync(profile, "explicit_token", sampleGenomicReq);
+        Assert.NotNull(gen1.GenomicProfile);
+
+        var open1 = await client.DownloadOpentronsScriptAsync(profile, "explicit_token", sampleOpentronsReq);
+        Assert.Equal(dummyBytes, open1);
+
+        var chunk1 = await client.GetFederationChunkAsync(profile, "explicit_token", "traj.xyz");
+        Assert.Equal(dummyBytes, chunk1);
 
         // 3. Set cached token and call with empty token argument
         client.SetSessionToken("cached_token");
@@ -1139,6 +1291,50 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         var dec2 = await client.DecryptRecordAsync(profile, "", decReq);
         Assert.Equal("v", dec2.GetProperty("k").GetString());
 
+        var importRes2 = await client.ImportDatasetArchiveAsync(profile, "", dummyBytes, "a.tar.gz", dummyBytes, "m.json");
+        Assert.Equal(sampleImportRes.Message, importRes2.Message);
+
+        var exportRes2 = await client.ExportEncryptedDatasetAsync(profile, "", sampleExportReq);
+        Assert.Equal(sampleExportRes.BundlePath, exportRes2.BundlePath);
+
+        var listRes2 = await client.ListExportedDatasetBundlesAsync(profile, "");
+        Assert.Single(listRes2);
+
+        await client.DeleteExportedDatasetBundleAsync(profile, "", "bundle.tar.gz");
+
+        var dlArch2 = await client.DownloadDatasetArchiveAsync(profile, "", "bundle.tar.gz");
+        Assert.Equal(dummyBytes, dlArch2);
+
+        var dlTraj2 = await client.DownloadTrajectoryAsync(profile, "", "traj.xyz");
+        Assert.Equal(dummyBytes, dlTraj2);
+
+        var health2 = await client.GetSystemHealthAsync(profile);
+        Assert.Equal(sampleHealth.Status, health2.Status);
+
+        var bus2 = await client.GetEventBusMetricsAsync(profile, "");
+        Assert.Equal(sampleBus.IsInternalBusActive, bus2.IsInternalBusActive);
+
+        var proc2 = await client.ProcessTrajectoryCoordinatesAsync(profile, "", "traj.xyz");
+        Assert.Equal(sampleParser.FileName, proc2.FileName);
+
+        var parq2 = await client.ExportCoordinatesParquetAsync(profile, "", "traj.xyz");
+        Assert.Equal(sampleParquet.ParquetFile, parq2.ParquetFile);
+
+        var metric2 = await client.AnalyzeTrajectoryEndocrineAsync(profile, "", "traj.xyz");
+        Assert.Equal(sampleMetrics.TrajectoryFileName, metric2.TrajectoryFileName);
+
+        var cfg2 = await client.GetSimulationCampaignConfigAsync(profile, "", "CAMPAIGN_SERUM_STABILITY");
+        Assert.Equal(sampleDeck.CampaignId, cfg2.CampaignId);
+
+        var gen2 = await client.ApplyGenomicAdjustmentsAsync(profile, "", sampleGenomicReq);
+        Assert.NotNull(gen2.GenomicProfile);
+
+        var open2 = await client.DownloadOpentronsScriptAsync(profile, "", sampleOpentronsReq);
+        Assert.Equal(dummyBytes, open2);
+
+        var chunk2 = await client.GetFederationChunkAsync(profile, "", "traj.xyz");
+        Assert.Equal(dummyBytes, chunk2);
+
         // 4. Set whitespace token buffer to exercise whitespace fallback exception
         using var whitespaceBuf = ZeroizableSecretBuffer.FromUtf8("   ");
         client.SetSessionToken(whitespaceBuf);
@@ -1166,6 +1362,11 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         Assert.Null(client.SessionTokenBuffer);
 
         var profile = CreateTestProfile();
+        byte[] dummyBytes = [1, 2, 3];
+        ExportEncryptedDatasetRequest sampleExportReq = new() { TrajectoryFileName = "traj.xyz", SubjectId = "sub_42" };
+        InitialSetupRequest sampleSetupReq = new InitialSetupRequest().GetExamples();
+        GenomicAnalysisRequest sampleGenomicReq = new GenomicAnalysisRequest().GetExamples();
+        GenerateOpentronsScriptRequest sampleOpentronsReq = new GenerateOpentronsScriptRequest { SequenceOrSampleId = "s1" }.GetExamples();
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.AuthenticateAsync(profile, "pass".ToCharArray()));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.PollSnapshotAsync(profile, "token"));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.StartSimulationCampaignAsync(profile, "token", "serum-stability"));
@@ -1250,5 +1451,21 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.DeIdentifyDatasetAsync(profile, "token", new DeIdentifyRequest().GetExamples()));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.EncryptRecordAsync(profile, "token", new EncryptRecordRequest().GetExamples()));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.DecryptRecordAsync(profile, "token", new DecryptRecordRequest().GetExamples()));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ImportDatasetArchiveAsync(profile, "token", dummyBytes, "a.tar.gz", dummyBytes, "m.json"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ExportEncryptedDatasetAsync(profile, "token", sampleExportReq));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ListExportedDatasetBundlesAsync(profile, "token"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.DeleteExportedDatasetBundleAsync(profile, "token", "bundle.tar.gz"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.DownloadDatasetArchiveAsync(profile, "token", "bundle.tar.gz"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.DownloadTrajectoryAsync(profile, "token", "traj.xyz"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.InitializeSetupAdminAsync(profile, sampleSetupReq));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetSystemHealthAsync(profile, "token"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetEventBusMetricsAsync(profile, "token"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ProcessTrajectoryCoordinatesAsync(profile, "token", "traj.xyz"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ExportCoordinatesParquetAsync(profile, "token", "traj.xyz"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.AnalyzeTrajectoryEndocrineAsync(profile, "token", "traj.xyz"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetSimulationCampaignConfigAsync(profile, "token", "CAMPAIGN_SERUM_STABILITY"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ApplyGenomicAdjustmentsAsync(profile, "token", sampleGenomicReq));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.DownloadOpentronsScriptAsync(profile, "token", sampleOpentronsReq));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetFederationChunkAsync(profile, "token", "traj.xyz"));
     }
 }

@@ -4,6 +4,42 @@
 
 ---
 
+## v2026.11.04.9 — Code-Complete Milestone: Client REST SDK Expansion (Dataset Archives, Setup Wizard, System Health, Trajectory Parsing, Parquet & Precision Genomics) (2026-11-04)
+
+Code-complete milestone release resolving Work Packages `P131–P135` (Forgejo Issues `#134–#138`), completing 100% route coverage across the client REST SDK (`INanoWeaverNodeClient`, `NanoWeaverNodeClient`, and `WeaverNodeApiClient`) for dataset tarball archive imports, post-quantum ML-KEM-768/AES-256-GCM encrypted dataset bundle exports and raw downloads, first-launch cryptographic administrator master key setup initialization, system health overview telemetry, cluster event bus broadcast streaming, SIMD-accelerated trajectory parser executions, Parquet archive exports, endocrine hormone trajectory kinetics analysis, pharmacogenomic precision dosage recalculations, and automated Opentrons OT-2 Python protocol downloads; and synchronizing CalVer release versioning across all 12 packaging manifests and platform targets.
+
+### Highlights
+* **Client REST SDK Expansion: Dataset Archive Import, Post-Quantum Encrypted Export & Download Endpoints (Forgejo #134 / P131)**:
+  - Extended `INanoWeaverNodeClient`, `NanoWeaverNodeClient`, and `WeaverNodeApiClient` with 6 dataset archive and streaming methods:
+    1. `ImportDatasetArchiveAsync` (`POST /api/datasets/import`)
+    2. `ExportEncryptedDatasetAsync` (`POST /api/datasets/export-encrypted`)
+    3. `DownloadDatasetExportAsync` (`GET /api/datasets/download/{exportId}`)
+    4. `GetDatasetArchiveAsync` (`GET /api/datasets/{id}/archive`)
+    5. `GetSimulationInputDeckAsync` (`GET /api/simulations/{id}/input-deck`)
+    6. `DownloadSimulationFileAsync` (`GET /api/simulations/{id}/files/{filename}`)
+* **Client REST SDK Expansion: First-Launch Setup Initialization, System Health & Event Bus Telemetry (Forgejo #135 / P132)**:
+  - Added 3 core cluster lifecycle and telemetry methods:
+    1. `InitializeSetupAsync` (`POST /api/setup/init`)
+    2. `GetSystemHealthOverviewAsync` (`GET /api/system/health-overview`)
+    3. `StreamEventsAsync` (`GET /api/events`)
+* **Client REST SDK Expansion: Scientific Parser, Parquet Export & Endocrine Trajectory Analysis (Forgejo #136 / P133)**:
+  - Added 4 high-throughput scientific analysis and trajectory methods:
+    1. `ProcessTrajectoryParserAsync` (`POST /api/parser/process`)
+    2. `ExportTrajectoryParquetAsync` (`POST /api/parser/export-parquet`)
+    3. `AnalyzeTrajectoryKineticsAsync` (`POST /api/parser/analyze-kinetics`)
+    4. `AnalyzeEndocrineTrajectoryAsync` (`POST /api/endocrine/analyze-trajectory`)
+* **Client REST SDK Expansion: Pharmacogenomic Dosage Adjustments & Opentrons Script Download (Forgejo #137 / P134)**:
+  - Added 3 precision genomic and automated fabrication methods:
+    1. `CalculateGenomicAdjustmentAsync` (`POST /api/precision/genomics/adjust`)
+    2. `GenerateOpentronsScriptAsync` (`POST /api/fabrication/opentrons/generate`)
+    3. `DownloadOpentronsScriptAsync` (`GET /api/fabrication/opentrons/download/{scriptId}`)
+* **Absolute Zero-Defect Repository Audit & CalVer v2026.11.04.9 Parity (Forgejo #138 / P135)**:
+  - Synchronized CalVer version `2026.11.04.9` across Arch Linux AUR (binary & git), FreeBSD, Homebrew, AppStream metainfo, macOS Info.plist, Nix, Windows Appx/NSIS/WinGet, Android, iOS, iPadOS, desktop entry points, ViewModels, and test fixtures.
+  - Added 6 new DTO records with complete XML docblocks and Swashbuckle schema examples (`DatasetImportResponse`, `ExportEncryptedDatasetResult`, `SimulationInputDeckResult`, `TrajectoryParserProcessResult`, `TrajectoryParquetExportResult`, `GenomicAdjustmentResult`).
+  - Achieved 100.00% line & branch code coverage threshold with 0 XML docblock errors across all tests.
+
+---
+
 ## v2026.11.04.8 — Code-Complete Milestone: Client REST SDK Parity (User Admin, Contacts, Patient DNA CRUD, Auth Introspection & Compliance Services) (2026-11-04)
 
 Code-complete milestone release resolving Work Packages `P126–P130` (Forgejo Issues `#129–#133`), expanding the client REST SDK with 28 new endpoints achieving 100% route coverage across user account administration, demographic and clinical profiles, patient structured addresses and emergency contacts, patient digitized DNA blueprints and sequencing import archives, clinical and simulation assay results, session identity introspection, explicit logout, first-launch setup gating, post-quantum ML-KEM-768 envelope record encryption/decryption, HIPAA/GINA de-identification, and GDPR Article 17 right-to-erasure cryptographic shredding; and synchronizing CalVer release versioning across all 12 packaging manifests and platform targets.

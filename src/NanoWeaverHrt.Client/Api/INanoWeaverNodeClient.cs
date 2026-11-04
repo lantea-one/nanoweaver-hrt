@@ -15,6 +15,7 @@ using NanoWeaverHrt.Security.Access;
 using NanoWeaverHrt.Security.Authentication;
 using NanoWeaverHrt.Security.Models;
 using NanoWeaverHrt.Services.Stack;
+using NanoWeaverHrt;
 
 namespace NanoWeaverHrt.Client.Api;
 
@@ -1185,5 +1186,229 @@ public interface INanoWeaverNodeClient
         InstanceProfile profile,
         string bearerToken,
         DecryptRecordRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Cryptographically verifies and imports a simulation dataset archive and manifest via POST /api/datasets/import.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="archiveBytes">Raw compressed archive byte payload (.tar.gz).</param>
+    /// <param name="archiveFileName">File name of the archive bundle.</param>
+    /// <param name="manifestBytes">Raw JSON bytes of the dataset provenance manifest.</param>
+    /// <param name="manifestFileName">File name of the provenance manifest JSON.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Verification result and provenance descriptor from the server.</returns>
+    Task<DatasetImportResponse> ImportDatasetArchiveAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        byte[] archiveBytes,
+        string archiveFileName,
+        byte[] manifestBytes,
+        string manifestFileName,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Packages and envelope-encrypts a trajectory dataset using post-quantum ML-KEM-768 and signs the manifest with ML-DSA-65 via POST /api/datasets/export-encrypted.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="request">Request parameters specifying source trajectory, subject ID, and optional destination directory.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Result metadata detailing bundle path, algorithm suite, and subject identifier.</returns>
+    Task<ExportEncryptedDatasetResult> ExportEncryptedDatasetAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        ExportEncryptedDatasetRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Lists all packaged dataset archives, manifests, and signatures in the export volume via GET /api/datasets/exports.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Collection of export file metadata items.</returns>
+    Task<IReadOnlyList<ExportFileItem>> ListExportedDatasetBundlesAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Purges a packaged dataset bundle or manifest from the export volume via DELETE /api/datasets/exports/{fileName}.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="fileName">Name of the exported file to delete.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task representing asynchronous completion.</returns>
+    Task DeleteExportedDatasetBundleAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string fileName,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Streams raw binary bytes of an exported dataset archive or manifest via GET /api/datasets/download/{fileName}.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="fileName">Name of the exported archive or manifest file.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Raw byte buffer of the downloaded artifact.</returns>
+    Task<byte[]> DownloadDatasetArchiveAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string fileName,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Streams raw simulation trajectory coordinates from the shared volume via GET /api/trajectories/download/{fileName}.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="fileName">Name of the trajectory file (.xyz, .dcd, .dump).</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Raw byte buffer of the simulation trajectory.</returns>
+    Task<byte[]> DownloadTrajectoryAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string fileName,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Bootstraps the sovereign node by provisioning the master Administrator account and initial public key via POST /api/setup/initialize.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="request">Initial administrator credentials, public key, and access gate configuration.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Authentication response containing initial Bearer JWT and administrator user profile.</returns>
+    Task<AuthTokenResponse> InitializeSetupAdminAsync(
+        InstanceProfile profile,
+        InitialSetupRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Queries the operational health status and diagnostic telemetry via GET /api/system/health.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Optional Bearer token for granular subsystem diagnostics.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>System health overview report.</returns>
+    Task<SystemHealthOverview> GetSystemHealthAsync(
+        InstanceProfile profile,
+        string? bearerToken = null,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Retrieves real-time telemetry on the in-memory event bus and distributed Valkey bridge via GET /api/system/event-bus.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Event bus telemetry metrics.</returns>
+    Task<EventBusTelemetry> GetEventBusMetricsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Triggers zero-allocation stream parsing for a specific trajectory file and returns SIMD throughput metrics via POST /api/parser/process/{fileName}.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="fileName">Name of the trajectory file in the incoming storage volume.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Parsing performance and frame count metrics.</returns>
+    Task<TrajectoryParserProcessResult> ProcessTrajectoryCoordinatesAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string fileName,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Converts a raw trajectory stream to a columnar Apache Parquet file using DuckDB and SIMD intrinsics via POST /api/parser/export-parquet/{fileName}.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="fileName">Name of the source trajectory file.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Parquet serialization metadata and byte size metrics.</returns>
+    Task<TrajectoryParquetExportResult> ExportCoordinatesParquetAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string fileName,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Streams trajectory coordinates to compute real-time ligand-pocket contact ratios and binding stability via POST /api/endocrine/analyze/{fileName}.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="fileName">Name of the trajectory file to analyze.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Aptamer binding occupancy and stability metrics.</returns>
+    Task<AptamerTrajectoryMetrics> AnalyzeTrajectoryEndocrineAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string fileName,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Generates baseline simulation input deck script for the specified campaign ID via GET /api/simulations/configs/{campaignId}.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="campaignId">Identifier of the simulation campaign.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Simulation input deck configuration result.</returns>
+    Task<SimulationInputDeckResult> GetSimulationCampaignConfigAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string campaignId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Evaluates patient pharmacogenomics and adjusts active endocrine setpoints via POST /api/genomics/apply-adjustments.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="request">Genomic markers and target HRT regimen request.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Evaluated genomic profile and adjusted endocrine target setpoints.</returns>
+    Task<GenomicAdjustmentResult> ApplyGenomicAdjustmentsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        GenomicAnalysisRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Generates and downloads an executable Opentrons Python protocol script (.py) via POST /api/fabrication/opentrons/download.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="request">Fabrication parameters and liquid handler robot options.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>UTF-8 byte buffer of the generated Python protocol script.</returns>
+    Task<byte[]> DownloadOpentronsScriptAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        GenerateOpentronsScriptRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Downloads a specific binary trajectory chunk by index for P2P swarm distribution via GET /api/federation/chunks/{fileName}.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="fileName">Name of the federated trajectory file.</param>
+    /// <param name="chunkIndex">Zero-based chunk index.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Binary bytes of the requested chunk.</returns>
+    Task<byte[]> GetFederationChunkAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string fileName,
+        int? chunkIndex = null,
         CancellationToken ct = default);
 }

@@ -22,6 +22,7 @@ using NanoWeaverHrt.Security.Access;
 using NanoWeaverHrt.Security.Authentication;
 using NanoWeaverHrt.Security.Models;
 using NanoWeaverHrt.Services.Stack;
+using NanoWeaverHrt;
 
 namespace NanoWeaverHrt.Client.Api;
 
@@ -2791,6 +2792,515 @@ public sealed class NanoWeaverNodeClient : INanoWeaverNodeClient
 
         JsonElement element = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOptions, ct);
         return element;
+    }
+
+    /// <inheritdoc/>
+    public async Task<DatasetImportResponse> ImportDatasetArchiveAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        byte[] archiveBytes,
+        string archiveFileName,
+        byte[] manifestBytes,
+        string manifestFileName,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches multipart POST /api/datasets/import with archive and manifest payloads.
+        // WHY:  Allows remote clients to verify signatures, check hashes, and import simulation bundles.
+        // HOW:  Constructs MultipartFormDataContent containing archive and manifest byte arrays, posts to endpoint with Bearer auth.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentNullException.ThrowIfNull(archiveBytes);
+        ArgumentException.ThrowIfNullOrWhiteSpace(archiveFileName);
+        ArgumentNullException.ThrowIfNull(manifestBytes);
+        ArgumentException.ThrowIfNullOrWhiteSpace(manifestFileName);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/datasets/import");
+
+        using MultipartFormDataContent form = new();
+        using ByteArrayContent archiveContent = new(archiveBytes);
+        using ByteArrayContent manifestContent = new(manifestBytes);
+        archiveContent.Headers.ContentType = new MediaTypeHeaderValue("application/gzip");
+        manifestContent.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+
+        form.Add(archiveContent, "archive", archiveFileName);
+        form.Add(manifestContent, "manifest", manifestFileName);
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = form
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        DatasetImportResponse? result = await resp.Content.ReadFromJsonAsync<DatasetImportResponse>(JsonOptions, ct);
+        return result ?? throw new InvalidOperationException("Endpoint returned empty or null dataset import payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<ExportEncryptedDatasetResult> ExportEncryptedDatasetAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        ExportEncryptedDatasetRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/datasets/export-encrypted to export ML-KEM-768 encrypted bundle.
+        // WHY:  Enables clients to trigger post-quantum encrypted dataset exports.
+        // HOW:  Validates inputs, posts serialized ExportEncryptedDatasetRequest, and deserializes ExportEncryptedDatasetResult.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/datasets/export-encrypted");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        ExportEncryptedDatasetResult? result = await resp.Content.ReadFromJsonAsync<ExportEncryptedDatasetResult>(JsonOptions, ct);
+        return result ?? throw new InvalidOperationException("Endpoint returned empty or null export encrypted dataset payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<ExportFileItem>> ListExportedDatasetBundlesAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/datasets/exports to enumerate generated dataset bundles.
+        // WHY:  Allows desktop/mobile clients to inspect available archives, manifests, and signatures.
+        // HOW:  Issues GET request with Bearer token and deserializes array of ExportFileItem.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/datasets/exports");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        List<ExportFileItem>? items = await resp.Content.ReadFromJsonAsync<List<ExportFileItem>>(JsonOptions, ct);
+        return items ?? (IReadOnlyList<ExportFileItem>)Array.Empty<ExportFileItem>();
+    }
+
+    /// <inheritdoc/>
+    public async Task DeleteExportedDatasetBundleAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string fileName,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches DELETE /api/datasets/exports/{fileName} to remove an exported bundle.
+        // WHY:  Enables clients to clean up obsolete or downloaded dataset files from the node.
+        // HOW:  Validates inputs, escapes fileName into URL path, and verifies response status code.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/datasets/exports/{Uri.EscapeDataString(fileName)}");
+
+        using HttpRequestMessage req = new(HttpMethod.Delete, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<byte[]> DownloadDatasetArchiveAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string fileName,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/datasets/download/{fileName} to stream binary file contents.
+        // WHY:  Retrieves raw packaged archives, manifests, or signatures for local processing.
+        // HOW:  Validates inputs, escapes fileName into path, issues GET with Bearer token, and reads byte array.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/datasets/download/{Uri.EscapeDataString(fileName)}");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        return await resp.Content.ReadAsByteArrayAsync(ct);
+    }
+
+    /// <inheritdoc/>
+    public async Task<byte[]> DownloadTrajectoryAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string fileName,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/trajectories/download/{fileName} to stream trajectory coordinates.
+        // WHY:  Allows researchers to download active coordinate files (.xyz, .dcd, .dump) for offline visualization.
+        // HOW:  Validates inputs, escapes fileName into path, issues GET with Bearer auth, and returns byte array.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/trajectories/download/{Uri.EscapeDataString(fileName)}");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        return await resp.Content.ReadAsByteArrayAsync(ct);
+    }
+
+    /// <inheritdoc/>
+    public async Task<AuthTokenResponse> InitializeSetupAdminAsync(
+        InstanceProfile profile,
+        InitialSetupRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches unauthenticated POST /api/setup/initialize to bootstrap master Administrator.
+        // WHY:  Provisions initial identity and unlocks operational API endpoints during first launch.
+        // HOW:  Validates inputs, posts serialized InitialSetupRequest without Bearer auth, and deserializes AuthTokenResponse.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/setup/initialize");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        AuthTokenResponse? result = await resp.Content.ReadFromJsonAsync<AuthTokenResponse>(JsonOptions, ct);
+        return result ?? throw new InvalidOperationException("Endpoint returned empty or null setup auth token payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<SystemHealthOverview> GetSystemHealthAsync(
+        InstanceProfile profile,
+        string? bearerToken = null,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/system/health to evaluate node status and subsystem diagnostics.
+        // WHY:  Provides operational uptime to container probes and detailed diagnostics when authenticated.
+        // HOW:  Validates inputs, sends GET request optionally attaching Bearer authorization, and deserializes SystemHealthOverview.
+        ArgumentNullException.ThrowIfNull(profile);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/system/health");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        if (!string.IsNullOrWhiteSpace(bearerToken))
+        {
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+        }
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        SystemHealthOverview? result = await resp.Content.ReadFromJsonAsync<SystemHealthOverview>(JsonOptions, ct);
+        return result ?? throw new InvalidOperationException("Endpoint returned empty or null system health payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<EventBusTelemetry> GetEventBusMetricsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/system/event-bus to retrieve telemetry on event bus and Valkey bridge.
+        // WHY:  Allows monitoring of event subscriber counts and message distribution health.
+        // HOW:  Validates inputs, issues GET request with Bearer authorization, and deserializes EventBusTelemetry.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/system/event-bus");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        EventBusTelemetry? result = await resp.Content.ReadFromJsonAsync<EventBusTelemetry>(JsonOptions, ct);
+        return result ?? throw new InvalidOperationException("Endpoint returned empty or null event bus telemetry payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<TrajectoryParserProcessResult> ProcessTrajectoryCoordinatesAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string fileName,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/parser/process/{fileName} to trigger zero-allocation coordinate parsing.
+        // WHY:  Allows measuring parser frame rate and processing atom counts on active trajectory streams.
+        // HOW:  Validates inputs, escapes fileName into URL path, issues POST with Bearer auth, and deserializes result.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/parser/process/{Uri.EscapeDataString(fileName)}");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = new StringContent("{}", Encoding.UTF8, "application/json")
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        TrajectoryParserProcessResult? result = await resp.Content.ReadFromJsonAsync<TrajectoryParserProcessResult>(JsonOptions, ct);
+        return result ?? throw new InvalidOperationException("Endpoint returned empty or null parser process result payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<TrajectoryParquetExportResult> ExportCoordinatesParquetAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string fileName,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/parser/export-parquet/{fileName} to serialize coordinate stream into Parquet.
+        // WHY:  Produces columnar Apache Parquet files for downstream DuckDB and analytics engines.
+        // HOW:  Validates inputs, escapes fileName into path, issues POST with Bearer auth, and deserializes result.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/parser/export-parquet/{Uri.EscapeDataString(fileName)}");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = new StringContent("{}", Encoding.UTF8, "application/json")
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        TrajectoryParquetExportResult? result = await resp.Content.ReadFromJsonAsync<TrajectoryParquetExportResult>(JsonOptions, ct);
+        return result ?? throw new InvalidOperationException("Endpoint returned empty or null parquet export result payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<AptamerTrajectoryMetrics> AnalyzeTrajectoryEndocrineAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string fileName,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/endocrine/analyze/{fileName} to evaluate aptamer binding stability.
+        // WHY:  Calculates ligand-pocket contact ratios and binding occupancy from trajectory streams.
+        // HOW:  Validates inputs, escapes fileName into path, issues POST with Bearer auth, and deserializes metrics.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/endocrine/analyze/{Uri.EscapeDataString(fileName)}");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = new StringContent("{}", Encoding.UTF8, "application/json")
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        AptamerTrajectoryMetrics? result = await resp.Content.ReadFromJsonAsync<AptamerTrajectoryMetrics>(JsonOptions, ct);
+        return result ?? throw new InvalidOperationException("Endpoint returned empty or null aptamer trajectory metrics payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<SimulationInputDeckResult> GetSimulationCampaignConfigAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string campaignId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/simulations/configs/{campaignId} to generate simulation input decks.
+        // WHY:  Outputs baseline oxDNA or LAMMPS scripts configured for the requested campaign.
+        // HOW:  Validates inputs, escapes campaignId into path, issues GET with Bearer auth, and deserializes result.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(campaignId);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/simulations/configs/{Uri.EscapeDataString(campaignId)}");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        SimulationInputDeckResult? result = await resp.Content.ReadFromJsonAsync<SimulationInputDeckResult>(JsonOptions, ct);
+        return result ?? throw new InvalidOperationException("Endpoint returned empty or null simulation input deck payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<GenomicAdjustmentResult> ApplyGenomicAdjustmentsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        GenomicAnalysisRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/genomics/apply-adjustments to apply patient pharmacogenomic profile to setpoints.
+        // WHY:  Calculates patient clearance and safety caps to update the active synthetic endocrine profile.
+        // HOW:  Validates inputs, posts serialized GenomicAnalysisRequest with Bearer auth, and deserializes GenomicAdjustmentResult.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/genomics/apply-adjustments");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        GenomicAdjustmentResult? result = await resp.Content.ReadFromJsonAsync<GenomicAdjustmentResult>(JsonOptions, ct);
+        return result ?? throw new InvalidOperationException("Endpoint returned empty or null genomic adjustment result payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<byte[]> DownloadOpentronsScriptAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        GenerateOpentronsScriptRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/fabrication/opentrons/download to generate and stream executable Python protocol.
+        // WHY:  Allows liquid handler automation robots to ingest the generated protocol script directly.
+        // HOW:  Validates inputs, posts serialized GenerateOpentronsScriptRequest with Bearer auth, and reads script bytes.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/fabrication/opentrons/download");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        return await resp.Content.ReadAsByteArrayAsync(ct);
+    }
+
+    /// <inheritdoc/>
+    public async Task<byte[]> GetFederationChunkAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string fileName,
+        int? chunkIndex = null,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/federation/chunks/{fileName}?index={chunkIndex} to retrieve swarm trajectory chunk.
+        // WHY:  Transfers binary chunks across decentralized peer nodes for P2P trajectory distribution.
+        // HOW:  Validates inputs, builds query string with optional chunk index, issues GET with Bearer auth, and returns bytes.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        string relativePath = chunkIndex.HasValue
+            ? $"/api/federation/chunks/{Uri.EscapeDataString(fileName)}?index={chunkIndex.Value}"
+            : $"/api/federation/chunks/{Uri.EscapeDataString(fileName)}";
+        Uri endpointUri = new(baseUri, relativePath);
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        return await resp.Content.ReadAsByteArrayAsync(ct);
     }
 
     /// <summary>

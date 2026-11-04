@@ -16,6 +16,7 @@ using NanoWeaverHrt.Security.Access;
 using NanoWeaverHrt.Security.Authentication;
 using NanoWeaverHrt.Security.Models;
 using NanoWeaverHrt.Services.Stack;
+using NanoWeaverHrt;
 
 namespace NanoWeaverHrt.Client.Api;
 
@@ -1413,6 +1414,259 @@ public sealed class WeaverNodeApiClient : INanoWeaverNodeClient, IDisposable
         ThrowIfDisposed();
         string effectiveToken = ResolveBearerToken(bearerToken);
         return _innerClient.DecryptRecordAsync(profile, effectiveToken, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<DatasetImportResponse> ImportDatasetArchiveAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        byte[] archiveBytes,
+        string archiveFileName,
+        byte[] manifestBytes,
+        string manifestFileName,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/datasets/import using provided or cached session token.
+        // WHY:  Allows dataset bundle import with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.ImportDatasetArchiveAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.ImportDatasetArchiveAsync(profile, effectiveToken, archiveBytes, archiveFileName, manifestBytes, manifestFileName, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<ExportEncryptedDatasetResult> ExportEncryptedDatasetAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        ExportEncryptedDatasetRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/datasets/export-encrypted using provided or cached session token.
+        // WHY:  Allows encrypted dataset export with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.ExportEncryptedDatasetAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.ExportEncryptedDatasetAsync(profile, effectiveToken, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<ExportFileItem>> ListExportedDatasetBundlesAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/datasets/exports using provided or cached session token.
+        // WHY:  Allows listing exported archives with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.ListExportedDatasetBundlesAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.ListExportedDatasetBundlesAsync(profile, effectiveToken, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task DeleteExportedDatasetBundleAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string fileName,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches DELETE /api/datasets/exports/{fileName} using provided or cached session token.
+        // WHY:  Allows deleting exported bundles with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.DeleteExportedDatasetBundleAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.DeleteExportedDatasetBundleAsync(profile, effectiveToken, fileName, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<byte[]> DownloadDatasetArchiveAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string fileName,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/datasets/download/{fileName} using provided or cached session token.
+        // WHY:  Allows downloading archives with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.DownloadDatasetArchiveAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.DownloadDatasetArchiveAsync(profile, effectiveToken, fileName, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<byte[]> DownloadTrajectoryAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string fileName,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/trajectories/download/{fileName} using provided or cached session token.
+        // WHY:  Allows downloading simulation trajectories with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.DownloadTrajectoryAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.DownloadTrajectoryAsync(profile, effectiveToken, fileName, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<AuthTokenResponse> InitializeSetupAdminAsync(
+        InstanceProfile profile,
+        InitialSetupRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches unauthenticated POST /api/setup/initialize to provision master Administrator.
+        // WHY:  Initial bootstrap operation executed before bearer tokens exist.
+        // HOW:  Validates non-disposed state, delegates directly to _innerClient.InitializeSetupAdminAsync.
+        ThrowIfDisposed();
+        return _innerClient.InitializeSetupAdminAsync(profile, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<SystemHealthOverview> GetSystemHealthAsync(
+        InstanceProfile profile,
+        string? bearerToken = null,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/system/health using provided, cached, or null token.
+        // WHY:  Allows querying public health overview or detailed telemetry with managed token lifecycle.
+        // HOW:  Resolves token if available without throwing when absent, delegates to _innerClient.GetSystemHealthAsync.
+        ThrowIfDisposed();
+        string? effectiveToken = null;
+        if (!string.IsNullOrWhiteSpace(bearerToken))
+        {
+            effectiveToken = bearerToken;
+        }
+        else
+        {
+            lock (_syncLock)
+            {
+                if (_sessionTokenBuffer != null && !_sessionTokenBuffer.IsDisposed)
+                {
+                    effectiveToken = _sessionTokenBuffer.ToUnprotectedString();
+                }
+            }
+        }
+        return _innerClient.GetSystemHealthAsync(profile, effectiveToken, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<EventBusTelemetry> GetEventBusMetricsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/system/event-bus using provided or cached session token.
+        // WHY:  Allows monitoring event bus telemetry with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.GetEventBusMetricsAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GetEventBusMetricsAsync(profile, effectiveToken, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<TrajectoryParserProcessResult> ProcessTrajectoryCoordinatesAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string fileName,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/parser/process/{fileName} using provided or cached session token.
+        // WHY:  Allows running parser benchmarks with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.ProcessTrajectoryCoordinatesAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.ProcessTrajectoryCoordinatesAsync(profile, effectiveToken, fileName, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<TrajectoryParquetExportResult> ExportCoordinatesParquetAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string fileName,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/parser/export-parquet/{fileName} using provided or cached session token.
+        // WHY:  Allows serializing coordinates to Parquet with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.ExportCoordinatesParquetAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.ExportCoordinatesParquetAsync(profile, effectiveToken, fileName, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<AptamerTrajectoryMetrics> AnalyzeTrajectoryEndocrineAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string fileName,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/endocrine/analyze/{fileName} using provided or cached session token.
+        // WHY:  Allows analyzing aptamer binding contacts with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.AnalyzeTrajectoryEndocrineAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.AnalyzeTrajectoryEndocrineAsync(profile, effectiveToken, fileName, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<SimulationInputDeckResult> GetSimulationCampaignConfigAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string campaignId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/simulations/configs/{campaignId} using provided or cached session token.
+        // WHY:  Allows generating simulation input decks with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.GetSimulationCampaignConfigAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GetSimulationCampaignConfigAsync(profile, effectiveToken, campaignId, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<GenomicAdjustmentResult> ApplyGenomicAdjustmentsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        GenomicAnalysisRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/genomics/apply-adjustments using provided or cached session token.
+        // WHY:  Allows calculating precision genomic dosage setpoints with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.ApplyGenomicAdjustmentsAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.ApplyGenomicAdjustmentsAsync(profile, effectiveToken, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<byte[]> DownloadOpentronsScriptAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        GenerateOpentronsScriptRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/fabrication/opentrons/download using provided or cached session token.
+        // WHY:  Allows downloading Opentrons liquid handler scripts with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.DownloadOpentronsScriptAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.DownloadOpentronsScriptAsync(profile, effectiveToken, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<byte[]> GetFederationChunkAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string fileName,
+        int? chunkIndex = null,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/federation/chunks/{fileName}?index={chunkIndex} using provided or cached session token.
+        // WHY:  Allows downloading federation swarm chunks with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.GetFederationChunkAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GetFederationChunkAsync(profile, effectiveToken, fileName, chunkIndex, ct);
     }
 
     /// <inheritdoc/>

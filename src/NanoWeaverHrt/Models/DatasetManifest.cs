@@ -2,6 +2,8 @@ using System.ComponentModel;
 using System.Text.Json.Serialization;
 using Swashbuckle.AspNetCore.Annotations;
 using NanoWeaverHrt.Swagger;
+using NanoWeaverHrt.Endocrine;
+using NanoWeaverHrt.Genomics;
 
 namespace NanoWeaverHrt.Models;
 
@@ -234,5 +236,320 @@ public sealed record ExportFileItem : IExamplesProvider<ExportFileItem>
         SizeFormatted = "4.2 MB",
         LastModifiedUtc = "2026-10-21T18:00:00Z",
         Category = "Archive"
+    };
+}
+
+/// <summary>
+/// Server response payload following cryptographic manifest verification and dataset archive import.
+/// </summary>
+[SwaggerSchema(Title = "DatasetImportResponse", Description = "Server response payload following cryptographic manifest verification and dataset archive import.")]
+public sealed record DatasetImportResponse : IExamplesProvider<DatasetImportResponse>
+{
+    /// <summary>
+    /// Informational message describing import verification and extraction status.
+    /// </summary>
+    [Description("Informational message describing import verification and extraction status.")]
+    [JsonPropertyName("message")]
+    public string Message { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Cryptographic provenance manifest extracted from the imported archive.
+    /// </summary>
+    [Description("Cryptographic provenance manifest extracted from the imported archive.")]
+    [JsonPropertyName("manifest")]
+    public DatasetManifest? Manifest { get; init; }
+
+    /// <summary>
+    /// Cryptographic provenance classification (signed or unsigned).
+    /// </summary>
+    [Description("Cryptographic provenance classification (signed or unsigned).")]
+    [JsonPropertyName("provenance")]
+    public string Provenance { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Signer public key identifier when the imported manifest was digitally signed; otherwise null.
+    /// </summary>
+    [Description("Signer public key identifier when the imported manifest was digitally signed; otherwise null.")]
+    [JsonPropertyName("signerKeyId")]
+    public string? SignerKeyId { get; init; }
+
+    /// <summary>
+    /// Generates an illustrative example instance of <see cref="DatasetImportResponse"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A populated dataset import response example.</returns>
+    public DatasetImportResponse GetExamples() => new()
+    {
+        Message = "Dataset successfully verified and imported.",
+        Manifest = new()
+        {
+            DatasetName = "dna-origami-tile-500k",
+            TimestampUtc = "2026-10-20T18:00:00Z",
+            ArchiveFileName = "dna-origami-tile-500k.tar.gz",
+            Sha256Checksum = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            SizeInBytes = 14850200,
+            IncludedFiles = ["trajectory.xyz", "simulation.in", "manifest.json"]
+        },
+        Provenance = "signed",
+        SignerKeyId = "ed25519_pk_0123456789abcdef0123456789abcdef"
+    };
+}
+
+/// <summary>
+/// Result metadata for an envelope-encrypted dataset archive export.
+/// </summary>
+[SwaggerSchema(Title = "ExportEncryptedDatasetResult", Description = "Result metadata for an envelope-encrypted dataset archive export.")]
+public sealed record ExportEncryptedDatasetResult : IExamplesProvider<ExportEncryptedDatasetResult>
+{
+    /// <summary>
+    /// File system path where the encrypted dataset bundle was saved.
+    /// </summary>
+    [Description("File system path where the encrypted dataset bundle was saved.")]
+    [JsonPropertyName("bundle_path")]
+    public string BundlePath { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Cryptographic algorithm suite used for envelope encryption and manifest signing.
+    /// </summary>
+    [Description("Cryptographic algorithm suite used for envelope encryption and manifest signing.")]
+    [JsonPropertyName("algorithm")]
+    public string Algorithm { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Subject identifier whose post-quantum public key was used for key encapsulation.
+    /// </summary>
+    [Description("Subject identifier whose post-quantum public key was used for key encapsulation.")]
+    [JsonPropertyName("subject_id")]
+    public string SubjectId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Informational message describing export completion.
+    /// </summary>
+    [Description("Informational message describing export completion.")]
+    [JsonPropertyName("message")]
+    public string Message { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Generates an illustrative example instance of <see cref="ExportEncryptedDatasetResult"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A populated encrypted export result example.</returns>
+    public ExportEncryptedDatasetResult GetExamples() => new()
+    {
+        BundlePath = "/simulations/exports/dna-origami-tile-step500k.enc.tar.gz",
+        Algorithm = "ML-KEM-768+AES-256-GCM",
+        SubjectId = "sub_patient_42",
+        Message = "Encrypted dataset bundle packaged and signed with ML-DSA-65."
+    };
+}
+
+/// <summary>
+/// Generated simulation input deck script configured for the specified campaign.
+/// </summary>
+[SwaggerSchema(Title = "SimulationInputDeckResult", Description = "Generated simulation input deck script configured for the specified campaign.")]
+public sealed record SimulationInputDeckResult : IExamplesProvider<SimulationInputDeckResult>
+{
+    /// <summary>
+    /// Identifier of the simulation campaign.
+    /// </summary>
+    [Description("Identifier of the simulation campaign.")]
+    [JsonPropertyName("campaign_id")]
+    public string CampaignId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Complete simulation input deck script content.
+    /// </summary>
+    [Description("Complete simulation input deck script content.")]
+    [JsonPropertyName("input_deck")]
+    public string InputDeck { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Generates an illustrative example instance of <see cref="SimulationInputDeckResult"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A populated simulation input deck result example.</returns>
+    public SimulationInputDeckResult GetExamples() => new()
+    {
+        CampaignId = "CAMPAIGN_SERUM_STABILITY",
+        InputDeck = "# oxDNA 2.4 Simulation Input Deck\nsteps = 1000000\ntemp = 37C"
+    };
+}
+
+/// <summary>
+/// Zero-allocation trajectory parser performance and frame metrics.
+/// </summary>
+[SwaggerSchema(Title = "TrajectoryParserProcessResult", Description = "Zero-allocation trajectory parser performance and frame metrics.")]
+public sealed record TrajectoryParserProcessResult : IExamplesProvider<TrajectoryParserProcessResult>
+{
+    /// <summary>
+    /// Name of the processed trajectory file.
+    /// </summary>
+    [Description("Name of the processed trajectory file.")]
+    [JsonPropertyName("fileName")]
+    public string FileName { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Detected or specified trajectory file format.
+    /// </summary>
+    [Description("Detected or specified trajectory file format.")]
+    [JsonPropertyName("format")]
+    public string Format { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Total coordinate frames parsed from the trajectory stream.
+    /// </summary>
+    [Description("Total coordinate frames parsed from the trajectory stream.")]
+    [JsonPropertyName("framesParsed")]
+    public long FramesParsed { get; init; }
+
+    /// <summary>
+    /// Total cumulative atomic coordinates evaluated across all parsed frames.
+    /// </summary>
+    [Description("Total cumulative atomic coordinates evaluated across all parsed frames.")]
+    [JsonPropertyName("totalAtomsProcessed")]
+    public long TotalAtomsProcessed { get; init; }
+
+    /// <summary>
+    /// Total elapsed time in milliseconds for stream processing.
+    /// </summary>
+    [Description("Total elapsed time in milliseconds for stream processing.")]
+    [JsonPropertyName("elapsedMilliseconds")]
+    public long ElapsedMilliseconds { get; init; }
+
+    /// <summary>
+    /// Calculated parsing throughput in frames per second.
+    /// </summary>
+    [Description("Calculated parsing throughput in frames per second.")]
+    [JsonPropertyName("framesPerSecond")]
+    public double FramesPerSecond { get; init; }
+
+    /// <summary>
+    /// Generates an illustrative example instance of <see cref="TrajectoryParserProcessResult"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A populated trajectory parser result example.</returns>
+    public TrajectoryParserProcessResult GetExamples() => new()
+    {
+        FileName = "nanocarrier-production.xyz",
+        Format = "XYZ",
+        FramesParsed = 10000,
+        TotalAtomsProcessed = 8400000,
+        ElapsedMilliseconds = 142,
+        FramesPerSecond = 70422.5
+    };
+}
+
+/// <summary>
+/// Result metadata for columnar Apache Parquet coordinate serialization.
+/// </summary>
+[SwaggerSchema(Title = "TrajectoryParquetExportResult", Description = "Result metadata for columnar Apache Parquet coordinate serialization.")]
+public sealed record TrajectoryParquetExportResult : IExamplesProvider<TrajectoryParquetExportResult>
+{
+    /// <summary>
+    /// Source trajectory file name.
+    /// </summary>
+    [Description("Source trajectory file name.")]
+    [JsonPropertyName("source_file")]
+    public string SourceFile { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Output Apache Parquet columnar file name.
+    /// </summary>
+    [Description("Output Apache Parquet columnar file name.")]
+    [JsonPropertyName("parquet_file")]
+    public string ParquetFile { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Detected or specified trajectory format.
+    /// </summary>
+    [Description("Detected or specified trajectory format.")]
+    [JsonPropertyName("format")]
+    public string Format { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Total coordinate records serialized into columnar Parquet batches.
+    /// </summary>
+    [Description("Total coordinate records serialized into columnar Parquet batches.")]
+    [JsonPropertyName("total_records_serialized")]
+    public long TotalRecordsSerialized { get; init; }
+
+    /// <summary>
+    /// File size in bytes of the generated Parquet file on disk.
+    /// </summary>
+    [Description("File size in bytes of the generated Parquet file on disk.")]
+    [JsonPropertyName("file_size_bytes")]
+    public long FileSizeBytes { get; init; }
+
+    /// <summary>
+    /// Elapsed time in milliseconds for Parquet serialization.
+    /// </summary>
+    [Description("Elapsed time in milliseconds for Parquet serialization.")]
+    [JsonPropertyName("elapsed_milliseconds")]
+    public long ElapsedMilliseconds { get; init; }
+
+    /// <summary>
+    /// Generates an illustrative example instance of <see cref="TrajectoryParquetExportResult"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A populated parquet export result example.</returns>
+    public TrajectoryParquetExportResult GetExamples() => new()
+    {
+        SourceFile = "nanocarrier-production.xyz",
+        ParquetFile = "nanocarrier-production.parquet",
+        Format = "XYZ",
+        TotalRecordsSerialized = 8400000,
+        FileSizeBytes = 12582912,
+        ElapsedMilliseconds = 310
+    };
+}
+
+/// <summary>
+/// Result payload of applying patient pharmacogenomic adjustments to the endocrine setpoint profile.
+/// </summary>
+[SwaggerSchema(Title = "GenomicAdjustmentResult", Description = "Result payload of applying patient pharmacogenomic adjustments to the endocrine setpoint profile.")]
+public sealed record GenomicAdjustmentResult : IExamplesProvider<GenomicAdjustmentResult>
+{
+    /// <summary>
+    /// Evaluated patient pharmacogenomic profile.
+    /// </summary>
+    [Description("Evaluated patient pharmacogenomic profile.")]
+    [JsonPropertyName("genomic_profile")]
+    public PatientGenomicProfile? GenomicProfile { get; init; }
+
+    /// <summary>
+    /// Adjusted synthetic endocrine target setpoint profile.
+    /// </summary>
+    [Description("Adjusted synthetic endocrine target setpoint profile.")]
+    [JsonPropertyName("adjusted_endocrine_profile")]
+    public EndocrineTargetProfile? AdjustedEndocrineProfile { get; init; }
+
+    /// <summary>
+    /// Generates an illustrative example instance of <see cref="GenomicAdjustmentResult"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A populated genomic adjustment result example.</returns>
+    public GenomicAdjustmentResult GetExamples() => new()
+    {
+        GenomicProfile = new()
+        {
+            PatientId = "sub_patient_42c8e",
+            Regimen = TherapeuticRegimen.MaleToFemale,
+            ObservedMarkers = [GeneticMarker.CreateExample()],
+            Alerts = [GeneticAlert.CreateExample()],
+            ThrombosisRiskIndex = 4.5,
+            OverallClearanceMultiplier = 1.0,
+            CpGMethylationMandatory = false,
+            RecommendedMaxEstradiolPmolL = 450.0,
+            RecommendedMinTestosteroneNmolL = null,
+            RecommendedKdOffsetNanoMolar = 0.0,
+            CalculatedAtUtc = "2026-10-20T18:00:00Z"
+        },
+        AdjustedEndocrineProfile = new()
+        {
+            PatientId = "sub_patient_8849c",
+            Regimen = TherapeuticRegimen.MaleToFemale,
+            TargetState = ToggleState.EstrogenicDominant,
+            TargetTissue = TargetTissueType.AnteriorPituitaryGonadotrope,
+            TargetEstradiolPmolL = 550.0,
+            TargetTestosteroneNmolL = 0.95,
+            TargetProgesteroneNmolL = 2.4,
+            BindingAffinityKdTargetNanoMolar = 2.5,
+            DeliveryVehicle = NanocarrierDeliveryVehicle.Default,
+            UpdatedUtc = "2026-10-20T18:00:00Z"
+        }
     };
 }
