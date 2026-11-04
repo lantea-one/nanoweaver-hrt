@@ -27,7 +27,7 @@ public static class MobileEntryPoint
     /// <summary>
     /// Current sovereign semantic release version.
     /// </summary>
-    public const string SovereignAppVersion = "1.0.0";
+    public const string SovereignAppVersion = "2026.11.03.2";
 
     /// <summary>
     /// Synchronized lock guarding thread-safe access to the static biometric vault.

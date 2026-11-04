@@ -64,6 +64,11 @@ public sealed class DefaultDesktopUiHost : IDesktopUiHost
             AreNotificationsMuted: false,
             InstanceSummaries: []));
 
+        if (_shellViewModel != null)
+        {
+            await _shellViewModel.InitializeAsync(ct).ConfigureAwait(false);
+        }
+
         await _outWriter.WriteLineAsync("[NanoWeaver HRT Desktop] Windowed UI Shell initialized.").ConfigureAwait(false);
 
         if (ct.IsCancellationRequested)

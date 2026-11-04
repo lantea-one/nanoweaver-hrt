@@ -37,7 +37,7 @@ NanoWeaverHrt pairs **Apache Parquet columnar storage** with an embedded **DuckD
                      v                                 v
         +-------------------------+       +-------------------------+
         |   REST API Endpoint     |       |    Web UI Query Drawer  |
-        |   POST /api/trajectories|       |    TrajectoryBrowser    |
+        |  POST /api/trajectories |       |    TrajectoryBrowser    |
         |       /analytics/query  |       |        (.razor)         |
         +-------------------------+       +-------------------------+
 ```

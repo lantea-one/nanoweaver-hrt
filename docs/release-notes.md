@@ -6,7 +6,7 @@
 
 ## v2026.11.03.2 — Full-Repository Hardening, Multi-Engine Parity & Scientific Fidelity Release (2026-11-03)
 
-Major milestone release completing Work Packages `P61–P85` (Forgejo Issues `#64–#88`), delivering rigorous multi-engine database persistence, FIPS-compliant post-quantum cryptography, advanced closed-loop endocrine feedback modeling, zero-allocation gel densitometry, Opentrons automation, and hardware-backed mobile enclaves.
+Major milestone release completing Work Packages `P61–P90` (Forgejo Issues `#64–#93`, incorporating `P61–P85` / `#64–#88` and `P86–P90` / `#89–#93`), delivering rigorous multi-engine database persistence, FIPS-compliant post-quantum cryptography, advanced closed-loop endocrine feedback modeling, zero-allocation gel densitometry, Opentrons automation, and hardware-backed mobile enclaves.
 
 ### Highlights
 * **Multi-Engine Persistence & Dialect Parity (Forgejo #64 / P61)**:
@@ -27,6 +27,12 @@ Major milestone release completing Work Packages `P61–P85` (Forgejo Issues `#6
   - Android Keystore (`IAndroidKeyStoreBridge`) and Apple Secure Enclave (`IAppleSecureEnclaveBridge`) Ed25519 identity bridges.
   - Lifecycle vault auto-lock and single-handshake `ZeroizableSecretBuffer` session caching.
   - Hardened Docker Compose production overlays and canonical `one.lantea.nanoweaver.hrt` desktop/mobile packaging.
+* **Full-Repository Audit Remediation & Verification Hardening (Forgejo #89–#93 / P86–P90)**:
+  - Removed `**/Views/**,**/Shell/**` exclusions, achieving 100.00% line and 100.00% branch coverage across all desktop shell components (#89 / P86).
+  - TrajectoryBrowser swarm federation build and verify UI with cryptographic verification badges and resolved duplicate gel analyzer DI injections (#90 / P87).
+  - Desktop CLI `--version` flag handling and asynchronous `DefaultDesktopUiHost` view-model initialization (#91 / P88).
+  - Synchronized version `2026.11.03.2` across Arch PKGBUILD, FreeBSD, Gentoo, Homebrew, AppStream, macOS Info.plist, Windows Appx/NSIS/WinGet, Nix, and mobile manifests (#92 / P89).
+  - Aligned API Reference and Trajectory Analytics documentation with `Program.cs` (#93 / P90).
 
 ---
 

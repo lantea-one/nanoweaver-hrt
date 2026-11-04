@@ -45,6 +45,8 @@ Inbound request bodies (`POST`, `PUT`) can similarly be submitted in `applicatio
 
 ## 2. System Hardware & Telemetry Endpoints
 
+Container health endpoints (`GET /health`, `GET /healthz`) and OpenAPI UI endpoints (`GET /swagger`, `GET /documentation`) are exposed natively by the microservice for orchestration container health probes and live interactive API exploration.
+
 ### `GET /api/system/telemetry`
 Retrieves real-time CPU utilization, process memory, thread pool allocation, and Server GC generation metrics.
 
@@ -1155,22 +1157,8 @@ Initializes the master Administrator identity. Permanently locked once an Admini
 
 ---
 
-### `POST /api/setup/generate-keypair`
-Generates an Ed25519 or ML-DSA-65 keypair for the initial Administrator, without requiring an external CLI.
-
-* **Method**: `POST`
-* **Request Payload (JSON)** — `GenerateKeyRequest`:
-  ```json
-  {
-    "username": "admin_primary",
-    "role": "Administrator",
-    "accessGate": "ApiWeb",
-    "algorithm": "Ed25519",
-    "password": "optional-passphrase-encrypting-the-private-key"
-  }
-  ```
-* **Response Status**: `200 OK` — returns a `GeneratedKeyBundle`. The private key is returned once and never persisted server-side.
-* **Errors**: `400 Bad Request` when `username` is missing or blank.
+> [!NOTE]
+> Keypair generation (`POST /api/setup/generate-keypair`) has been deprecated and removed. Ed25519 and ML-DSA-65 asymmetric keypairs are generated 100% client-side in WebCrypto / BouncyCastle so private keys never touch the server.
 
 ---
 
@@ -1258,7 +1246,7 @@ Returns the identity, role and access gate of the currently authenticated caller
 ---
 
 ### `POST /api/auth/logout`
-Terminates the interactive session by clearing the `weaver_session` cookie.
+Terminates the interactive session by clearing the `weaver_session` cookie and revoking the active session token in `IServerSessionActivityTracker`.
 
 * **Method**: `POST`
 * **Response Status**: `200 OK`
@@ -1303,7 +1291,7 @@ Creates a new user account with specified role and access gate. Requires Adminis
     "username": "patient_0042",
     "role": "Patient",
     "accessGate": "Web",
-    "algorithm": "ECDSA_P256",
+    "algorithm": "Ed25519",
     "publicKeyPemOrBase64": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...\n-----END PUBLIC KEY-----"
   }
   ```
@@ -1311,22 +1299,8 @@ Creates a new user account with specified role and access gate. Requires Adminis
 
 ---
 
-### `POST /api/users/generate-keypair`
-Generates a keypair and registers the new user account in a single step, so an Administrator can onboard a collaborator without them needing local key tooling. Requires Administrator role.
-
-* **Method**: `POST`
-* **Request Payload (JSON)** — `GenerateKeyRequest`:
-  ```json
-  {
-    "username": "new_researcher",
-    "role": "Researcher",
-    "accessGate": "ApiWeb",
-    "algorithm": "Ed25519",
-    "password": "optional-passphrase-encrypting-the-private-key"
-  }
-  ```
-* **Response Status**: `200 OK` — a `GeneratedKeyBundle`. The private key is returned exactly once in this response and is never written to the database; only the public key is persisted.
-* **Errors**: `400 Bad Request` when `username` is missing or blank.
+> [!NOTE]
+> Keypair generation (`POST /api/users/generate-keypair`) has been deprecated and removed. Ed25519 and ML-DSA-65 asymmetric keypairs are generated 100% client-side in WebCrypto / BouncyCastle so private keys never touch the server.
 
 ---
 
@@ -1910,10 +1884,10 @@ Verifies a foreign dataset federation manifest signature against trusted peer la
 ---
 
 ### `GET /api/federation/chunks/{fileName}?index={n}`
-Streams a 1 MB content-addressed trajectory chunk (`TrajectoryChunkDescriptor`) for P2P swarm synchronization.
+Streams a 1 MB content-addressed trajectory chunk (`TrajectoryChunkDescriptor`) for P2P swarm synchronization. Mapped at `GET /api/federation/chunks/{fileName}` with an optional `?index={n}` query parameter.
 
 * **Method**: `GET`
-* **Parameters**: `fileName` (string), `index` (integer query param `?index=0`).
+* **Parameters**: `fileName` (string), `index` (integer query param `?index=0`, optional).
 * **Response Status**: `200 OK` — binary chunk stream (`application/octet-stream`).
 * **Errors**: `404 Not Found`.
 

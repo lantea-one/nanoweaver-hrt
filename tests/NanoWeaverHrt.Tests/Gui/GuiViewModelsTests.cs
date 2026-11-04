@@ -1335,7 +1335,7 @@ public sealed class GuiViewModelsTests
         var vm = new AboutViewModel();
 
         Assert.Equal("NanoWeaver HRT", vm.AppName);
-        Assert.Equal("1.0.0-sovereign", vm.Version);
+        Assert.Equal("2026.11.03.2-sovereign", vm.Version);
         Assert.NotEmpty(vm.Description);
         Assert.NotEmpty(vm.OSDescription);
         Assert.NotEmpty(vm.Architecture);
@@ -1367,7 +1367,7 @@ public sealed class GuiViewModelsTests
     {
         // WHAT: Test constructor null guards in MainShellWindowHost.
         // WHY:  Ensures fail-fast semantics on missing child ViewModels.
-        // HOW:  Passes null for ShellViewModel and InstanceManager.
+        // HOW:  Passes null for ShellViewModel and InstanceManager, and verifies defaults for null optional ViewModels.
         var repoMock = new Mock<IInstanceProfileRepository>();
         var coordMock = new Mock<IMultiInstanceCoordinator>();
         var shellVm = new MainShellViewModel(repoMock.Object, coordMock.Object);
@@ -1375,6 +1375,13 @@ public sealed class GuiViewModelsTests
 
         Assert.Throws<ArgumentNullException>(() => new MainShellWindowHost(null!, instanceMgrVm));
         Assert.Throws<ArgumentNullException>(() => new MainShellWindowHost(shellVm, null!));
+
+        using var hostWithDefaults = new MainShellWindowHost(shellVm, instanceMgrVm, null, null);
+        Assert.NotNull(hostWithDefaults.VaultUnlock);
+        Assert.NotNull(hostWithDefaults.About);
+
+        // Change page with no subscribers to cover PropertyChanged == null branch
+        hostWithDefaults.CurrentPage = ShellNavigationPage.About;
     }
 
     [Fact]
@@ -1407,6 +1414,9 @@ public sealed class GuiViewModelsTests
 
         using var host = new MainShellWindowHost(shellVm, instanceMgrVm, vaultVm, aboutVm);
 
+        var propertyChangedEvents = new List<string?>();
+        host.PropertyChanged += (sender, args) => propertyChangedEvents.Add(args.PropertyName);
+
         Assert.NotNull(host.About);
         Assert.NotNull(host.VaultUnlock);
         Assert.False(host.VaultUnlock.IsUnlocking);
@@ -1417,10 +1427,15 @@ public sealed class GuiViewModelsTests
         Assert.Equal(ShellNavigationPage.Dashboard, host.CurrentPage);
         Assert.Equal("NanoWeaver HRT — Dashboard", host.Title);
 
+        // Same page assignment covers _currentPage != value false branch
+        host.CurrentPage = ShellNavigationPage.Dashboard;
+
         // 1. Navigation transitions
         host.NavigateTo(ShellNavigationPage.InstanceManager);
         Assert.Equal(ShellNavigationPage.InstanceManager, host.CurrentPage);
         Assert.Equal("NanoWeaver HRT — InstanceManager", host.Title);
+        Assert.Contains(nameof(MainShellWindowHost.CurrentPage), propertyChangedEvents);
+        Assert.Contains(nameof(MainShellWindowHost.Title), propertyChangedEvents);
 
         host.NavigateTo(ShellNavigationPage.About);
         Assert.Equal(ShellNavigationPage.About, host.CurrentPage);

@@ -50,9 +50,9 @@ public sealed class AvaloniaShellBootstrapperTests
     [Fact]
     public void AvaloniaShellBootstrapper_Properties_And_CreateDefault()
     {
-        // WHAT: Test property getters and CreateDefault factory.
-        // WHY:  Validates default DI composition for desktop platform head.
-        // HOW:  Calls CreateDefault with unique in-memory connection and custom mutex, asserts properties.
+        // WHAT: Test property getters and CreateDefault factory with both custom and default arguments.
+        // WHY:  Validates default DI composition for desktop platform head across all parameter branches.
+        // HOW:  Calls CreateDefault with custom connection/mutex and then with null defaults, asserts properties.
         string uniqueMutex = $"TestBootstrapperMutex_{Guid.NewGuid():N}";
         using var bootstrapper = AvaloniaShellBootstrapper.CreateDefault("Data Source=:memory:", uniqueMutex);
 
@@ -60,6 +60,12 @@ public sealed class AvaloniaShellBootstrapperTests
         Assert.NotNull(bootstrapper.TrayController);
         Assert.NotNull(bootstrapper.Coordinator);
         Assert.NotNull(bootstrapper.NodeClient);
+
+        using var bootstrapperDefaults = AvaloniaShellBootstrapper.CreateDefault();
+        Assert.NotNull(bootstrapperDefaults.WindowHost);
+        Assert.NotNull(bootstrapperDefaults.TrayController);
+        Assert.NotNull(bootstrapperDefaults.Coordinator);
+        Assert.NotNull(bootstrapperDefaults.NodeClient);
     }
 
     [Fact]
@@ -98,6 +104,15 @@ public sealed class AvaloniaShellBootstrapperTests
         normalCts.CancelAfter(50);
         int exitNormal = await bootstrapper.RunAsync(normalCts.Token);
         Assert.Equal(0, exitNormal);
+
+        // Primary mutex guard execution branch
+        string customMutex = $"PrimaryMutex_{Guid.NewGuid():N}";
+        using var primaryGuard = new SingleInstanceMutexGuard(customMutex);
+        using var bootstrapperPrimary = new AvaloniaShellBootstrapper(host, tray, coord, node, primaryGuard);
+        using var primaryCts = new CancellationTokenSource();
+        primaryCts.Cancel();
+        int exitPrimary = await bootstrapperPrimary.RunAsync(primaryCts.Token);
+        Assert.Equal(0, exitPrimary);
     }
 
     [Fact]

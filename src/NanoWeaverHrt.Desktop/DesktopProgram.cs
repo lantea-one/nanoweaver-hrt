@@ -68,6 +68,12 @@ public static class DesktopProgram
             return await RunGuiAsync(outWriter, errWriter, uiHost, mutexName, ct).ConfigureAwait(false);
         }
 
+        if (args[0] is "--version" or "-v" or "version")
+        {
+            await outWriter.WriteLineAsync("NanoWeaver HRT Desktop 2026.11.03.2").ConfigureAwait(false);
+            return 0;
+        }
+
         if (args[0] is "--help" or "-h" or "help")
         {
             PrintUsage(outWriter);
@@ -115,6 +121,7 @@ public static class DesktopProgram
         writer.WriteLine("  --gui               Launches the interactive desktop GUI shell (default when run without arguments).");
         writer.WriteLine("  --verify-self       Executes platform diagnostics and exits 0 if healthy.");
         writer.WriteLine("  --headless-daemon   Runs the background instance monitoring daemon without a GUI (aliases: --headless, --tray-only).");
+        writer.WriteLine("  --version, -v       Displays the application version and exits.");
         writer.WriteLine("  --help, -h          Displays this help documentation.");
     }
 
@@ -133,7 +140,7 @@ public static class DesktopProgram
         var sink = new DesktopNativeNotificationSink(processRunner);
         var tray = new DesktopTrayIconController();
 
-        writer.WriteLine("NanoWeaver HRT Desktop Platform Head v1.0.0-sovereign [Verified]");
+        writer.WriteLine("NanoWeaver HRT Desktop Platform Head v2026.11.03.2-sovereign [Verified]");
         writer.WriteLine($"  OS Platform:     {RuntimeInformation.OSDescription}");
         writer.WriteLine($"  Architecture:    {RuntimeInformation.ProcessArchitecture}");
         writer.WriteLine($"  NotificationSink: {sink.GetType().Name} (Initialized)");

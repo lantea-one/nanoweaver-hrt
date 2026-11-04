@@ -239,4 +239,129 @@ public sealed class TrajectoryBrowserTests : TestContext
 
         Assert.Empty(cut.FindAll("#query-results-box"));
     }
+
+    /// <summary>
+    /// Verifies that short NodeIds render successfully without throwing ArgumentOutOfRangeException.
+    /// </summary>
+    [Fact]
+    public void TrajectoryBrowser_RendersShortNodeId_WithoutException()
+    {
+        // WHAT: Renders TrajectoryBrowser with a peer having a short NodeId (e.g. "node-1").
+        // WHY:  Guards against ArgumentOutOfRangeException when string slicing short IDs.
+        // HOW:  Registers a federation service returning a peer with NodeId length < 16, renders component, and asserts markup contains "node-1".
+        var fedMock = new Mock<NanoWeaverHrt.Federation.ITrajectoryFederationService>();
+        fedMock.Setup(f => f.DiscoverPeersAsync(default))
+            .ReturnsAsync(new List<NanoWeaverHrt.Federation.FederationPeerNode>
+            {
+                new()
+                {
+                    NodeId = "node-1",
+                    EndpointUri = "http://localhost:5000",
+                    PublicKeyBase64 = "MC4CAQAwBQYDK2VwBCIEIA==",
+                    Algorithm = NanoWeaverHrt.Security.Authentication.KeyAlgorithm.Ed25519,
+                    LatencyMilliseconds = 1.2,
+                    LastSeenUtc = DateTimeOffset.UtcNow
+                }
+            });
+        Services.AddSingleton<NanoWeaverHrt.Federation.ITrajectoryFederationService>(fedMock.Object);
+
+        IRenderedComponent<TrajectoryBrowser> cut = RenderComponent<TrajectoryBrowser>();
+        Assert.Contains("node-1", cut.Markup);
+    }
+
+    /// <summary>
+    /// Verifies that clicking #btn-build-swarm-manifest builds and renders the swarm manifest summary.
+    /// </summary>
+    [Fact]
+    public async Task BuildSwarmManifest_InvokesServiceAndRendersSummary()
+    {
+        // WHAT: Clicks #btn-build-swarm-manifest and checks that ITrajectoryFederationService.BuildManifestAsync is called.
+        // WHY:  Ensures researchers can initiate P2P swarm manifest packaging from the UI.
+        // HOW:  Mocks BuildManifestAsync to return a valid manifest, clicks build button, asserts manifest DatasetId rendered.
+        var fedMock = new Mock<NanoWeaverHrt.Federation.ITrajectoryFederationService>();
+        fedMock.Setup(f => f.DiscoverPeersAsync(default)).ReturnsAsync(new List<NanoWeaverHrt.Federation.FederationPeerNode>());
+        fedMock.Setup(f => f.BuildManifestAsync(It.IsAny<string>(), It.IsAny<int>(), default))
+            .ReturnsAsync(new NanoWeaverHrt.Federation.TrajectoryFederationManifest
+            {
+                DatasetName = "dataset-test-123",
+                TotalSizeBytes = 1024,
+                ChunkSizeBytes = 1024,
+                TotalChunks = 1,
+                Chunks =
+                [
+                    new NanoWeaverHrt.Federation.TrajectoryChunkDescriptor
+                    {
+                        ChunkIndex = 0,
+                        OffsetBytes = 0,
+                        LengthBytes = 1024,
+                        Sha256Checksum = "abc"
+                    }
+                ],
+                SigningNodeId = "node-1",
+                SignatureAlgorithm = "Ed25519",
+                SignatureBase64 = "0123456789abcdef0123456789abcdef0123456789abcdef",
+                ManifestTimestampUtc = DateTimeOffset.UtcNow
+            });
+        Services.AddSingleton<NanoWeaverHrt.Federation.ITrajectoryFederationService>(fedMock.Object);
+
+        IRenderedComponent<TrajectoryBrowser> cut = RenderComponent<TrajectoryBrowser>();
+
+        var buildBtn = cut.Find("#btn-build-swarm-manifest");
+        await cut.InvokeAsync(() => buildBtn.Click());
+
+        Assert.Contains("dataset-test-123", cut.Markup);
+        Assert.NotNull(cut.Find("#btn-verify-swarm-manifest"));
+    }
+
+    /// <summary>
+    /// Verifies that clicking #btn-verify-swarm-manifest invokes verification and renders VERIFIED or INVALID badges.
+    /// </summary>
+    /// <param name="isValid">Whether manifest verification succeeds.</param>
+    /// <param name="expectedBadgeText">Expected badge text rendered in the UI.</param>
+    [Theory]
+    [InlineData(true, "VERIFIED")]
+    [InlineData(false, "INVALID")]
+    public async Task VerifySwarmManifest_InvokesServiceAndRendersBadge(bool isValid, string expectedBadgeText)
+    {
+        // WHAT: Clicks #btn-verify-swarm-manifest and verifies correct badge rendering based on verification result.
+        // WHY:  Provides visual feedback on cryptographic manifest validity.
+        // HOW:  Mocks VerifyManifestAsync to return isValid, builds manifest, clicks verify, asserts badge text.
+        var fedMock = new Mock<NanoWeaverHrt.Federation.ITrajectoryFederationService>();
+        fedMock.Setup(f => f.DiscoverPeersAsync(default)).ReturnsAsync(new List<NanoWeaverHrt.Federation.FederationPeerNode>());
+        fedMock.Setup(f => f.BuildManifestAsync(It.IsAny<string>(), It.IsAny<int>(), default))
+            .ReturnsAsync(new NanoWeaverHrt.Federation.TrajectoryFederationManifest
+            {
+                DatasetName = "dataset-test-123",
+                TotalSizeBytes = 1024,
+                ChunkSizeBytes = 1024,
+                TotalChunks = 1,
+                Chunks =
+                [
+                    new NanoWeaverHrt.Federation.TrajectoryChunkDescriptor
+                    {
+                        ChunkIndex = 0,
+                        OffsetBytes = 0,
+                        LengthBytes = 1024,
+                        Sha256Checksum = "abc"
+                    }
+                ],
+                SigningNodeId = "node-1",
+                SignatureAlgorithm = "Ed25519",
+                SignatureBase64 = "0123456789abcdef0123456789abcdef0123456789abcdef",
+                ManifestTimestampUtc = DateTimeOffset.UtcNow
+            });
+        fedMock.Setup(f => f.VerifyManifestAsync(It.IsAny<NanoWeaverHrt.Federation.TrajectoryFederationManifest>(), default))
+            .ReturnsAsync(isValid);
+        Services.AddSingleton<NanoWeaverHrt.Federation.ITrajectoryFederationService>(fedMock.Object);
+
+        IRenderedComponent<TrajectoryBrowser> cut = RenderComponent<TrajectoryBrowser>();
+
+        var buildBtn = cut.Find("#btn-build-swarm-manifest");
+        await cut.InvokeAsync(() => buildBtn.Click());
+
+        var verifyBtn = cut.Find("#btn-verify-swarm-manifest");
+        await cut.InvokeAsync(() => verifyBtn.Click());
+
+        Assert.Contains(expectedBadgeText, cut.Markup);
+    }
 }

@@ -302,6 +302,47 @@
             </button>
         </div>
 
+        <div class="mt-3 mb-3">
+            <button id="btn-build-swarm-manifest" class="btn btn-primary btn-sm" @onclick="BuildSwarmManifestAsync">
+                🔨 Build Swarm Manifest
+            </button>
+        </div>
+
+        @if (_currentSwarmManifest != null)
+        {
+            <div class="card panel mt-3 bg-dark-subtle">
+                <div class="panel-header">
+                    <h4>Current Swarm Manifest</h4>
+                    <div>
+                        <button id="btn-verify-swarm-manifest" class="btn btn-sm btn-outline-success" @onclick="VerifySwarmManifestAsync">
+                            🛡 Verify Manifest
+                        </button>
+                        @if (_swarmManifestVerified.HasValue)
+                        {
+                            @if (_swarmManifestVerified.Value)
+                            {
+                                <span class="badge badge-success ml-2">VERIFIED</span>
+                            }
+                            else
+                            {
+                                <span class="badge badge-danger ml-2">INVALID</span>
+                            }
+                        }
+                    </div>
+                </div>
+                <div class="panel-body mt-2">
+                    <p class="font-mono"><strong>Dataset ID:</strong> @_currentSwarmManifest.DatasetName</p>
+                    <p class="font-mono"><strong>Chunk Count:</strong> @_currentSwarmManifest.Chunks.Count</p>
+                    <p class="font-mono"><strong>Signing Algorithm:</strong> @_currentSwarmManifest.SignatureAlgorithm</p>
+                    <p class="font-mono"><strong>Signature:</strong> @(_currentSwarmManifest.SignatureBase64.Length > 24 ? $"{_currentSwarmManifest.SignatureBase64[..24]}..." : _currentSwarmManifest.SignatureBase64)</p>
+                    @if (!string.IsNullOrEmpty(_swarmManifestError))
+                    {
+                        <div class="alert alert-danger mt-2">@_swarmManifestError</div>
+                    }
+                </div>
+            </div>
+        }
+
         <div class="table-container mt-3">
             <table class="data-table">
                 <thead>
@@ -323,7 +364,7 @@
                         @foreach (FederationPeerNode peer in _activePeers)
                         {
                             <tr>
-                                <td class="font-mono text-accent"><strong>@peer.NodeId[..16]...</strong></td>
+                                <td class="font-mono text-accent"><strong>@(peer.NodeId.Length > 16 ? $"{peer.NodeId[..16]}..." : peer.NodeId)</strong></td>
                                 <td class="font-mono">@peer.EndpointUri</td>
                                 <td><span class="badge badge-outline">@peer.Algorithm</span></td>
                                 <td class="font-mono">@peer.LatencyMilliseconds.ToString("F1") ms</td>
@@ -652,6 +693,81 @@
         // HOW:  Nullifies _analyticsResult and _queryError.
         _analyticsResult = null;
         _queryError = null;
+    }
+
+    /// <summary>
+    /// Current swarm federation manifest built for P2P distribution and chunk verification.
+    /// </summary>
+    private TrajectoryFederationManifest? _currentSwarmManifest;
+
+    /// <summary>
+    /// Verification status of the current swarm manifest, or null if unverified.
+    /// </summary>
+    private bool? _swarmManifestVerified;
+
+    /// <summary>
+    /// Error message produced during swarm manifest building or verification, if any.
+    /// </summary>
+    private string? _swarmManifestError;
+
+    /// <summary>
+    /// Builds a P2P swarm federation manifest for the first available trajectory file or selected query dataset.
+    /// </summary>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    private async Task BuildSwarmManifestAsync()
+    {
+        // WHAT: Builds a chunked TrajectoryFederationManifest for P2P swarm distribution.
+        // WHY:  Enables decentralized chunk-level verification and sharing of simulation datasets across federated nodes.
+        // HOW:  Resolves target trajectory path from available files or query dataset, invokes FederationService.BuildManifestAsync, and stores manifest.
+        _swarmManifestError = null;
+        _swarmManifestVerified = null;
+
+        try
+        {
+            string targetPath = "/workspace/data/sample.xyz";
+            if (_files.Count > 0)
+            {
+                targetPath = _files[0].Name;
+            }
+            else if (!string.IsNullOrWhiteSpace(_queryDataset))
+            {
+                targetPath = _queryDataset.Trim();
+            }
+
+            _currentSwarmManifest = await FederationService.BuildManifestAsync(targetPath, 1024 * 1024);
+        }
+        catch (Exception ex)
+        {
+            _swarmManifestError = ex.Message;
+            _currentSwarmManifest = null;
+        }
+    }
+
+    /// <summary>
+    /// Verifies the cryptographic integrity and digital signature of the current swarm federation manifest.
+    /// </summary>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    private async Task VerifySwarmManifestAsync()
+    {
+        // WHAT: Cryptographically verifies the active TrajectoryFederationManifest via FederationService.VerifyManifestAsync.
+        // WHY:  Ensures authenticity and uncorrupted delivery of swarm dataset chunks before ingestion.
+        // HOW:  Invokes VerifyManifestAsync and assigns boolean result to _swarmManifestVerified.
+        _swarmManifestError = null;
+        if (_currentSwarmManifest == null)
+        {
+            _swarmManifestError = "No swarm manifest available to verify.";
+            return;
+        }
+
+        try
+        {
+            _swarmManifestVerified = await FederationService.VerifyManifestAsync(_currentSwarmManifest);
+        }
+        catch (Exception ex)
+        {
+            _swarmManifestError = ex.Message;
+            _swarmManifestVerified = false;
+        }
     }
 
     /// <summary>
