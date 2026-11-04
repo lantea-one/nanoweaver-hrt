@@ -432,4 +432,23 @@ public sealed class WeaverDbConnectionFactory : IWeaverDbConnectionFactory
 
         return $"Data Source={raw}";
     }
+
+    /// <inheritdoc/>
+    public async Task<double> GetLatencySnapshotAsync(CancellationToken ct = default)
+    {
+        // WHAT: Executes a lightweight round-trip query (SELECT 1;) and measures execution latency in milliseconds.
+        // WHY:  Allows monitoring database responsiveness across SQLite, PostgreSQL, DuckDB, and MySQL without payload overhead.
+        // HOW:  Opens a session, starts a high-resolution Stopwatch, executes scalar command, and returns elapsed total milliseconds.
+        long startTimestamp = System.Diagnostics.Stopwatch.GetTimestamp();
+        {
+            await using WeaverDbSession session = await OpenAsync(ct);
+            {
+                await using System.Data.Common.DbCommand cmd = session.Connection.CreateCommand();
+                cmd.CommandText = "SELECT 1;";
+                await cmd.ExecuteScalarAsync(ct);
+            }
+        }
+
+        return System.Diagnostics.Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
+    }
 }

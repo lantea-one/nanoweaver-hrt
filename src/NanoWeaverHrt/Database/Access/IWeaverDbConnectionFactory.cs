@@ -37,4 +37,13 @@ public interface IWeaverDbConnectionFactory
     /// <returns>A session the caller must dispose.</returns>
     /// <exception cref="WeaverDatabaseUnavailableException">The active backend cannot be reached or migrated.</exception>
     Task<WeaverDbSession> OpenAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Executes a lightweight diagnostic query (<c>SELECT 1;</c>) against the active database backend
+    /// to measure round-trip execution latency in milliseconds.
+    /// </summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Round-trip database query latency in milliseconds.</returns>
+    /// <exception cref="WeaverDatabaseUnavailableException">The active backend cannot be reached or executed.</exception>
+    Task<double> GetLatencySnapshotAsync(CancellationToken ct = default);
 }

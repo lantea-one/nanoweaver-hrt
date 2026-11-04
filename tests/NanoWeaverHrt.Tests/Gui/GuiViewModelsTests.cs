@@ -6,6 +6,7 @@ using NanoWeaverHrt.Client.Storage;
 using NanoWeaverHrt.Gui.Core.Theme;
 using NanoWeaverHrt.Gui.Core.ViewModels;
 using NanoWeaverHrt.Gui.Core.Views;
+using NanoWeaverHrt.Localization;
 using Xunit;
 
 namespace NanoWeaverHrt.Tests.Gui;
@@ -1335,7 +1336,7 @@ public sealed class GuiViewModelsTests
         var vm = new AboutViewModel();
 
         Assert.Equal("NanoWeaver HRT", vm.AppName);
-        Assert.Equal("2026.11.04.3-sovereign", vm.Version);
+        Assert.Equal("2026.11.04.4-sovereign", vm.Version);
         Assert.NotEmpty(vm.Description);
         Assert.NotEmpty(vm.OSDescription);
         Assert.NotEmpty(vm.Architecture);
@@ -1482,6 +1483,48 @@ public sealed class GuiViewModelsTests
 
         // Idempotent double dispose
         host.Dispose();
+    }
+
+    /// <summary>
+    /// Verifies <see cref="MainShellViewModel.LocalizedStatusText"/> across all <see cref="InstanceConnectionState"/> transitions and null snapshot fallback.
+    /// </summary>
+    /// <param name="state">Connection state to evaluate.</param>
+    /// <param name="expectedStatusKey">Expected localization resource key.</param>
+    [Theory]
+    [InlineData(InstanceConnectionState.Online, "Status.Online")]
+    [InlineData(InstanceConnectionState.Connecting, "Status.Connecting")]
+    [InlineData(InstanceConnectionState.Offline, "Status.Offline")]
+    [InlineData(InstanceConnectionState.Degraded, "Status.Offline")]
+    [InlineData(InstanceConnectionState.Unauthorized, "Status.Offline")]
+    [InlineData(InstanceConnectionState.Disconnected, "Status.Offline")]
+    public async Task MainShellViewModel_InstanceConnectionStateTransitions_UpdatesLocalizedStatus(
+        InstanceConnectionState state,
+        string expectedStatusKey)
+    {
+        // WHAT: Verifies MainShellViewModel.LocalizedStatusText across all connection states and null selection.
+        // WHY:  Issue #112 (P109): Guarantees that node connectivity states reflect cleanly in localized header and sidebar badges.
+        // HOW:  Mocks coordinator with snapshot of given state, selects instance, and asserts localized status string.
+        var repoMock = new Mock<IInstanceProfileRepository>();
+        var coordMock = new Mock<IMultiInstanceCoordinator>();
+        var localizer = new WeaverLocalizer();
+
+        var profile = new InstanceProfile("id-test", "Node Test", "http://127.0.0.1:5000", true, "admin", "Administrator", "Ed25519", "PUB", "ENV", true, 15, DateTimeOffset.UtcNow, null);
+        repoMock.Setup(r => r.ListProfilesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new[] { profile });
+
+        var snapshot = new InstanceConnectionSnapshot("id-test", "Node Test", state, 15, 25, 45, 1, 100, DateTimeOffset.UtcNow, null);
+        coordMock.Setup(c => c.GetSnapshots()).Returns(new[] { snapshot });
+
+        using var shellVm = new MainShellViewModel(repoMock.Object, coordMock.Object, localizer: localizer);
+        Assert.Equal(localizer.GetString("Status.Offline", WeaverLanguage.English), shellVm.LocalizedStatusText);
+
+        await shellVm.InitializeAsync();
+        shellVm.SelectedInstanceId = "id-test";
+
+        Assert.NotNull(shellVm.SelectedSnapshot);
+        Assert.Equal(state, shellVm.SelectedSnapshot.State);
+
+        string expectedText = localizer.GetString(expectedStatusKey, WeaverLanguage.English);
+        Assert.Equal(expectedText, shellVm.LocalizedStatusText);
     }
 
     /// <summary>

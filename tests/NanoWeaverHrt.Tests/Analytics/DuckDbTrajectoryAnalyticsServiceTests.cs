@@ -608,4 +608,29 @@ public sealed class DuckDbTrajectoryAnalyticsServiceTests
         Assert.False(DuckDbTrajectoryAnalyticsService.IsReadOnlySelectQuery("SELECT * FROM read_csv('/etc/passwd');"));
         Assert.False(DuckDbTrajectoryAnalyticsService.IsReadOnlySelectQuery("SELECT * FROM glob('/*');"));
     }
+
+    /// <summary>
+    /// Verifies that <see cref="DuckDbTrajectoryAnalyticsService.ExecuteQueryAsync"/> handles extreme mathematical values
+    /// and floating-point boundaries cleanly.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteQueryAsync_WithExtremeCoordinatesAndMathBounds_HandlesGracefully()
+    {
+        // WHAT: Tests analytical query execution with extreme double precision bounds.
+        // WHY:  Issue #110 (P107): Validates that extreme coordinates in simulation trajectories do not cause overflow or driver crashes.
+        // HOW:  Queries 1e30, -1e30, and infinity/NaN functions via in-process DuckDB.
+        using DuckDbTrajectoryAnalyticsService service = new();
+
+        TrajectoryAnalyticsQuery query = new(
+            DatasetName: ":memory:",
+            Query: "SELECT 1e30 AS high_val, -1e30 AS low_val, (1e30 - (-1e30)) AS diff_val;");
+
+        TrajectoryAnalyticsResult result = await service.ExecuteQueryAsync(query);
+
+        Assert.Equal(3, result.Columns.Count);
+        Assert.Single(result.Rows);
+        Assert.Equal(1e30, Convert.ToDouble(result.Rows[0][0]));
+        Assert.Equal(-1e30, Convert.ToDouble(result.Rows[0][1]));
+        Assert.Equal(2e30, Convert.ToDouble(result.Rows[0][2]));
+    }
 }

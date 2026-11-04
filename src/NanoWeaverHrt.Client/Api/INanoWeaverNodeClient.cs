@@ -1,3 +1,4 @@
+using NanoWeaverHrt.Analytics;
 using NanoWeaverHrt.Client.Storage;
 using NanoWeaverHrt.Compliance;
 using NanoWeaverHrt.Configuration;
@@ -346,5 +347,85 @@ public interface INanoWeaverNodeClient
         InstanceProfile profile,
         string bearerToken,
         GenomicAnalysisRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Cryptographically verifies unbroken hash chaining and ML-DSA-65 signatures across the audit ledger via GET /api/compliance/verify-ledger.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Cryptographic verification result detailing ledger integrity.</returns>
+    Task<AuditLedgerVerificationResult> VerifyAuditLedgerAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Scans nucleotide sequences for CpG density (TLR9 immunogenicity) and CAG repeat length (AR sensitivity) via POST /api/genomics/analyze-sequence.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="request">Sequence analysis request containing patient ID, raw FASTA string, and therapeutic regimen.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Sequence-derived patient genomic profile with kinetic recommendations.</returns>
+    Task<PatientGenomicProfile> AnalyzeGenomicSequenceAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        SequenceAnalysisRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Executes a read-only analytical SQL query against a trajectory dataset via POST /api/trajectories/analytics/query.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="request">Analytical query request containing dataset name, SQL text, and optional row limit.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Tabular trajectory analytical query results.</returns>
+    Task<TrajectoryAnalyticsApiResponse> QueryTrajectoryAnalyticsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        TrajectoryAnalyticsApiRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Lists this node's public dataset-signing identity and all registered peer laboratory keys via GET /api/peer-keys (Administrator role required).
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Peer key listing response containing local node public key and registered peer keys.</returns>
+    Task<PeerKeyListResponse> ListPeerKeysAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Registers a trusted peer laboratory's dataset-signing public key via POST /api/peer-keys (Administrator role required).
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="request">Registration payload containing peer label, algorithm, and Base64 public key.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Registered peer key record.</returns>
+    Task<PeerKeyRecord> RegisterPeerKeyAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        RegisterPeerKeyRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Permanently revokes an active peer dataset-signing public key via POST /api/peer-keys/{keyId}/revoke (Administrator role required).
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="keyId">Identifier of the peer key to revoke.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    Task RevokePeerKeyAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string keyId,
         CancellationToken ct = default);
 }

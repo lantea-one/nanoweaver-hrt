@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using NanoWeaverHrt.Analytics;
 using NanoWeaverHrt.Client.Security;
 using NanoWeaverHrt.Client.Storage;
 using NanoWeaverHrt.Compliance;
@@ -982,6 +983,188 @@ public sealed class NanoWeaverNodeClient : INanoWeaverNodeClient
 
         PatientGenomicProfile? result = await resp.Content.ReadFromJsonAsync<PatientGenomicProfile>(JsonOptions, ct);
         return result ?? throw new NodeApiException((int)resp.StatusCode, "Empty genomic analysis response received.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<AuditLedgerVerificationResult> VerifyAuditLedgerAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches audit ledger cryptographic verification request via GET /api/compliance/verify-ledger.
+        // WHY:  Mathematically checks SHA-384 unbroken hash-chaining and NIST FIPS 204 signatures.
+        // HOW:  Validates inputs, executes GET request with Bearer token, and deserializes verification report.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/compliance/verify-ledger");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        AuditLedgerVerificationResult? result = await resp.Content.ReadFromJsonAsync<AuditLedgerVerificationResult>(JsonOptions, ct);
+        return result ?? throw new NodeApiException((int)resp.StatusCode, "Empty audit ledger verification response received.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<PatientGenomicProfile> AnalyzeGenomicSequenceAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        SequenceAnalysisRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Submits raw FASTA nucleotide sequence to POST /api/genomics/analyze-sequence.
+        // WHY:  Evaluates CpG dinucleotide density (TLR9) and AR CAG repeat tracts from sequences.
+        // HOW:  Validates inputs, transmits request payload with Bearer token, and deserializes genomic profile.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/genomics/analyze-sequence");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        PatientGenomicProfile? result = await resp.Content.ReadFromJsonAsync<PatientGenomicProfile>(JsonOptions, ct);
+        return result ?? throw new NodeApiException((int)resp.StatusCode, "Empty sequence analysis response received.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<TrajectoryAnalyticsApiResponse> QueryTrajectoryAnalyticsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        TrajectoryAnalyticsApiRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Executes read-only columnar SQL query via POST /api/trajectories/analytics/query.
+        // WHY:  Enables remote researchers to query Parquet simulation frames directly via DuckDB.
+        // HOW:  Validates arguments, sends POST with analytical query request, and deserializes response.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/trajectories/analytics/query");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        TrajectoryAnalyticsApiResponse? result = await resp.Content.ReadFromJsonAsync<TrajectoryAnalyticsApiResponse>(JsonOptions, ct);
+        return result ?? throw new NodeApiException((int)resp.StatusCode, "Empty trajectory analytics query response received.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<PeerKeyListResponse> ListPeerKeysAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Retrieves registered peer keys and local node identity via GET /api/peer-keys.
+        // WHY:  Allows administrators to audit trusted peer laboratories and dataset signers.
+        // HOW:  Validates arguments, sends authenticated GET, and deserializes PeerKeyListResponse.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/peer-keys");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        PeerKeyListResponse? result = await resp.Content.ReadFromJsonAsync<PeerKeyListResponse>(JsonOptions, ct);
+        return result ?? throw new NodeApiException((int)resp.StatusCode, "Empty peer keys response received.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<PeerKeyRecord> RegisterPeerKeyAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        RegisterPeerKeyRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Registers a trusted peer laboratory public key via POST /api/peer-keys.
+        // WHY:  Enforces cryptographic provenance verification on federated dataset bundles.
+        // HOW:  Validates inputs, transmits registration payload with Bearer token, and deserializes PeerKeyRecord.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/peer-keys");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        PeerKeyRecord? result = await resp.Content.ReadFromJsonAsync<PeerKeyRecord>(JsonOptions, ct);
+        return result ?? throw new NodeApiException((int)resp.StatusCode, "Empty register peer key response received.");
+    }
+
+    /// <inheritdoc/>
+    public async Task RevokePeerKeyAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string keyId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Revokes a peer laboratory public key via POST /api/peer-keys/{keyId}/revoke.
+        // WHY:  Terminates trust for compromised or retired peer signing keys.
+        // HOW:  Validates inputs, dispatches authenticated POST request, and checks HTTP success.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(keyId);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/peer-keys/{Uri.EscapeDataString(keyId)}/revoke");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
     }
 
     /// <summary>

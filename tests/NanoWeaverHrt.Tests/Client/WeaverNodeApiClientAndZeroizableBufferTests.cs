@@ -1,4 +1,5 @@
 using Moq;
+using NanoWeaverHrt.Analytics;
 using NanoWeaverHrt.Client.Api;
 using NanoWeaverHrt.Client.Security;
 using NanoWeaverHrt.Client.Storage;
@@ -13,6 +14,7 @@ using NanoWeaverHrt.Genomics;
 using NanoWeaverHrt.Hardware.Benchmarking;
 using NanoWeaverHrt.Models;
 using NanoWeaverHrt.Security.Access;
+using NanoWeaverHrt.Security.Authentication;
 using Xunit;
 
 namespace NanoWeaverHrt.Tests.Client;
@@ -333,6 +335,32 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         innerMock.Setup(i => i.AnalyzeGenomicsAsync(profile, "explicit_token", genReq, It.IsAny<CancellationToken>())).ReturnsAsync(genProfile);
         innerMock.Setup(i => i.AnalyzeGenomicsAsync(profile, "cached_token", genReq, It.IsAny<CancellationToken>())).ReturnsAsync(genProfile);
 
+        var seqReq = new SequenceAnalysisRequest { PatientId = "pt1", Sequence = "ACGT", Regimen = TherapeuticRegimen.FemaleToMale };
+        innerMock.Setup(i => i.AnalyzeGenomicSequenceAsync(profile, "explicit_token", seqReq, It.IsAny<CancellationToken>())).ReturnsAsync(genProfile);
+        innerMock.Setup(i => i.AnalyzeGenomicSequenceAsync(profile, "cached_token", seqReq, It.IsAny<CancellationToken>())).ReturnsAsync(genProfile);
+
+        var auditVerRes = new AuditLedgerVerificationResult { IsValid = true, TotalRecordsVerified = 10, Message = "OK" };
+        innerMock.Setup(i => i.VerifyAuditLedgerAsync(profile, "explicit_token", It.IsAny<CancellationToken>())).ReturnsAsync(auditVerRes);
+        innerMock.Setup(i => i.VerifyAuditLedgerAsync(profile, "cached_token", It.IsAny<CancellationToken>())).ReturnsAsync(auditVerRes);
+
+        var queryReq = new TrajectoryAnalyticsApiRequest("ds1", "SELECT 1");
+        var queryRes = new TrajectoryAnalyticsApiResponse("ds1", ["x"], [["1"]], 1, 1.0);
+        innerMock.Setup(i => i.QueryTrajectoryAnalyticsAsync(profile, "explicit_token", queryReq, It.IsAny<CancellationToken>())).ReturnsAsync(queryRes);
+        innerMock.Setup(i => i.QueryTrajectoryAnalyticsAsync(profile, "cached_token", queryReq, It.IsAny<CancellationToken>())).ReturnsAsync(queryRes);
+
+        var localKey = new LocalDatasetSigningKey("k-local", KeyAlgorithm.Ed25519, "pk==");
+        var peerKeyList = new PeerKeyListResponse { LocalNode = localKey, Peers = [] };
+        innerMock.Setup(i => i.ListPeerKeysAsync(profile, "explicit_token", It.IsAny<CancellationToken>())).ReturnsAsync(peerKeyList);
+        innerMock.Setup(i => i.ListPeerKeysAsync(profile, "cached_token", It.IsAny<CancellationToken>())).ReturnsAsync(peerKeyList);
+
+        var regKeyReq = new RegisterPeerKeyRequest { Label = "Lab", Algorithm = KeyAlgorithm.Ed25519, PublicKeyBase64 = "pk2==" };
+        var peerKeyRec = new PeerKeyRecord { KeyId = "k1", Label = "Lab", Algorithm = KeyAlgorithm.Ed25519, PublicKeyBase64 = "pk2==", RegisteredBy = "admin", RegisteredAtUtc = DateTimeOffset.UtcNow };
+        innerMock.Setup(i => i.RegisterPeerKeyAsync(profile, "explicit_token", regKeyReq, It.IsAny<CancellationToken>())).ReturnsAsync(peerKeyRec);
+        innerMock.Setup(i => i.RegisterPeerKeyAsync(profile, "cached_token", regKeyReq, It.IsAny<CancellationToken>())).ReturnsAsync(peerKeyRec);
+
+        innerMock.Setup(i => i.RevokePeerKeyAsync(profile, "explicit_token", "k1", It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        innerMock.Setup(i => i.RevokePeerKeyAsync(profile, "cached_token", "k1", It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
         using var client = new WeaverNodeApiClient(innerMock.Object);
 
         // 1. Missing token without cache throws InvalidOperationException
@@ -360,6 +388,12 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetComplianceStatusAsync(profile, ""));
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetAuditLedgerAsync(profile, "", 10));
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.AnalyzeGenomicsAsync(profile, "", genReq));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.VerifyAuditLedgerAsync(profile, ""));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.AnalyzeGenomicSequenceAsync(profile, "", seqReq));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.QueryTrajectoryAnalyticsAsync(profile, "", queryReq));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.ListPeerKeysAsync(profile, ""));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.RegisterPeerKeyAsync(profile, "", regKeyReq));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.RevokePeerKeyAsync(profile, "", "k1"));
 
         // 2. Call with explicit token
         var snapRes1 = await client.PollSnapshotAsync(profile, "explicit_token");
@@ -430,6 +464,23 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
 
         var genRes1 = await client.AnalyzeGenomicsAsync(profile, "explicit_token", genReq);
         Assert.Equal("pt1", genRes1.PatientId);
+
+        var auditVerRes1 = await client.VerifyAuditLedgerAsync(profile, "explicit_token");
+        Assert.True(auditVerRes1.IsValid);
+
+        var seqRes1 = await client.AnalyzeGenomicSequenceAsync(profile, "explicit_token", seqReq);
+        Assert.Equal("pt1", seqRes1.PatientId);
+
+        var queryRes1 = await client.QueryTrajectoryAnalyticsAsync(profile, "explicit_token", queryReq);
+        Assert.Equal("ds1", queryRes1.DatasetName);
+
+        var peerListRes1 = await client.ListPeerKeysAsync(profile, "explicit_token");
+        Assert.Equal(KeyAlgorithm.Ed25519, peerListRes1.LocalNode.Algorithm);
+
+        var regKeyRes1 = await client.RegisterPeerKeyAsync(profile, "explicit_token", regKeyReq);
+        Assert.Equal("k1", regKeyRes1.KeyId);
+
+        await client.RevokePeerKeyAsync(profile, "explicit_token", "k1");
 
         // 3. Set cached token and call with empty token argument
         client.SetSessionToken("cached_token");
@@ -503,6 +554,23 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         var genRes2 = await client.AnalyzeGenomicsAsync(profile, "", genReq);
         Assert.Equal("pt1", genRes2.PatientId);
 
+        var auditVerRes2 = await client.VerifyAuditLedgerAsync(profile, "");
+        Assert.True(auditVerRes2.IsValid);
+
+        var seqRes2 = await client.AnalyzeGenomicSequenceAsync(profile, "", seqReq);
+        Assert.Equal("pt1", seqRes2.PatientId);
+
+        var queryRes2 = await client.QueryTrajectoryAnalyticsAsync(profile, "", queryReq);
+        Assert.Equal("ds1", queryRes2.DatasetName);
+
+        var peerListRes2 = await client.ListPeerKeysAsync(profile, "");
+        Assert.Equal(KeyAlgorithm.Ed25519, peerListRes2.LocalNode.Algorithm);
+
+        var regKeyRes2 = await client.RegisterPeerKeyAsync(profile, "", regKeyReq);
+        Assert.Equal("k1", regKeyRes2.KeyId);
+
+        await client.RevokePeerKeyAsync(profile, "", "k1");
+
         // 4. Set whitespace token buffer to exercise whitespace fallback exception
         using var whitespaceBuf = ZeroizableSecretBuffer.FromUtf8("   ");
         client.SetSessionToken(whitespaceBuf);
@@ -555,5 +623,11 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetComplianceStatusAsync(profile, "token"));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetAuditLedgerAsync(profile, "token", 10));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.AnalyzeGenomicsAsync(profile, "token", new GenomicAnalysisRequest { PatientId = "pt1", Regimen = TherapeuticRegimen.FemaleToMale }));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.VerifyAuditLedgerAsync(profile, "token"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.AnalyzeGenomicSequenceAsync(profile, "token", new SequenceAnalysisRequest { PatientId = "pt1", Sequence = "ACGT", Regimen = TherapeuticRegimen.FemaleToMale }));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.QueryTrajectoryAnalyticsAsync(profile, "token", new TrajectoryAnalyticsApiRequest("ds1", "SELECT 1")));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ListPeerKeysAsync(profile, "token"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.RegisterPeerKeyAsync(profile, "token", new RegisterPeerKeyRequest { Label = "Lab", Algorithm = KeyAlgorithm.Ed25519, PublicKeyBase64 = "pk==" }));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.RevokePeerKeyAsync(profile, "token", "k1"));
     }
 }

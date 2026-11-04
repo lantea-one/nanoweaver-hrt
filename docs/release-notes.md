@@ -4,6 +4,29 @@
 
 ---
 
+## v2026.11.04.4 — Code-Complete Milestone: Database Latency Diagnostics, Trajectory Analytics SQL Hardening, Full Client REST SDK Parity & Desktop Notification Resilience (2026-11-04)
+
+Code-complete milestone release resolving Work Packages `P106–P110` (Forgejo Issues `#109–#113`), introducing live round-trip latency snapshot measurement across all database engines, hardening DuckDB trajectory analytics against extreme coordinates and math bounds, achieving 100% full REST SDK parity in `INanoWeaverNodeClient` and `WeaverNodeApiClient` for compliance audit ledger verification, genomic sequence analysis, trajectory analytical queries, and peer laboratory key management, verifying desktop and mobile notification sink resilience with edge-case characters and Unicode emojis, and synchronizing CalVer release versioning across all 12 packaging manifests and platform targets.
+
+### Highlights
+* **Multi-Engine Database Latency Snapshot & Reconnection Diagnostics (Forgejo #109 / P106)**:
+  - Added `GetLatencySnapshotAsync` to `IWeaverDbConnectionFactory` and implemented round-trip `SELECT 1` ping measurement with high-precision stopwatch diagnostics.
+  - Added unit tests in `WeaverDbConnectionFactoryTests` confirming accurate latency reporting and error handling across supported engines.
+* **Trajectory Analytics SQL Parameterization & DuckDB Scan Stress Hardening (Forgejo #110 / P107)**:
+  - Added mathematical bounds stress tests in `DuckDbTrajectoryAnalyticsServiceTests` validating handling of extreme coordinate ranges, floating-point infinities, and NaN values.
+  - Verified clean query execution and robust error wrapping without engine crashes.
+* **Client REST SDK Parity Expansion (Forgejo #111 / P108)**:
+  - Added full REST SDK client parity in `INanoWeaverNodeClient`, `NanoWeaverNodeClient`, and `WeaverNodeApiClient` for `VerifyAuditLedgerAsync` (`GET /api/compliance/verify-ledger`), `AnalyzeGenomicSequenceAsync` (`POST /api/genomics/analyze-sequence`), `QueryTrajectoryAnalyticsAsync` (`POST /api/trajectories/analytics/query`), and peer key management (`ListPeerKeysAsync`, `RegisterPeerKeyAsync`, `RevokePeerKeyAsync`).
+  - Added comprehensive test suites verifying nominal payloads, RFC 7807 problem details error handling, session token buffer caching, and post-disposal `ObjectDisposedException` assertions.
+* **Desktop Tray & Multi-Instance UI ViewModels Robustness Hardening (Forgejo #112 / P109)**:
+  - Added edge-case test suites for `DesktopNativeNotificationSink` and `MobileNotificationSink` handling control characters, newlines, null bytes, backslashes, and Unicode emojis across Linux (`notify-send`), macOS (`osascript`), Windows (`powershell`), Android, iOS, and iPadOS.
+  - Added `MainShellViewModel` test suite verifying localized connectivity status and system tray updates across all connection states (`Online`, `Connecting`, `Offline`, `Degraded`, `Unauthorized`, `Disconnected`).
+* **Absolute Zero-Defect Repository Audit & CalVer Milestone Alignment (Forgejo #113 / P110)**:
+  - Synchronized CalVer version `2026.11.04.4` across Arch Linux AUR (binary & git), FreeBSD, Homebrew, AppStream metainfo, macOS Info.plist, Nix, Windows Appx/NSIS/WinGet, Android, iOS, iPadOS, desktop entry points, ViewModels, and test fixtures.
+  - Enforced 100% docblock coverage (`check-docblocks.py`), 100.00% developer line/branch code coverage, and zero unescaped single-dollar math formatting delimiters.
+
+---
+
 ## v2026.11.04.3 — Code-Complete Milestone: Multi-Engine Connection Resilience, Ratchet Invariants, Client REST Compliance & Desktop Tray Hardening (2026-11-04)
 
 Code-complete milestone release resolving Work Packages `P101–P105` (Forgejo Issues `#104–#108`), validating multi-engine connection factory fault injection and credential sanitization, eliminating minimal API edge-case gaps while preserving downward coverage ratchet invariants, expanding the client REST SDK with compliance and pharmacogenomics endpoints, hardening the desktop tray icon controller with localization, health badges, and clean disposal teardown, and synchronizing CalVer release versioning across all 12 packaging manifests and platform targets.

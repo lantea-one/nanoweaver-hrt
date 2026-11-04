@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using Moq;
+using NanoWeaverHrt.Analytics;
 using NanoWeaverHrt.Client.Api;
 using NanoWeaverHrt.Client.Security;
 using NanoWeaverHrt.Client.Storage;
@@ -16,6 +17,7 @@ using NanoWeaverHrt.Genomics;
 using NanoWeaverHrt.Hardware.Benchmarking;
 using NanoWeaverHrt.Models;
 using NanoWeaverHrt.Security.Access;
+using NanoWeaverHrt.Security.Authentication;
 using Xunit;
 
 namespace NanoWeaverHrt.Tests.Client;
@@ -1623,6 +1625,236 @@ public sealed class NanoWeaverNodeClientTests : IDisposable
 
         _httpHandler.SetResponse("/api/genomics/analyze", HttpStatusCode.InternalServerError, "{}");
         await Assert.ThrowsAsync<NodeApiException>(() => _client.AnalyzeGenomicsAsync(_localProfile, "token", req));
+    }
+
+    /// <summary>
+    /// Verifies VerifyAuditLedgerAsync nominal response, null deserialization fallback, and error handling.
+    /// </summary>
+    [Fact]
+    public async Task VerifyAuditLedgerAsync_NominalAndErrors_BehavesExpectedly()
+    {
+        // WHAT: Tests VerifyAuditLedgerAsync endpoint communication against /api/compliance/verify-ledger.
+        // WHY:  Ensures cryptographic ledger integrity verification operates cleanly.
+        // HOW:  Mocks /api/compliance/verify-ledger with JSON, asserts populated result and exception handling.
+        _httpHandler.SetResponse(
+            "/api/compliance/verify-ledger",
+            HttpStatusCode.OK,
+            """
+            {
+                "isValid": true,
+                "totalRecordsVerified": 10,
+                "firstViolationSequence": null,
+                "message": "Chain valid",
+                "verifiedAtUtc": "2026-11-04T00:00:00Z"
+            }
+            """);
+
+        AuditLedgerVerificationResult result = await _client.VerifyAuditLedgerAsync(_localProfile, "token");
+        Assert.NotNull(result);
+        Assert.True(result.IsValid);
+        Assert.Equal(10, result.TotalRecordsVerified);
+        Assert.Equal("Chain valid", result.Message);
+
+        _httpHandler.SetResponse("/api/compliance/verify-ledger", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.VerifyAuditLedgerAsync(_localProfile, "token"));
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.VerifyAuditLedgerAsync(null!, "token"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.VerifyAuditLedgerAsync(_localProfile, ""));
+
+        _httpHandler.SetResponse("/api/compliance/verify-ledger", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.VerifyAuditLedgerAsync(_localProfile, "token"));
+    }
+
+    /// <summary>
+    /// Verifies AnalyzeGenomicSequenceAsync nominal response, null deserialization fallback, and error handling.
+    /// </summary>
+    [Fact]
+    public async Task AnalyzeGenomicSequenceAsync_NominalAndErrors_BehavesExpectedly()
+    {
+        // WHAT: Tests AnalyzeGenomicSequenceAsync endpoint communication against /api/genomics/analyze-sequence.
+        // WHY:  Ensures raw FASTA sequence scanning operates cleanly with full error handling.
+        // HOW:  Mocks /api/genomics/analyze-sequence with JSON, asserts returned genomic profile and parameter validations.
+        _httpHandler.SetResponse(
+            "/api/genomics/analyze-sequence",
+            HttpStatusCode.OK,
+            """
+            {
+                "patientId": "pt-seq-42",
+                "regimen": "FemaleToMale",
+                "observedMarkers": [],
+                "alerts": [],
+                "thrombosisRiskIndex": 1.0,
+                "overallClearanceMultiplier": 1.0,
+                "cpGMethylationMandatory": false,
+                "calculatedAtUtc": "2026-11-04T00:00:00Z"
+            }
+            """);
+
+        SequenceAnalysisRequest req = new()
+        {
+            PatientId = "pt-seq-42",
+            Sequence = "ACGTACGT",
+            Regimen = TherapeuticRegimen.FemaleToMale
+        };
+
+        PatientGenomicProfile profile = await _client.AnalyzeGenomicSequenceAsync(_localProfile, "token", req);
+        Assert.NotNull(profile);
+        Assert.Equal("pt-seq-42", profile.PatientId);
+        Assert.Equal(TherapeuticRegimen.FemaleToMale, profile.Regimen);
+
+        _httpHandler.SetResponse("/api/genomics/analyze-sequence", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.AnalyzeGenomicSequenceAsync(_localProfile, "token", req));
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.AnalyzeGenomicSequenceAsync(null!, "token", req));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.AnalyzeGenomicSequenceAsync(_localProfile, "", req));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.AnalyzeGenomicSequenceAsync(_localProfile, "token", null!));
+
+        _httpHandler.SetResponse("/api/genomics/analyze-sequence", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.AnalyzeGenomicSequenceAsync(_localProfile, "token", req));
+    }
+
+    /// <summary>
+    /// Verifies QueryTrajectoryAnalyticsAsync nominal response, null deserialization fallback, and error handling.
+    /// </summary>
+    [Fact]
+    public async Task QueryTrajectoryAnalyticsAsync_NominalAndErrors_BehavesExpectedly()
+    {
+        // WHAT: Tests QueryTrajectoryAnalyticsAsync endpoint communication against /api/trajectories/analytics/query.
+        // WHY:  Ensures analytical query execution against DuckDB returns structured tabular results.
+        // HOW:  Mocks /api/trajectories/analytics/query with JSON, asserts row/column counts and parameter validation.
+        _httpHandler.SetResponse(
+            "/api/trajectories/analytics/query",
+            HttpStatusCode.OK,
+            """
+            {
+                "datasetName": "test-dataset",
+                "columns": ["id", "val"],
+                "rows": [["1", "alpha"], ["2", "beta"]],
+                "totalRows": 2,
+                "elapsedMilliseconds": 14.2
+            }
+            """);
+
+        TrajectoryAnalyticsApiRequest req = new("test-dataset", "SELECT * FROM atoms");
+
+        TrajectoryAnalyticsApiResponse response = await _client.QueryTrajectoryAnalyticsAsync(_localProfile, "token", req);
+        Assert.NotNull(response);
+        Assert.Equal("test-dataset", response.DatasetName);
+        Assert.Equal(2, response.TotalRows);
+        Assert.Equal(2, response.Columns.Count);
+        Assert.Equal(2, response.Rows.Count);
+
+        _httpHandler.SetResponse("/api/trajectories/analytics/query", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.QueryTrajectoryAnalyticsAsync(_localProfile, "token", req));
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.QueryTrajectoryAnalyticsAsync(null!, "token", req));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.QueryTrajectoryAnalyticsAsync(_localProfile, "", req));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.QueryTrajectoryAnalyticsAsync(_localProfile, "token", null!));
+
+        _httpHandler.SetResponse("/api/trajectories/analytics/query", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.QueryTrajectoryAnalyticsAsync(_localProfile, "token", req));
+    }
+
+    /// <summary>
+    /// Verifies PeerKeys list, register, and revoke nominal responses, null fallback, and error paths.
+    /// </summary>
+    [Fact]
+    public async Task PeerKeys_NominalAndErrors_BehavesExpectedly()
+    {
+        // WHAT: Tests ListPeerKeysAsync, RegisterPeerKeyAsync, and RevokePeerKeyAsync endpoint communications against /api/peer-keys.
+        // WHY:  Guarantees cryptographic peer laboratory identity registration and revocation functions cleanly.
+        // HOW:  Mocks GET, POST, and POST /revoke routes with JSON, asserting records and parameter validation.
+        _httpHandler.SetResponse(
+            "/api/peer-keys",
+            HttpStatusCode.OK,
+            """
+            {
+                "localNode": {
+                    "keyId": "k-local",
+                    "algorithm": "Ed25519",
+                    "publicKeyBase64": "pubKeyNode=="
+                },
+                "peers": [
+                    {
+                        "keyId": "k-peer-1",
+                        "label": "Lab 1",
+                        "algorithm": "Ed25519",
+                        "publicKeyBase64": "pubKeyPeer==",
+                        "registeredBy": "admin",
+                        "registeredAtUtc": "2026-11-04T00:00:00Z",
+                        "revokedBy": null,
+                        "revokedAtUtc": null
+                    }
+                ]
+            }
+            """);
+
+        PeerKeyListResponse list = await _client.ListPeerKeysAsync(_localProfile, "token");
+        Assert.NotNull(list);
+        Assert.Equal(KeyAlgorithm.Ed25519, list.LocalNode.Algorithm);
+        Assert.Single(list.Peers);
+        Assert.Equal("k-peer-1", list.Peers[0].KeyId);
+
+        _httpHandler.SetResponse("/api/peer-keys", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.ListPeerKeysAsync(_localProfile, "token"));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.ListPeerKeysAsync(null!, "token"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.ListPeerKeysAsync(_localProfile, ""));
+
+        _httpHandler.SetResponse("/api/peer-keys", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.ListPeerKeysAsync(_localProfile, "token"));
+
+        // Register
+        RegisterPeerKeyRequest regReq = new()
+        {
+            Label = "Lab 1",
+            Algorithm = KeyAlgorithm.Ed25519,
+            PublicKeyBase64 = "pubKeyPeer=="
+        };
+
+        _httpHandler.SetResponse(
+            "/api/peer-keys",
+            HttpStatusCode.OK,
+            """
+            {
+                "keyId": "k-peer-1",
+                "label": "Lab 1",
+                "algorithm": "Ed25519",
+                "publicKeyBase64": "pubKeyPeer==",
+                "registeredBy": "admin",
+                "registeredAtUtc": "2026-11-04T00:00:00Z",
+                "revokedBy": null,
+                "revokedAtUtc": null
+            }
+            """);
+
+        PeerKeyRecord record = await _client.RegisterPeerKeyAsync(_localProfile, "token", regReq);
+        Assert.NotNull(record);
+        Assert.Equal("k-peer-1", record.KeyId);
+        Assert.True(record.IsActive);
+
+        _httpHandler.SetResponse("/api/peer-keys", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.RegisterPeerKeyAsync(_localProfile, "token", regReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.RegisterPeerKeyAsync(null!, "token", regReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.RegisterPeerKeyAsync(_localProfile, "", regReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.RegisterPeerKeyAsync(_localProfile, "token", null!));
+
+        _httpHandler.SetResponse("/api/peer-keys", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.RegisterPeerKeyAsync(_localProfile, "token", regReq));
+
+        // Revoke
+        _httpHandler.SetResponse(
+            "/api/peer-keys/k-peer-1/revoke",
+            HttpStatusCode.OK,
+            """{"message": "Peer key revoked."}""");
+
+        await _client.RevokePeerKeyAsync(_localProfile, "token", "k-peer-1");
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.RevokePeerKeyAsync(null!, "token", "k-peer-1"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.RevokePeerKeyAsync(_localProfile, "", "k-peer-1"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.RevokePeerKeyAsync(_localProfile, "token", ""));
+
+        _httpHandler.SetResponse("/api/peer-keys/k-peer-1/revoke", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.RevokePeerKeyAsync(_localProfile, "token", "k-peer-1"));
     }
 
     /// <summary>

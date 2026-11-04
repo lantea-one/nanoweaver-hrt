@@ -1,3 +1,4 @@
+using NanoWeaverHrt.Analytics;
 using NanoWeaverHrt.Client.Security;
 using NanoWeaverHrt.Client.Storage;
 using NanoWeaverHrt.Compliance;
@@ -521,6 +522,94 @@ public sealed class WeaverNodeApiClient : INanoWeaverNodeClient, IDisposable
         ThrowIfDisposed();
         string effectiveToken = ResolveBearerToken(bearerToken);
         return _innerClient.AnalyzeGenomicsAsync(profile, effectiveToken, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<AuditLedgerVerificationResult> VerifyAuditLedgerAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Cryptographically verifies unbroken hash chaining and post-quantum signatures using provided or cached token.
+        // WHY:  Permits administrative audits without manual token management in GUI layers.
+        // HOW:  Resolves effective token, delegates to _innerClient.VerifyAuditLedgerAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.VerifyAuditLedgerAsync(profile, effectiveToken, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<PatientGenomicProfile> AnalyzeGenomicSequenceAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        SequenceAnalysisRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches raw FASTA sequence analysis using provided or cached session token.
+        // WHY:  Calculates CpG immunogenicity and CAG repeat length without exposing token state.
+        // HOW:  Resolves effective token, delegates to _innerClient.AnalyzeGenomicSequenceAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.AnalyzeGenomicSequenceAsync(profile, effectiveToken, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<TrajectoryAnalyticsApiResponse> QueryTrajectoryAnalyticsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        TrajectoryAnalyticsApiRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Executes read-only SQL queries against trajectory datasets using provided or cached session token.
+        // WHY:  Permits analytical queries against DuckDB engine from GUI clients.
+        // HOW:  Resolves effective token, delegates to _innerClient.QueryTrajectoryAnalyticsAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.QueryTrajectoryAnalyticsAsync(profile, effectiveToken, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<PeerKeyListResponse> ListPeerKeysAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Queries local node public signing identity and trusted peer keys using provided or cached token.
+        // WHY:  Supports peer laboratory key management in desktop and mobile interfaces.
+        // HOW:  Resolves effective token, delegates to _innerClient.ListPeerKeysAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.ListPeerKeysAsync(profile, effectiveToken, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<PeerKeyRecord> RegisterPeerKeyAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        RegisterPeerKeyRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Registers a trusted peer laboratory public signing key using provided or cached session token.
+        // WHY:  Allows administrators to onboard external peer labs into the verification ring.
+        // HOW:  Resolves effective token, delegates to _innerClient.RegisterPeerKeyAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.RegisterPeerKeyAsync(profile, effectiveToken, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task RevokePeerKeyAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string keyId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Revokes an active peer laboratory public signing key using provided or cached session token.
+        // WHY:  Allows immediate revocation of compromised or retired peer signing keys.
+        // HOW:  Resolves effective token, delegates to _innerClient.RevokePeerKeyAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.RevokePeerKeyAsync(profile, effectiveToken, keyId, ct);
     }
 
     /// <inheritdoc/>

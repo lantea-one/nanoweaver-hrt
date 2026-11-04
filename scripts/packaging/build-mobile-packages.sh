@@ -21,7 +21,7 @@ mkdir -p "${OUTPUT_DIR}"
 
 PACKAGE_VERSION="${PACKAGE_VERSION:-${GITHUB_REF_NAME:-}}"
 if [ -z "${PACKAGE_VERSION}" ] || [ "${PACKAGE_VERSION}" = "main" ]; then
-    PACKAGE_VERSION="$(git describe --tags --exact-match 2>/dev/null || echo "2026.11.04.3")"
+    PACKAGE_VERSION="$(git describe --tags --exact-match 2>/dev/null || echo "2026.11.04.4")"
 fi
 PACKAGE_VERSION="${PACKAGE_VERSION#v}"
 

@@ -450,17 +450,17 @@ public sealed class DesktopAndMobilePlatformTests
         stdout.GetStringBuilder().Clear();
         int exitCodeVersion = await DesktopProgram.RunAsync(["--version"], stdout, stderr);
         Assert.Equal(0, exitCodeVersion);
-        Assert.Equal("NanoWeaver HRT Desktop 2026.11.04.3", stdout.ToString().Trim());
+        Assert.Equal("NanoWeaver HRT Desktop 2026.11.04.4", stdout.ToString().Trim());
 
         stdout.GetStringBuilder().Clear();
         int exitCodeShortVersion = await DesktopProgram.RunAsync(["-v"], stdout, stderr);
         Assert.Equal(0, exitCodeShortVersion);
-        Assert.Equal("NanoWeaver HRT Desktop 2026.11.04.3", stdout.ToString().Trim());
+        Assert.Equal("NanoWeaver HRT Desktop 2026.11.04.4", stdout.ToString().Trim());
 
         stdout.GetStringBuilder().Clear();
         int exitCodeWordVersion = await DesktopProgram.RunAsync(["version"], stdout, stderr);
         Assert.Equal(0, exitCodeWordVersion);
-        Assert.Equal("NanoWeaver HRT Desktop 2026.11.04.3", stdout.ToString().Trim());
+        Assert.Equal("NanoWeaver HRT Desktop 2026.11.04.4", stdout.ToString().Trim());
         stdout.GetStringBuilder().Clear();
         int exitCodeHelp = await DesktopProgram.RunAsync(["--help"], stdout, stderr);
         Assert.Equal(0, exitCodeHelp);
@@ -479,14 +479,14 @@ public sealed class DesktopAndMobilePlatformTests
         var mockRunner = new Mock<IPlatformProcessRunner>();
         int exitCodeVerifyMock = await DesktopProgram.RunAsync(["--verify-self"], stdout, stderr, mockRunner.Object);
         Assert.Equal(0, exitCodeVerifyMock);
-        Assert.Contains("NanoWeaver HRT Desktop Platform Head v2026.11.04.3-sovereign [Verified]", stdout.ToString());
+        Assert.Contains("NanoWeaver HRT Desktop Platform Head v2026.11.04.4-sovereign [Verified]", stdout.ToString());
         Assert.Contains("NotificationSink: DesktopNativeNotificationSink", stdout.ToString());
 
         // --verify-self with default null runner (covers runner ?? new SystemPlatformProcessRunner())
         stdout.GetStringBuilder().Clear();
         int exitCodeVerifyDefault = await DesktopProgram.RunAsync(["--verify-self"], stdout, stderr);
         Assert.Equal(0, exitCodeVerifyDefault);
-        Assert.Contains("NanoWeaver HRT Desktop Platform Head v2026.11.04.3-sovereign [Verified]", stdout.ToString());
+        Assert.Contains("NanoWeaver HRT Desktop Platform Head v2026.11.04.4-sovereign [Verified]", stdout.ToString());
 
         // --headless-daemon (clean shutdown via cancellation token)
         stdout.GetStringBuilder().Clear();
@@ -695,10 +695,10 @@ public sealed class DesktopAndMobilePlatformTests
         // HOW:  Calls metadata getters, executes VerifySelf, and runs lifecycle loop with cancellation and invalid args.
         Assert.Equal("one.lantea.nanoweaver.hrt", MobileEntryPoint.GetBundleIdentifier());
         Assert.Equal("NanoWeaver HRT", MobileEntryPoint.GetAppDisplayName());
-        Assert.Equal("2026.11.04.3", MobileEntryPoint.GetAppVersion());
+        Assert.Equal("2026.11.04.4", MobileEntryPoint.GetAppVersion());
 
         string report = MobileEntryPoint.VerifySelf();
-        Assert.Contains("NanoWeaver HRT Mobile Platform Head v2026.11.04.3-sovereign [Verified: Android, iOS, iPadOS", report);
+        Assert.Contains("NanoWeaver HRT Mobile Platform Head v2026.11.04.4-sovereign [Verified: Android, iOS, iPadOS", report);
 
         var sink = new MobileNotificationSink("android");
 
@@ -855,5 +855,96 @@ public sealed class DesktopAndMobilePlatformTests
             Assert.Contains("NanoWeaver HRT Headless Daemon started.", stdout.ToString());
             Assert.Contains("NanoWeaver HRT Headless Daemon stopped cleanly.", stdout.ToString());
         }
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="DesktopNativeNotificationSink"/> safely handles edge-case special characters, newlines, null bytes, backslashes, and emojis across all desktop platforms.
+    /// </summary>
+    [Fact]
+    public async Task DesktopNativeNotificationSink_SpecialCharactersAndEmojis_SanitizesCorrectly()
+    {
+        // WHAT: Test special character and Unicode emoji sanitization across Linux, macOS, and Windows.
+        // WHY:  Issue #112 (P109): Guarantees that alerts containing emojis, newlines, null bytes, or backslashes are sanitized without process failure.
+        // HOW:  Constructs alert with control characters, quotes, backslashes, and emojis; dispatches to mock runners and validates captured CLI args.
+        var mockRunner = new Mock<IPlatformProcessRunner>();
+        IReadOnlyList<string>? capturedArgs = null;
+        string? capturedExe = null;
+
+        mockRunner.Setup(r => r.TryRunAsync(It.IsAny<string>(), It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
+            .Callback<string, IReadOnlyList<string>, CancellationToken>((exe, args, _) =>
+            {
+                capturedExe = exe;
+                capturedArgs = args;
+            })
+            .ReturnsAsync(true);
+
+        var alert = CreateAlert(
+            InstanceAlertSeverity.Critical,
+            "Alert\0Title\r\nWith \"Quotes\" & \\Backslashes\\ 🧬",
+            "Message\tBody\0With Newline\nAnd Emoji ⚡\0");
+
+        // 1. Linux dispatch
+        var linuxSink = new DesktopNativeNotificationSink(mockRunner.Object, "linux");
+        bool linuxResult = await linuxSink.SendNotificationAsync(alert);
+        Assert.True(linuxResult);
+        Assert.Equal("notify-send", capturedExe);
+        Assert.NotNull(capturedArgs);
+        Assert.False(capturedArgs[4].Contains('\0'));
+        Assert.False(capturedArgs[4].Contains('\r'));
+        Assert.False(capturedArgs[4].Contains('\n'));
+        Assert.Contains("🧬", capturedArgs[4]);
+        Assert.False(capturedArgs[5].Contains('\0'));
+        Assert.Contains("⚡", capturedArgs[5]);
+
+        // 2. macOS dispatch
+        var macOsSink = new DesktopNativeNotificationSink(mockRunner.Object, "macos");
+        bool macResult = await macOsSink.SendNotificationAsync(alert);
+        Assert.True(macResult);
+        Assert.Equal("osascript", capturedExe);
+        Assert.NotNull(capturedArgs);
+        Assert.Contains("\\\"Quotes\\\"", capturedArgs[1]);
+        Assert.Contains("\\\\Backslashes\\\\", capturedArgs[1]);
+        Assert.Contains("🧬", capturedArgs[1]);
+        Assert.Contains("⚡", capturedArgs[1]);
+
+        // 3. Windows dispatch
+        var winSink = new DesktopNativeNotificationSink(mockRunner.Object, "windows");
+        bool winResult = await winSink.SendNotificationAsync(alert);
+        Assert.True(winResult);
+        Assert.Equal("powershell", capturedExe);
+        Assert.NotNull(capturedArgs);
+        Assert.Contains("🧬", capturedArgs[4]);
+        Assert.Contains("⚡", capturedArgs[5]);
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="MobileNotificationSink"/> safely records alerts with edge-case characters and emojis across Android, iOS, and iPadOS.
+    /// </summary>
+    [Theory]
+    [InlineData("android", "nanoweaver_channel_critical")]
+    [InlineData("ios", "NANOWEAVER_IOS_CRITICAL")]
+    [InlineData("ipados", "NANOWEAVER_IPADOS_CRITICAL")]
+    public async Task MobileNotificationSink_SpecialCharactersAndEmojis_HandlesSafely(
+        string platform,
+        string expectedChannel)
+    {
+        // WHAT: Test mobile alert channel routing with special characters, newlines, and emojis.
+        // WHY:  Issue #112 (P109): Guarantees that mobile notification sinks preserve rich UTF-8 diagnostic content without corruption.
+        // HOW:  Dispatches multi-line alert with emojis to MobileNotificationSink and validates DispatchedAlerts history.
+        var sink = new MobileNotificationSink(platform);
+        var alert = CreateAlert(
+            InstanceAlertSeverity.Critical,
+            "Mobile Alert 🧬 \r\n Line 2",
+            "Detailed failure: \0 \\path\\to\\origami.xyz [CRITICAL] ⚡");
+
+        bool result = await sink.SendNotificationAsync(alert);
+        Assert.True(result);
+        Assert.Single(sink.DispatchedAlerts);
+
+        var dispatched = sink.DispatchedAlerts[0];
+        Assert.Equal(expectedChannel, dispatched.ChannelId);
+        Assert.Equal(alert, dispatched.Alert);
+        Assert.Contains("🧬", dispatched.Alert.Title);
+        Assert.Contains("⚡", dispatched.Alert.Message);
     }
 }

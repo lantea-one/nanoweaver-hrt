@@ -624,6 +624,31 @@ public sealed class WeaverDbConnectionFactoryTests : IDisposable
     }
 
     /// <summary>
+    /// Verifies that <see cref="WeaverDbConnectionFactory.GetLatencySnapshotAsync"/> measures non-negative query latency across an active database connection.
+    /// </summary>
+    [Fact]
+    public async Task GetLatencySnapshotAsync_Sqlite_MeasuresRoundTripLatency()
+    {
+        // WHAT: Tests GetLatencySnapshotAsync against active SQLite backend.
+        // WHY:  Issue #109 (P106): Guarantees latency diagnostic measurements execute accurately and return non-negative milliseconds.
+        // HOW:  Creates SQLite factory, calls GetLatencySnapshotAsync, and asserts latency is greater than or equal to 0.0 ms.
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["TRAJECTORY_INCOMING_DIR"] = _tempDir
+            })
+            .Build();
+
+        var factory = new WeaverDbConnectionFactory(
+            config,
+            new DatabaseMigrationRunner(Array.Empty<IDatabaseMigration>()),
+            NullLogger<WeaverDbConnectionFactory>.Instance);
+
+        double latencyMs = await factory.GetLatencySnapshotAsync();
+        Assert.True(latencyMs >= 0.0);
+    }
+
+    /// <summary>
     /// Seeds schema migrations tracking table in a DuckDB database file to prevent unapplied migration errors.
     /// </summary>
     /// <param name="dbPath">Path to DuckDB database file.</param>
