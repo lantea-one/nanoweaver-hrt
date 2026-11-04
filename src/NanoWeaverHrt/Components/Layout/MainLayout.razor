@@ -372,32 +372,40 @@
 
         _acceleratorBackend = await ConfigRepo.GetValueAsync("Simulation:AcceleratorBackend", "Intel iGPU / OpenCL");
         UpdateTelemetry();
-        _telemetryTimer = new System.Threading.Timer(_ =>
-        {
-            InvokeAsync(() =>
-            {
-                if (SessionState.CheckIdleTimeout())
-                {
-                    Navigation.NavigateTo("/login?reason=idle_timeout");
-                    return;
-                }
-
-                // WHAT: Skips the sampling pass while the signed-in shell is hidden.
-                // WHY:  The banner is not on screen for a visitor sitting on the
-                //       sign-in form, so polling the process every two seconds
-                //       would be pure waste.
-                // HOW:  Returns early unless ShellVisible is true.
-                if (!ShellVisible)
-                {
-                    return;
-                }
-
-                UpdateTelemetry();
-                StateHasChanged();
-            });
-        }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
+        _telemetryTimer = new System.Threading.Timer(_ => HandleTelemetryTimerTick(), null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
 
         StateHasChanged();
+    }
+
+    /// <summary>
+    /// Processes a telemetry timer tick to monitor session expiration and refresh hardware metrics.
+    /// </summary>
+    internal void HandleTelemetryTimerTick()
+    {
+        // WHAT: Dispatches telemetry updates and session idle enforcement onto the Blazor renderer dispatcher.
+        // WHY:  Avoids cross-thread state changes while periodically updating live platform indicators.
+        // HOW:  Checks idle expiration, tests ShellVisible, updates metrics, and triggers StateHasChanged.
+        InvokeAsync(() =>
+        {
+            if (SessionState.CheckIdleTimeout())
+            {
+                Navigation.NavigateTo("/login?reason=idle_timeout");
+                return;
+            }
+
+            // WHAT: Skips the sampling pass while the signed-in shell is hidden.
+            // WHY:  The banner is not on screen for a visitor sitting on the
+            //       sign-in form, so polling the process every two seconds
+            //       would be pure waste.
+            // HOW:  Returns early unless ShellVisible is true.
+            if (!ShellVisible)
+            {
+                return;
+            }
+
+            UpdateTelemetry();
+            StateHasChanged();
+        });
     }
 
     /// <summary>

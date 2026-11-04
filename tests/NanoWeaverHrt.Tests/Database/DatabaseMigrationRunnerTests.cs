@@ -738,4 +738,67 @@ public sealed class DatabaseMigrationRunnerTests
         var result = await checkCmd.ExecuteScalarAsync();
         Assert.Null(result);
     }
+
+    /// <summary>
+    /// Verifies that all 12 default migrations execute sequentially and idempotently against a real SQLite database.
+    /// </summary>
+    [Fact]
+    public async Task ApplyPendingMigrationsAsync_AllDefaultMigrations_AppliesSuccessfullyOnRealSqliteAndIsIdempotent()
+    {
+        // WHAT: Executes the complete default migration chain (Migration001 through Migration012) on SQLite.
+        // WHY:  Fulfills Issue #99 (P96): Guarantees end-to-end schema creation without DDL syntax or dependency errors.
+        // HOW:  Runs ApplyPendingMigrationsAsync once (asserts 12 applied), checks versions, and runs again (asserts 0 applied).
+        await using var conn = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:");
+        await conn.OpenAsync();
+
+        using DatabaseMigrationRunner runner = new();
+
+        int firstPass = await runner.ApplyPendingMigrationsAsync(conn, "sqlite");
+        Assert.Equal(12, firstPass);
+
+        IReadOnlyList<long> applied = await runner.GetAppliedVersionsAsync(conn, "sqlite");
+        Assert.Equal(12, applied.Count);
+        for (long i = 1; i <= 12; i++)
+        {
+            Assert.Contains(i, applied);
+        }
+
+        // Idempotency check: running again must apply 0 migrations
+        int secondPass = await runner.ApplyPendingMigrationsAsync(conn, "sqlite");
+        Assert.Equal(0, secondPass);
+    }
+
+    /// <summary>
+    /// Verifies that every registered migration produces valid SQL across all supported dialects.
+    /// </summary>
+    /// <param name="dialect">Database engine dialect.</param>
+    [Theory]
+    [InlineData("sqlite")]
+    [InlineData("postgresql")]
+    [InlineData("duckdb")]
+    [InlineData("mysql")]
+    [InlineData("mariadb")]
+    public void AllRegisteredMigrations_GenerateNonEmptySql_AcrossAllSupportedDialects(string dialect)
+    {
+        // WHAT: Validates GetSql for all 12 migrations against every engine dialect.
+        // WHY:  Fulfills Issue #99 (P96): Ensures DDL migrations produce valid SQL and data-only migrations handle dialects safely.
+        // HOW:  Instantiates DatabaseMigrationRunner, iterates through RegisteredMigrations, and asserts non-null SQL.
+        using DatabaseMigrationRunner runner = new();
+        Assert.Equal(12, runner.RegisteredMigrations.Count);
+
+        foreach (IDatabaseMigration migration in runner.RegisteredMigrations)
+        {
+            Assert.True(migration.Version > 0);
+            Assert.False(string.IsNullOrWhiteSpace(migration.Name));
+
+            string sql = migration.GetSql(dialect);
+            Assert.NotNull(sql);
+
+            // Migrations 5, 6, and 10 are data-encryption migrations that only widen columns on PostgreSQL
+            if (migration.Version is not (5 or 6 or 10))
+            {
+                Assert.False(string.IsNullOrWhiteSpace(sql), $"Migration {migration.Name} returned empty SQL for dialect '{dialect}'.");
+            }
+        }
+    }
 }

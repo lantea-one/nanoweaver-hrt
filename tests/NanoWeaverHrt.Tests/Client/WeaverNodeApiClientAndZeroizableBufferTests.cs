@@ -2,6 +2,7 @@ using Moq;
 using NanoWeaverHrt.Client.Api;
 using NanoWeaverHrt.Client.Security;
 using NanoWeaverHrt.Client.Storage;
+using NanoWeaverHrt.Configuration;
 using NanoWeaverHrt.Endocrine;
 using NanoWeaverHrt.Fabrication;
 using NanoWeaverHrt.Fabrication.Gel;
@@ -9,6 +10,7 @@ using NanoWeaverHrt.Fabrication.Opentrons;
 using NanoWeaverHrt.Federation;
 using NanoWeaverHrt.Hardware.Benchmarking;
 using NanoWeaverHrt.Models;
+using NanoWeaverHrt.Security.Access;
 using Xunit;
 
 namespace NanoWeaverHrt.Tests.Client;
@@ -292,6 +294,30 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         innerMock.Setup(i => i.GetPatientDigitalDnaAsync(profile, "explicit_token", "pt1", It.IsAny<CancellationToken>())).ReturnsAsync(dnaRecs);
         innerMock.Setup(i => i.GetPatientDigitalDnaAsync(profile, "cached_token", "pt1", It.IsAny<CancellationToken>())).ReturnsAsync(dnaRecs);
 
+        var trajItems = (IReadOnlyList<TrajectoryFileItem>)[new TrajectoryFileItem { Name = "dna.xyz", SizeBytes = 100, SizeFormatted = "100 B", LastModifiedUtc = "2026-10-20T18:00:00Z", Format = "XYZ" }];
+        innerMock.Setup(i => i.ListTrajectoriesAsync(profile, "explicit_token", It.IsAny<CancellationToken>())).ReturnsAsync(trajItems);
+        innerMock.Setup(i => i.ListTrajectoriesAsync(profile, "cached_token", It.IsAny<CancellationToken>())).ReturnsAsync(trajItems);
+
+        var expReq = new ExportRequest { DatasetName = "ds1" };
+        var expRes = new DatasetManifest { DatasetName = "ds1", TimestampUtc = "2026-10-20T18:00:00Z", ArchiveFileName = "ds1.tar.gz", Sha256Checksum = "sha", SizeInBytes = 100, IncludedFiles = [] };
+        innerMock.Setup(i => i.ExportDatasetAsync(profile, "explicit_token", expReq, It.IsAny<CancellationToken>())).ReturnsAsync(expRes);
+        innerMock.Setup(i => i.ExportDatasetAsync(profile, "cached_token", expReq, It.IsAny<CancellationToken>())).ReturnsAsync(expRes);
+
+        var configItems = (IReadOnlyList<ConfigurationItem>)[new ConfigurationItem { Key = "k1", Value = "v1", DefaultValue = "v0", Description = "Test config", Source = ConfigurationSource.DatabaseOverride, Category = "General" }];
+        innerMock.Setup(i => i.GetAllConfigurationsAsync(profile, "explicit_token", It.IsAny<CancellationToken>())).ReturnsAsync(configItems);
+        innerMock.Setup(i => i.GetAllConfigurationsAsync(profile, "cached_token", It.IsAny<CancellationToken>())).ReturnsAsync(configItems);
+
+        var cfgReq = new ConfigOverrideRequest { Key = "k1", Value = "v1" };
+        innerMock.Setup(i => i.SetConfigurationOverrideAsync(profile, "explicit_token", cfgReq, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        innerMock.Setup(i => i.SetConfigurationOverrideAsync(profile, "cached_token", cfgReq, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+        innerMock.Setup(i => i.DeleteConfigurationOverrideAsync(profile, "explicit_token", "k1", It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        innerMock.Setup(i => i.DeleteConfigurationOverrideAsync(profile, "cached_token", "k1", It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+        var grants = (IReadOnlyList<SubjectGrant>)[new SubjectGrant { ResearcherUsername = "r1", SubjectUsername = "s1" }];
+        innerMock.Setup(i => i.ListSubjectGrantsAsync(profile, "explicit_token", "r1", "s1", It.IsAny<CancellationToken>())).ReturnsAsync(grants);
+        innerMock.Setup(i => i.ListSubjectGrantsAsync(profile, "cached_token", "r1", "s1", It.IsAny<CancellationToken>())).ReturnsAsync(grants);
+
         using var client = new WeaverNodeApiClient(innerMock.Object);
 
         // 1. Missing token without cache throws InvalidOperationException
@@ -310,6 +336,12 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.GenerateOpentronsProtocolAsync(profile, "", opentronsReq));
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetPatientDnaRegimensAsync(profile, "", "pt1"));
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetPatientDigitalDnaAsync(profile, "", "pt1"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.ListTrajectoriesAsync(profile, ""));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.ExportDatasetAsync(profile, "", expReq));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetAllConfigurationsAsync(profile, ""));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.SetConfigurationOverrideAsync(profile, "", cfgReq));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.DeleteConfigurationOverrideAsync(profile, "", "k1"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.ListSubjectGrantsAsync(profile, "", "r1", "s1"));
 
         // 2. Call with explicit token
         var snapRes1 = await client.PollSnapshotAsync(profile, "explicit_token");
@@ -356,6 +388,21 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
 
         var dnaRecRes1 = await client.GetPatientDigitalDnaAsync(profile, "explicit_token", "pt1");
         Assert.Single(dnaRecRes1);
+
+        var trajRes1 = await client.ListTrajectoriesAsync(profile, "explicit_token");
+        Assert.Single(trajRes1);
+
+        var expRes1 = await client.ExportDatasetAsync(profile, "explicit_token", expReq);
+        Assert.Equal("ds1", expRes1.DatasetName);
+
+        var cfgRes1 = await client.GetAllConfigurationsAsync(profile, "explicit_token");
+        Assert.Single(cfgRes1);
+
+        await client.SetConfigurationOverrideAsync(profile, "explicit_token", cfgReq);
+        await client.DeleteConfigurationOverrideAsync(profile, "explicit_token", "k1");
+
+        var grantRes1 = await client.ListSubjectGrantsAsync(profile, "explicit_token", "r1", "s1");
+        Assert.Single(grantRes1);
 
         // 3. Set cached token and call with empty token argument
         client.SetSessionToken("cached_token");
@@ -405,6 +452,21 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         var dnaRecRes2 = await client.GetPatientDigitalDnaAsync(profile, "", "pt1");
         Assert.Single(dnaRecRes2);
 
+        var trajRes2 = await client.ListTrajectoriesAsync(profile, "");
+        Assert.Single(trajRes2);
+
+        var expRes2 = await client.ExportDatasetAsync(profile, "", expReq);
+        Assert.Equal("ds1", expRes2.DatasetName);
+
+        var cfgRes2 = await client.GetAllConfigurationsAsync(profile, "");
+        Assert.Single(cfgRes2);
+
+        await client.SetConfigurationOverrideAsync(profile, "", cfgReq);
+        await client.DeleteConfigurationOverrideAsync(profile, "", "k1");
+
+        var grantRes2 = await client.ListSubjectGrantsAsync(profile, "", "r1", "s1");
+        Assert.Single(grantRes2);
+
         // 4. Set whitespace token buffer to exercise whitespace fallback exception
         using var whitespaceBuf = ZeroizableSecretBuffer.FromUtf8("   ");
         client.SetSessionToken(whitespaceBuf);
@@ -448,5 +510,11 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GenerateOpentronsProtocolAsync(profile, "token", new GenerateOpentronsScriptRequest { SequenceOrSampleId = "s1" }));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetPatientDnaRegimensAsync(profile, "token"));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetPatientDigitalDnaAsync(profile, "token", "pt1"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ListTrajectoriesAsync(profile, "token"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ExportDatasetAsync(profile, "token", new ExportRequest { DatasetName = "ds1" }));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetAllConfigurationsAsync(profile, "token"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.SetConfigurationOverrideAsync(profile, "token", new ConfigOverrideRequest { Key = "k", Value = "v" }));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.DeleteConfigurationOverrideAsync(profile, "token", "k"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ListSubjectGrantsAsync(profile, "token", "subj1"));
     }
 }

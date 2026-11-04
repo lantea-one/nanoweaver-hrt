@@ -1,5 +1,6 @@
 using NanoWeaverHrt.Client.Security;
 using NanoWeaverHrt.Client.Storage;
+using NanoWeaverHrt.Configuration;
 using NanoWeaverHrt.Endocrine;
 using NanoWeaverHrt.Fabrication;
 using NanoWeaverHrt.Fabrication.Gel;
@@ -7,6 +8,7 @@ using NanoWeaverHrt.Fabrication.Opentrons;
 using NanoWeaverHrt.Federation;
 using NanoWeaverHrt.Hardware.Benchmarking;
 using NanoWeaverHrt.Models;
+using NanoWeaverHrt.Security.Access;
 
 namespace NanoWeaverHrt.Client.Api;
 
@@ -384,6 +386,95 @@ public sealed class WeaverNodeApiClient : INanoWeaverNodeClient, IDisposable
         ThrowIfDisposed();
         string effectiveToken = ResolveBearerToken(bearerToken);
         return _innerClient.GetPatientDigitalDnaAsync(profile, effectiveToken, username, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<TrajectoryFileItem>> ListTrajectoriesAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Discovers trajectory files using provided or cached session token.
+        // WHY:  Allows reviewing active molecular dynamics files in simulation storage.
+        // HOW:  Resolves effective token, delegates to _innerClient.ListTrajectoriesAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.ListTrajectoriesAsync(profile, effectiveToken, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<DatasetManifest> ExportDatasetAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        ExportRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Initiates dataset export bundle with manifest using provided or cached token.
+        // WHY:  Allows exporting trajectories with cryptographic SHA-256 provenance.
+        // HOW:  Resolves effective token, delegates to _innerClient.ExportDatasetAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.ExportDatasetAsync(profile, effectiveToken, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<ConfigurationItem>> GetAllConfigurationsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Queries all stack configuration settings using provided or cached token.
+        // WHY:  Allows inspecting configuration state and active database overrides.
+        // HOW:  Resolves effective token, delegates to _innerClient.GetAllConfigurationsAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GetAllConfigurationsAsync(profile, effectiveToken, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task SetConfigurationOverrideAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        ConfigOverrideRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Persists configuration override using provided or cached token.
+        // WHY:  Enables updating stack runtime configuration with database precedence.
+        // HOW:  Resolves effective token, delegates to _innerClient.SetConfigurationOverrideAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.SetConfigurationOverrideAsync(profile, effectiveToken, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task DeleteConfigurationOverrideAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string key,
+        CancellationToken ct = default)
+    {
+        // WHAT: Reverts configuration override using provided or cached token.
+        // WHY:  Restores default environment variable configuration setting.
+        // HOW:  Resolves effective token, delegates to _innerClient.DeleteConfigurationOverrideAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.DeleteConfigurationOverrideAsync(profile, effectiveToken, key, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<SubjectGrant>> ListSubjectGrantsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string? researcher = null,
+        string? subject = null,
+        CancellationToken ct = default)
+    {
+        // WHAT: Queries active subject access grants using provided or cached token.
+        // WHY:  Enables auditing clinical trial and genomic access permissions.
+        // HOW:  Resolves effective token, delegates to _innerClient.ListSubjectGrantsAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.ListSubjectGrantsAsync(profile, effectiveToken, researcher, subject, ct);
     }
 
     /// <inheritdoc/>

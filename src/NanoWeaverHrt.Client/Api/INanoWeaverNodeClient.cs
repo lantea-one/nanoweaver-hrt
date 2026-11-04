@@ -1,4 +1,5 @@
 using NanoWeaverHrt.Client.Storage;
+using NanoWeaverHrt.Configuration;
 using NanoWeaverHrt.Endocrine;
 using NanoWeaverHrt.Fabrication;
 using NanoWeaverHrt.Fabrication.Gel;
@@ -6,6 +7,7 @@ using NanoWeaverHrt.Fabrication.Opentrons;
 using NanoWeaverHrt.Federation;
 using NanoWeaverHrt.Hardware.Benchmarking;
 using NanoWeaverHrt.Models;
+using NanoWeaverHrt.Security.Access;
 
 namespace NanoWeaverHrt.Client.Api;
 
@@ -220,5 +222,87 @@ public interface INanoWeaverNodeClient
         InstanceProfile profile,
         string bearerToken,
         string username,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Retrieves the list of available trajectory files in the active simulation volume via GET /api/datasets.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Collection of trajectory file descriptors.</returns>
+    Task<IReadOnlyList<TrajectoryFileItem>> ListTrajectoriesAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Initiates a dataset export bundle with an immutable cryptographic manifest via POST /api/datasets/export.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="request">Export specification specifying dataset name and files.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Created dataset manifest.</returns>
+    Task<DatasetManifest> ExportDatasetAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        ExportRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Retrieves all stack configuration entries via GET /api/configuration (Administrator role required).
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Collection of effective configuration items.</returns>
+    Task<IReadOnlyList<ConfigurationItem>> GetAllConfigurationsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Persists an authoritative configuration override to the database via POST /api/configuration/override (Administrator role required).
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="request">Key-value override parameters.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    Task SetConfigurationOverrideAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        ConfigOverrideRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Reverts an authoritative configuration override to default/environment fallback via DELETE /api/configuration/override/{key} (Administrator role required).
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="key">Configuration key to revert.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    Task DeleteConfigurationOverrideAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string key,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Retrieves direct researcher subject access grants via GET /api/subject-access/grants (Administrator role required).
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="researcher">Optional researcher username filter.</param>
+    /// <param name="subject">Optional subject username filter.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Collection of active subject grants.</returns>
+    Task<IReadOnlyList<SubjectGrant>> ListSubjectGrantsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string? researcher = null,
+        string? subject = null,
         CancellationToken ct = default);
 }

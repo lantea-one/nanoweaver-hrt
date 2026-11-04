@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using NanoWeaverHrt.Client.Security;
 using NanoWeaverHrt.Client.Storage;
+using NanoWeaverHrt.Configuration;
 using NanoWeaverHrt.Endocrine;
 using NanoWeaverHrt.Fabrication;
 using NanoWeaverHrt.Fabrication.Gel;
@@ -14,6 +15,7 @@ using NanoWeaverHrt.Fabrication.Opentrons;
 using NanoWeaverHrt.Federation;
 using NanoWeaverHrt.Hardware.Benchmarking;
 using NanoWeaverHrt.Models;
+using NanoWeaverHrt.Security.Access;
 
 namespace NanoWeaverHrt.Client.Api;
 
@@ -697,6 +699,196 @@ public sealed class NanoWeaverNodeClient : INanoWeaverNodeClient
 
         List<PatientDigitalDnaRecord>? result = await resp.Content.ReadFromJsonAsync<List<PatientDigitalDnaRecord>>(JsonOptions, ct);
         return (IReadOnlyList<PatientDigitalDnaRecord>?)result ?? [];
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<TrajectoryFileItem>> ListTrajectoriesAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Discovers trajectory coordinate files via GET /api/datasets.
+        // WHY:  Allows desktop and mobile operators to view active simulation coordinate files.
+        // HOW:  Validates profile and token, sends authenticated GET request, and deserializes file descriptors.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/datasets");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        List<TrajectoryFileItem>? result = await resp.Content.ReadFromJsonAsync<List<TrajectoryFileItem>>(JsonOptions, ct);
+        return (IReadOnlyList<TrajectoryFileItem>?)result ?? [];
+    }
+
+    /// <inheritdoc/>
+    public async Task<DatasetManifest> ExportDatasetAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        ExportRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches dataset bundle export via POST /api/datasets/export.
+        // WHY:  Enforces cryptographic manifest generation and tarball archiving from client.
+        // HOW:  Validates inputs, sends POST with JSON payload, and returns immutable DatasetManifest.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/datasets/export");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        DatasetManifest? result = await resp.Content.ReadFromJsonAsync<DatasetManifest>(JsonOptions, ct);
+        return result ?? throw new NodeApiException((int)resp.StatusCode, "Empty dataset export manifest received.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<ConfigurationItem>> GetAllConfigurationsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Retrieves stack configuration settings via GET /api/configuration.
+        // WHY:  Allows administrators to audit configuration state and database overrides.
+        // HOW:  Validates arguments, sends GET with Bearer token, and deserializes configuration list.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/configuration");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        List<ConfigurationItem>? result = await resp.Content.ReadFromJsonAsync<List<ConfigurationItem>>(JsonOptions, ct);
+        return (IReadOnlyList<ConfigurationItem>?)result ?? [];
+    }
+
+    /// <inheritdoc/>
+    public async Task SetConfigurationOverrideAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        ConfigOverrideRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Persists a configuration override key-value pair via POST /api/configuration/override.
+        // WHY:  Allows administrators to update active runtime settings with database precedence.
+        // HOW:  Validates parameters, sends POST with override DTO, and verifies HTTP 200 response.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/configuration/override");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task DeleteConfigurationOverrideAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string key,
+        CancellationToken ct = default)
+    {
+        // WHAT: Reverts a configuration override to default via DELETE /api/configuration/override/{key}.
+        // WHY:  Allows administrators to restore environment variable defaults for specific keys.
+        // HOW:  Validates arguments, sends DELETE request to override URL, and verifies success.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/configuration/override/{Uri.EscapeDataString(key)}");
+
+        using HttpRequestMessage req = new(HttpMethod.Delete, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<SubjectGrant>> ListSubjectGrantsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string? researcher = null,
+        string? subject = null,
+        CancellationToken ct = default)
+    {
+        // WHAT: Queries active researcher subject grants via GET /api/subject-access/grants.
+        // WHY:  Allows auditing tiered clinical trial and genomic review permissions.
+        // HOW:  Builds query parameters, sends GET with Bearer token, and deserializes subject grant list.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        string queryString = string.Empty;
+        if (!string.IsNullOrWhiteSpace(researcher) || !string.IsNullOrWhiteSpace(subject))
+        {
+            List<string> qParams = [];
+            if (!string.IsNullOrWhiteSpace(researcher))
+            {
+                qParams.Add($"researcher={Uri.EscapeDataString(researcher)}");
+            }
+            if (!string.IsNullOrWhiteSpace(subject))
+            {
+                qParams.Add($"subject={Uri.EscapeDataString(subject)}");
+            }
+            queryString = "?" + string.Join("&", qParams);
+        }
+        Uri endpointUri = new(baseUri, "/api/subject-access/grants" + queryString);
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        List<SubjectGrant>? result = await resp.Content.ReadFromJsonAsync<List<SubjectGrant>>(JsonOptions, ct);
+        return (IReadOnlyList<SubjectGrant>?)result ?? [];
     }
 
     /// <summary>

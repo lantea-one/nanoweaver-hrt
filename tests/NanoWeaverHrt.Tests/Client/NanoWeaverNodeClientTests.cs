@@ -5,6 +5,7 @@ using Moq;
 using NanoWeaverHrt.Client.Api;
 using NanoWeaverHrt.Client.Security;
 using NanoWeaverHrt.Client.Storage;
+using NanoWeaverHrt.Configuration;
 using NanoWeaverHrt.Endocrine;
 using NanoWeaverHrt.Fabrication;
 using NanoWeaverHrt.Fabrication.Gel;
@@ -12,6 +13,7 @@ using NanoWeaverHrt.Fabrication.Opentrons;
 using NanoWeaverHrt.Federation;
 using NanoWeaverHrt.Hardware.Benchmarking;
 using NanoWeaverHrt.Models;
+using NanoWeaverHrt.Security.Access;
 using Xunit;
 
 namespace NanoWeaverHrt.Tests.Client;
@@ -1298,6 +1300,195 @@ public sealed class NanoWeaverNodeClientTests : IDisposable
 
         _httpHandler.SetResponse("/api/patients/patient-01/dna", HttpStatusCode.InternalServerError, "{}");
         await Assert.ThrowsAsync<NodeApiException>(() => _client.GetPatientDigitalDnaAsync(_localProfile, "token", "patient-01"));
+    }
+
+    /// <summary>
+    /// Verifies ListTrajectoriesAsync nominal retrieval, empty response, and error paths.
+    /// </summary>
+    [Fact]
+    public async Task ListTrajectoriesAsync_NominalAndErrors_BehavesExpectedly()
+    {
+        // WHAT: Tests ListTrajectoriesAsync endpoint communication against /api/datasets.
+        // WHY:  Ensures trajectory file discovery works over REST.
+        // HOW:  Mocks /api/datasets, tests populated list, empty list, validation, and HTTP 500 error.
+        _httpHandler.SetResponse(
+            "/api/datasets",
+            HttpStatusCode.OK,
+            """
+            [
+                {
+                    "name": "dna_run_01.xyz",
+                    "sizeBytes": 1024,
+                    "sizeFormatted": "1.0 KB",
+                    "lastModified": "2026-10-20T18:00:00Z",
+                    "format": "xyz"
+                }
+            ]
+            """);
+
+        IReadOnlyList<TrajectoryFileItem> items = await _client.ListTrajectoriesAsync(_localProfile, "token");
+        Assert.Single(items);
+        Assert.Equal("dna_run_01.xyz", items[0].Name);
+
+        _httpHandler.SetResponse("/api/datasets", HttpStatusCode.OK, "null");
+        IReadOnlyList<TrajectoryFileItem> empty = await _client.ListTrajectoriesAsync(_localProfile, "token");
+        Assert.Empty(empty);
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.ListTrajectoriesAsync(null!, "token"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.ListTrajectoriesAsync(_localProfile, ""));
+
+        _httpHandler.SetResponse("/api/datasets", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.ListTrajectoriesAsync(_localProfile, "token"));
+    }
+
+    /// <summary>
+    /// Verifies ExportDatasetAsync nominal packaging, null response handling, and error paths.
+    /// </summary>
+    [Fact]
+    public async Task ExportDatasetAsync_NominalAndErrors_BehavesExpectedly()
+    {
+        // WHAT: Tests ExportDatasetAsync endpoint communication against /api/datasets/export.
+        // WHY:  Ensures trajectory export bundles with manifests are correctly dispatched.
+        // HOW:  Mocks /api/datasets/export, asserts manifest properties, null response exception, and errors.
+        _httpHandler.SetResponse(
+            "/api/datasets/export",
+            HttpStatusCode.OK,
+            """
+            {
+                "dataset": "dataset_01",
+                "timestamp": "2026-10-20T18:00:00Z",
+                "archive": "dataset_01.tar.gz",
+                "sha256": "abc123sha",
+                "sizeBytes": 2048,
+                "includedFiles": []
+            }
+            """);
+
+        ExportRequest req = new() { DatasetName = "dataset_01" };
+        DatasetManifest manifest = await _client.ExportDatasetAsync(_localProfile, "token", req);
+        Assert.Equal("dataset_01", manifest.DatasetName);
+        Assert.Equal("abc123sha", manifest.Sha256Checksum);
+
+        _httpHandler.SetResponse("/api/datasets/export", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.ExportDatasetAsync(_localProfile, "token", req));
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.ExportDatasetAsync(null!, "token", req));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.ExportDatasetAsync(_localProfile, "", req));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.ExportDatasetAsync(_localProfile, "token", null!));
+
+        _httpHandler.SetResponse("/api/datasets/export", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.ExportDatasetAsync(_localProfile, "token", req));
+    }
+
+    /// <summary>
+    /// Verifies GetAllConfigurationsAsync nominal retrieval, empty response, and error paths.
+    /// </summary>
+    [Fact]
+    public async Task GetAllConfigurationsAsync_NominalAndErrors_BehavesExpectedly()
+    {
+        // WHAT: Tests GetAllConfigurationsAsync endpoint communication against /api/configuration.
+        // WHY:  Ensures configuration auditing operates cleanly over REST.
+        // HOW:  Mocks /api/configuration, tests populated list, empty list, validation, and error.
+        _httpHandler.SetResponse(
+            "/api/configuration",
+            HttpStatusCode.OK,
+            """
+            [
+                {
+                    "key": "Simulation:Backend",
+                    "value": "OpenCL",
+                    "defaultValue": "OpenCL",
+                    "description": "Accelerator engine",
+                    "source": "DefaultFallback",
+                    "category": "Simulation"
+                }
+            ]
+            """);
+
+        IReadOnlyList<ConfigurationItem> configs = await _client.GetAllConfigurationsAsync(_localProfile, "token");
+        Assert.Single(configs);
+        Assert.Equal("Simulation:Backend", configs[0].Key);
+
+        _httpHandler.SetResponse("/api/configuration", HttpStatusCode.OK, "null");
+        IReadOnlyList<ConfigurationItem> empty = await _client.GetAllConfigurationsAsync(_localProfile, "token");
+        Assert.Empty(empty);
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetAllConfigurationsAsync(null!, "token"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetAllConfigurationsAsync(_localProfile, ""));
+
+        _httpHandler.SetResponse("/api/configuration", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetAllConfigurationsAsync(_localProfile, "token"));
+    }
+
+    /// <summary>
+    /// Verifies SetConfigurationOverrideAsync and DeleteConfigurationOverrideAsync nominal and error paths.
+    /// </summary>
+    [Fact]
+    public async Task ConfigurationOverrides_NominalAndErrors_BehavesExpectedly()
+    {
+        // WHAT: Tests SetConfigurationOverrideAsync and DeleteConfigurationOverrideAsync operations.
+        // WHY:  Allows persisting and reverting runtime configuration overrides.
+        // HOW:  Mocks /api/configuration/override, asserts success and error responses.
+        _httpHandler.SetResponse("/api/configuration/override", HttpStatusCode.OK, "{}");
+        ConfigOverrideRequest req = new() { Key = "Simulation:MaxFrames", Value = "5000" };
+        await _client.SetConfigurationOverrideAsync(_localProfile, "token", req);
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.SetConfigurationOverrideAsync(null!, "token", req));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.SetConfigurationOverrideAsync(_localProfile, "", req));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.SetConfigurationOverrideAsync(_localProfile, "token", null!));
+
+        _httpHandler.SetResponse("/api/configuration/override", HttpStatusCode.BadRequest, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.SetConfigurationOverrideAsync(_localProfile, "token", req));
+
+        // Delete override
+        _httpHandler.SetResponse("/api/configuration/override/Simulation%3AMaxFrames", HttpStatusCode.OK, "{}");
+        await _client.DeleteConfigurationOverrideAsync(_localProfile, "token", "Simulation:MaxFrames");
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.DeleteConfigurationOverrideAsync(null!, "token", "key"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.DeleteConfigurationOverrideAsync(_localProfile, "", "key"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.DeleteConfigurationOverrideAsync(_localProfile, "token", ""));
+
+        _httpHandler.SetResponse("/api/configuration/override/Simulation%3AMaxFrames", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.DeleteConfigurationOverrideAsync(_localProfile, "token", "Simulation:MaxFrames"));
+    }
+
+    /// <summary>
+    /// Verifies ListSubjectGrantsAsync nominal query with parameters, empty response, and error paths.
+    /// </summary>
+    [Fact]
+    public async Task ListSubjectGrantsAsync_NominalAndErrors_BehavesExpectedly()
+    {
+        // WHAT: Tests ListSubjectGrantsAsync endpoint communication against /api/subject-access/grants.
+        // WHY:  Ensures subject grant auditing operates cleanly with query parameter filtering.
+        // HOW:  Mocks /api/subject-access/grants with and without filters, asserts results and exceptions.
+        _httpHandler.SetResponse(
+            "/api/subject-access/grants",
+            HttpStatusCode.OK,
+            """
+            [
+                {
+                    "researcherUsername": "res-01",
+                    "subjectUsername": "pt-01",
+                    "accessLevel": 2,
+                    "grantedBy": "admin",
+                    "grantedAtUtc": "2026-11-04T00:00:00Z"
+                }
+            ]
+            """);
+
+        IReadOnlyList<SubjectGrant> grants = await _client.ListSubjectGrantsAsync(_localProfile, "token", "res-01", "pt-01");
+        Assert.Single(grants);
+        Assert.Equal("res-01", grants[0].ResearcherUsername);
+
+        _httpHandler.SetResponse("/api/subject-access/grants", HttpStatusCode.OK, "null");
+        IReadOnlyList<SubjectGrant> empty = await _client.ListSubjectGrantsAsync(_localProfile, "token");
+        Assert.Empty(empty);
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.ListSubjectGrantsAsync(null!, "token"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.ListSubjectGrantsAsync(_localProfile, ""));
+
+        _httpHandler.SetResponse("/api/subject-access/grants", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.ListSubjectGrantsAsync(_localProfile, "token"));
     }
 
     /// <summary>

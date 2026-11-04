@@ -689,8 +689,8 @@ public sealed class MainLayoutComponentTests : TestContext
     public async Task TelemetryTimer_WhenIdleTimeoutExceeded_NavigatesToLogin()
     {
         // WHAT: Tests idle timeout redirection inside the telemetry timer loop.
-        // WHY:  Covers lines 377-382 in MainLayout.razor.
-        // HOW:  Renders authenticated MainLayout, expires SessionState idle timeout, and triggers timer callback.
+        // WHY:  Covers HandleTelemetryTimerTick idle timeout branch in MainLayout.razor.
+        // HOW:  Renders authenticated MainLayout, expires SessionState idle timeout, and triggers HandleTelemetryTimerTick.
         _sessionState.SetUser(_adminUser);
         _sessionState.IdleTimeout = TimeSpan.FromMilliseconds(1);
         await Task.Delay(10);
@@ -698,22 +698,31 @@ public sealed class MainLayoutComponentTests : TestContext
         NavigationManager nav = Services.GetRequiredService<NavigationManager>();
         IRenderedComponent<MainLayout> cut = RenderComponent<MainLayout>();
 
-        FieldInfo? timerField = typeof(MainLayout).GetField("_telemetryTimer", BindingFlags.NonPublic | BindingFlags.Instance);
-        Assert.NotNull(timerField);
-        var timer = timerField.GetValue(cut.Instance) as System.Threading.Timer;
-        Assert.NotNull(timer);
+        cut.Instance.HandleTelemetryTimerTick();
+        await Task.Delay(50);
+        Assert.Equal("http://localhost/login?reason=idle_timeout", nav.Uri);
+    }
 
-        FieldInfo? timerInternalField = timer.GetType().GetField("_timer", BindingFlags.NonPublic | BindingFlags.Instance);
-        object? internalTimer = timerInternalField?.GetValue(timer);
-        if (internalTimer != null)
-        {
-            FieldInfo? callbackField = internalTimer.GetType().GetField("_timerCallback", BindingFlags.NonPublic | BindingFlags.Instance);
-            if (callbackField?.GetValue(internalTimer) is TimerCallback callback)
-            {
-                callback(null);
-                await Task.Delay(50);
-                Assert.Equal("http://localhost/login?reason=idle_timeout", nav.Uri);
-            }
-        }
+    /// <summary>
+    /// Verifies that the telemetry timer tick handles unauthenticated visitors and authenticated telemetry updates.
+    /// </summary>
+    [Fact]
+    public void TelemetryTimer_ShellVisibilityBranches_ExecutesSafely()
+    {
+        // WHAT: Tests the ShellVisible branch and active telemetry sampling in HandleTelemetryTimerTick.
+        // WHY:  Covers lines in HandleTelemetryTimerTick when shell is hidden vs when shell is visible.
+        // HOW:  Renders unauthenticated (ShellVisible false), ticks; then logs in (ShellVisible true) and ticks.
+        NavigationManager nav = Services.GetRequiredService<NavigationManager>();
+        nav.NavigateTo("/login");
+        IRenderedComponent<MainLayout> cut = RenderComponent<MainLayout>();
+
+        // 1. Unauthenticated / login page: ShellVisible is false, returns early
+        cut.Instance.HandleTelemetryTimerTick();
+
+        // 2. Authenticated: ShellVisible is true, calls UpdateTelemetry and StateHasChanged
+        _sessionState.SetUser(_adminUser);
+        nav.NavigateTo("/");
+        cut.Render();
+        cut.Instance.HandleTelemetryTimerTick();
     }
 }

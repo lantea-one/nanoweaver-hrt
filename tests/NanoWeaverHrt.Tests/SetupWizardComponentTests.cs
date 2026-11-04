@@ -423,6 +423,14 @@ public sealed class SetupWizardComponentTests : TestContext
         var tabBtns = cut.FindAll("button.tab-btn");
         await tabBtns[1].ClickAsync(new MouseEventArgs());
 
+        // Switch back to tab 0 to exercise () => _keyOption = 0 lambda branch
+        tabBtns = cut.FindAll("button.tab-btn");
+        await tabBtns[0].ClickAsync(new MouseEventArgs());
+
+        // Switch back to tab 1 for empty public key validation
+        tabBtns = cut.FindAll("button.tab-btn");
+        await tabBtns[1].ClickAsync(new MouseEventArgs());
+
         var nextBtn = cut.FindAll("button.btn-primary")[0];
         await nextBtn.ClickAsync(new MouseEventArgs());
 
@@ -445,6 +453,14 @@ public sealed class SetupWizardComponentTests : TestContext
         await cut.Find("button.btn-primary").ClickAsync(new MouseEventArgs());
 
         var tabBtns = cut.FindAll("button.tab-btn");
+        await tabBtns[1].ClickAsync(new MouseEventArgs());
+
+        // Switch back to tab 0 to exercise () => _keyOption = 0 lambda branch
+        tabBtns = cut.FindAll("button.tab-btn");
+        await tabBtns[0].ClickAsync(new MouseEventArgs());
+
+        // Switch back to tab 1 for empty public key validation
+        tabBtns = cut.FindAll("button.tab-btn");
         await tabBtns[1].ClickAsync(new MouseEventArgs());
 
         var inputFile = cut.FindComponent<InputFile>();
@@ -473,6 +489,14 @@ public sealed class SetupWizardComponentTests : TestContext
         await cut.Find("button.btn-primary").ClickAsync(new MouseEventArgs());
 
         var tabBtns = cut.FindAll("button.tab-btn");
+        await tabBtns[1].ClickAsync(new MouseEventArgs());
+
+        // Switch back to tab 0 to exercise () => _keyOption = 0 lambda branch
+        tabBtns = cut.FindAll("button.tab-btn");
+        await tabBtns[0].ClickAsync(new MouseEventArgs());
+
+        // Switch back to tab 1 for empty public key validation
+        tabBtns = cut.FindAll("button.tab-btn");
         await tabBtns[1].ClickAsync(new MouseEventArgs());
 
         var inputFile = cut.FindComponent<InputFile>();
@@ -674,6 +698,14 @@ public sealed class SetupWizardComponentTests : TestContext
         await cut.Find("button.btn-primary").ClickAsync(new MouseEventArgs());
 
         var tabBtns = cut.FindAll("button.tab-btn");
+        await tabBtns[1].ClickAsync(new MouseEventArgs());
+
+        // Switch back to tab 0 to exercise () => _keyOption = 0 lambda branch
+        tabBtns = cut.FindAll("button.tab-btn");
+        await tabBtns[0].ClickAsync(new MouseEventArgs());
+
+        // Switch back to tab 1 for empty public key validation
+        tabBtns = cut.FindAll("button.tab-btn");
         await tabBtns[1].ClickAsync(new MouseEventArgs());
 
         cut.Find("#customPubKey").Change(rawPem);

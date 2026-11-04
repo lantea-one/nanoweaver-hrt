@@ -70,7 +70,7 @@ public static class DesktopProgram
 
         if (args[0] is "--version" or "-v" or "version")
         {
-            await outWriter.WriteLineAsync("NanoWeaver HRT Desktop 2026.11.03.2").ConfigureAwait(false);
+            await outWriter.WriteLineAsync("NanoWeaver HRT Desktop 2026.11.04.2").ConfigureAwait(false);
             return 0;
         }
 
@@ -140,7 +140,7 @@ public static class DesktopProgram
         var sink = new DesktopNativeNotificationSink(processRunner);
         var tray = new DesktopTrayIconController();
 
-        writer.WriteLine("NanoWeaver HRT Desktop Platform Head v2026.11.03.2-sovereign [Verified]");
+        writer.WriteLine("NanoWeaver HRT Desktop Platform Head v2026.11.04.2-sovereign [Verified]");
         writer.WriteLine($"  OS Platform:     {RuntimeInformation.OSDescription}");
         writer.WriteLine($"  Architecture:    {RuntimeInformation.ProcessArchitecture}");
         writer.WriteLine($"  NotificationSink: {sink.GetType().Name} (Initialized)");

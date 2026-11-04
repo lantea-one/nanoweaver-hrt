@@ -369,17 +369,17 @@ public sealed class DesktopAndMobilePlatformTests
         stdout.GetStringBuilder().Clear();
         int exitCodeVersion = await DesktopProgram.RunAsync(["--version"], stdout, stderr);
         Assert.Equal(0, exitCodeVersion);
-        Assert.Equal("NanoWeaver HRT Desktop 2026.11.03.2", stdout.ToString().Trim());
+        Assert.Equal("NanoWeaver HRT Desktop 2026.11.04.2", stdout.ToString().Trim());
 
         stdout.GetStringBuilder().Clear();
         int exitCodeShortVersion = await DesktopProgram.RunAsync(["-v"], stdout, stderr);
         Assert.Equal(0, exitCodeShortVersion);
-        Assert.Equal("NanoWeaver HRT Desktop 2026.11.03.2", stdout.ToString().Trim());
+        Assert.Equal("NanoWeaver HRT Desktop 2026.11.04.2", stdout.ToString().Trim());
 
         stdout.GetStringBuilder().Clear();
         int exitCodeWordVersion = await DesktopProgram.RunAsync(["version"], stdout, stderr);
         Assert.Equal(0, exitCodeWordVersion);
-        Assert.Equal("NanoWeaver HRT Desktop 2026.11.03.2", stdout.ToString().Trim());
+        Assert.Equal("NanoWeaver HRT Desktop 2026.11.04.2", stdout.ToString().Trim());
         stdout.GetStringBuilder().Clear();
         int exitCodeHelp = await DesktopProgram.RunAsync(["--help"], stdout, stderr);
         Assert.Equal(0, exitCodeHelp);
@@ -398,14 +398,14 @@ public sealed class DesktopAndMobilePlatformTests
         var mockRunner = new Mock<IPlatformProcessRunner>();
         int exitCodeVerifyMock = await DesktopProgram.RunAsync(["--verify-self"], stdout, stderr, mockRunner.Object);
         Assert.Equal(0, exitCodeVerifyMock);
-        Assert.Contains("NanoWeaver HRT Desktop Platform Head v2026.11.03.2-sovereign [Verified]", stdout.ToString());
+        Assert.Contains("NanoWeaver HRT Desktop Platform Head v2026.11.04.2-sovereign [Verified]", stdout.ToString());
         Assert.Contains("NotificationSink: DesktopNativeNotificationSink", stdout.ToString());
 
         // --verify-self with default null runner (covers runner ?? new SystemPlatformProcessRunner())
         stdout.GetStringBuilder().Clear();
         int exitCodeVerifyDefault = await DesktopProgram.RunAsync(["--verify-self"], stdout, stderr);
         Assert.Equal(0, exitCodeVerifyDefault);
-        Assert.Contains("NanoWeaver HRT Desktop Platform Head v2026.11.03.2-sovereign [Verified]", stdout.ToString());
+        Assert.Contains("NanoWeaver HRT Desktop Platform Head v2026.11.04.2-sovereign [Verified]", stdout.ToString());
 
         // --headless-daemon (clean shutdown via cancellation token)
         stdout.GetStringBuilder().Clear();
@@ -614,10 +614,10 @@ public sealed class DesktopAndMobilePlatformTests
         // HOW:  Calls metadata getters, executes VerifySelf, and runs lifecycle loop with cancellation and invalid args.
         Assert.Equal("one.lantea.nanoweaver.hrt", MobileEntryPoint.GetBundleIdentifier());
         Assert.Equal("NanoWeaver HRT", MobileEntryPoint.GetAppDisplayName());
-        Assert.Equal("2026.11.03.2", MobileEntryPoint.GetAppVersion());
+        Assert.Equal("2026.11.04.2", MobileEntryPoint.GetAppVersion());
 
         string report = MobileEntryPoint.VerifySelf();
-        Assert.Contains("NanoWeaver HRT Mobile Platform Head v2026.11.03.2-sovereign [Verified: Android, iOS, iPadOS", report);
+        Assert.Contains("NanoWeaver HRT Mobile Platform Head v2026.11.04.2-sovereign [Verified: Android, iOS, iPadOS", report);
 
         var sink = new MobileNotificationSink("android");
 
