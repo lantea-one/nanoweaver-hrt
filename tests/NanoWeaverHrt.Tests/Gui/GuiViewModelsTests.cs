@@ -1336,7 +1336,7 @@ public sealed class GuiViewModelsTests
         var vm = new AboutViewModel();
 
         Assert.Equal("NanoWeaver HRT", vm.AppName);
-        Assert.Equal("2026.11.04.4-sovereign", vm.Version);
+        Assert.Equal("2026.11.04.5-sovereign", vm.Version);
         Assert.NotEmpty(vm.Description);
         Assert.NotEmpty(vm.OSDescription);
         Assert.NotEmpty(vm.Architecture);
@@ -1525,6 +1525,55 @@ public sealed class GuiViewModelsTests
 
         string expectedText = localizer.GetString(expectedStatusKey, WeaverLanguage.English);
         Assert.Equal(expectedText, shellVm.LocalizedStatusText);
+    }
+
+    /// <summary>
+    /// Verifies <see cref="MainShellWindowHost"/> navigation across all <see cref="ShellNavigationPage"/> values.
+    /// </summary>
+    [Fact]
+    public void MainShellWindowHost_NavigateToAllPages_UpdatesCurrentPageAndTitle()
+    {
+        // WHAT: Tests navigation across every enum value of ShellNavigationPage.
+        // WHY:  Guarantees desktop window shell properly synchronizes CurrentPage and Title.
+        // HOW:  Iterates over ShellNavigationPage enum members, calls NavigateTo, and asserts properties.
+        var repoMock = new Mock<IInstanceProfileRepository>();
+        var coordMock = new Mock<IMultiInstanceCoordinator>();
+        var shellVm = new MainShellViewModel(repoMock.Object, coordMock.Object);
+        var instanceMgrVm = new InstanceManagerViewModel(repoMock.Object, coordMock.Object);
+        using var host = new MainShellWindowHost(shellVm, instanceMgrVm);
+
+        foreach (ShellNavigationPage page in Enum.GetValues<ShellNavigationPage>())
+        {
+            host.NavigateTo(page);
+            Assert.Equal(page, host.CurrentPage);
+            Assert.Equal($"NanoWeaver HRT — {page}", host.Title);
+        }
+    }
+
+    /// <summary>
+    /// Verifies <see cref="MainShellViewModel.SelectedLanguage"/> persistence error handling when storage service throws.
+    /// </summary>
+    [Fact]
+    public void MainShellViewModel_SetPreferredLanguageSafeAsync_WhenStorageThrows_HandlesGracefully()
+    {
+        // WHAT: Tests language preference persistence failure suppression in background task.
+        // WHY:  Prevents UI crashes when local disk storage encounters transient I/O exceptions.
+        // HOW:  Configures ILanguagePreferenceService mock to throw IOException, sets SelectedLanguage, and asserts no crash.
+        var repoMock = new Mock<IInstanceProfileRepository>();
+        var coordMock = new Mock<IMultiInstanceCoordinator>();
+        var langServiceMock = new Mock<ILanguagePreferenceService>();
+        langServiceMock.Setup(s => s.SetPreferredLanguageAsync(It.IsAny<WeaverLanguage>(), It.IsAny<CancellationToken>()))
+            .Returns(ValueTask.FromException(new IOException("Simulated storage write error")));
+
+        using var shellVm = new MainShellViewModel(
+            repoMock.Object,
+            coordMock.Object,
+            languagePreferenceService: langServiceMock.Object);
+
+        shellVm.SelectedLanguage = WeaverLanguage.French;
+
+        Assert.Equal(WeaverLanguage.French, shellVm.SelectedLanguage);
+        langServiceMock.Verify(s => s.SetPreferredLanguageAsync(WeaverLanguage.French, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     /// <summary>

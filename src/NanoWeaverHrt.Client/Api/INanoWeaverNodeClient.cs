@@ -428,4 +428,86 @@ public interface INanoWeaverNodeClient
         string bearerToken,
         string keyId,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Grants a researcher direct tiered access to a patient via POST /api/subject-access/grants (Administrator role required).
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="request">Subject grant request containing researcher username, subject username, access level, and notes.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The persisted <see cref="SubjectGrant"/> record.</returns>
+    Task<SubjectGrant> CreateSubjectGrantAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        GrantSubjectAccessRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Revokes a researcher's direct access to a patient via DELETE /api/subject-access/grants/{researcherUsername}/{subjectUsername} (Administrator role required).
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="researcherUsername">Username of the researcher whose access is being revoked.</param>
+    /// <param name="subjectUsername">Username of the target patient or subject.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    Task RevokeSubjectGrantAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string researcherUsername,
+        string subjectUsername,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Lists patient cohort groups accessible to the caller via GET /api/subject-groups.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Collection of accessible <see cref="SubjectGroup"/> records.</returns>
+    Task<IReadOnlyList<SubjectGroup>> ListSubjectGroupsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Creates a new patient cohort group via POST /api/subject-groups.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="request">Cohort group creation request payload.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The created <see cref="SubjectGroup"/> record.</returns>
+    Task<SubjectGroup> CreateSubjectGroupAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CreateSubjectGroupRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Permanently deletes a patient cohort group via DELETE /api/subject-groups/{groupId}.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="groupId">Identifier of the cohort group to delete.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    Task DeleteSubjectGroupAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string groupId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Retrieves all created single-use share keys and connected remote peer instances via GET /api/share-keys.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Collection of <see cref="ShareKeyRecord"/> entries.</returns>
+    Task<IReadOnlyList<ShareKeyRecord>> ListShareKeysAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default);
 }

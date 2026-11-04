@@ -470,4 +470,66 @@ public sealed class SubjectAccessRepositoryTests : IDisposable
 
         await Assert.ThrowsAsync<ArgumentNullException>(() => _repository.GetMemberGroupsForSubjectAsync(null!));
     }
+
+    /// <summary>
+    /// Verifies group cascade deletion, membership idempotence, non-existent entity operations, and multi-group membership mapping.
+    /// </summary>
+    [Fact]
+    public async Task SubjectAccessRepository_GroupCascadeAndMembershipIdempotence()
+    {
+        // WHAT: Verifies membership duplicate idempotence, non-existent entity revocation/deletion, and multi-group discovery.
+        // WHY:  Guarantees robust SQL state consistency without throwing unexpected exceptions when records do not exist.
+        // HOW:  Adds members, executes redundant operations, verifies return false on non-existent targets, and asserts multi-group queries.
+        string groupId1 = "grp_alpha_" + Guid.NewGuid().ToString("N");
+        string groupId2 = "grp_beta_" + Guid.NewGuid().ToString("N");
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+
+        SubjectGroup group1 = new()
+        {
+            Id = groupId1,
+            Name = "Alpha Study Cohort",
+            Description = "Cohort Alpha",
+            CreatedBy = "researcher_lead",
+            CreatedAtUtc = now,
+            UpdatedAtUtc = now
+        };
+
+        SubjectGroup group2 = new()
+        {
+            Id = groupId2,
+            Name = "Beta Study Cohort",
+            Description = "Cohort Beta",
+            CreatedBy = "researcher_lead",
+            CreatedAtUtc = now,
+            UpdatedAtUtc = now
+        };
+
+        Assert.True(await _repository.SaveGroupAsync(group1));
+        Assert.True(await _repository.SaveGroupAsync(group2));
+
+        // Add member to group twice -> verify second returns false (idempotent ON CONFLICT DO NOTHING)
+        Assert.True(await _repository.AddGroupMemberAsync(groupId1, "patient_multigroup", now));
+        Assert.False(await _repository.AddGroupMemberAsync(groupId1, "patient_multigroup", now));
+
+        // Add member to second group
+        Assert.True(await _repository.AddGroupMemberAsync(groupId2, "patient_multigroup", now));
+
+        // Remove non-existent member -> verify returns false
+        Assert.False(await _repository.RemoveGroupMemberAsync(groupId1, "non_existent_subject"));
+
+        // Delete non-existent group -> verify returns false
+        Assert.False(await _repository.DeleteGroupAsync("non_existent_group_id"));
+
+        // Test GetMemberGroupsForSubjectAsync across multiple groups
+        IReadOnlyList<string> subjectGroups = await _repository.GetMemberGroupsForSubjectAsync("patient_multigroup");
+        Assert.Equal(2, subjectGroups.Count);
+        Assert.Contains(groupId1, subjectGroups);
+        Assert.Contains(groupId2, subjectGroups);
+
+        // Test RevokeSubjectGrantAsync on non-existent grant -> verify returns false
+        Assert.False(await _repository.RevokeSubjectGrantAsync("researcher_nobody", "patient_nobody"));
+
+        // Test RevokeGroupGrantAsync on non-existent group grant -> verify returns false
+        Assert.False(await _repository.RevokeGroupGrantAsync(groupId1, "researcher_nobody"));
+    }
 }

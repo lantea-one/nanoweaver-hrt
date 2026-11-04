@@ -613,6 +613,95 @@ public sealed class WeaverNodeApiClient : INanoWeaverNodeClient, IDisposable
     }
 
     /// <inheritdoc/>
+    public Task<SubjectGrant> CreateSubjectGrantAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        GrantSubjectAccessRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Creates a researcher direct subject access grant using provided or cached session token.
+        // WHY:  Allows administrators to assign patient access without exposing raw tokens.
+        // HOW:  Resolves effective token, delegates to _innerClient.CreateSubjectGrantAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.CreateSubjectGrantAsync(profile, effectiveToken, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task RevokeSubjectGrantAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string researcherUsername,
+        string subjectUsername,
+        CancellationToken ct = default)
+    {
+        // WHAT: Revokes a direct subject access grant using provided or cached session token.
+        // WHY:  Terminates access for completed studies or transferred care.
+        // HOW:  Resolves effective token, delegates to _innerClient.RevokeSubjectGrantAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.RevokeSubjectGrantAsync(profile, effectiveToken, researcherUsername, subjectUsername, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<SubjectGroup>> ListSubjectGroupsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Queries accessible patient cohort groups using provided or cached session token.
+        // WHY:  Permits cohort study listing with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.ListSubjectGroupsAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.ListSubjectGroupsAsync(profile, effectiveToken, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<SubjectGroup> CreateSubjectGroupAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CreateSubjectGroupRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Creates a new patient cohort group using provided or cached session token.
+        // WHY:  Permits cohort study organization with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.CreateSubjectGroupAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.CreateSubjectGroupAsync(profile, effectiveToken, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task DeleteSubjectGroupAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string groupId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Permanently deletes a cohort group using provided or cached session token.
+        // WHY:  Allows cohort retirement with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.DeleteSubjectGroupAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.DeleteSubjectGroupAsync(profile, effectiveToken, groupId, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<ShareKeyRecord>> ListShareKeysAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Queries all created single-use share keys using provided or cached session token.
+        // WHY:  Allows inspecting federation tokens with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.ListShareKeysAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.ListShareKeysAsync(profile, effectiveToken, ct);
+    }
+
+    /// <inheritdoc/>
     public void Dispose()
     {
         // WHAT: Zeroizes cached token and disposes wrapped client if disposable.

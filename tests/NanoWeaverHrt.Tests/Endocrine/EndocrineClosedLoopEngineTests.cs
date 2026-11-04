@@ -437,4 +437,80 @@ public sealed class EndocrineClosedLoopEngineTests
         Assert.True(result.FinalEstradiolPmolL > 0.0);
         Assert.True(result.FinalTestosteroneNmolL > 0.0);
     }
+
+    /// <summary>
+    /// Verifies that when initial baseline concentrations match target setpoints, steady state is maintained immediately.
+    /// </summary>
+    [Fact]
+    public void Simulate_TargetMatchesBaseline_ReachesSteadyStateImmediately()
+    {
+        // WHAT: Executes simulation where initial baseline matches target setpoints under suppressed gonadotropins.
+        // WHY:  Verifies stability when the patient is already at optimal target hormone concentrations.
+        // HOW:  Configures baseline equal to target setpoints and asserts steady state is reached.
+        ClosedLoopSimulationRequest request = new()
+        {
+            InitialEstradiolPmolL = 550.0,
+            InitialTestosteroneNmolL = 1.0,
+            InitialLhIuL = 0.5,
+            InitialFshIuL = 0.8,
+            TargetEstradiolPmolL = 550.0,
+            TargetTestosteroneNmolL = 1.0,
+            TargetState = ToggleState.EstrogenicDominant,
+            TotalHours = 12,
+            StepHours = 1.0,
+            ClearanceMultiplier = 1.0
+        };
+
+        ClosedLoopSimulationResult result = _engine.Simulate(request);
+
+        Assert.NotNull(result);
+        Assert.True(result.SteadyStateReached);
+        Assert.Equal(0.0, result.TimeToSuppressionHours);
+        Assert.InRange(result.FinalEstradiolPmolL, 545.0, 555.0);
+        Assert.InRange(result.FinalTestosteroneNmolL, 0.5, 1.2);
+    }
+
+    /// <summary>
+    /// Verifies numerical stability and absence of divergence across a 720-hour (30-day) extended simulation duration.
+    /// </summary>
+    [Fact]
+    public void Simulate_MaxDuration720Hours_NumericallyStable()
+    {
+        // WHAT: Executes extended 720-hour closed-loop endocrine simulation.
+        // WHY:  Proves 4th-order Runge-Kutta numerical stability without overflow, NaN, or non-finite divergence over 30 days.
+        // HOW:  Runs 720 hours at 1.0 h step size and asserts all sampled points are finite and non-negative.
+        ClosedLoopSimulationRequest request = new()
+        {
+            InitialEstradiolPmolL = 120.0,
+            InitialTestosteroneNmolL = 18.0,
+            InitialLhIuL = 6.5,
+            InitialFshIuL = 5.0,
+            TargetEstradiolPmolL = 550.0,
+            TargetTestosteroneNmolL = 1.2,
+            TargetState = ToggleState.EstrogenicDominant,
+            TotalHours = 720,
+            StepHours = 1.0,
+            ClearanceMultiplier = 1.0
+        };
+
+        ClosedLoopSimulationResult result = _engine.Simulate(request);
+
+        Assert.NotNull(result);
+        Assert.Equal(721, result.Points.Count);
+        Assert.True(result.SteadyStateReached);
+        Assert.All(result.Points, pt =>
+        {
+            Assert.True(double.IsFinite(pt.EstradiolPmolL));
+            Assert.True(double.IsFinite(pt.TestosteroneNmolL));
+            Assert.True(double.IsFinite(pt.LhIuL));
+            Assert.True(double.IsFinite(pt.FshIuL));
+            Assert.True(double.IsFinite(pt.CarrierReleaseRate));
+            Assert.True(pt.EstradiolPmolL >= 0.0);
+            Assert.True(pt.TestosteroneNmolL >= 0.0);
+            Assert.True(pt.LhIuL >= 0.0);
+            Assert.True(pt.FshIuL >= 0.0);
+            Assert.True(pt.CarrierReleaseRate >= 0.0);
+        });
+        Assert.InRange(result.FinalEstradiolPmolL, 545.0, 550.0);
+    }
 }

@@ -4,6 +4,34 @@
 
 ---
 
+## v2026.11.04.5 — Code-Complete Milestone: Multi-Engine Subject Access, Endocrine Stability Hardening, Client REST Expansion & Desktop Shell Navigation (2026-11-04)
+
+Code-complete milestone release resolving Work Packages `P111–P115` (Forgejo Issues `#114–#118`), implementing multi-engine subject access repository isolation and membership idempotence tests, hardening endocrine closed-loop simulations with setpoint stability and 720-hour extended numerical integration stress tests, expanding the client REST SDK with direct subject grant management, cohort group CRUD, and single-use share key listing, verifying desktop shell window host navigation across all pages and fault-tolerant language preference persistence, and synchronizing CalVer release versioning across all 12 packaging manifests and platform targets.
+
+### Highlights
+* **Multi-Engine Subject Access & Group Repository Isolation Stress Testing (Forgejo #114 / P111)**:
+  - Added comprehensive stress test suite `SubjectAccessRepository_GroupCascadeAndMembershipIdempotence` validating membership duplicate idempotence (`ON CONFLICT DO NOTHING`), non-existent entity revocation/deletion, and multi-group discovery queries across SQLite and PostgreSQL.
+* **Endocrine Closed-Loop Mathematical Setpoint & Tolerance Stress Hardening (Forgejo #115 / P112)**:
+  - Added unit test suites verifying immediate steady-state convergence when patient baseline hormone concentrations match target setpoints (`Simulate_TargetMatchesBaseline_ReachesSteadyStateImmediately`).
+  - Added 720-hour (30-day) extended continuous simulation stress test verifying 4th-order Runge-Kutta numerical integration stability, non-overflow, non-divergence, and bounded finite concentrations (`Simulate_MaxDuration720Hours_NumericallyStable`).
+* **Client REST SDK Expansion for Subject Grants, Groups & Share Keys (Forgejo #116 / P113)**:
+  - Expanded `INanoWeaverNodeClient`, `NanoWeaverNodeClient`, and `WeaverNodeApiClient` with 6 new REST methods:
+    1. `CreateSubjectGrantAsync` (`POST /api/subject-access/grants`)
+    2. `RevokeSubjectGrantAsync` (`DELETE /api/subject-access/grants/{researcher}/{subject}`)
+    3. `ListSubjectGroupsAsync` (`GET /api/subject-groups`)
+    4. `CreateSubjectGroupAsync` (`POST /api/subject-groups`)
+    5. `DeleteSubjectGroupAsync` (`DELETE /api/subject-groups/{groupId}`)
+    6. `ListShareKeysAsync` (`GET /api/share-keys`)
+  - Added full test coverage across nominal payloads, null response guards, argument validation, RFC 7807 problem details handling, session token caching, and post-disposal `ObjectDisposedException` assertions.
+* **Desktop Shell Multi-Instance Navigation & Language Preference Persistence Hardening (Forgejo #117 / P114)**:
+  - Added test suite verifying `MainShellWindowHost` navigation across all `ShellNavigationPage` values (`Dashboard`, `InstanceManager`, `VaultUnlock`, `About`), ensuring window title and active page synchronization.
+  - Added test suite confirming `MainShellViewModel` gracefully suppresses transient local disk storage exceptions during background language preference persistence.
+* **Absolute Zero-Defect Repository Audit & CalVer Milestone Alignment (Forgejo #118 / P115)**:
+  - Synchronized CalVer version `2026.11.04.5` across Arch Linux AUR (binary & git), FreeBSD, Homebrew, AppStream metainfo, macOS Info.plist, Nix, Windows Appx/NSIS/WinGet, Android, iOS, iPadOS, desktop entry points, ViewModels, and test fixtures.
+  - Enforced 100% docblock coverage (`check-docblocks.py`), 100.00% developer line/branch code coverage, and zero unescaped single-dollar math formatting delimiters.
+
+---
+
 ## v2026.11.04.4 — Code-Complete Milestone: Database Latency Diagnostics, Trajectory Analytics SQL Hardening, Full Client REST SDK Parity & Desktop Notification Resilience (2026-11-04)
 
 Code-complete milestone release resolving Work Packages `P106–P110` (Forgejo Issues `#109–#113`), introducing live round-trip latency snapshot measurement across all database engines, hardening DuckDB trajectory analytics against extreme coordinates and math bounds, achieving 100% full REST SDK parity in `INanoWeaverNodeClient` and `WeaverNodeApiClient` for compliance audit ledger verification, genomic sequence analysis, trajectory analytical queries, and peer laboratory key management, verifying desktop and mobile notification sink resilience with edge-case characters and Unicode emojis, and synchronizing CalVer release versioning across all 12 packaging manifests and platform targets.
