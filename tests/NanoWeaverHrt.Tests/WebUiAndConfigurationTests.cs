@@ -923,10 +923,32 @@ public sealed class MockPostgresConfigRepo : IConfigurationRepository
     public Task RevertToDefaultAsync(string key, CancellationToken ct = default) => Task.CompletedTask;
 
     /// <inheritdoc/>
-    public Task<ShareKeyRecord> CreateShareKeyAsync(string label, TimeSpan lifetime, string permissions = "FullCollaborator", CancellationToken ct = default) => throw new NotImplementedException();
+    public Task<ShareKeyRecord> CreateShareKeyAsync(string label, TimeSpan lifetime, string permissions = "FullCollaborator", CancellationToken ct = default)
+    {
+        DateTime now = DateTime.UtcNow;
+        return Task.FromResult(new ShareKeyRecord
+        {
+            TokenId = "stub_token_id",
+            KeyToken = "nanoweaver_hrt_stub",
+            Label = label,
+            CreatedAtUtc = now,
+            ExpiresAtUtc = now.Add(lifetime),
+            IsConsumed = false,
+            Permissions = permissions
+        });
+    }
 
     /// <inheritdoc/>
-    public Task<ShareKeyConsumeResult> ConsumeShareKeyAsync(string keyToken, string remotePeerInfo, CancellationToken ct = default) => throw new NotImplementedException();
+    public Task<ShareKeyConsumeResult> ConsumeShareKeyAsync(string keyToken, string remotePeerInfo, CancellationToken ct = default)
+    {
+        return Task.FromResult(new ShareKeyConsumeResult
+        {
+            Success = false,
+            Message = "Stub mock does not consume tokens.",
+            Record = null,
+            PeerSessionToken = null
+        });
+    }
 
     /// <inheritdoc/>
     public Task<IReadOnlyList<ShareKeyRecord>> ListShareKeysAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<ShareKeyRecord>>([]);

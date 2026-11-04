@@ -510,4 +510,122 @@ public interface INanoWeaverNodeClient
         InstanceProfile profile,
         string bearerToken,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Lists enrolled subject usernames for a patient cohort group via GET /api/subject-groups/{groupId}/members.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="groupId">Identifier of the cohort group.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Collection of enrolled subject usernames.</returns>
+    Task<IReadOnlyList<string>> ListGroupMembersAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string groupId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Enrolls a patient into a cohort group via POST /api/subject-groups/{groupId}/members.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="groupId">Identifier of the cohort group.</param>
+    /// <param name="request">Payload containing subject username to enroll.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    Task AddGroupMemberAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string groupId,
+        AddGroupMemberRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Un-enrolls a patient from a cohort group via DELETE /api/subject-groups/{groupId}/members/{subjectUsername}.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="groupId">Identifier of the cohort group.</param>
+    /// <param name="subjectUsername">Username of the subject to un-enroll.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    Task RemoveGroupMemberAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string groupId,
+        string subjectUsername,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Lists researcher access grants for a cohort group via GET /api/subject-groups/{groupId}/grants (Administrator role required).
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="groupId">Identifier of the cohort group.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Collection of <see cref="SubjectGroupGrant"/> records.</returns>
+    Task<IReadOnlyList<SubjectGroupGrant>> ListGroupGrantsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string groupId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Grants a researcher tiered access over a cohort group via POST /api/subject-groups/{groupId}/grants (Administrator role required).
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="groupId">Identifier of the cohort group.</param>
+    /// <param name="request">Payload containing researcher username, tiered access level, and notes.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The created <see cref="SubjectGroupGrant"/> record.</returns>
+    Task<SubjectGroupGrant> CreateGroupGrantAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string groupId,
+        GrantGroupAccessRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Revokes a researcher's access grant over a cohort group via DELETE /api/subject-groups/{groupId}/grants/{researcherUsername} (Administrator role required).
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="groupId">Identifier of the cohort group.</param>
+    /// <param name="researcherUsername">Username of the researcher whose grant is being revoked.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    Task RevokeGroupGrantAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string groupId,
+        string researcherUsername,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Generates a single-use collaborative share key via POST /api/share-keys/create.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="request">Request parameters specifying label, lifetime, and permissions.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Created single-use <see cref="ShareKeyRecord"/>.</returns>
+    Task<ShareKeyRecord> CreateShareKeyAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CreateShareKeyRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Validates and atomically consumes a single-use share key via POST /api/share-keys/redeem.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="request">Payload containing single-use share token to redeem.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Result of redemption including granted session token and role.</returns>
+    Task<ShareKeyConsumeResult> RedeemShareKeyAsync(
+        InstanceProfile profile,
+        RedeemShareKeyRequest request,
+        CancellationToken ct = default);
 }

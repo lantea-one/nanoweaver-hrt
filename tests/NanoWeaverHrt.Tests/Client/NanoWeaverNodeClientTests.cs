@@ -2039,6 +2039,228 @@ public sealed class NanoWeaverNodeClientTests : IDisposable
     }
 
     /// <summary>
+    /// Verifies ListGroupMembersAsync, AddGroupMemberAsync, RemoveGroupMemberAsync, ListGroupGrantsAsync, CreateGroupGrantAsync, RevokeGroupGrantAsync, CreateShareKeyAsync, and RedeemShareKeyAsync.
+    /// </summary>
+    [Fact]
+    public async Task CohortMembershipAndShareKeyRedemption_NominalAndErrors_BehavesExpectedly()
+    {
+        // WHAT: Tests cohort membership management, group grant authorization, share key creation, and unauthenticated peer key redemption.
+        // WHY:  Verifies complete REST coverage for clinical trials, group access tiers, and peer federation.
+        // HOW:  Mocks endpoints for 200/201, null payload responses, input guard clauses, and HTTP 500 error handling.
+        // 1. ListGroupMembersAsync
+        _httpHandler.SetResponse(
+            "/api/subject-groups/grp-1/members",
+            HttpStatusCode.OK,
+            """["patient_alice", "patient_bob"]""");
+
+        IReadOnlyList<string> members = await _client.ListGroupMembersAsync(_localProfile, "token", "grp-1");
+        Assert.Equal(2, members.Count);
+        Assert.Contains("patient_alice", members);
+
+        _httpHandler.SetResponse("/api/subject-groups/grp-1/members", HttpStatusCode.OK, "null");
+        IReadOnlyList<string> nullMembers = await _client.ListGroupMembersAsync(_localProfile, "token", "grp-1");
+        Assert.Empty(nullMembers);
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.ListGroupMembersAsync(null!, "token", "grp-1"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.ListGroupMembersAsync(_localProfile, "", "grp-1"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.ListGroupMembersAsync(_localProfile, "token", ""));
+
+        _httpHandler.SetResponse("/api/subject-groups/grp-1/members", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.ListGroupMembersAsync(_localProfile, "token", "grp-1"));
+
+        // 2. AddGroupMemberAsync
+        AddGroupMemberRequest addMemberReq = new()
+        {
+            SubjectUsername = "patient_carol"
+        };
+
+        _httpHandler.SetResponse(
+            "/api/subject-groups/grp-1/members",
+            HttpStatusCode.Created,
+            """{"message": "Enrolled"}""");
+
+        await _client.AddGroupMemberAsync(_localProfile, "token", "grp-1", addMemberReq);
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.AddGroupMemberAsync(null!, "token", "grp-1", addMemberReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.AddGroupMemberAsync(_localProfile, "", "grp-1", addMemberReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.AddGroupMemberAsync(_localProfile, "token", "", addMemberReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.AddGroupMemberAsync(_localProfile, "token", "grp-1", null!));
+
+        _httpHandler.SetResponse("/api/subject-groups/grp-1/members", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.AddGroupMemberAsync(_localProfile, "token", "grp-1", addMemberReq));
+
+        // 3. RemoveGroupMemberAsync
+        _httpHandler.SetResponse(
+            "/api/subject-groups/grp-1/members/patient_carol",
+            HttpStatusCode.OK,
+            """{"message": "Removed"}""");
+
+        await _client.RemoveGroupMemberAsync(_localProfile, "token", "grp-1", "patient_carol");
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.RemoveGroupMemberAsync(null!, "token", "grp-1", "patient_carol"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.RemoveGroupMemberAsync(_localProfile, "", "grp-1", "patient_carol"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.RemoveGroupMemberAsync(_localProfile, "token", "", "patient_carol"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.RemoveGroupMemberAsync(_localProfile, "token", "grp-1", ""));
+
+        _httpHandler.SetResponse("/api/subject-groups/grp-1/members/patient_carol", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.RemoveGroupMemberAsync(_localProfile, "token", "grp-1", "patient_carol"));
+
+        // 4. ListGroupGrantsAsync
+        _httpHandler.SetResponse(
+            "/api/subject-groups/grp-1/grants",
+            HttpStatusCode.OK,
+            """
+            [
+                {
+                    "id": "g-1",
+                    "groupId": "grp-1",
+                    "researcherUsername": "dr_watson",
+                    "accessLevel": 2,
+                    "grantedBy": "admin",
+                    "grantedAtUtc": "2026-11-04T00:00:00Z"
+                }
+            ]
+            """);
+
+        IReadOnlyList<SubjectGroupGrant> groupGrants = await _client.ListGroupGrantsAsync(_localProfile, "token", "grp-1");
+        Assert.Single(groupGrants);
+        Assert.Equal("g-1", groupGrants[0].Id);
+
+        _httpHandler.SetResponse("/api/subject-groups/grp-1/grants", HttpStatusCode.OK, "null");
+        IReadOnlyList<SubjectGroupGrant> nullGrants = await _client.ListGroupGrantsAsync(_localProfile, "token", "grp-1");
+        Assert.Empty(nullGrants);
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.ListGroupGrantsAsync(null!, "token", "grp-1"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.ListGroupGrantsAsync(_localProfile, "", "grp-1"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.ListGroupGrantsAsync(_localProfile, "token", ""));
+
+        _httpHandler.SetResponse("/api/subject-groups/grp-1/grants", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.ListGroupGrantsAsync(_localProfile, "token", "grp-1"));
+
+        // 5. CreateGroupGrantAsync
+        GrantGroupAccessRequest groupGrantReq = new()
+        {
+            ResearcherUsername = "dr_watson",
+            AccessLevel = SubjectAccessLevel.FullReadAccess,
+            Notes = "Clinical study grant"
+        };
+
+        _httpHandler.SetResponse(
+            "/api/subject-groups/grp-1/grants",
+            HttpStatusCode.Created,
+            """
+            {
+                "id": "g-1",
+                "groupId": "grp-1",
+                "researcherUsername": "dr_watson",
+                "accessLevel": 3,
+                "grantedBy": "admin",
+                "grantedAtUtc": "2026-11-04T00:00:00Z",
+                "notes": "Clinical study grant"
+            }
+            """);
+
+        SubjectGroupGrant createdGroupGrant = await _client.CreateGroupGrantAsync(_localProfile, "token", "grp-1", groupGrantReq);
+        Assert.NotNull(createdGroupGrant);
+        Assert.Equal(SubjectAccessLevel.FullReadAccess, createdGroupGrant.AccessLevel);
+
+        _httpHandler.SetResponse("/api/subject-groups/grp-1/grants", HttpStatusCode.Created, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.CreateGroupGrantAsync(_localProfile, "token", "grp-1", groupGrantReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.CreateGroupGrantAsync(null!, "token", "grp-1", groupGrantReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.CreateGroupGrantAsync(_localProfile, "", "grp-1", groupGrantReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.CreateGroupGrantAsync(_localProfile, "token", "", groupGrantReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.CreateGroupGrantAsync(_localProfile, "token", "grp-1", null!));
+
+        _httpHandler.SetResponse("/api/subject-groups/grp-1/grants", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.CreateGroupGrantAsync(_localProfile, "token", "grp-1", groupGrantReq));
+
+        // 6. RevokeGroupGrantAsync
+        _httpHandler.SetResponse(
+            "/api/subject-groups/grp-1/grants/dr_watson",
+            HttpStatusCode.OK,
+            """{"message": "Grant revoked"}""");
+
+        await _client.RevokeGroupGrantAsync(_localProfile, "token", "grp-1", "dr_watson");
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.RevokeGroupGrantAsync(null!, "token", "grp-1", "dr_watson"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.RevokeGroupGrantAsync(_localProfile, "", "grp-1", "dr_watson"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.RevokeGroupGrantAsync(_localProfile, "token", "", "dr_watson"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.RevokeGroupGrantAsync(_localProfile, "token", "grp-1", ""));
+
+        _httpHandler.SetResponse("/api/subject-groups/grp-1/grants/dr_watson", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.RevokeGroupGrantAsync(_localProfile, "token", "grp-1", "dr_watson"));
+
+        // 7. CreateShareKeyAsync
+        CreateShareKeyRequest createKeyReq = new()
+        {
+            Label = "Partner Lab Tokyo",
+            LifetimeHours = 24,
+            Permissions = "FullCollaborator"
+        };
+
+        _httpHandler.SetResponse(
+            "/api/share-keys/create",
+            HttpStatusCode.OK,
+            """
+            {
+                "tokenId": "tok-99",
+                "keyToken": "nanoweaver_hrt_tok99",
+                "label": "Partner Lab Tokyo",
+                "createdAtUtc": "2026-11-04T00:00:00Z",
+                "expiresAtUtc": "2026-11-05T00:00:00Z",
+                "isConsumed": false,
+                "consumedAtUtc": null,
+                "remotePeerInfo": null,
+                "permissions": "FullCollaborator"
+            }
+            """);
+
+        ShareKeyRecord createdShareKey = await _client.CreateShareKeyAsync(_localProfile, "token", createKeyReq);
+        Assert.NotNull(createdShareKey);
+        Assert.Equal("tok-99", createdShareKey.TokenId);
+
+        _httpHandler.SetResponse("/api/share-keys/create", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.CreateShareKeyAsync(_localProfile, "token", createKeyReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.CreateShareKeyAsync(null!, "token", createKeyReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.CreateShareKeyAsync(_localProfile, "", createKeyReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.CreateShareKeyAsync(_localProfile, "token", null!));
+
+        _httpHandler.SetResponse("/api/share-keys/create", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.CreateShareKeyAsync(_localProfile, "token", createKeyReq));
+
+        // 8. RedeemShareKeyAsync (unauthenticated)
+        RedeemShareKeyRequest redeemReq = new()
+        {
+            Token = "nanoweaver_hrt_tok99"
+        };
+
+        _httpHandler.SetResponse(
+            "/api/share-keys/redeem",
+            HttpStatusCode.OK,
+            """
+            {
+                "success": true,
+                "message": "Token redeemed.",
+                "record": null,
+                "peerSessionToken": "jwt_token_redeemed"
+            }
+            """);
+
+        ShareKeyConsumeResult redeemResult = await _client.RedeemShareKeyAsync(_localProfile, redeemReq);
+        Assert.NotNull(redeemResult);
+        Assert.True(redeemResult.Success);
+        Assert.Equal("jwt_token_redeemed", redeemResult.PeerSessionToken);
+
+        _httpHandler.SetResponse("/api/share-keys/redeem", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.RedeemShareKeyAsync(_localProfile, redeemReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.RedeemShareKeyAsync(null!, redeemReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.RedeemShareKeyAsync(_localProfile, null!));
+
+        _httpHandler.SetResponse("/api/share-keys/redeem", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.RedeemShareKeyAsync(_localProfile, redeemReq));
+    }
+
+    /// <summary>
     /// Verifies NodeApiException constructors, properties, and sensitive credential masking.
     /// </summary>
     [Fact]

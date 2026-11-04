@@ -385,6 +385,37 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         innerMock.Setup(i => i.ListShareKeysAsync(profile, "explicit_token", It.IsAny<CancellationToken>())).ReturnsAsync(shareKeyRecords);
         innerMock.Setup(i => i.ListShareKeysAsync(profile, "cached_token", It.IsAny<CancellationToken>())).ReturnsAsync(shareKeyRecords);
 
+        innerMock.Setup(i => i.ListGroupMembersAsync(profile, "explicit_token", "grp1", It.IsAny<CancellationToken>())).ReturnsAsync(["pt1"]);
+        innerMock.Setup(i => i.ListGroupMembersAsync(profile, "cached_token", "grp1", It.IsAny<CancellationToken>())).ReturnsAsync(["pt1"]);
+
+        var addMemberReq = new AddGroupMemberRequest { SubjectUsername = "pt1" };
+        innerMock.Setup(i => i.AddGroupMemberAsync(profile, "explicit_token", "grp1", addMemberReq, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        innerMock.Setup(i => i.AddGroupMemberAsync(profile, "cached_token", "grp1", addMemberReq, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+        innerMock.Setup(i => i.RemoveGroupMemberAsync(profile, "explicit_token", "grp1", "pt1", It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        innerMock.Setup(i => i.RemoveGroupMemberAsync(profile, "cached_token", "grp1", "pt1", It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+        var groupGrants = (IReadOnlyList<SubjectGroupGrant>)[new SubjectGroupGrant { Id = "g1", GroupId = "grp1", ResearcherUsername = "r1", AccessLevel = SubjectAccessLevel.FullReadAccess, GrantedBy = "admin", GrantedAtUtc = DateTimeOffset.UtcNow }];
+        innerMock.Setup(i => i.ListGroupGrantsAsync(profile, "explicit_token", "grp1", It.IsAny<CancellationToken>())).ReturnsAsync(groupGrants);
+        innerMock.Setup(i => i.ListGroupGrantsAsync(profile, "cached_token", "grp1", It.IsAny<CancellationToken>())).ReturnsAsync(groupGrants);
+
+        var groupGrantReq = new GrantGroupAccessRequest { ResearcherUsername = "r1", AccessLevel = SubjectAccessLevel.FullReadAccess };
+        var groupGrantRec = new SubjectGroupGrant { Id = "g1", GroupId = "grp1", ResearcherUsername = "r1", AccessLevel = SubjectAccessLevel.FullReadAccess, GrantedBy = "admin", GrantedAtUtc = DateTimeOffset.UtcNow };
+        innerMock.Setup(i => i.CreateGroupGrantAsync(profile, "explicit_token", "grp1", groupGrantReq, It.IsAny<CancellationToken>())).ReturnsAsync(groupGrantRec);
+        innerMock.Setup(i => i.CreateGroupGrantAsync(profile, "cached_token", "grp1", groupGrantReq, It.IsAny<CancellationToken>())).ReturnsAsync(groupGrantRec);
+
+        innerMock.Setup(i => i.RevokeGroupGrantAsync(profile, "explicit_token", "grp1", "r1", It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        innerMock.Setup(i => i.RevokeGroupGrantAsync(profile, "cached_token", "grp1", "r1", It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+        var createShareKeyReq = new CreateShareKeyRequest { Label = "Lab" };
+        var createdShareKeyRec = new ShareKeyRecord { TokenId = "tok1", KeyToken = "nanoweaver_hrt_tok", Label = "Lab", CreatedAtUtc = DateTime.UtcNow, ExpiresAtUtc = DateTime.UtcNow.AddDays(1), Permissions = "FullCollaborator" };
+        innerMock.Setup(i => i.CreateShareKeyAsync(profile, "explicit_token", createShareKeyReq, It.IsAny<CancellationToken>())).ReturnsAsync(createdShareKeyRec);
+        innerMock.Setup(i => i.CreateShareKeyAsync(profile, "cached_token", createShareKeyReq, It.IsAny<CancellationToken>())).ReturnsAsync(createdShareKeyRec);
+
+        var redeemReq = new RedeemShareKeyRequest { Token = "nanoweaver_hrt_tok" };
+        var redeemRes = new ShareKeyConsumeResult { Success = true, Message = "Token redeemed.", Record = null, PeerSessionToken = "jwt" };
+        innerMock.Setup(i => i.RedeemShareKeyAsync(profile, redeemReq, It.IsAny<CancellationToken>())).ReturnsAsync(redeemRes);
+
         using var client = new WeaverNodeApiClient(innerMock.Object);
 
         // 1. Missing token without cache throws InvalidOperationException
@@ -424,6 +455,13 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.CreateSubjectGroupAsync(profile, "", createGrpReq));
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.DeleteSubjectGroupAsync(profile, "", "grp1"));
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.ListShareKeysAsync(profile, ""));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.ListGroupMembersAsync(profile, "", "grp1"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.AddGroupMemberAsync(profile, "", "grp1", addMemberReq));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.RemoveGroupMemberAsync(profile, "", "grp1", "pt1"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.ListGroupGrantsAsync(profile, "", "grp1"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.CreateGroupGrantAsync(profile, "", "grp1", groupGrantReq));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.RevokeGroupGrantAsync(profile, "", "grp1", "r1"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.CreateShareKeyAsync(profile, "", createShareKeyReq));
 
         // 2. Call with explicit token
         var snapRes1 = await client.PollSnapshotAsync(profile, "explicit_token");
@@ -527,6 +565,26 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
 
         var shareKeysRes1 = await client.ListShareKeysAsync(profile, "explicit_token");
         Assert.Single(shareKeysRes1);
+
+        var grpMembers1 = await client.ListGroupMembersAsync(profile, "explicit_token", "grp1");
+        Assert.Single(grpMembers1);
+
+        await client.AddGroupMemberAsync(profile, "explicit_token", "grp1", addMemberReq);
+        await client.RemoveGroupMemberAsync(profile, "explicit_token", "grp1", "pt1");
+
+        var grpGrants1 = await client.ListGroupGrantsAsync(profile, "explicit_token", "grp1");
+        Assert.Single(grpGrants1);
+
+        var createdGrpGrant1 = await client.CreateGroupGrantAsync(profile, "explicit_token", "grp1", groupGrantReq);
+        Assert.Equal(SubjectAccessLevel.FullReadAccess, createdGrpGrant1.AccessLevel);
+
+        await client.RevokeGroupGrantAsync(profile, "explicit_token", "grp1", "r1");
+
+        var createdShareKey1 = await client.CreateShareKeyAsync(profile, "explicit_token", createShareKeyReq);
+        Assert.Equal("tok1", createdShareKey1.TokenId);
+
+        var redeemRes1 = await client.RedeemShareKeyAsync(profile, redeemReq);
+        Assert.True(redeemRes1.Success);
 
         // 3. Set cached token and call with empty token argument
         client.SetSessionToken("cached_token");
@@ -633,6 +691,26 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         var shareKeysRes2 = await client.ListShareKeysAsync(profile, "");
         Assert.Single(shareKeysRes2);
 
+        var grpMembers2 = await client.ListGroupMembersAsync(profile, "", "grp1");
+        Assert.Single(grpMembers2);
+
+        await client.AddGroupMemberAsync(profile, "", "grp1", addMemberReq);
+        await client.RemoveGroupMemberAsync(profile, "", "grp1", "pt1");
+
+        var grpGrants2 = await client.ListGroupGrantsAsync(profile, "", "grp1");
+        Assert.Single(grpGrants2);
+
+        var createdGrpGrant2 = await client.CreateGroupGrantAsync(profile, "", "grp1", groupGrantReq);
+        Assert.Equal(SubjectAccessLevel.FullReadAccess, createdGrpGrant2.AccessLevel);
+
+        await client.RevokeGroupGrantAsync(profile, "", "grp1", "r1");
+
+        var createdShareKey2 = await client.CreateShareKeyAsync(profile, "", createShareKeyReq);
+        Assert.Equal("tok1", createdShareKey2.TokenId);
+
+        var redeemRes2 = await client.RedeemShareKeyAsync(profile, redeemReq);
+        Assert.True(redeemRes2.Success);
+
         // 4. Set whitespace token buffer to exercise whitespace fallback exception
         using var whitespaceBuf = ZeroizableSecretBuffer.FromUtf8("   ");
         client.SetSessionToken(whitespaceBuf);
@@ -697,5 +775,13 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.CreateSubjectGroupAsync(profile, "token", new CreateSubjectGroupRequest()));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.DeleteSubjectGroupAsync(profile, "token", "grp1"));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ListShareKeysAsync(profile, "token"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ListGroupMembersAsync(profile, "token", "grp1"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.AddGroupMemberAsync(profile, "token", "grp1", new AddGroupMemberRequest { SubjectUsername = "pt1" }));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.RemoveGroupMemberAsync(profile, "token", "grp1", "pt1"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ListGroupGrantsAsync(profile, "token", "grp1"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.CreateGroupGrantAsync(profile, "token", "grp1", new GrantGroupAccessRequest { ResearcherUsername = "r1" }));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.RevokeGroupGrantAsync(profile, "token", "grp1", "r1"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.CreateShareKeyAsync(profile, "token", new CreateShareKeyRequest()));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.RedeemShareKeyAsync(profile, new RedeemShareKeyRequest { Token = "tok" }));
     }
 }

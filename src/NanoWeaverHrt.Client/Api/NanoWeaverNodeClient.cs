@@ -1345,6 +1345,254 @@ public sealed class NanoWeaverNodeClient : INanoWeaverNodeClient
         return (IReadOnlyList<ShareKeyRecord>?)result ?? [];
     }
 
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<string>> ListGroupMembersAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string groupId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/subject-groups/{groupId}/members to list enrolled subjects.
+        // WHY:  Allows inspecting cohort membership for studies and delivery protocols.
+        // HOW:  Validates inputs, sends authenticated GET request, and deserializes string username list.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(groupId);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/subject-groups/{Uri.EscapeDataString(groupId)}/members");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        List<string>? result = await resp.Content.ReadFromJsonAsync<List<string>>(JsonOptions, ct);
+        return (IReadOnlyList<string>?)result ?? [];
+    }
+
+    /// <inheritdoc/>
+    public async Task AddGroupMemberAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string groupId,
+        AddGroupMemberRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/subject-groups/{groupId}/members to enroll a subject.
+        // WHY:  Allows expanding cohort enrollment.
+        // HOW:  Validates inputs, posts serialized JSON payload with Bearer header, and verifies HTTP success.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(groupId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/subject-groups/{Uri.EscapeDataString(groupId)}/members");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task RemoveGroupMemberAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string groupId,
+        string subjectUsername,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches DELETE /api/subject-groups/{groupId}/members/{subjectUsername} to un-enroll a subject.
+        // WHY:  Allows withdrawing a subject from a cohort group.
+        // HOW:  Validates inputs, sends authenticated DELETE request, and verifies HTTP success.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(groupId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(subjectUsername);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/subject-groups/{Uri.EscapeDataString(groupId)}/members/{Uri.EscapeDataString(subjectUsername)}");
+
+        using HttpRequestMessage req = new(HttpMethod.Delete, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<SubjectGroupGrant>> ListGroupGrantsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string groupId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/subject-groups/{groupId}/grants to list group-level grants.
+        // WHY:  Allows administrators to audit permissions granted over an entire cohort group.
+        // HOW:  Validates inputs, sends authenticated GET request, and deserializes SubjectGroupGrant list.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(groupId);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/subject-groups/{Uri.EscapeDataString(groupId)}/grants");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        List<SubjectGroupGrant>? result = await resp.Content.ReadFromJsonAsync<List<SubjectGroupGrant>>(JsonOptions, ct);
+        return (IReadOnlyList<SubjectGroupGrant>?)result ?? [];
+    }
+
+    /// <inheritdoc/>
+    public async Task<SubjectGroupGrant> CreateGroupGrantAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string groupId,
+        GrantGroupAccessRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/subject-groups/{groupId}/grants to grant a researcher access over a cohort group.
+        // WHY:  Allows administrators to assign group-level access permissions.
+        // HOW:  Validates inputs, posts serialized JSON payload with Bearer header, and deserializes SubjectGroupGrant.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(groupId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/subject-groups/{Uri.EscapeDataString(groupId)}/grants");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        SubjectGroupGrant? grant = await resp.Content.ReadFromJsonAsync<SubjectGroupGrant>(JsonOptions, ct);
+        return grant ?? throw new InvalidOperationException("Endpoint returned empty or null subject group grant payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task RevokeGroupGrantAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string groupId,
+        string researcherUsername,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches DELETE /api/subject-groups/{groupId}/grants/{researcherUsername} to revoke a group-level grant.
+        // WHY:  Allows administrators to revoke group access permissions.
+        // HOW:  Validates inputs, sends authenticated DELETE request, and verifies HTTP success.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(groupId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(researcherUsername);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/subject-groups/{Uri.EscapeDataString(groupId)}/grants/{Uri.EscapeDataString(researcherUsername)}");
+
+        using HttpRequestMessage req = new(HttpMethod.Delete, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<ShareKeyRecord> CreateShareKeyAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CreateShareKeyRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/share-keys/create to generate a single-use collaborative share key.
+        // WHY:  Allows creating peering invitation tokens with configurable expiration and permissions.
+        // HOW:  Validates inputs, posts serialized JSON payload with Bearer header, and deserializes ShareKeyRecord.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/share-keys/create");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        ShareKeyRecord? record = await resp.Content.ReadFromJsonAsync<ShareKeyRecord>(JsonOptions, ct);
+        return record ?? throw new InvalidOperationException("Endpoint returned empty or null share key payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<ShareKeyConsumeResult> RedeemShareKeyAsync(
+        InstanceProfile profile,
+        RedeemShareKeyRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/share-keys/redeem to consume a single-use share key.
+        // WHY:  Allows remote instances to authenticate and establish a federated session without prior credentials.
+        // HOW:  Validates inputs, posts serialized JSON payload, and deserializes ShareKeyConsumeResult.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/share-keys/redeem");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        ShareKeyConsumeResult? result = await resp.Content.ReadFromJsonAsync<ShareKeyConsumeResult>(JsonOptions, ct);
+        return result ?? throw new InvalidOperationException("Endpoint returned empty or null share key redemption payload.");
+    }
+
     /// <summary>
     /// Validates that an instance base URI is absolute and enforces HTTPS for remote non-loopback endpoints.
     /// </summary>

@@ -1336,7 +1336,7 @@ public sealed class GuiViewModelsTests
         var vm = new AboutViewModel();
 
         Assert.Equal("NanoWeaver HRT", vm.AppName);
-        Assert.Equal("2026.11.04.5-sovereign", vm.Version);
+        Assert.Equal("2026.11.04.6-sovereign", vm.Version);
         Assert.NotEmpty(vm.Description);
         Assert.NotEmpty(vm.OSDescription);
         Assert.NotEmpty(vm.Architecture);
@@ -1574,6 +1574,131 @@ public sealed class GuiViewModelsTests
 
         Assert.Equal(WeaverLanguage.French, shellVm.SelectedLanguage);
         langServiceMock.Verify(s => s.SetPreferredLanguageAsync(WeaverLanguage.French, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    /// <summary>
+    /// Verifies <see cref="InstanceManagerViewModel"/> behavior when reloading profiles where the previously selected profile was removed,
+    /// and tests search filtering case-insensitivity across multiple fields.
+    /// </summary>
+    [Fact]
+    public async Task InstanceManagerViewModel_SelectedProfileResetsOnMissing_AndCoordinatorSyncEdgeCases()
+    {
+        // WHAT: Tests SelectedProfile reset when previous selection is missing from refreshed profile repository.
+        // WHY:  Issue #122 (P119): Prevents UI retaining reference to deleted or detached cluster nodes.
+        // HOW:  Selects profile, reloads repository without it, asserts SelectedProfile is null and FilteredProfiles matches case-insensitively.
+        var repoMock = new Mock<IInstanceProfileRepository>();
+        var p1 = new InstanceProfile("id-1", "Alpha Cluster Node", "http://127.0.0.1:5000", true, "admin", "Administrator", "Ed25519", "PUB1", "ENV1", true, 15, DateTimeOffset.UtcNow, null);
+        var p2 = new InstanceProfile("id-2", "Beta Cluster Node", "https://10.0.0.2:8443", true, "researcher", "Researcher", "Ed25519", "PUB2", "ENV2", true, 15, DateTimeOffset.UtcNow, null);
+
+        repoMock.Setup(r => r.InitializeAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        repoMock.SetupSequence(r => r.ListProfilesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { p1, p2 })
+            .ReturnsAsync(new[] { p2 });
+
+        var coordMock = new Mock<IMultiInstanceCoordinator>();
+        var vm = new InstanceManagerViewModel(repoMock.Object, coordMock.Object);
+
+        await vm.LoadProfilesAsync();
+        vm.SelectedProfile = p1;
+        Assert.Equal("id-1", vm.SelectedProfile?.InstanceId);
+
+        // Same profile assignment covers _selectedProfile == value false branch
+        vm.SelectedProfile = p1;
+        Assert.Equal("id-1", vm.SelectedProfile?.InstanceId);
+
+        // Same filter assignment covers _filterText == value false branch
+        vm.FilterText = "Alpha";
+        Assert.Single(vm.FilteredProfiles);
+        vm.FilterText = "Alpha";
+        Assert.Single(vm.FilteredProfiles);
+
+        // Case-insensitive filtering on DisplayName, Username, and BaseUri
+        vm.FilterText = "bEtA";
+        Assert.Single(vm.FilteredProfiles);
+        Assert.Equal("id-2", vm.FilteredProfiles[0].InstanceId);
+
+        vm.FilterText = "rEsEaRcHeR";
+        Assert.Single(vm.FilteredProfiles);
+        Assert.Equal("id-2", vm.FilteredProfiles[0].InstanceId);
+
+        vm.FilterText = "8443";
+        Assert.Single(vm.FilteredProfiles);
+        Assert.Equal("id-2", vm.FilteredProfiles[0].InstanceId);
+
+        // Reload profiles when p1 was removed: SelectedProfile should reset to null
+        await vm.LoadProfilesAsync();
+        Assert.Null(vm.SelectedProfile);
+        Assert.Single(vm.Profiles);
+    }
+
+    /// <summary>
+    /// Verifies <see cref="VaultUnlockViewModel"/> passphrase state transitions, property equality branches, and idempotent disposal.
+    /// </summary>
+    [Fact]
+    public void VaultUnlockViewModel_PassphraseStateTransitions_AndIdempotentDisposal()
+    {
+        // WHAT: Tests property equality guards, whitespace passphrase checks, and idempotent disposal.
+        // WHY:  Issue #122 (P119): Guarantees credential input dialog handles redundant events and teardown safely.
+        // HOW:  Assigns matching and null values to properties, validates CanUnlock with whitespace, and disposes twice.
+        using var vm = new VaultUnlockViewModel();
+
+        // Property identity assignments
+        vm.InstanceId = "node-alpha";
+        vm.InstanceId = "node-alpha";
+        Assert.Equal("node-alpha", vm.InstanceId);
+
+        vm.InstanceDisplayName = "Alpha Node";
+        vm.InstanceDisplayName = "Alpha Node";
+        Assert.Equal("Alpha Node", vm.InstanceDisplayName);
+
+        vm.Passphrase = "secret_pass";
+        vm.Passphrase = "secret_pass";
+        Assert.Equal("secret_pass", vm.Passphrase);
+        Assert.True(vm.CanUnlock);
+
+        // Whitespace passphrase should fail CanUnlock
+        vm.Passphrase = "   ";
+        Assert.False(vm.CanUnlock);
+
+        // Clear and dispose
+        vm.Clear();
+        Assert.Equal(string.Empty, vm.Passphrase);
+        Assert.False(vm.HasError);
+        Assert.Null(vm.ErrorMessage);
+
+        vm.Dispose();
+        vm.Dispose(); // Idempotent double dispose
+        Assert.False(vm.IsUnlocked);
+    }
+
+    /// <summary>
+    /// Verifies <see cref="AboutViewModel"/> diagnostic metadata properties and supported simulation suites.
+    /// </summary>
+    [Fact]
+    public void AboutViewModel_DiagnosticPropertiesAndSimulationManifest_AreComprehensive()
+    {
+        // WHAT: Tests comprehensive diagnostic properties and simulation suites in AboutViewModel.
+        // WHY:  Issue #122 (P119): Ensures UI About dialog provides valid platform, licensing, and engine manifests.
+        // HOW:  Instantiates AboutViewModel, verifies all algorithm and simulation strings are valid and non-empty.
+        var vm = new AboutViewModel();
+
+        Assert.Equal("NanoWeaver HRT", vm.AppName);
+        Assert.False(string.IsNullOrWhiteSpace(vm.Version));
+        Assert.False(string.IsNullOrWhiteSpace(vm.OSDescription));
+        Assert.False(string.IsNullOrWhiteSpace(vm.Architecture));
+        Assert.False(string.IsNullOrWhiteSpace(vm.FrameworkDescription));
+        Assert.False(string.IsNullOrWhiteSpace(vm.License));
+        Assert.False(string.IsNullOrWhiteSpace(vm.Author));
+        Assert.StartsWith("https://", vm.RepositoryUri, StringComparison.Ordinal);
+
+        Assert.Equal(2, vm.SupportedAlgorithms.Count);
+        Assert.Contains(vm.SupportedAlgorithms, alg => alg.StartsWith("Ed25519", StringComparison.Ordinal));
+        Assert.Contains(vm.SupportedAlgorithms, alg => alg.StartsWith("ML-DSA-65", StringComparison.Ordinal));
+
+        Assert.Equal(4, vm.SupportedSimulations.Count);
+        Assert.Contains(vm.SupportedSimulations, sim => sim.Contains("oxDNA"));
+        Assert.Contains(vm.SupportedSimulations, sim => sim.Contains("LAMMPS"));
+        Assert.Contains(vm.SupportedSimulations, sim => sim.Contains("pbpk-endocrine"));
     }
 
     /// <summary>

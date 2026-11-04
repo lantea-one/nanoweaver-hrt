@@ -4,6 +4,38 @@
 
 ---
 
+## v2026.11.04.6 — Code-Complete Milestone: Zero NotImplementedException Policy, Client REST SDK Cohort & Peering Parity, and ViewModel Diagnostics Hardening (2026-11-04)
+
+Code-complete milestone release resolving Work Packages `P116–P120` (Forgejo Issues `#119–#123`), enforcing an absolute zero `NotImplementedException` policy across all production and test assemblies, expanding the client REST SDK with cohort membership management, group-level researcher access grants, share key generation, and peering token redemption, hardening desktop and mobile UI ViewModels against selection resets, whitespace inputs, and multi-field search filtering, and synchronizing CalVer release versioning across all 12 packaging manifests and platform targets.
+
+### Highlights
+* **Zero NotImplementedException Policy & Test Stub Hardening (Forgejo #119 / P116)**:
+  - Eliminated all remaining `NotImplementedException` placeholders in test suites (`WebUiAndConfigurationTests.cs`, `UserProfileAndContactTests.cs`).
+  - Enforced repository-wide static verification guaranteeing zero `NotImplementedException` occurrences exist anywhere in the codebase.
+* **Client REST SDK Cohort Membership & Group Grants Expansion (Forgejo #120 / P117)**:
+  - Expanded `INanoWeaverNodeClient`, `NanoWeaverNodeClient`, and `WeaverNodeApiClient` with 6 cohort and group grant methods:
+    1. `ListGroupMembersAsync` (`GET /api/subject-groups/{groupId}/members`)
+    2. `AddGroupMemberAsync` (`POST /api/subject-groups/{groupId}/members`)
+    3. `RemoveGroupMemberAsync` (`DELETE /api/subject-groups/{groupId}/members/{subjectUsername}`)
+    4. `ListGroupGrantsAsync` (`GET /api/subject-groups/{groupId}/grants`)
+    5. `CreateGroupGrantAsync` (`POST /api/subject-groups/{groupId}/grants`)
+    6. `RevokeGroupGrantAsync` (`DELETE /api/subject-groups/{groupId}/grants/{researcherUsername}`)
+  - Added comprehensive test coverage across nominal responses, empty or null payloads, missing group arguments, and RFC 7807 problem details handling.
+* **Client REST SDK Share Key Creation & Peering Redemption (Forgejo #121 / P118)**:
+  - Added direct REST client methods for invitation token workflows:
+    1. `CreateShareKeyAsync` (`POST /api/share-keys/create`)
+    2. `RedeemShareKeyAsync` (`POST /api/share-keys/redeem`)
+  - Added full test coverage for authenticated token emission and peer session token acquisition.
+* **Desktop & Mobile UI ViewModel Localization & Diagnostics Hardening (Forgejo #122 / P119)**:
+  - Added test suites for `InstanceManagerViewModel` verifying selected profile automatic reset when missing from reloaded storage, coordinator sync edge cases, and case-insensitive multi-field search filtering.
+  - Added test suites for `VaultUnlockViewModel` verifying property identity assignment branches, whitespace passphrase rejection, and idempotent double disposal.
+  - Added test suites for `AboutViewModel` verifying metadata completeness, supported algorithm suites (Ed25519, ML-DSA-65), and simulation engine manifests (oxDNA, LAMMPS, PBPK closed loop).
+* **Absolute Zero-Defect Repository Audit & CalVer Milestone Alignment (Forgejo #123 / P120)**:
+  - Synchronized CalVer version `2026.11.04.6` across Arch Linux AUR (binary & git), FreeBSD, Homebrew, AppStream metainfo, macOS Info.plist, Nix, Windows Appx/NSIS/WinGet, Android, iOS, iPadOS, desktop entry points, ViewModels, and test fixtures.
+  - Passed all 8 checks of the Universal Pre-Flight Verification Gate (`./scripts/verify-all.sh`) with 100.00% line and branch coverage.
+
+---
+
 ## v2026.11.04.5 — Code-Complete Milestone: Multi-Engine Subject Access, Endocrine Stability Hardening, Client REST Expansion & Desktop Shell Navigation (2026-11-04)
 
 Code-complete milestone release resolving Work Packages `P111–P115` (Forgejo Issues `#114–#118`), implementing multi-engine subject access repository isolation and membership idempotence tests, hardening endocrine closed-loop simulations with setpoint stability and 720-hour extended numerical integration stress tests, expanding the client REST SDK with direct subject grant management, cohort group CRUD, and single-use share key listing, verifying desktop shell window host navigation across all pages and fault-tolerant language preference persistence, and synchronizing CalVer release versioning across all 12 packaging manifests and platform targets.

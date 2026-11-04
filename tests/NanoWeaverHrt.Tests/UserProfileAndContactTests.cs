@@ -406,7 +406,7 @@ public sealed class UserProfileAndContactTests : IClassFixture<WebApplicationFac
         public override string GetDataTypeName(int ordinal) => "text";
         public override decimal GetDecimal(int ordinal) => 0m;
         public override double GetDouble(int ordinal) => 0.0;
-        public override System.Collections.IEnumerator GetEnumerator() => throw new NotImplementedException();
+        public override System.Collections.IEnumerator GetEnumerator() => Array.Empty<object>().GetEnumerator();
         public override float GetFloat(int ordinal) => 0f;
         public override Guid GetGuid(int ordinal) => Guid.Empty;
         public override short GetInt16(int ordinal) => 0;
@@ -462,7 +462,7 @@ public sealed class UserProfileAndContactTests : IClassFixture<WebApplicationFac
         public override string GetDataTypeName(int ordinal) => "text";
         public override decimal GetDecimal(int ordinal) => 0m;
         public override double GetDouble(int ordinal) => 0.0;
-        public override System.Collections.IEnumerator GetEnumerator() => throw new NotImplementedException();
+        public override System.Collections.IEnumerator GetEnumerator() => Array.Empty<object>().GetEnumerator();
         public override float GetFloat(int ordinal) => 0f;
         public override Guid GetGuid(int ordinal) => Guid.Empty;
         public override short GetInt16(int ordinal) => 0;

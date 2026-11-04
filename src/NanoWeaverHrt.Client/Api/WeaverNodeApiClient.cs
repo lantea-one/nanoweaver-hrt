@@ -702,6 +702,128 @@ public sealed class WeaverNodeApiClient : INanoWeaverNodeClient, IDisposable
     }
 
     /// <inheritdoc/>
+    public Task<IReadOnlyList<string>> ListGroupMembersAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string groupId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/subject-groups/{groupId}/members using provided or cached session token.
+        // WHY:  Allows querying cohort membership without manual Bearer token management.
+        // HOW:  Resolves effective token, delegates to _innerClient.ListGroupMembersAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.ListGroupMembersAsync(profile, effectiveToken, groupId, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task AddGroupMemberAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string groupId,
+        AddGroupMemberRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/subject-groups/{groupId}/members using provided or cached session token.
+        // WHY:  Allows enrolling a subject into a cohort group with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.AddGroupMemberAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.AddGroupMemberAsync(profile, effectiveToken, groupId, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task RemoveGroupMemberAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string groupId,
+        string subjectUsername,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches DELETE /api/subject-groups/{groupId}/members/{subjectUsername} using provided or cached session token.
+        // WHY:  Allows un-enrolling a subject with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.RemoveGroupMemberAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.RemoveGroupMemberAsync(profile, effectiveToken, groupId, subjectUsername, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<SubjectGroupGrant>> ListGroupGrantsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string groupId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/subject-groups/{groupId}/grants using provided or cached session token.
+        // WHY:  Allows auditing group grants with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.ListGroupGrantsAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.ListGroupGrantsAsync(profile, effectiveToken, groupId, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<SubjectGroupGrant> CreateGroupGrantAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string groupId,
+        GrantGroupAccessRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/subject-groups/{groupId}/grants using provided or cached session token.
+        // WHY:  Allows administrators to assign group access with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.CreateGroupGrantAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.CreateGroupGrantAsync(profile, effectiveToken, groupId, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task RevokeGroupGrantAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string groupId,
+        string researcherUsername,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches DELETE /api/subject-groups/{groupId}/grants/{researcherUsername} using provided or cached session token.
+        // WHY:  Allows administrators to revoke group access with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.RevokeGroupGrantAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.RevokeGroupGrantAsync(profile, effectiveToken, groupId, researcherUsername, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<ShareKeyRecord> CreateShareKeyAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CreateShareKeyRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/share-keys/create using provided or cached session token.
+        // WHY:  Allows generating peering invitation tokens with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.CreateShareKeyAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.CreateShareKeyAsync(profile, effectiveToken, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<ShareKeyConsumeResult> RedeemShareKeyAsync(
+        InstanceProfile profile,
+        RedeemShareKeyRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/share-keys/redeem to consume a peering invitation key.
+        // WHY:  Allows remote instances to authenticate and redeem single-use invitation tokens.
+        // HOW:  Validates non-disposed state and delegates to _innerClient.RedeemShareKeyAsync.
+        ThrowIfDisposed();
+        return _innerClient.RedeemShareKeyAsync(profile, request, ct);
+    }
+
+    /// <inheritdoc/>
     public void Dispose()
     {
         // WHAT: Zeroizes cached token and disposes wrapped client if disposable.
