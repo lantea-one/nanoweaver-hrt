@@ -91,6 +91,13 @@ public sealed record PatientGenomicProfile : IExamplesProvider<PatientGenomicPro
     public double? RecommendedMinTestosteroneNmolL { get; init; }
 
     /// <summary>
+    /// Recommended maximum serum testosterone concentration (nmol/L) to prevent androgen receptor hypersensitivity.
+    /// </summary>
+    [Description("Recommended maximum serum testosterone concentration (nmol/L).")]
+    [JsonPropertyName("recommendedMaxTestosteroneNmolL")]
+    public double? RecommendedMaxTestosteroneNmolL { get; init; } = null;
+
+    /// <summary>
     /// Recommended binding affinity Kd offset in nanomolar (nM) to tune aptamer dissociation kinetics.
     /// </summary>
     [Description("Recommended binding affinity Kd offset in nM.")]

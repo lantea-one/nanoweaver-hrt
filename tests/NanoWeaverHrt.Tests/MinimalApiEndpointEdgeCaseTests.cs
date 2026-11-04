@@ -280,7 +280,7 @@ public sealed class MinimalApiEndpointEdgeCaseTests : IClassFixture<WebApplicati
             dupReq.Content = JsonContent.Create(new
             {
                 Username = "admin",
-                PublicKeyBase64 = "MCowBQYDK2VwAyEA1234567890abcdef1234567890abcdef1234567890=="
+                PublicKeyBase64 = "MCowBQYDK2VwAyEA1111111111111111111111111111111111111111111="
             });
             HttpResponseMessage dupResp = await _client.SendAsync(dupReq);
             Assert.Equal(HttpStatusCode.Conflict, dupResp.StatusCode);
@@ -445,6 +445,16 @@ public sealed class MinimalApiEndpointEdgeCaseTests : IClassFixture<WebApplicati
         await AssertAdminSubResourceNotFound(HttpMethod.Delete, "/api/patients/admin/imports/missing-import-id");
         await AssertAdminSubResourceNotFound(HttpMethod.Get, "/api/patients/admin/results/missing-result-id");
         await AssertAdminSubResourceNotFound(HttpMethod.Delete, "/api/patients/admin/results/missing-result-id");
+
+        // Exercises ContentFormatSerializer.KebabToCamelCase edge cases (empty, single hyphen, trailing hyphen, multi-part)
+        var serializerType = typeof(NanoWeaverHrt.Formatting.ContentFormatSerializer);
+        var method = serializerType.GetMethod("KebabToCamelCase", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        Assert.NotNull(method);
+        Assert.Equal(string.Empty, method.Invoke(null, [null!]));
+        Assert.Equal(string.Empty, method.Invoke(null, [string.Empty]));
+        Assert.Equal(string.Empty, method.Invoke(null, ["-"]));
+        Assert.Equal("foo", method.Invoke(null, ["foo-"]));
+        Assert.Equal("fooBar", method.Invoke(null, ["foo-bar"]));
     }
 
     /// <inheritdoc/>

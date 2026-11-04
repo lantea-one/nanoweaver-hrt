@@ -5,6 +5,7 @@ using NanoWeaverHrt.Client.Security;
 using NanoWeaverHrt.Client.Storage;
 using NanoWeaverHrt.Gui.Core.Theme;
 using NanoWeaverHrt.Gui.Core.ViewModels;
+using NanoWeaverHrt.Gui.Core.Views;
 using Xunit;
 
 namespace NanoWeaverHrt.Tests.Gui;
@@ -615,6 +616,7 @@ public sealed class GuiViewModelsTests
 
         var p1 = new InstanceProfile("id-1", "Alpha", "http://127.0.0.1:5000", true, "admin", "Administrator", "Ed25519", "PUB", "ENV", true, 15, DateTimeOffset.UtcNow, null);
         repoMock.Setup(r => r.ListProfilesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new[] { p1 });
+        repoMock.Setup(r => r.DeleteProfileAsync("id-1", It.IsAny<CancellationToken>())).ReturnsAsync(true);
 
         var onlineSnapshot = new InstanceConnectionSnapshot("id-1", "Alpha", InstanceConnectionState.Online, 10, 20, 30, 0, 40, DateTimeOffset.UtcNow, null);
         coordMock.Setup(c => c.ConnectInstanceAsync("id-1", It.IsAny<ReadOnlyMemory<char>>(), It.IsAny<CancellationToken>()))
@@ -646,6 +648,7 @@ public sealed class GuiViewModelsTests
 
         var p1 = new InstanceProfile("id-1", "Alpha", "http://127.0.0.1:5000", true, "admin", "Administrator", "Ed25519", "PUB", "ENV", true, 15, DateTimeOffset.UtcNow, null);
         repoMock.Setup(r => r.ListProfilesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new[] { p1 });
+        repoMock.Setup(r => r.DeleteProfileAsync("id-1", It.IsAny<CancellationToken>())).ReturnsAsync(true);
 
         var onlineSnapshot = new InstanceConnectionSnapshot("id-1", "Alpha", InstanceConnectionState.Online, 10, 20, 30, 0, 40, DateTimeOffset.UtcNow, null);
         coordMock.Setup(c => c.ConnectInstanceAsync("id-1", It.IsAny<ReadOnlyMemory<char>>(), It.IsAny<CancellationToken>()))
@@ -673,6 +676,7 @@ public sealed class GuiViewModelsTests
 
         var p1 = new InstanceProfile("id-1", "Alpha", "http://127.0.0.1:5000", true, "admin", "Administrator", "Ed25519", "PUB", "ENV", true, 15, DateTimeOffset.UtcNow, null);
         repoMock.Setup(r => r.ListProfilesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new[] { p1 });
+        repoMock.Setup(r => r.DeleteProfileAsync("id-1", It.IsAny<CancellationToken>())).ReturnsAsync(true);
 
         var offlineSnapshot = new InstanceConnectionSnapshot("id-1", "Alpha", InstanceConnectionState.Offline, 0, 0, 0, 0, 0, DateTimeOffset.UtcNow, "Unreachable");
         coordMock.Setup(c => c.ConnectInstanceAsync("id-1", It.IsAny<ReadOnlyMemory<char>>(), It.IsAny<CancellationToken>()))
@@ -697,6 +701,7 @@ public sealed class GuiViewModelsTests
 
         var p1 = new InstanceProfile("id-1", "Alpha", "http://127.0.0.1:5000", true, "admin", "Administrator", "Ed25519", "PUB", "ENV", true, 15, DateTimeOffset.UtcNow, null);
         repoMock.Setup(r => r.ListProfilesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new[] { p1 });
+        repoMock.Setup(r => r.DeleteProfileAsync("id-1", It.IsAny<CancellationToken>())).ReturnsAsync(true);
 
         coordMock.Setup(c => c.ConnectInstanceAsync("id-1", It.IsAny<ReadOnlyMemory<char>>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("Fatal handshake crash"));
@@ -743,6 +748,7 @@ public sealed class GuiViewModelsTests
 
         var p1 = new InstanceProfile("id-1", "Alpha", "http://127.0.0.1:5000", true, "admin", "Administrator", "Ed25519", "PUB", "ENV", true, 15, DateTimeOffset.UtcNow, null);
         repoMock.Setup(r => r.ListProfilesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new[] { p1 });
+        repoMock.Setup(r => r.DeleteProfileAsync("id-1", It.IsAny<CancellationToken>())).ReturnsAsync(true);
 
         var offlineSnapshot = new InstanceConnectionSnapshot("id-1", "Alpha", InstanceConnectionState.Offline, 0, 0, 0, 0, 0, DateTimeOffset.UtcNow, null);
         coordMock.Setup(c => c.GetSnapshots()).Returns(new[] { offlineSnapshot });
@@ -795,6 +801,7 @@ public sealed class GuiViewModelsTests
 
         var p1 = new InstanceProfile("id-1", "Alpha", "http://127.0.0.1:5000", true, "admin", "Administrator", "Ed25519", "PUB", "ENV", true, 15, DateTimeOffset.UtcNow, null);
         repoMock.Setup(r => r.ListProfilesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new[] { p1 });
+        repoMock.Setup(r => r.DeleteProfileAsync("id-1", It.IsAny<CancellationToken>())).ReturnsAsync(true);
 
         var onlineSnapshot = new InstanceConnectionSnapshot("id-1", "Alpha", InstanceConnectionState.Online, 10, 20, 30, 0, 40, DateTimeOffset.UtcNow, null);
         coordMock.Setup(c => c.ConnectInstanceAsync("id-1", It.IsAny<ReadOnlyMemory<char>>(), It.IsAny<CancellationToken>()))
@@ -978,6 +985,488 @@ public sealed class GuiViewModelsTests
         Assert.Contains(nameof(vm.AlertFeed), firedProperties);
         Assert.Contains(nameof(vm.Snapshots), firedProperties);
         Assert.Contains(nameof(vm.SelectedSnapshot), firedProperties);
+    }
+
+    [Fact]
+    public async Task MainShellViewModel_SingleHandshake_With_WeaverNodeApiClient()
+    {
+        // WHAT: Tests that MainShellViewModel does not execute a duplicate AuthenticateAsync handshake when using WeaverNodeApiClient.
+        // WHY:  Issue #84 (P81): Single PKI challenge-response handshake per instance connection.
+        // HOW:  Pre-authenticates weaverClient, calls vm.ConnectSelectedInstanceAsync, asserts no second AuthenticateAsync call.
+        var repoMock = new Mock<IInstanceProfileRepository>();
+        var coordMock = new Mock<IMultiInstanceCoordinator>();
+        var innerNodeMock = new Mock<INanoWeaverNodeClient>();
+
+        var p1 = new InstanceProfile("id-1", "Alpha", "http://127.0.0.1:5000", true, "admin", "Administrator", "Ed25519", "PUB", "ENV", true, 15, DateTimeOffset.UtcNow, null);
+        repoMock.Setup(r => r.ListProfilesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new[] { p1 });
+        repoMock.Setup(r => r.DeleteProfileAsync("id-1", It.IsAny<CancellationToken>())).ReturnsAsync(true);
+
+        var onlineSnapshot = new InstanceConnectionSnapshot("id-1", "Alpha", InstanceConnectionState.Online, 10, 20, 30, 0, 40, DateTimeOffset.UtcNow, null);
+        coordMock.Setup(c => c.ConnectInstanceAsync("id-1", It.IsAny<ReadOnlyMemory<char>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(onlineSnapshot);
+        coordMock.Setup(c => c.GetSnapshots()).Returns(new[] { onlineSnapshot });
+
+        var weaverClient = new WeaverNodeApiClient(innerNodeMock.Object);
+        weaverClient.SetSessionToken("existing_active_token");
+
+        var vm = new MainShellViewModel(repoMock.Object, coordMock.Object, weaverClient);
+        await vm.InitializeAsync();
+
+        bool connected = await vm.ConnectSelectedInstanceAsync("passphrase123".ToCharArray());
+
+        Assert.True(connected);
+        // innerNodeMock.AuthenticateAsync was NEVER called because weaverClient already had active session!
+        innerNodeMock.Verify(n => n.AuthenticateAsync(It.IsAny<InstanceProfile>(), It.IsAny<ReadOnlyMemory<char>>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task MainShellViewModel_OnIdleTimeout_And_Dispose_ZeroizeSecrets()
+    {
+        // WHAT: Tests OnIdleTimeout and Dispose zeroization of active session tokens and client disconnection.
+        // WHY:  Issue #84 (P81): Guarantees credential zeroization on idle lock and window disposal.
+        // HOW:  Connects instance, calls OnIdleTimeout, verifies tokens purged; calls Dispose, verifies clean disposal.
+        var repoMock = new Mock<IInstanceProfileRepository>();
+        var coordMock = new Mock<IMultiInstanceCoordinator>();
+        var innerNodeMock = new Mock<INanoWeaverNodeClient>();
+
+        var p1 = new InstanceProfile("id-1", "Alpha", "http://127.0.0.1:5000", true, "admin", "Administrator", "Ed25519", "PUB", "ENV", true, 15, DateTimeOffset.UtcNow, null);
+        repoMock.Setup(r => r.ListProfilesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new[] { p1 });
+        repoMock.Setup(r => r.DeleteProfileAsync("id-1", It.IsAny<CancellationToken>())).ReturnsAsync(true);
+
+        var onlineSnapshot = new InstanceConnectionSnapshot("id-1", "Alpha", InstanceConnectionState.Online, 10, 20, 30, 0, 40, DateTimeOffset.UtcNow, null);
+        coordMock.Setup(c => c.ConnectInstanceAsync("id-1", It.IsAny<ReadOnlyMemory<char>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(onlineSnapshot);
+        coordMock.Setup(c => c.GetSnapshots()).Returns(new[] { onlineSnapshot });
+
+        innerNodeMock.Setup(n => n.AuthenticateAsync(p1, It.IsAny<ReadOnlyMemory<char>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NodeAuthSession("active_token", "Bearer", 3600, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddHours(1), "admin", "Administrator"));
+
+        var weaverClient = new WeaverNodeApiClient(innerNodeMock.Object);
+        var vm = new MainShellViewModel(repoMock.Object, coordMock.Object, weaverClient);
+        await vm.InitializeAsync();
+
+        await vm.ConnectSelectedInstanceAsync("pass".ToCharArray());
+        Assert.True(weaverClient.HasActiveSession);
+
+        // 1. Idle timeout wipes session token and disconnects
+        vm.OnIdleTimeout();
+        Assert.False(weaverClient.HasActiveSession);
+        coordMock.Verify(c => c.DisconnectInstance("id-1"), Times.Once);
+
+        // Reconnect and test Dispose
+        await vm.ConnectSelectedInstanceAsync("pass".ToCharArray());
+        Assert.True(weaverClient.HasActiveSession);
+
+        vm.Dispose();
+        Assert.False(weaverClient.HasActiveSession);
+
+        // 2. DisconnectSelectedInstance with WeaverNodeApiClient
+        vm.DisconnectSelectedInstance();
+        Assert.False(weaverClient.HasActiveSession);
+
+        // 3. RemoveInstanceAsync with WeaverNodeApiClient
+        repoMock.Setup(r => r.DeleteProfileAsync("id-1", It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        bool removed = await vm.RemoveInstanceAsync("id-1");
+        Assert.True(removed);
+    }
+
+    // =========================================================================
+    // InstanceManagerViewModel Tests
+    // =========================================================================
+
+    [Fact]
+    public void InstanceManagerViewModel_Constructor_NullGuards()
+    {
+        // WHAT: Test constructor null guards in InstanceManagerViewModel.
+        // WHY:  Ensures fail-fast semantics on missing repository.
+        // HOW:  Passes null for profileRepository and asserts ArgumentNullException.
+        Assert.Throws<ArgumentNullException>(() => new InstanceManagerViewModel(null!));
+    }
+
+    [Fact]
+    public async Task InstanceManagerViewModel_LoadProfilesAsync_Success_And_CoordinatorSync()
+    {
+        // WHAT: Test loading profiles, coordinator sync, and PropertyChanged events.
+        // WHY:  Validates profile list populating and multi-instance coordinator sync.
+        // HOW:  Sets up repository with 2 profiles, calls LoadProfilesAsync, verifies collections and status.
+        var repoMock = new Mock<IInstanceProfileRepository>();
+        var innerNodeMock = new Mock<INanoWeaverNodeClient>();
+        var coordinator = new MultiInstanceCoordinator(repoMock.Object, innerNodeMock.Object);
+
+        var p1 = new InstanceProfile("id-1", "Alpha Node", "http://127.0.0.1:5000", true, "admin", "Administrator", "Ed25519", "PUB1", "ENV1", true, 15, DateTimeOffset.UtcNow, null);
+        var p2 = new InstanceProfile("id-2", "Beta Node", "http://127.0.0.1:5001", true, "admin", "Administrator", "Ed25519", "PUB2", "ENV2", true, 15, DateTimeOffset.UtcNow, null);
+
+        repoMock.Setup(r => r.InitializeAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        repoMock.Setup(r => r.ListProfilesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new[] { p1, p2 });
+
+        var vm = new InstanceManagerViewModel(repoMock.Object, coordinator);
+        vm.SelectedProfile = p1;
+
+        List<string> firedProperties = new();
+        vm.PropertyChanged += (s, e) =>
+        {
+            if (e.PropertyName != null) firedProperties.Add(e.PropertyName);
+        };
+
+        await vm.LoadProfilesAsync();
+
+        Assert.Equal(2, vm.Profiles.Count);
+        Assert.Equal(2, vm.FilteredProfiles.Count);
+        Assert.NotNull(vm.SelectedProfile);
+        Assert.Equal("id-1", vm.SelectedProfile.InstanceId);
+        Assert.False(vm.IsBusy);
+        Assert.Contains("Loaded 2 instance profile(s)", vm.StatusMessage);
+
+        Assert.Contains(nameof(vm.Profiles), firedProperties);
+        Assert.Contains(nameof(vm.FilteredProfiles), firedProperties);
+    }
+
+    [Fact]
+    public async Task InstanceManagerViewModel_LoadProfilesAsync_ExceptionHandling()
+    {
+        // WHAT: Test LoadProfilesAsync exception branch.
+        // WHY:  Ensures error message is populated and IsBusy is reset.
+        // HOW:  Makes repository throw, calls LoadProfilesAsync, asserts status message.
+        var repoMock = new Mock<IInstanceProfileRepository>();
+        repoMock.Setup(r => r.InitializeAsync(It.IsAny<CancellationToken>())).ThrowsAsync(new InvalidOperationException("DB unavailable"));
+
+        var vm = new InstanceManagerViewModel(repoMock.Object);
+        await vm.LoadProfilesAsync();
+
+        Assert.False(vm.IsBusy);
+        Assert.Contains("Failed to load instance profiles", vm.StatusMessage);
+    }
+
+    [Fact]
+    public void InstanceManagerViewModel_FilterText_And_SelectedProfile()
+    {
+        // WHAT: Test filtering profiles by DisplayName, Username, BaseUri.
+        // WHY:  Enables quick search in large multi-instance registries.
+        // HOW:  Populates profiles, changes FilterText, asserts FilteredProfiles.
+        var repoMock = new Mock<IInstanceProfileRepository>();
+        var p1 = new InstanceProfile("id-1", "Alpha Node", "http://127.0.0.1:5000", true, "alice", "Administrator", "Ed25519", "PUB1", "ENV1", true, 15, DateTimeOffset.UtcNow, null);
+        var p2 = new InstanceProfile("id-2", "Beta Node", "http://10.0.0.2:5000", true, "bob", "Researcher", "Ed25519", "PUB2", "ENV2", true, 15, DateTimeOffset.UtcNow, null);
+
+        repoMock.Setup(r => r.ListProfilesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new[] { p1, p2 });
+        var vm = new InstanceManagerViewModel(repoMock.Object);
+        _ = vm.LoadProfilesAsync();
+
+        // SelectedProfile change
+        vm.SelectedProfile = p1;
+        Assert.Equal(p1, vm.SelectedProfile);
+
+        // Filter by DisplayName
+        vm.FilterText = "Alpha";
+        Assert.Single(vm.FilteredProfiles);
+        Assert.Equal("id-1", vm.FilteredProfiles[0].InstanceId);
+
+        // Filter by Username
+        vm.FilterText = "bob";
+        Assert.Single(vm.FilteredProfiles);
+        Assert.Equal("id-2", vm.FilteredProfiles[0].InstanceId);
+
+        // Filter by URI
+        vm.FilterText = "10.0.0.2";
+        Assert.Single(vm.FilteredProfiles);
+        Assert.Equal("id-2", vm.FilteredProfiles[0].InstanceId);
+
+        // No match
+        vm.FilterText = "nonexistent";
+        Assert.Empty(vm.FilteredProfiles);
+
+        // Clear filter
+        vm.FilterText = string.Empty;
+        Assert.Equal(2, vm.FilteredProfiles.Count);
+
+        // Null filter
+        vm.FilterText = null!;
+        Assert.Equal(2, vm.FilteredProfiles.Count);
+    }
+
+    [Fact]
+    public async Task InstanceManagerViewModel_AddProfileAsync_And_DeleteProfileAsync()
+    {
+        // WHAT: Test AddProfileAsync and DeleteProfileAsync workflows and error branches.
+        // WHY:  Validates CRUD mutations on instance registry.
+        // HOW:  Mocks repository upsert and delete, tests validation, success, not found, and exceptions.
+        var repoMock = new Mock<IInstanceProfileRepository>();
+        var coordMock = new Mock<IMultiInstanceCoordinator>();
+        var p1 = new InstanceProfile("id-1", "Alpha Node", "http://127.0.0.1:5000", true, "admin", "Administrator", "Ed25519", "PUB1", "ENV1", true, 15, DateTimeOffset.UtcNow, null);
+
+        repoMock.Setup(r => r.ListProfilesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new[] { p1 });
+        repoMock.Setup(r => r.UpsertProfileAsync(p1, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        repoMock.Setup(r => r.DeleteProfileAsync("id-1", It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        repoMock.Setup(r => r.DeleteProfileAsync("id-missing", It.IsAny<CancellationToken>())).ReturnsAsync(false);
+
+        var vm = new InstanceManagerViewModel(repoMock.Object, coordMock.Object);
+
+        // 1. Add null throws ArgumentNullException
+        await Assert.ThrowsAsync<ArgumentNullException>(() => vm.AddProfileAsync(null!));
+
+        // 2. Add success
+        bool added = await vm.AddProfileAsync(p1);
+        Assert.True(added);
+        Assert.Equal(p1, vm.SelectedProfile);
+        Assert.Contains("saved successfully", vm.StatusMessage);
+
+        // 3. Add exception
+        repoMock.Setup(r => r.UpsertProfileAsync(It.IsAny<InstanceProfile>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Disk full"));
+        bool addFailed = await vm.AddProfileAsync(p1);
+        Assert.False(addFailed);
+        Assert.Contains("Error adding instance", vm.StatusMessage);
+
+        // 4. Delete validation failures
+        Assert.False(await vm.DeleteProfileAsync(null!));
+        Assert.False(await vm.DeleteProfileAsync(""));
+        Assert.False(await vm.DeleteProfileAsync("   "));
+
+        // 5. Delete success
+        bool deleted = await vm.DeleteProfileAsync("id-1");
+        Assert.True(deleted);
+        coordMock.Verify(c => c.DisconnectInstance("id-1"), Times.Once);
+        Assert.Contains("deleted successfully", vm.StatusMessage);
+
+        // 6. Delete not found
+        bool notFound = await vm.DeleteProfileAsync("id-missing");
+        Assert.False(notFound);
+        Assert.Contains("not found", vm.StatusMessage);
+
+        // 7. Delete exception
+        repoMock.Setup(r => r.DeleteProfileAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("DB locked"));
+        bool deleteFailed = await vm.DeleteProfileAsync("id-1");
+        Assert.False(deleteFailed);
+        Assert.Contains("Error deleting instance", vm.StatusMessage);
+    }
+
+    // =========================================================================
+    // VaultUnlockViewModel Tests
+    // =========================================================================
+
+    [Fact]
+    public async Task VaultUnlockViewModel_Properties_And_UnlockWorkflow()
+    {
+        // WHAT: Test VaultUnlockViewModel properties, unlock validation, success, failure, and disposal.
+        // WHY:  Ensures the passphrase prompt dialog logic is 100% deterministic and zeroizes on exit.
+        // HOW:  Tests properties, calls UnlockAsync with various handler outcomes, tests Clear and Dispose.
+        using var vm = new VaultUnlockViewModel();
+        vm.PropertyChanged += (_, _) => { };
+
+        vm.InstanceId = "node-1";
+        Assert.Equal("node-1", vm.InstanceId);
+        vm.InstanceId = null!;
+        Assert.Equal(string.Empty, vm.InstanceId);
+        vm.InstanceId = "node-1";
+
+        vm.InstanceDisplayName = "Alpha Node";
+        Assert.Equal("Alpha Node", vm.InstanceDisplayName);
+        vm.InstanceDisplayName = null!;
+        Assert.Equal(string.Empty, vm.InstanceDisplayName);
+        vm.InstanceDisplayName = "Alpha Node";
+
+        Assert.False(vm.CanUnlock);
+        Assert.False(vm.HasError);
+        Assert.False(vm.IsUnlocked);
+
+        // Test null passphrase branch
+        vm.Passphrase = null!;
+        Assert.Equal(string.Empty, vm.Passphrase);
+
+        // 1. Null handler throws
+        await Assert.ThrowsAsync<ArgumentNullException>(() => vm.UnlockAsync(null!));
+
+        // 2. Empty passphrase fails validation
+        Assert.False(await vm.UnlockAsync(_ => Task.FromResult(true)));
+        Assert.True(vm.HasError);
+        Assert.Equal("Passphrase cannot be empty.", vm.ErrorMessage);
+
+        // 3. Successful unlock
+        vm.Passphrase = "correct_secret";
+        Assert.True(vm.CanUnlock);
+        Assert.False(vm.HasError);
+
+        bool unlocked = await vm.UnlockAsync(pass =>
+        {
+            Assert.Equal("correct_secret", new string(pass.Span));
+            return Task.FromResult(true);
+        });
+
+        Assert.True(unlocked);
+        Assert.True(vm.IsUnlocked);
+        Assert.Empty(vm.Passphrase); // Passphrase cleared on success
+        Assert.False(vm.HasError);
+
+        // 4. Failed unlock (handler returns false)
+        vm.Passphrase = "wrong_secret";
+        bool failed = await vm.UnlockAsync(_ => Task.FromResult(false));
+        Assert.False(failed);
+        Assert.False(vm.IsUnlocked);
+        Assert.True(vm.HasError);
+        Assert.Contains("Invalid passphrase", vm.ErrorMessage);
+
+        // 5. Handler throws exception
+        vm.Passphrase = "throw_secret";
+        bool threw = await vm.UnlockAsync(_ => throw new InvalidOperationException("Key derivation failure"));
+        Assert.False(threw);
+        Assert.False(vm.IsUnlocked);
+        Assert.True(vm.HasError);
+        Assert.Contains("Key derivation failure", vm.ErrorMessage);
+
+        // 6. Clear and Dispose
+        vm.Clear();
+        Assert.Empty(vm.Passphrase);
+        Assert.False(vm.HasError);
+
+        vm.Dispose();
+        Assert.False(vm.IsUnlocked);
+    }
+
+    // =========================================================================
+    // AboutViewModel Tests
+    // =========================================================================
+
+    [Fact]
+    public void AboutViewModel_MetadataProperties_ArePopulated()
+    {
+        // WHAT: Test AboutViewModel metadata and diagnostic strings.
+        // WHY:  Validates that cluster information dialog displays correct versions and capabilities.
+        // HOW:  Instantiates AboutViewModel, checks non-null and non-empty strings and collections.
+        var vm = new AboutViewModel();
+
+        Assert.Equal("NanoWeaver HRT", vm.AppName);
+        Assert.Equal("1.0.0-sovereign", vm.Version);
+        Assert.NotEmpty(vm.Description);
+        Assert.NotEmpty(vm.OSDescription);
+        Assert.NotEmpty(vm.Architecture);
+        Assert.NotEmpty(vm.FrameworkDescription);
+        Assert.Equal("MIT", vm.License);
+        Assert.Equal("NanoWeaverHrt Contributors", vm.Author);
+        Assert.Contains("https://git.lantea.one", vm.RepositoryUri);
+
+        Assert.NotEmpty(vm.SupportedAlgorithms);
+        Assert.Contains(vm.SupportedAlgorithms, a => a.Contains("Ed25519"));
+        Assert.Contains(vm.SupportedAlgorithms, a => a.Contains("ML-DSA-65"));
+
+        Assert.NotEmpty(vm.SupportedSimulations);
+        Assert.Contains(vm.SupportedSimulations, s => s.Contains("serum-stability"));
+        Assert.Contains(vm.SupportedSimulations, s => s.Contains("pbpk-endocrine"));
+
+        // PropertyChanged registration test
+        PropertyChangedEventHandler handler = (s, e) => { };
+        vm.PropertyChanged += handler;
+        vm.PropertyChanged -= handler;
+    }
+
+    // =========================================================================
+    // MainShellWindowHost Tests
+    // =========================================================================
+
+    [Fact]
+    public void MainShellWindowHost_Constructor_NullGuards()
+    {
+        // WHAT: Test constructor null guards in MainShellWindowHost.
+        // WHY:  Ensures fail-fast semantics on missing child ViewModels.
+        // HOW:  Passes null for ShellViewModel and InstanceManager.
+        var repoMock = new Mock<IInstanceProfileRepository>();
+        var coordMock = new Mock<IMultiInstanceCoordinator>();
+        var shellVm = new MainShellViewModel(repoMock.Object, coordMock.Object);
+        var instanceMgrVm = new InstanceManagerViewModel(repoMock.Object, coordMock.Object);
+
+        Assert.Throws<ArgumentNullException>(() => new MainShellWindowHost(null!, instanceMgrVm));
+        Assert.Throws<ArgumentNullException>(() => new MainShellWindowHost(shellVm, null!));
+    }
+
+    [Fact]
+    public async Task MainShellWindowHost_Navigation_And_UnlockAndConnect()
+    {
+        // WHAT: Test navigation, title changes, InitializeAsync, and UnlockAndConnectAsync.
+        // WHY:  Validates the top-level window shell orchestration layer.
+        // HOW:  Creates host, verifies navigation to all pages, tests UnlockAndConnectAsync success and failure.
+        var repoMock = new Mock<IInstanceProfileRepository>();
+        var coordMock = new Mock<IMultiInstanceCoordinator>();
+        var innerNodeMock = new Mock<INanoWeaverNodeClient>();
+        var nodeClient = new WeaverNodeApiClient(innerNodeMock.Object);
+
+        var p1 = new InstanceProfile("id-1", "Alpha", "http://127.0.0.1:5000", true, "admin", "Administrator", "Ed25519", "PUB", "ENV", true, 15, DateTimeOffset.UtcNow, null);
+        repoMock.Setup(r => r.ListProfilesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new[] { p1 });
+        repoMock.Setup(r => r.DeleteProfileAsync("id-1", It.IsAny<CancellationToken>())).ReturnsAsync(true);
+
+        var onlineSnapshot = new InstanceConnectionSnapshot("id-1", "Alpha", InstanceConnectionState.Online, 10, 20, 30, 0, 40, DateTimeOffset.UtcNow, null);
+        coordMock.Setup(c => c.ConnectInstanceAsync("id-1", It.IsAny<ReadOnlyMemory<char>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(onlineSnapshot);
+        coordMock.Setup(c => c.GetSnapshots()).Returns(new[] { onlineSnapshot });
+
+        innerNodeMock.Setup(n => n.AuthenticateAsync(p1, It.IsAny<ReadOnlyMemory<char>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NodeAuthSession("token", "Bearer", 3600, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddHours(1), "admin", "Administrator"));
+
+        var shellVm = new MainShellViewModel(repoMock.Object, coordMock.Object, nodeClient);
+        var instanceMgrVm = new InstanceManagerViewModel(repoMock.Object, coordMock.Object);
+        var vaultVm = new VaultUnlockViewModel();
+        var aboutVm = new AboutViewModel();
+
+        using var host = new MainShellWindowHost(shellVm, instanceMgrVm, vaultVm, aboutVm);
+
+        Assert.NotNull(host.About);
+        Assert.NotNull(host.VaultUnlock);
+        Assert.False(host.VaultUnlock.IsUnlocking);
+
+        host.InstanceManager.FilterText = "Alpha";
+        Assert.Equal("Alpha", host.InstanceManager.FilterText);
+
+        Assert.Equal(ShellNavigationPage.Dashboard, host.CurrentPage);
+        Assert.Equal("NanoWeaver HRT — Dashboard", host.Title);
+
+        // 1. Navigation transitions
+        host.NavigateTo(ShellNavigationPage.InstanceManager);
+        Assert.Equal(ShellNavigationPage.InstanceManager, host.CurrentPage);
+        Assert.Equal("NanoWeaver HRT — InstanceManager", host.Title);
+
+        host.NavigateTo(ShellNavigationPage.About);
+        Assert.Equal(ShellNavigationPage.About, host.CurrentPage);
+
+        // 2. Initialize child ViewModels
+        await host.InitializeAsync();
+        Assert.Single(host.ShellViewModel.Profiles);
+        Assert.Single(host.InstanceManager.Profiles);
+
+        // 3. UnlockAndConnect validation
+        await Assert.ThrowsAsync<ArgumentException>(() => host.UnlockAndConnectAsync("", "pass".ToCharArray()));
+
+        // 4. UnlockAndConnect failure (empty passphrase)
+        bool failedConnect = await host.UnlockAndConnectAsync("id-1", ReadOnlyMemory<char>.Empty);
+        Assert.False(failedConnect);
+
+        // 5. UnlockAndConnect success (navigates back to Dashboard)
+        host.VaultUnlock.Passphrase = "valid_pass";
+        bool successConnect = await host.UnlockAndConnectAsync("id-1", "valid_pass".ToCharArray());
+        Assert.True(successConnect);
+        Assert.Equal(ShellNavigationPage.Dashboard, host.CurrentPage);
+
+        // Reconnect id-1 while already connected with existing token
+        bool reconnected = await shellVm.ConnectSelectedInstanceAsync("valid_pass".ToCharArray());
+        Assert.True(reconnected);
+
+        // Reconnect after clearing weaver client token but with active token in shellVm
+        nodeClient.ClearSessionToken();
+        bool reconnectedFresh = await shellVm.ConnectSelectedInstanceAsync("valid_pass2".ToCharArray());
+        Assert.True(reconnectedFresh);
+
+        // Disconnect with active token in activeTokens
+        shellVm.DisconnectSelectedInstance();
+
+        // Connect again and remove instance with active token in activeTokens
+        await shellVm.ConnectSelectedInstanceAsync("valid_pass3".ToCharArray());
+        bool removed = await shellVm.RemoveInstanceAsync("id-1");
+        Assert.True(removed);
+
+        // 6. Dispose and throw after disposal
+        host.Dispose();
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => host.InitializeAsync());
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => host.UnlockAndConnectAsync("id-1", "pass".ToCharArray()));
+
+        // Idempotent double dispose
+        host.Dispose();
     }
 
     /// <summary>

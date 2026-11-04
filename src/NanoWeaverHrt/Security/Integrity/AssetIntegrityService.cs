@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
+using System.Text;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.FileProviders;
 
@@ -110,8 +111,8 @@ public sealed class AssetIntegrityService : IAssetIntegrityService
         IFileProvider? provider = _environment.WebRootFileProvider;
         if (provider is not null)
         {
-            IFileInfo fileInfo = provider.GetFileInfo(normalizedPath);
-            if (fileInfo.Exists)
+            IFileInfo? fileInfo = provider.GetFileInfo(normalizedPath);
+            if (fileInfo is not null && fileInfo.Exists)
             {
                 using Stream stream = fileInfo.CreateReadStream();
                 using MemoryStream ms = new();
@@ -141,5 +142,33 @@ public sealed class AssetIntegrityService : IAssetIntegrityService
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Verifies whether the provided expected SRI digest matches the actual calculated SRI digest of the asset using constant-time comparison.
+    /// </summary>
+    /// <param name="relativeAssetPath">The web-root-relative path to the asset.</param>
+    /// <param name="expectedSri">The expected W3C Subresource Integrity string to compare against.</param>
+    /// <returns><c>true</c> if the actual asset SRI matches <paramref name="expectedSri"/> in constant time; otherwise, <c>false</c>.</returns>
+    public bool VerifyAssetSri(string relativeAssetPath, string expectedSri)
+    {
+        // WHAT: Verifies an asset's SRI hash against an expected value using constant-time equality.
+        // WHY:  Prevents timing side-channel attacks when validating subresource integrity proofs.
+        // HOW:  Calculates the current SRI string via GetSubresourceIntegrity, converts both to UTF-8 bytes, and compares with CryptographicOperations.FixedTimeEquals.
+        if (string.IsNullOrWhiteSpace(expectedSri))
+        {
+            return false;
+        }
+
+        string actualSri = GetSubresourceIntegrity(relativeAssetPath);
+        if (string.IsNullOrEmpty(actualSri))
+        {
+            return false;
+        }
+
+        byte[] expectedBytes = Encoding.UTF8.GetBytes(expectedSri.Trim());
+        byte[] actualBytes = Encoding.UTF8.GetBytes(actualSri.Trim());
+
+        return CryptographicOperations.FixedTimeEquals(expectedBytes, actualBytes);
     }
 }

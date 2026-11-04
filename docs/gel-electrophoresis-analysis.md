@@ -126,9 +126,6 @@ $$
 
 ---
 
-## 4. UI Integration in Guided Workflow Wizard
-
-Stage 6 of `WorkflowWizard.razor` includes an interactive **Gel Electrophoresis Quality Inspection** panel:
-- Visual lane intensity plots rendered via HTML5 canvas.
-- Instant feedback badges: **QUALITY ACCEPTABLE** (green) vs. **EXCESS SMEAR / AGGREGATION** (amber/red).
-- Direct linkage to Opentrons thermal annealing protocols, validating synthesis runs prior to downstream endocrine administration.
+## 5. Zero-Allocation Densitometry & Stage 4 SVG Lane Plot Rendering
+- **Zero-Allocation Densitometry**: Gel lane profile extraction and peak integration run with zero heap allocations by utilizing `ArrayPool<T>.Shared` buffers for pixel intensities and background subtraction.
+- **Stage 4 SVG Lane Plot Rendering**: The web UI renders responsive SVG lane densitometry curves and peak integration boundaries directly in `WorkflowWizard.razor`, providing visual confirmation of monomer folding yields prior to wet-lab deployment.

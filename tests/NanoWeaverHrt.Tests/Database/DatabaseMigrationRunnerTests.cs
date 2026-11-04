@@ -581,9 +581,9 @@ public sealed class DatabaseMigrationRunnerTests
     [Theory]
     [InlineData("postgresql", "ON CONFLICT (version) DO NOTHING", typeof(DateTime))]
     [InlineData("duckdb", "ON CONFLICT (version) DO NOTHING", typeof(DateTime))]
-    [InlineData("mysql", "ON DUPLICATE KEY UPDATE version = version", typeof(DateTime))]
-    [InlineData("mariadb", "ON DUPLICATE KEY UPDATE version = version", typeof(DateTime))]
-    [InlineData("sqlite", "INSERT OR REPLACE INTO weaver_schema_migrations", typeof(string))]
+    [InlineData("mysql", "INSERT IGNORE INTO weaver_schema_migrations", typeof(DateTime))]
+    [InlineData("mariadb", "INSERT IGNORE INTO weaver_schema_migrations", typeof(DateTime))]
+    [InlineData("sqlite", "INSERT OR IGNORE INTO weaver_schema_migrations", typeof(string))]
     public async Task ApplyPendingMigrationsAsync_GeneratesDialectAppropriateUpsertAndTimestamp(
         string dialect,
         string expectedUpsertFragment,
@@ -606,10 +606,14 @@ public sealed class DatabaseMigrationRunnerTests
 
         Assert.Contains(expectedUpsertFragment, recordCmd.CommandText);
         Assert.Equal(3, recordCmd.Parameters.Count);
-        Assert.Equal(42L, recordCmd.Parameters["@v"].Value);
-        Assert.Equal("042_DialectTest", recordCmd.Parameters["@n"].Value);
+        bool isDuckDb = dialect.StartsWith("duckdb", StringComparison.OrdinalIgnoreCase);
+        string vParam = isDuckDb ? "v" : "@v";
+        string nParam = isDuckDb ? "n" : "@n";
+        string tParam = isDuckDb ? "t" : "@t";
+        Assert.Equal(42L, recordCmd.Parameters[vParam].Value);
+        Assert.Equal("042_DialectTest", recordCmd.Parameters[nParam].Value);
 
-        object? timestampValue = recordCmd.Parameters["@t"].Value;
+        object? timestampValue = recordCmd.Parameters[tParam].Value;
         Assert.NotNull(timestampValue);
         Assert.IsType(expectedTimestampType, timestampValue);
 
@@ -617,5 +621,30 @@ public sealed class DatabaseMigrationRunnerTests
         {
             Assert.Equal(DateTimeKind.Utc, ((DateTime)timestampValue).Kind);
         }
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="Migration012_GuiPreferences"/> emits valid DDL across SQLite, PostgreSQL, DuckDB, and MySQL.
+    /// </summary>
+    /// <param name="dialect">Database dialect identifier.</param>
+    [Theory]
+    [InlineData("sqlite")]
+    [InlineData("postgresql")]
+    [InlineData("duckdb")]
+    [InlineData("mysql")]
+    public void Migration012_GuiPreferences_EmitsValidDdlAcrossDialects(string dialect)
+    {
+        // WHAT: Verifies Migration012 version, name, and SQL text across dialects.
+        // WHY:  Ensures schema parity for GUI preferences across all database backends.
+        // HOW:  Instantiates Migration012_GuiPreferences and checks GetSql output.
+        Migration012_GuiPreferences migration = new();
+        Assert.Equal(12, migration.Version);
+        Assert.Equal("012_GuiPreferences", migration.Name);
+
+        string sql = migration.GetSql(dialect);
+        Assert.Contains("CREATE TABLE IF NOT EXISTS weaver_gui_preferences", sql);
+        Assert.Contains("preference_key", sql);
+        Assert.Contains("preference_value", sql);
+        Assert.Contains("updated_at_utc", sql);
     }
 }

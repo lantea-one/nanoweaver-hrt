@@ -79,8 +79,11 @@ services:
       - ./simulations/configs:/workspace/configs:ro
       - ./simulations/shared-data:/workspace/data:rw
       - ./simulations/exports:/workspace/exports:rw
-    ipc: host
     shm_size: 4gb
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8080/health || test -x /usr/local/bin/oxDNA"]
       interval: 30s

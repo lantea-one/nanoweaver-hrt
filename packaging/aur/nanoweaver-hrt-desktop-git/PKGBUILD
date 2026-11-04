@@ -4,13 +4,13 @@ pkgver=1.0.0.r0.g1234567
 pkgrel=1
 pkgdesc="Decentralized Synthetic Biology & DNA Origami Research Platform (Git)"
 arch=('x86_64' 'aarch64')
-url="https://git.lantea.one/fabigail/nanoweaver-hrt"
+url="https://git.lantea.one/lantea-one/nanoweaver-hrt"
 license=('MIT')
 provides=('nanoweaver-hrt-desktop')
 conflicts=('nanoweaver-hrt-desktop' 'nanoweaver-hrt-desktop-bin')
 makedepends=('git' 'dotnet-sdk>=10.0')
 depends=('glibc' 'libx11' 'libice' 'libsm' 'fontconfig' 'dbus' 'libnotify')
-source=("git+https://git.lantea.one/fabigail/nanoweaver-hrt.git#branch=main")
+source=("git+https://git.lantea.one/lantea-one/nanoweaver-hrt.git")
 sha256sums=('SKIP')
 
 pkgver() {
@@ -34,9 +34,22 @@ package() {
     install -dm755 "${pkgdir}/usr/share/metainfo"
     install -dm755 "${pkgdir}/usr/share/licenses/nanoweaver-hrt-desktop"
 
-    cp -r src/NanoWeaverHrt.Desktop/bin/Release/net10.0/*/publish/* "${pkgdir}/usr/lib/nanoweaver-hrt-desktop/"
-    chmod 755 "${pkgdir}/usr/lib/nanoweaver-hrt-desktop/NanoWeaverHrt"
-    ln -sf /usr/lib/nanoweaver-hrt-desktop/NanoWeaverHrt "${pkgdir}/usr/bin/nanoweaver-hrt-desktop"
+    if [ -f "artifacts/aur-publish/NanoWeaverHrt.Desktop" ]; then
+        install -Dm755 "artifacts/aur-publish/NanoWeaverHrt.Desktop" "$pkgdir/opt/nanoweaver-hrt/nanoweaver-hrt-desktop"
+        ln -sf /opt/nanoweaver-hrt/nanoweaver-hrt-desktop "${pkgdir}/usr/bin/nanoweaver-hrt-desktop"
+    elif [ -f "artifacts/aur-publish/nanoweaver-hrt-desktop" ]; then
+        install -Dm755 "artifacts/aur-publish/nanoweaver-hrt-desktop" "$pkgdir/opt/nanoweaver-hrt/nanoweaver-hrt-desktop"
+        ln -sf /opt/nanoweaver-hrt/nanoweaver-hrt-desktop "${pkgdir}/usr/bin/nanoweaver-hrt-desktop"
+    else
+        cp -r src/NanoWeaverHrt.Desktop/bin/Release/net10.0/*/publish/* "${pkgdir}/usr/lib/nanoweaver-hrt-desktop/"
+        if [ -f "${pkgdir}/usr/lib/nanoweaver-hrt-desktop/NanoWeaverHrt.Desktop" ]; then
+            chmod 755 "${pkgdir}/usr/lib/nanoweaver-hrt-desktop/NanoWeaverHrt.Desktop"
+            ln -sf /usr/lib/nanoweaver-hrt-desktop/NanoWeaverHrt.Desktop "${pkgdir}/usr/bin/nanoweaver-hrt-desktop"
+        elif [ -f "${pkgdir}/usr/lib/nanoweaver-hrt-desktop/NanoWeaverHrt" ]; then
+            chmod 755 "${pkgdir}/usr/lib/nanoweaver-hrt-desktop/NanoWeaverHrt"
+            ln -sf /usr/lib/nanoweaver-hrt-desktop/NanoWeaverHrt "${pkgdir}/usr/bin/nanoweaver-hrt-desktop"
+        fi
+    fi
 
     install -m644 packaging/linux/nanoweaver-hrt-desktop.desktop "${pkgdir}/usr/share/applications/"
     install -m644 packaging/linux/nanoweaver-hrt-desktop-tray.desktop "${pkgdir}/etc/xdg/autostart/"

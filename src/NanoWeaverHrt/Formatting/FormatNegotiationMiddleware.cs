@@ -82,7 +82,7 @@ public sealed class FormatNegotiationMiddleware
             string responseText = await new StreamReader(memoryStream, Encoding.UTF8).ReadToEndAsync();
             string responseContentType = context.Response.ContentType ?? string.Empty;
 
-            if (responseContentType.Contains("application/json", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(responseText))
+            if ((responseContentType.Contains("application/json", StringComparison.OrdinalIgnoreCase) || responseContentType.Contains("application/problem+json", StringComparison.OrdinalIgnoreCase)) && !string.IsNullOrWhiteSpace(responseText))
             {
                 if (wantsXml)
                 {

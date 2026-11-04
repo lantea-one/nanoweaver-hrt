@@ -72,8 +72,26 @@ public sealed class XyzPipeReader : ITrajectoryParser
                 ReadResult result = await reader.ReadAsync(cancellationToken);
                 ReadOnlySequence<byte> buffer = result.Buffer;
 
-                while (TryReadLine(ref buffer, out ReadOnlySequence<byte> lineSequence))
+                while (true)
                 {
+                    ReadOnlySequence<byte> lineSequence;
+                    if (TryReadLine(ref buffer, out lineSequence))
+                    {
+                        // Successfully read a newline-terminated line
+                    }
+                    else if (result.IsCompleted && !buffer.IsEmpty)
+                    {
+                        // WHAT: Flushes and parses the final trailing line at EOF when a trailing newline is absent.
+                        // WHY:  Standard simulation tools may emit the final atom coordinate row without a trailing '\n'.
+                        // HOW:  Takes the remainder of the buffer as the line and advances the cursor to buffer.End.
+                        lineSequence = buffer;
+                        buffer = buffer.Slice(buffer.End);
+                    }
+                    else
+                    {
+                        break;
+                    }
+
                     if (lineSequence.IsEmpty)
                     {
                         continue;

@@ -472,6 +472,45 @@ public sealed class WebUiAndConfigurationTests : IClassFixture<WebApplicationFac
     }
 
     /// <summary>
+    /// Verifies that <see cref="StackServiceManager.SanitizeEndpoint"/> strips passwords and user credentials
+    /// across PostgreSQL URIs and key-value connection strings.
+    /// </summary>
+    [Fact]
+    public void StackServiceManager_SanitizeEndpoint_RedactsCredentialsSafely()
+    {
+        // WHAT: Tests credential redaction in database endpoints.
+        // WHY:  Ensures passwords are never returned in telemetry or displayed in UI dashboards.
+        // HOW:  Passes URIs with user:password, key-value strings with Password=..., and verifies redaction.
+        // 1. PostgreSQL URI with credentials
+        string uriWithCreds = "postgres://weaver_admin:SuperSecretPass123!@db.internal:5432/nanoweaver_hrt";
+        string sanitizedUri = StackServiceManager.SanitizeEndpoint(uriWithCreds);
+        Assert.DoesNotContain("weaver_admin", sanitizedUri);
+        Assert.DoesNotContain("SuperSecretPass123!", sanitizedUri);
+        Assert.Equal("postgres://db.internal:5432/nanoweaver_hrt", sanitizedUri);
+
+        string uriNoPort = "postgresql://weaver_admin:SuperSecretPass123!@db.internal/nanoweaver_hrt";
+        string sanitizedNoPort = StackServiceManager.SanitizeEndpoint(uriNoPort);
+        Assert.Equal("postgresql://db.internal:5432/nanoweaver_hrt", sanitizedNoPort);
+
+        // 2. Key-value connection string with Password
+        string kvWithCreds = "Host=pg.cluster;Port=5432;Database=weaver;Username=admin;Password=secretpass123";
+        string sanitizedKv = StackServiceManager.SanitizeEndpoint(kvWithCreds);
+        Assert.DoesNotContain("secretpass123", sanitizedKv);
+        Assert.DoesNotContain("admin", sanitizedKv);
+        Assert.Equal("pg.cluster:5432/weaver", sanitizedKv);
+
+        // 3. Fallback raw key-value password redaction
+        string rawPassword = "Password=plaintext_secret;OtherParam=val";
+        string sanitizedRaw = StackServiceManager.SanitizeEndpoint(rawPassword);
+        Assert.DoesNotContain("plaintext_secret", sanitizedRaw);
+        Assert.Contains("Password=***", sanitizedRaw);
+
+        // 4. Null and whitespace
+        Assert.Equal("Unknown Endpoint", StackServiceManager.SanitizeEndpoint(null));
+        Assert.Equal("Unknown Endpoint", StackServiceManager.SanitizeEndpoint("   "));
+    }
+
+    /// <summary>
     /// Verifies REST API configuration endpoints: GET, POST override, and DELETE revert.
     /// </summary>
     [Fact]
@@ -628,7 +667,7 @@ public sealed class WebUiAndConfigurationTests : IClassFixture<WebApplicationFac
         // WHAT: Detects Node.js major version to conditionally pass branch/line flags.
         // WHY:  --test-coverage-branches was introduced in Node.js v22.8.0; Node v20 runners reject this flag.
         // HOW:  Inspects 'node --version' output and tailors CLI arguments accordingly.
-        string nodeArgs = "--test --experimental-test-coverage --test-coverage-branches=100 --test-coverage-lines=100 --test-coverage-functions=100 tests/weaver-visualizer.test.mjs";
+        string nodeArgs = "--test --test-isolation=process --experimental-test-coverage --test-coverage-branches=100 --test-coverage-lines=100 --test-coverage-functions=100 tests/weaver-visualizer.test.mjs";
         try
         {
             ProcessStartInfo verPsi = new("node", "--version") { RedirectStandardOutput = true, UseShellExecute = false };
@@ -639,7 +678,7 @@ public sealed class WebUiAndConfigurationTests : IClassFixture<WebApplicationFac
                 verProc.WaitForExit();
                 if (int.TryParse(verStr.Split('.')[0], out int maj) && maj < 22)
                 {
-                    nodeArgs = "--test --experimental-test-coverage tests/weaver-visualizer.test.mjs";
+                    nodeArgs = "--test --test-isolation=process --experimental-test-coverage tests/weaver-visualizer.test.mjs";
                 }
             }
         }
@@ -658,16 +697,41 @@ public sealed class WebUiAndConfigurationTests : IClassFixture<WebApplicationFac
             UseShellExecute = false
         };
 
-        using Process proc = Process.Start(psi) ?? throw new InvalidOperationException("Failed to spawn node process");
-        string stdout = proc.StandardOutput.ReadToEnd();
-        string stderr = proc.StandardError.ReadToEnd();
-        proc.WaitForExit();
-
-        Assert.True(proc.ExitCode == 0, $"JavaScript tests failed with exit code {proc.ExitCode}.\nStdout:\n{stdout}\nStderr:\n{stderr}");
-        Assert.Contains("pass 9", stdout);
-        if (nodeArgs.Contains("--test-coverage-branches"))
+        string jsPkgPath = Path.Combine(repoRoot, "src", "NanoWeaverHrt", "wwwroot", "js", "package.json");
+        bool createdJsPkg = false;
+        try
         {
-            Assert.Contains("100.00 |   100.00 |  100.00", stdout);
+            if (!File.Exists(jsPkgPath))
+            {
+                File.WriteAllText(jsPkgPath, "{\"type\":\"commonjs\"}");
+                createdJsPkg = true;
+            }
+
+            using Process proc = Process.Start(psi) ?? throw new InvalidOperationException("Failed to spawn node process");
+            string stdout = proc.StandardOutput.ReadToEnd();
+            string stderr = proc.StandardError.ReadToEnd();
+            proc.WaitForExit();
+
+            Assert.True(proc.ExitCode == 0, $"JavaScript tests failed with exit code {proc.ExitCode}.\nStdout:\n{stdout}\nStderr:\n{stderr}");
+            Assert.Contains("pass 9", stdout);
+            if (nodeArgs.Contains("--test-coverage-branches"))
+            {
+                Assert.Contains("100.00 |   100.00 |  100.00", stdout);
+            }
+        }
+        finally
+        {
+            if (createdJsPkg)
+            {
+                try
+                {
+                    File.Delete(jsPkgPath);
+                }
+                catch
+                {
+                    // Ignore deletion cleanup failures
+                }
+            }
         }
     }
 

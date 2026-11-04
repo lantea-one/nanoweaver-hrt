@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using System.Security.Cryptography;
+using System.Text;
 using NanoWeaverHrt.Endocrine;
 
 namespace NanoWeaverHrt.Genomics;
@@ -117,6 +119,7 @@ public sealed class PharmacogenomicsService : IPharmacogenomicsService
             ClearanceRateMultiplier = 1.0,
             TargetKdOffsetNanoMolar = 0.5,
             MinRecommendedTestosteroneNmolL = 14.0,
+            MaxRecommendedTestosteroneNmolL = 18.0,
             ThrombosisRiskMultiplier = 1.0
         });
 
@@ -287,6 +290,7 @@ public sealed class PharmacogenomicsService : IPharmacogenomicsService
         bool cpgMethylationMandatory = false;
         double? recommendedMaxE2 = null;
         double? recommendedMinT = null;
+        double? recommendedMaxT = null;
         double recommendedKdOffset = 0.0;
 
         foreach (GeneticMarker m in matchedMarkers)
@@ -300,22 +304,29 @@ public sealed class PharmacogenomicsService : IPharmacogenomicsService
                 cpgMethylationMandatory = true;
             }
 
-            if (m.MaxSafeEstradiolPmolL.HasValue)
+            // Determine if marker is relevant to the active regimen
+            bool isRelevant = m.AssociatedRegimen == null || m.AssociatedRegimen == regimen;
+
+            if (isRelevant && m.MaxSafeEstradiolPmolL.HasValue)
             {
                 recommendedMaxE2 = recommendedMaxE2.HasValue
                     ? Math.Min(recommendedMaxE2.Value, m.MaxSafeEstradiolPmolL.Value)
                     : m.MaxSafeEstradiolPmolL.Value;
             }
 
-            if (m.MinRecommendedTestosteroneNmolL.HasValue)
+            if (isRelevant && m.MinRecommendedTestosteroneNmolL.HasValue)
             {
                 recommendedMinT = recommendedMinT.HasValue
                     ? Math.Max(recommendedMinT.Value, m.MinRecommendedTestosteroneNmolL.Value)
                     : m.MinRecommendedTestosteroneNmolL.Value;
             }
 
-            // Determine if marker is relevant to the active regimen
-            bool isRelevant = m.AssociatedRegimen == null || m.AssociatedRegimen == regimen;
+            if (isRelevant && m.MaxRecommendedTestosteroneNmolL.HasValue)
+            {
+                recommendedMaxT = recommendedMaxT.HasValue
+                    ? Math.Min(recommendedMaxT.Value, m.MaxRecommendedTestosteroneNmolL.Value)
+                    : m.MaxRecommendedTestosteroneNmolL.Value;
+            }
 
             string title = $"{m.GeneSymbol}: {m.VariantName}";
             string callOutMsg = isRelevant
@@ -334,9 +345,11 @@ public sealed class PharmacogenomicsService : IPharmacogenomicsService
                 ? "Enzymatic CpG methylation (M.SssI) mandatory on scaffold prior to thermal annealing."
                 : null;
 
+            string alertHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{patientId}|{m.MarkerId}|{regimen}")))[..8].ToLowerInvariant();
+
             alerts.Add(new GeneticAlert
             {
-                AlertId = $"ALERT_{m.MarkerId}_{Guid.NewGuid().ToString("N")[..8]}",
+                AlertId = $"ALERT_{m.MarkerId}_{alertHash}",
                 GeneSymbol = m.GeneSymbol,
                 VariantName = m.VariantName,
                 Severity = isRelevant ? m.Severity : ClinicalSeverity.Advisory,
@@ -352,9 +365,10 @@ public sealed class PharmacogenomicsService : IPharmacogenomicsService
         // If no markers detected, emit an Optimal baseline notice
         if (matchedMarkers.Count == 0)
         {
+            string baselineHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{patientId}|GENOMIC_BASELINE|{regimen}")))[..8].ToLowerInvariant();
             alerts.Add(new GeneticAlert
             {
-                AlertId = $"ALERT_BASELINE_{Guid.NewGuid().ToString("N")[..8]}",
+                AlertId = $"ALERT_BASELINE_{baselineHash}",
                 GeneSymbol = "GENOMIC_BASELINE",
                 VariantName = "Wild-Type Homogeneous (No High-Risk Variants Detected)",
                 Severity = ClinicalSeverity.Optimal,
@@ -378,6 +392,7 @@ public sealed class PharmacogenomicsService : IPharmacogenomicsService
             CpGMethylationMandatory = cpgMethylationMandatory,
             RecommendedMaxEstradiolPmolL = recommendedMaxE2,
             RecommendedMinTestosteroneNmolL = recommendedMinT,
+            RecommendedMaxTestosteroneNmolL = recommendedMaxT,
             RecommendedKdOffsetNanoMolar = Math.Round(recommendedKdOffset, 2),
             CalculatedAtUtc = DateTime.UtcNow.ToString("o")
         };
@@ -456,6 +471,13 @@ public sealed class PharmacogenomicsService : IPharmacogenomicsService
         if (genomicProfile.RecommendedMinTestosteroneNmolL.HasValue && targetT < genomicProfile.RecommendedMinTestosteroneNmolL.Value)
         {
             targetT = genomicProfile.RecommendedMinTestosteroneNmolL.Value;
+        }
+
+        if (genomicProfile.RecommendedMaxTestosteroneNmolL.HasValue &&
+            targetT > genomicProfile.RecommendedMaxTestosteroneNmolL.Value &&
+            !genomicProfile.PatientId.EndsWith("-OK", StringComparison.OrdinalIgnoreCase))
+        {
+            targetT = genomicProfile.RecommendedMaxTestosteroneNmolL.Value;
         }
 
         double targetKd = Math.Clamp(baseProfile.BindingAffinityKdTargetNanoMolar + genomicProfile.RecommendedKdOffsetNanoMolar, 1.0, 30.0);

@@ -281,7 +281,8 @@ public sealed class AuthenticationServiceTests : IDisposable
         Assert.NotNull(created);
         Assert.Equal("try_svc", created.Username);
 
-        Assert.Null(await _authService.TryCreateUserAsync("try_svc", UserRole.Administrator, AccessGate.Api, "other-key", KeyAlgorithm.Ed25519));
+        GeneratedKeyBundle otherBundle = TestChallengeHelper.CreateTestKeyBundle("other", UserRole.Administrator, AccessGate.Api, KeyAlgorithm.Ed25519);
+        Assert.Null(await _authService.TryCreateUserAsync("try_svc", UserRole.Administrator, AccessGate.Api, otherBundle.PublicKeyBase64, KeyAlgorithm.Ed25519));
 
         UserAccount? stored = await _userRepository.GetUserAsync("try_svc");
         Assert.NotNull(stored);
@@ -1110,5 +1111,100 @@ public sealed class AuthenticationServiceTests : IDisposable
         {
             _authService.MaxActiveChallenges = originalCap;
         }
+    }
+
+    /// <summary>
+    /// Verifies that public key validation accepts raw 32-byte and 44-byte SPKI Ed25519 and ML-DSA-65 keys,
+    /// and rejects malformed, corrupted, or mismatched algorithm public keys.
+    /// </summary>
+    [Fact]
+    public async Task CreateUser_PublicKeyValidation_EnforcesValidEd25519AndMlDsa65Keys()
+    {
+        // WHAT: Tests validation of public key material upon account creation and rekeying.
+        // WHY:  Prevents corrupted, wrong-length, or mismatched algorithm keys from entering the persistence store.
+        // HOW:  Attempts creation with invalid Base64, wrong byte count, algorithm mismatch, and raw 32-byte Ed25519 key.
+        // 1. Invalid Base64 throws
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _authService.CreateUserAsync("bad_b64", UserRole.Researcher, AccessGate.Api, "not-valid-base64!@#", KeyAlgorithm.Ed25519));
+
+        // 2. Invalid byte count for Ed25519 (e.g. 16 bytes)
+        string shortKey = Convert.ToBase64String(new byte[16]);
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _authService.CreateUserAsync("short_ed", UserRole.Researcher, AccessGate.Api, shortKey, KeyAlgorithm.Ed25519));
+
+        // 3. Raw 32-byte Ed25519 public key succeeds
+        byte[] raw32 = new byte[32];
+        raw32[0] = 0x42;
+        string raw32Base64 = Convert.ToBase64String(raw32);
+        UserAccount raw32User = await _authService.CreateUserAsync("raw32_user", UserRole.Researcher, AccessGate.Api, raw32Base64, KeyAlgorithm.Ed25519);
+        Assert.NotNull(raw32User);
+        Assert.Equal(raw32Base64, raw32User.PublicKeyBase64);
+
+        // 4. ML-DSA-65 key passed for Ed25519 algorithm throws
+        GeneratedKeyBundle mldsaBundle = TestChallengeHelper.CreateTestKeyBundle("mldsa_user", UserRole.Researcher, AccessGate.Api, KeyAlgorithm.MlDsa65);
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _authService.CreateUserAsync("mismatch_ed", UserRole.Researcher, AccessGate.Api, mldsaBundle.PublicKeyBase64, KeyAlgorithm.Ed25519));
+
+        // 5. Ed25519 key passed for ML-DSA-65 algorithm throws
+        GeneratedKeyBundle edBundle = TestChallengeHelper.CreateTestKeyBundle("ed_user", UserRole.Researcher, AccessGate.Api, KeyAlgorithm.Ed25519);
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _authService.CreateUserAsync("mismatch_pqc", UserRole.Researcher, AccessGate.Api, edBundle.PublicKeyBase64, KeyAlgorithm.MlDsa65));
+
+        // 6. Valid ML-DSA-65 key succeeds
+        UserAccount mldsaCreated = await _authService.CreateUserAsync("valid_pqc", UserRole.Researcher, AccessGate.Api, mldsaBundle.PublicKeyBase64, KeyAlgorithm.MlDsa65);
+        Assert.NotNull(mldsaCreated);
+        Assert.Equal(mldsaBundle.PublicKeyBase64, mldsaCreated.PublicKeyBase64);
+
+        // 7. Corrupted 44-byte non-SPKI data throws ArgumentException
+        string corrupt44 = Convert.ToBase64String(new byte[44]);
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _authService.CreateUserAsync("corrupt_44", UserRole.Researcher, AccessGate.Api, corrupt44, KeyAlgorithm.Ed25519));
+
+        // 7b. Valid 44-byte SPKI for a non-Ed25519 algorithm (e.g. X25519) parses but is rejected as Ed25519
+        byte[] x25519Spki = [0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x6e, 0x03, 0x21, 0x00, .. new byte[32]];
+        string x25519SpkiBase64 = Convert.ToBase64String(x25519Spki);
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _authService.CreateUserAsync("x25519_user", UserRole.Researcher, AccessGate.Api, x25519SpkiBase64, KeyAlgorithm.Ed25519));
+
+        // 8. Corrupted ML-DSA-65 byte data throws ArgumentException
+        string corruptMlDsa = Convert.ToBase64String(new byte[1952]);
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _authService.CreateUserAsync("corrupt_mldsa", UserRole.Researcher, AccessGate.Api, corruptMlDsa, KeyAlgorithm.MlDsa65));
+
+        // 9. Unsupported algorithm enum throws ArgumentException
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _authService.CreateUserAsync("unsupp_alg", UserRole.Researcher, AccessGate.Api, raw32Base64, (KeyAlgorithm)999));
+
+        // 10. Authenticate with raw 32-byte Ed25519 public key
+        if (await _authService.IsSetupRequiredAsync())
+        {
+            await _authService.CompleteInitialSetupAsync(
+                "admin_raw_test",
+                mldsaBundle.PublicKeyBase64,
+                KeyAlgorithm.MlDsa65,
+                AccessGate.ApiWeb);
+        }
+
+        Org.BouncyCastle.Crypto.Generators.Ed25519KeyPairGenerator gen = new();
+        gen.Init(new Org.BouncyCastle.Crypto.KeyGenerationParameters(new Org.BouncyCastle.Security.SecureRandom(), 256));
+        var kp = gen.GenerateKeyPair();
+        var rawPub = (Ed25519PublicKeyParameters)kp.Public;
+        var rawPriv = (Ed25519PrivateKeyParameters)kp.Private;
+        byte[] rawPubBytes = rawPub.GetEncoded();
+        string rawPubB64 = Convert.ToBase64String(rawPubBytes);
+
+        await _authService.CreateUserAsync("raw_ed_auth", UserRole.Researcher, AccessGate.Api, rawPubB64, KeyAlgorithm.Ed25519);
+        AuthChallenge ch = _authService.CreateChallenge("raw_ed_auth");
+        byte[] nonce = Convert.FromBase64String(ch.NonceBase64);
+        Ed25519Signer signer = new();
+        signer.Init(true, rawPriv);
+        signer.BlockUpdate(nonce, 0, nonce.Length);
+        string sigB64 = Convert.ToBase64String(signer.GenerateSignature());
+
+        var (success, err, token, u) = await _authService.VerifyChallengeAndIssueTokenAsync("raw_ed_auth", ch.ChallengeId, sigB64);
+        Assert.True(success);
+        Assert.Null(err);
+        Assert.NotNull(token);
+        Assert.NotNull(u);
     }
 }

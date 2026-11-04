@@ -48,7 +48,8 @@ public sealed class DatabaseMigrationRunner : IDisposable
                 new Migration008_SubjectKeyStore(),
                 new Migration009_AuditLedgerStore(),
                 new Migration010_EncryptPatientDnaPhi(protector),
-                new Migration011_SubjectAccessAndGroups()
+                new Migration011_SubjectAccessAndGroups(),
+                new Migration012_GuiPreferences()
             }.OrderBy(m => m.Version).ToList();
         }
     }
@@ -193,24 +194,25 @@ public sealed class DatabaseMigrationRunner : IDisposable
             // HOW:  Branches on dialect prefix to select the exact SQL text and ISqlDialect instance.
             string upsertSql;
             ISqlDialect sqlDialect;
+            bool isDuckDb = dialect.StartsWith("duckdb", StringComparison.OrdinalIgnoreCase);
             if (dialect.StartsWith("postgres", StringComparison.OrdinalIgnoreCase))
             {
                 upsertSql = "INSERT INTO weaver_schema_migrations (version, name, applied_at_utc) VALUES (@v, @n, @t) ON CONFLICT (version) DO NOTHING";
                 sqlDialect = PostgreSqlDialect.Instance;
             }
-            else if (dialect.StartsWith("duckdb", StringComparison.OrdinalIgnoreCase))
+            else if (isDuckDb)
             {
-                upsertSql = "INSERT INTO weaver_schema_migrations (version, name, applied_at_utc) VALUES (@v, @n, @t) ON CONFLICT (version) DO NOTHING";
+                upsertSql = "INSERT INTO weaver_schema_migrations (version, name, applied_at_utc) VALUES ($v, $n, $t) ON CONFLICT (version) DO NOTHING";
                 sqlDialect = DuckDbDialect.Instance;
             }
             else if (dialect.StartsWith("mysql", StringComparison.OrdinalIgnoreCase) || dialect.StartsWith("mariadb", StringComparison.OrdinalIgnoreCase))
             {
-                upsertSql = "INSERT INTO weaver_schema_migrations (version, name, applied_at_utc) VALUES (@v, @n, @t) ON DUPLICATE KEY UPDATE version = version";
+                upsertSql = "INSERT IGNORE INTO weaver_schema_migrations (version, name, applied_at_utc) VALUES (@v, @n, @t)";
                 sqlDialect = MySqlDialect.Instance;
             }
             else
             {
-                upsertSql = "INSERT OR REPLACE INTO weaver_schema_migrations (version, name, applied_at_utc) VALUES (@v, @n, @t)";
+                upsertSql = "INSERT OR IGNORE INTO weaver_schema_migrations (version, name, applied_at_utc) VALUES (@v, @n, @t)";
                 sqlDialect = SqliteDialect.Instance;
             }
 
@@ -227,17 +229,17 @@ public sealed class DatabaseMigrationRunner : IDisposable
                     recordCmd.CommandText = upsertSql;
 
                     DbParameter pVersion = recordCmd.CreateParameter();
-                    pVersion.ParameterName = "@v";
+                    pVersion.ParameterName = isDuckDb ? "v" : "@v";
                     pVersion.Value = migration.Version;
                     recordCmd.Parameters.Add(pVersion);
 
                     DbParameter pName = recordCmd.CreateParameter();
-                    pName.ParameterName = "@n";
+                    pName.ParameterName = isDuckDb ? "n" : "@n";
                     pName.Value = migration.Name;
                     recordCmd.Parameters.Add(pName);
 
                     DbParameter pTime = recordCmd.CreateParameter();
-                    pTime.ParameterName = "@t";
+                    pTime.ParameterName = isDuckDb ? "t" : "@t";
                     // WHAT: Binds the applied-at timestamp in the form each engine's column expects.
                     // WHY:  PostgreSQL declares applied_at_utc as TIMESTAMPTZ, DuckDB as TIMESTAMP, MySQL as DATETIME(6),
                     //       and SQLite as TEXT (ISO-8601 round-trip string).

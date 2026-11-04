@@ -166,7 +166,7 @@ public sealed record AptamerTrajectoryMetrics : NanoWeaverHrt.Swagger.IExamplesP
     public required double AverageContactsPerFrame { get; init; }
 
     /// <summary>
-    /// Proportion of frames (between 0.0 and 1.0) where the ligand maintained at least 3 active contacts in the pocket.
+    /// Proportion of frames (between 0.0 and 1.0) where the ligand maintained at least 2 active contacts in the pocket.
     /// Values above 0.85 indicate stable thermodynamic binding.
     /// </summary>
     [Description("Proportion of frames (between 0.0 and 1.0) where the ligand maintained stable binding contacts.")]

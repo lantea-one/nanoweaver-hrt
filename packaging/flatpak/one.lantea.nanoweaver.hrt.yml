@@ -1,0 +1,23 @@
+app-id: one.lantea.nanoweaver.hrt
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.dotnet10
+command: nanoweaver-hrt-desktop
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --share=network
+  - --device=dri
+modules:
+  - name: nanoweaver-hrt-desktop
+    buildsystem: simple
+    build-commands:
+      - dotnet publish src/NanoWeaverHrt.Desktop/NanoWeaverHrt.Desktop.csproj -c Release -o /app/lib/nanoweaver-hrt-desktop
+      - ln -s /app/lib/nanoweaver-hrt-desktop/NanoWeaverHrt.Desktop /app/bin/nanoweaver-hrt-desktop
+    sources:
+      - type: git
+        url: https://git.lantea.one/lantea-one/nanoweaver-hrt.git
+        branch: main

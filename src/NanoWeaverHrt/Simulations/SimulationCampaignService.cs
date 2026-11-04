@@ -61,9 +61,16 @@ public sealed class SimulationCampaignService : ISimulationCampaignService
         double mgFactor = Math.Max(1.0, 12.5 / Math.Max(0.1, request.DivalentMagnesiumMilliMolar));
         double rawRmsf = 0.45 + (0.18 * Math.Log(mgFactor));
 
-        // Temperature acceleration scaling (37°C vs 20°C ambient)
-        double tempFactor = (tempK - 273.15) / 37.0;
-        rawRmsf *= Math.Max(0.8, tempFactor);
+        // Temperature acceleration scaling (37°C vs ambient, without flat-clamping below 29.6°C)
+        double tempFactor = Math.Max(0.1, (tempK - 273.15) / 37.0);
+        rawRmsf *= tempFactor;
+
+        // Total integration steps adjust coarse-grained sampling precision
+        if (request.SimulationSteps > 0)
+        {
+            double stepScaling = 1.0 + (0.02 * Math.Log10(Math.Max(1000.0, request.SimulationSteps) / 10000000.0));
+            rawRmsf *= Math.Clamp(stepScaling, 0.90, 1.10);
+        }
 
         // Passivation coatings significantly reduce RMSF and prevent fraying
         if (request.PllPegCoatingApplied)
@@ -173,7 +180,13 @@ public sealed class SimulationCampaignService : ISimulationCampaignService
 
         // Sequence length and GC content influence the unbinding barrier
         int seqLen = Math.Max(20, request.AptamerSequence.Length);
-        double unboundBarrier = Math.Round(7.5 + (seqLen * 0.04), 2); // e.g. ~9.18 kcal/mol
+        int gcCount = 0;
+        foreach (char c in request.AptamerSequence)
+        {
+            if (c is 'G' or 'g' or 'C' or 'c') gcCount++;
+        }
+        double gcFrac = request.AptamerSequence.Length > 0 ? (double)gcCount / request.AptamerSequence.Length : 0.5;
+        double unboundBarrier = Math.Round(7.0 + (seqLen * 0.04) + ((gcFrac - 0.5) * 1.5), 2); // e.g. ~9.22 kcal/mol
         double boundBarrier = Math.Round(-2.1 - ((seqLen % 5) * 0.05), 2); // e.g. ~-2.1 to -2.3 kcal/mol
         double allostericDelta = Math.Round(boundBarrier - unboundBarrier, 2);
 
@@ -183,11 +196,11 @@ public sealed class SimulationCampaignService : ISimulationCampaignService
             double xi = Math.Round((double)i / windows * maxCoord, 2);
             double progress = xi / maxCoord;
 
-            // Unbound follows a sigmoidal activation barrier rising to unboundBarrier
-            double unboundVal = Math.Round(unboundBarrier * (1.0 / (1.0 + Math.Exp(-4.0 * (progress - 0.45)))), 2);
+            // Unbound follows a sigmoidal activation barrier rising to unboundBarrier (0.0 at xi = 0.0)
+            double unboundVal = i == 0 ? 0.0 : Math.Round(unboundBarrier * (1.0 / (1.0 + Math.Exp(-4.0 * (progress - 0.45)))), 2);
 
-            // Bound drops exergonically as ligand allosterically unlocks latch
-            double boundVal = Math.Round(boundBarrier * (1.0 / (1.0 + Math.Exp(-3.5 * (progress - 0.3)))), 2);
+            // Bound drops exergonically as ligand allosterically unlocks latch (0.0 at xi = 0.0)
+            double boundVal = i == 0 ? 0.0 : Math.Round(boundBarrier * (1.0 / (1.0 + Math.Exp(-3.5 * (progress - 0.3)))), 2);
 
             curve.Add(new FreeEnergyPmfPoint
             {
@@ -269,12 +282,29 @@ public sealed class SimulationCampaignService : ISimulationCampaignService
         int capacity = Math.Min(60, Math.Max(10, request.LoadedMoleculeCount));
         double maxDailyNanomoles = Math.Round(capacity * 0.026, 3); // Physiological nanomolar daily dosing
 
+        double totalDuration = request.SimulationDurationNs > 0 ? request.SimulationDurationNs : 100.0;
+
+        // Account for chassis geometry and hormone molecule steric fit
+        if (request.ChassisGeometry.Contains("Cage", StringComparison.OrdinalIgnoreCase))
+        {
+            // Nanocages have smaller exit portals, reducing passive leakage slightly
+            passiveLeakage = Math.Round(passiveLeakage * 0.9, 1);
+            retentionClosed = Math.Round(100.0 - passiveLeakage, 1);
+        }
+
+        if (request.HormoneMolecule.Contains("Testosterone", StringComparison.OrdinalIgnoreCase) &&
+            !func.Contains("Cyclodextrin", StringComparison.OrdinalIgnoreCase))
+        {
+            // Testosterone has higher hydrophobicity than estradiol, modestly modifying diffusion
+            releaseRateOpen = Math.Round(releaseRateOpen * 1.05, 1);
+        }
+
         List<PayloadRetentionTimePoint> curve =
         [
             new() { TimeNs = 0.0, ClosedLatchRetentionPercent = 100.0, OpenLatchRetentionPercent = 100.0 },
-            new() { TimeNs = 20.0, ClosedLatchRetentionPercent = Math.Round(100.0 - (passiveLeakage * 0.25), 1), OpenLatchRetentionPercent = 65.0 },
-            new() { TimeNs = 50.0, ClosedLatchRetentionPercent = Math.Round(100.0 - (passiveLeakage * 0.65), 1), OpenLatchRetentionPercent = 32.0 },
-            new() { TimeNs = 100.0, ClosedLatchRetentionPercent = retentionClosed, OpenLatchRetentionPercent = 8.0 }
+            new() { TimeNs = Math.Round(totalDuration * 0.20, 1), ClosedLatchRetentionPercent = Math.Round(100.0 - (passiveLeakage * 0.25), 1), OpenLatchRetentionPercent = 65.0 },
+            new() { TimeNs = Math.Round(totalDuration * 0.50, 1), ClosedLatchRetentionPercent = Math.Round(100.0 - (passiveLeakage * 0.65), 1), OpenLatchRetentionPercent = 32.0 },
+            new() { TimeNs = Math.Round(totalDuration, 1), ClosedLatchRetentionPercent = retentionClosed, OpenLatchRetentionPercent = 8.0 }
         ];
 
         return new PayloadLeakageAnalysisResult
@@ -308,16 +338,18 @@ public sealed class SimulationCampaignService : ISimulationCampaignService
         // Resolve genetic clearance and thrombosis risk multipliers from patient genomic profile
         double clearanceMultiplier = 1.0;
         double thrombosisRiskIndex = 1.0;
+        double? maxE2Cap = null;
 
         if (request.GenomicMarkerIds.Count > 0)
         {
             var profile = _genomicsService.AnalyzeProfile(request.PatientId, request.GenomicMarkerIds, request.Regimen);
             clearanceMultiplier = profile.OverallClearanceMultiplier;
             thrombosisRiskIndex = profile.ThrombosisRiskIndex;
+            maxE2Cap = profile.RecommendedMaxEstradiolPmolL;
         }
 
-        // Subcutaneous depot first-order clearance constant (t1/2 ~ 95 days)
-        double kDepot = 0.0073;
+        // Subcutaneous depot first-order clearance constant scaled with dose
+        double kDepot = 0.0073 * Math.Sqrt(25.0 / doseMg);
 
         List<PbpkTrajectoryPoint> kinetics = [];
         double sumE2 = 0.0;
@@ -345,8 +377,15 @@ public sealed class SimulationCampaignService : ISimulationCampaignService
                 // Minor sinusoidal metabolic fluctuation
                 e2 = Math.Round(baselineE2 + (25.0 * Math.Sin(day * 0.1)), 1);
 
-                // Thrombosis safety check: peak estradiol capping
-                if (thrombosisRiskIndex > 1.5 && e2 > 520.0)
+                // Thrombosis safety check: peak estradiol capping honoring genomic limits
+                if (maxE2Cap.HasValue && maxE2Cap.Value >= 480.0)
+                {
+                    if (e2 > maxE2Cap.Value)
+                    {
+                        e2 = maxE2Cap.Value;
+                    }
+                }
+                else if (thrombosisRiskIndex > 1.5 && e2 > 520.0)
                 {
                     e2 = 500.0; // Automatically capped by pharmacogenomics feedback
                 }
@@ -409,7 +448,7 @@ public sealed class SimulationCampaignService : ISimulationCampaignService
         double timeInRange = Math.Round((double)inRangeDays / days * 100.0, 1);
 
         bool suppressionAchieved = isMtf ? avgT < 1.8 : avgE2 < 150.0;
-        int recIntervalDays = 180; // Semi-annual depot formulation
+        int recIntervalDays = request.DeliveryIntervalDays > 0 ? request.DeliveryIntervalDays : 180;
 
         string feasibility = timeInRange >= 85.0 && suppressionAchieved && !surgeDetected
             ? $"Feasible as Semi-Annual Subcutaneous Depot ({doseMg:F0} mg every {recIntervalDays} days)"
@@ -447,6 +486,8 @@ public sealed class SimulationCampaignService : ISimulationCampaignService
         return new StringBuilder()
             .AppendLine("# oxDNA Physiological Serum Stability Deck")
             .AppendLine($"# Generated for Scaffold: {request.ScaffoldName}")
+            .AppendLine("topology = target.top")
+            .AppendLine("conf_file = target.dat")
             .AppendLine($"steps = {request.SimulationSteps}")
             .AppendLine("dt = 0.003")
             .AppendLine($"T = {tempK}K")
@@ -471,6 +512,10 @@ public sealed class SimulationCampaignService : ISimulationCampaignService
             .AppendLine("units real")
             .AppendLine("atom_style full")
             .AppendLine("pair_style lj/charmm/coul/long 10.0 12.0")
+            .AppendLine("region simbox block -50.0 50.0 -50.0 50.0 -50.0 50.0")
+            .AppendLine("create_box 2 simbox")
+            .AppendLine("create_atoms 1 random 100 12345 simbox")
+            .AppendLine("pair_coeff * * 0.1 2.0")
             .AppendLine($"# Umbrella windows: {request.UmbrellaSamplingWindows} | Reaction Coord Max: {request.ReactionCoordinateMaxNm:F1} nm")
             .AppendLine("timestep 2.0")
             .AppendLine("run 50000")
@@ -491,6 +536,10 @@ public sealed class SimulationCampaignService : ISimulationCampaignService
             .AppendLine("units real")
             .AppendLine("atom_style full")
             .AppendLine("pair_style lj/cut/coul/long 12.0")
+            .AppendLine("region cavity block -40.0 40.0 -40.0 40.0 -40.0 40.0")
+            .AppendLine("create_box 2 cavity")
+            .AppendLine("create_atoms 1 random 50 67890 cavity")
+            .AppendLine("pair_coeff * * 0.15 2.5")
             .AppendLine($"# Duration: {request.SimulationDurationNs:F1} ns | Capacity: {request.LoadedMoleculeCount} molecules")
             .AppendLine("run 100000")
             .ToString();

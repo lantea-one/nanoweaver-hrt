@@ -132,26 +132,32 @@ public sealed class DcdPipeReader : ITrajectoryParser
                     SequenceReader<byte> frameSeq = new(buffer.Slice(0, framePayloadBytes));
 
                     // Skip unit cell block if present (contains periodic box dimensions)
+                    bool blockValid = true;
                     if (hasUnitCell)
                     {
-                        frameSeq.Advance(56);
+                        // Validate unit cell block: leading 48 bytes marker + 48 bytes payload + trailing 48 bytes marker = 56 bytes
+                        frameSeq.TryReadLittleEndian(out int ucMarker);
+                        frameSeq.Advance(48);
+                        frameSeq.TryReadLittleEndian(out int ucTrail);
+                        blockValid = ucMarker == 48 && ucTrail == 48;
                     }
 
-                    // WHAT: Reads contiguous floats for X, Y, and Z blocks.
+                    // WHAT: Reads contiguous floats for X, Y, and Z blocks with strict Fortran marker validation.
                     // WHY:  DCD stores coordinates grouped by dimension rather than interleaved (x1,x2.. y1,y2.. z1,z2..).
-                    // HOW:  Reads raw bytes directly into rented float arrays using MemoryMarshal.
-                    ReadCoordinateBlock(ref frameSeq, rentedX.AsSpan(0, numberOfAtoms));
-                    ReadCoordinateBlock(ref frameSeq, rentedY.AsSpan(0, numberOfAtoms));
-                    ReadCoordinateBlock(ref frameSeq, rentedZ.AsSpan(0, numberOfAtoms));
-
-                    // Interleave X, Y, Z floats into AtomCoordinate structs without heap allocations
-                    for (int i = 0; i < numberOfAtoms; i++)
+                    // HOW:  Reads raw bytes directly into rented float arrays and validates leading/trailing record lengths.
+                    if (blockValid && ReadCoordinateBlock(ref frameSeq, rentedX.AsSpan(0, numberOfAtoms)) &&
+                        ReadCoordinateBlock(ref frameSeq, rentedY.AsSpan(0, numberOfAtoms)) &&
+                        ReadCoordinateBlock(ref frameSeq, rentedZ.AsSpan(0, numberOfAtoms)))
                     {
-                        atomBuffer[i] = new AtomCoordinate(rentedX[i], rentedY[i], rentedZ[i]);
-                    }
+                        // Interleave X, Y, Z floats into AtomCoordinate structs without heap allocations
+                        for (int i = 0; i < numberOfAtoms; i++)
+                        {
+                            atomBuffer[i] = new AtomCoordinate(rentedX[i], rentedY[i], rentedZ[i]);
+                        }
 
-                    // Emit parsed frame to downstream pipeline
-                    await onFrameAvailable(frameIndex++, atomBuffer.AsSpan(0, numberOfAtoms));
+                        // Emit parsed frame to downstream pipeline
+                        await onFrameAvailable(frameIndex++, atomBuffer.AsSpan(0, numberOfAtoms));
+                    }
 
                     // Advance buffer past this completed frame
                     buffer = buffer.Slice(framePayloadBytes);
@@ -231,15 +237,19 @@ public sealed class DcdPipeReader : ITrajectoryParser
     }
 
     /// <summary>
-    /// Reads a single Fortran-unformatted block of contiguous 32-bit floats into the target coordinate span.
+    /// Reads and validates a single Fortran-unformatted block of contiguous 32-bit floats into the target coordinate span.
     /// </summary>
     /// <param name="reader">The sequence reader positioned at the Fortran record marker.</param>
     /// <param name="destination">The destination span to populate with floats.</param>
-    private static void ReadCoordinateBlock(ref SequenceReader<byte> reader, Span<float> destination)
+    /// <returns>True if the coordinate block was successfully read and validated; otherwise false.</returns>
+    private static bool ReadCoordinateBlock(ref SequenceReader<byte> reader, Span<float> destination)
     {
         // Read leading Fortran block size marker (4 bytes)
-        int blockMarker;
-        reader.TryReadLittleEndian(out blockMarker);
+        reader.TryReadLittleEndian(out int blockMarker);
+        if (blockMarker != destination.Length * 4)
+        {
+            return false;
+        }
 
         // WHAT: Reads raw float bytes into destination span.
         // WHY:  Avoids intermediate memory copies.
@@ -251,6 +261,12 @@ public sealed class DcdPipeReader : ITrajectoryParser
         }
 
         // Read trailing Fortran block size marker (4 bytes)
-        reader.TryReadLittleEndian(out blockMarker);
+        reader.TryReadLittleEndian(out int trailingMarker);
+        if (trailingMarker != blockMarker)
+        {
+            return false;
+        }
+
+        return true;
     }
 }

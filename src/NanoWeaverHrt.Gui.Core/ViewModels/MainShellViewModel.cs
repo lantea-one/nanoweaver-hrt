@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using NanoWeaverHrt.Client.Api;
+using NanoWeaverHrt.Client.Security;
 using NanoWeaverHrt.Client.Storage;
 using NanoWeaverHrt.Localization;
 
@@ -10,7 +11,7 @@ namespace NanoWeaverHrt.Gui.Core.ViewModels;
 /// <summary>
 /// Root shell ViewModel coordinating the multi-instance sidebar, active node dashboard, background tray state, and alert feed.
 /// </summary>
-public sealed class MainShellViewModel : INotifyPropertyChanged
+public sealed class MainShellViewModel : INotifyPropertyChanged, IDisposable
 {
     /// <summary>
     /// Repository used for loading and managing persistent instance connection profiles.
@@ -28,9 +29,9 @@ public sealed class MainShellViewModel : INotifyPropertyChanged
     private readonly INanoWeaverNodeClient? _nodeClient;
 
     /// <summary>
-    /// Cached bearer tokens for authenticated instances.
+    /// Cached zeroizable bearer tokens for authenticated instances.
     /// </summary>
-    private readonly ConcurrentDictionary<string, string> _activeTokens = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, ZeroizableSecretBuffer> _activeTokens = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Backing list for configured instance profiles.
@@ -153,14 +154,14 @@ public sealed class MainShellViewModel : INotifyPropertyChanged
         // HOW:  Initializes repository, queries profiles, synchronizes coordinator snapshots,
         //       selects the first instance if none is selected, and notifies observers.
         await _profileRepository.InitializeAsync(ct);
-        _profiles = await _profileRepository.ListProfilesAsync(ct);
+        _profiles = await _profileRepository.ListProfilesAsync(ct) ?? [];
 
         if (_coordinator is MultiInstanceCoordinator multiCoord)
         {
             await multiCoord.SyncProfilesAsync(ct);
         }
 
-        _snapshots = _coordinator.GetSnapshots();
+        _snapshots = _coordinator.GetSnapshots() ?? [];
 
         if (string.IsNullOrWhiteSpace(_selectedInstanceId) && _profiles.Count > 0)
         {
@@ -217,14 +218,42 @@ public sealed class MainShellViewModel : INotifyPropertyChanged
 
             if (_nodeClient != null && snapshot.State == InstanceConnectionState.Online)
             {
-                try
+                if (_nodeClient is WeaverNodeApiClient weaverClient && weaverClient.HasActiveSession && weaverClient.SessionTokenBuffer != null)
                 {
-                    NodeAuthSession session = await _nodeClient.AuthenticateAsync(profile, passphrase, ct);
-                    _activeTokens[_selectedInstanceId] = session.Token;
+                    // WHAT: Re-use active session token from WeaverNodeApiClient to eliminate duplicate handshake.
+                    // WHY:  Issue #84 (P81): Single PKI challenge-response handshake per instance connection.
+                    // HOW:  Obtain cloned ZeroizableSecretBuffer directly from WeaverNodeApiClient.
+                    using ZeroizableSecretBuffer? existing = weaverClient.SessionTokenBuffer;
+                    if (existing != null)
+                    {
+                        if (_activeTokens.TryRemove(_selectedInstanceId, out ZeroizableSecretBuffer? old))
+                        {
+                            old.Dispose();
+                        }
+                        _activeTokens[_selectedInstanceId] = existing.Clone();
+                    }
                 }
-                catch
+                else
                 {
-                    // If nodeClient authentication fails, we don't hold the token
+                    try
+                    {
+                        NodeAuthSession session = await _nodeClient.AuthenticateAsync(profile, passphrase, ct);
+                        ZeroizableSecretBuffer tokenBuffer = ZeroizableSecretBuffer.FromUtf8(session.Token);
+                        if (_activeTokens.TryRemove(_selectedInstanceId, out ZeroizableSecretBuffer? old))
+                        {
+                            old.Dispose();
+                        }
+                        _activeTokens[_selectedInstanceId] = tokenBuffer;
+
+                        if (_nodeClient is WeaverNodeApiClient client)
+                        {
+                            client.SetSessionToken(tokenBuffer);
+                        }
+                    }
+                    catch
+                    {
+                        // If nodeClient authentication fails, we don't hold the token
+                    }
                 }
             }
 
@@ -253,15 +282,24 @@ public sealed class MainShellViewModel : INotifyPropertyChanged
     /// </summary>
     public void DisconnectSelectedInstance()
     {
-        // WHAT: Disconnects the active instance and purges its cached token.
-        // WHY:  Allows users to manually sign out or disconnect an instance from the UI.
-        // HOW:  Guards against null SelectedInstanceId, removes active token, and delegates to coordinator.
+        // WHAT: Disconnects the active instance and purges its cached zeroizable token.
+        // WHY:  Allows users to manually sign out or disconnect an instance from the UI without secret leaks.
+        // HOW:  Guards against null SelectedInstanceId, disposes active token, clears node client, and delegates to coordinator.
         if (string.IsNullOrWhiteSpace(_selectedInstanceId))
         {
             return;
         }
 
-        _activeTokens.TryRemove(_selectedInstanceId, out _);
+        if (_activeTokens.TryRemove(_selectedInstanceId, out ZeroizableSecretBuffer? tokenBuffer))
+        {
+            tokenBuffer.Dispose();
+        }
+
+        if (_nodeClient is WeaverNodeApiClient weaverClient)
+        {
+            weaverClient.ClearSessionToken();
+        }
+
         _coordinator.DisconnectInstance(_selectedInstanceId);
         _snapshots = _coordinator.GetSnapshots();
         UpdateSelectedSnapshot();
@@ -301,14 +339,16 @@ public sealed class MainShellViewModel : INotifyPropertyChanged
             return false;
         }
 
-        if (!_activeTokens.TryGetValue(_selectedInstanceId, out string? bearerToken) || string.IsNullOrWhiteSpace(bearerToken))
+        if (!_activeTokens.TryGetValue(_selectedInstanceId, out ZeroizableSecretBuffer? tokenBuffer) ||
+            tokenBuffer.IsDisposed ||
+            tokenBuffer.Length == 0)
         {
             return false;
         }
 
         try
         {
-            return await _nodeClient.StartSimulationCampaignAsync(profile, bearerToken, simulationType, ct);
+            return await _nodeClient.StartSimulationCampaignAsync(profile, tokenBuffer.ToUnprotectedString(), simulationType, ct);
         }
         catch (Exception)
         {
@@ -335,7 +375,16 @@ public sealed class MainShellViewModel : INotifyPropertyChanged
             return false;
         }
 
-        _activeTokens.TryRemove(instanceId, out _);
+        if (_activeTokens.TryRemove(instanceId, out ZeroizableSecretBuffer? tokenBuffer))
+        {
+            tokenBuffer.Dispose();
+        }
+
+        if (_nodeClient is WeaverNodeApiClient weaverClient)
+        {
+            weaverClient.ClearSessionToken();
+        }
+
         _coordinator.DisconnectInstance(instanceId);
 
         bool deleted = await _profileRepository.DeleteProfileAsync(instanceId, ct);
@@ -671,6 +720,57 @@ public sealed class MainShellViewModel : INotifyPropertyChanged
         catch
         {
             // Suppress background persistence exceptions during synchronous property setter dispatches.
+        }
+    }
+
+    /// <summary>
+    /// Handles idle session timeout by zeroizing active session tokens and disconnecting all instances.
+    /// </summary>
+    public void OnIdleTimeout()
+    {
+        // WHAT: Purges and zeroizes all active session tokens on idle session lock.
+        // WHY:  Prime Directive 12 & Issue #84 (P81): Sessions must expire and wipe credentials after inactivity.
+        // HOW:  Disposes each ZeroizableSecretBuffer, clears nodeClient token, and disconnects all snapshots.
+        foreach (var kvp in _activeTokens)
+        {
+            kvp.Value.Dispose();
+        }
+        _activeTokens.Clear();
+
+        if (_nodeClient is WeaverNodeApiClient weaverClient)
+        {
+            weaverClient.ClearSessionToken();
+        }
+
+        foreach (var snapshot in _snapshots)
+        {
+            if (snapshot.State != InstanceConnectionState.Disconnected)
+            {
+                _coordinator.DisconnectInstance(snapshot.InstanceId);
+            }
+        }
+
+        _snapshots = _coordinator.GetSnapshots();
+        UpdateSelectedSnapshot();
+        OnPropertyChanged(nameof(Snapshots));
+        OnPropertyChanged(nameof(SelectedSnapshot));
+    }
+
+    /// <inheritdoc/>
+    public void Dispose()
+    {
+        // WHAT: Disposes cached zeroizable token buffers and releases node client session.
+        // WHY:  Prevents lingering plaintext secrets in heap memory when view model is destroyed.
+        // HOW:  Disposes all ZeroizableSecretBuffer values, clears node client, and clears _activeTokens.
+        foreach (var kvp in _activeTokens)
+        {
+            kvp.Value.Dispose();
+        }
+        _activeTokens.Clear();
+
+        if (_nodeClient is WeaverNodeApiClient weaverClient)
+        {
+            weaverClient.ClearSessionToken();
         }
     }
 }

@@ -112,6 +112,13 @@ public sealed record GeneticMarker : IExamplesProvider<GeneticMarker>
     public double? MinRecommendedTestosteroneNmolL { get; init; }
 
     /// <summary>
+    /// Maximum recommended serum testosterone concentration in nmol/L to prevent androgen receptor hypersensitivity.
+    /// </summary>
+    [Description("Maximum recommended serum testosterone concentration in nmol/L.")]
+    [JsonPropertyName("maxRecommendedTestosteroneNmolL")]
+    public double? MaxRecommendedTestosteroneNmolL { get; init; } = null;
+
+    /// <summary>
     /// Venous thromboembolism relative risk multiplier (1.0 = population baseline).
     /// </summary>
     [Description("Venous thromboembolism relative risk multiplier.")]

@@ -218,7 +218,10 @@ public sealed class SubjectAccessServiceTests : IDisposable
         await _service.RevokeSubjectAccessAsync("admin", "dr_jane", "pat_1", ct);
         Assert.Equal(SubjectAccessLevel.ReadAccess, await _service.GetEffectiveAccessLevelAsync("dr_jane", "pat_1", ct));
 
-        // Creator ownership: dr_jane creates Cohort Beta containing pat_1 (since dr_jane already has access via Group 1)
+        // dr_jane must have at least GenomicAccess (Tier 2) over pat_1 to add them to a new cohort without privilege escalation
+        await _service.GrantGroupAccessAsync("admin", grp1.Id, "dr_jane", SubjectAccessLevel.GenomicAccess, "GenomicAccess for cohort addition", ct);
+
+        // Creator ownership: dr_jane creates Cohort Beta containing pat_1
         SubjectGroup grp2 = await _service.CreateGroupAsync("dr_jane", UserRole.Researcher, "Cohort Beta", "Researcher cohort", ["pat_1"], ct);
         // Creator gets at least GenomicAccess (Tier 2) over members of created group
         Assert.Equal(SubjectAccessLevel.GenomicAccess, await _service.GetEffectiveAccessLevelAsync("dr_jane", "pat_1", ct));
@@ -287,11 +290,17 @@ public sealed class SubjectAccessServiceTests : IDisposable
         Assert.Single(resAccessible3);
         Assert.Equal("pat_beta", resAccessible3[0]);
 
-        // Researcher creates a group containing pat_alpha
-        SubjectGroup resGrp = await _service.CreateGroupAsync("res_user", UserRole.Researcher, "My Cohort", null, ["pat_alpha"], ct);
+        // Researcher attempting to create group with pat_alpha (only ReadAccess) fails due to privilege escalation check
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.CreateGroupAsync("res_user", UserRole.Researcher, "Escalation Cohort", null, ["pat_alpha"], ct));
+
+        // Researcher creates a group containing pat_beta (holds GenomicAccess) -> succeeds
+        SubjectGroup resGrp = await _service.CreateGroupAsync("res_user", UserRole.Researcher, "My Cohort", null, ["pat_beta"], ct);
         var resAccessibleCreated = await _service.GetAccessibleSubjectUsernamesAsync("res_user", UserRole.Researcher, SubjectAccessLevel.GenomicAccess, ct);
-        // Created group members are included
-        Assert.Contains("pat_alpha", resAccessibleCreated);
+        Assert.Contains("pat_beta", resAccessibleCreated);
+
+        // Created group members are NOT elevated to FullReadAccess (Tier 3)
+        var resAccessibleTier3 = await _service.GetAccessibleSubjectUsernamesAsync("res_user", UserRole.Researcher, SubjectAccessLevel.FullReadAccess, ct);
+        Assert.Empty(resAccessibleTier3);
     }
 
     /// <summary>
@@ -349,10 +358,12 @@ public sealed class SubjectAccessServiceTests : IDisposable
         // Empty candidates pass
         Assert.True(await _service.ValidateCanAddSubjectsToGroupAsync("dr_res", UserRole.Researcher, [], ct));
 
-        // Grant dr_res access to pat_granted only
+        // Grant dr_res access to pat_granted at ReadAccess (Tier 1) -> insufficient for cohort enrollment (privilege escalation protection)
         await _service.GrantSubjectAccessAsync("admin", "dr_res", "pat_granted", SubjectAccessLevel.ReadAccess, null, ct);
+        Assert.False(await _service.ValidateCanAddSubjectsToGroupAsync("dr_res", UserRole.Researcher, ["pat_granted"], ct));
 
-        // Adding only pat_granted -> true
+        // Upgrade dr_res to GenomicAccess (Tier 2) -> now permitted to enroll into cohort
+        await _service.GrantSubjectAccessAsync("admin", "dr_res", "pat_granted", SubjectAccessLevel.GenomicAccess, null, ct);
         Assert.True(await _service.ValidateCanAddSubjectsToGroupAsync("dr_res", UserRole.Researcher, ["pat_granted"], ct));
 
         // Adding pat_granted + pat_unauthorized -> false
@@ -437,8 +448,8 @@ public sealed class SubjectAccessServiceTests : IDisposable
         SubjectGroup resGroup = await _service.CreateGroupAsync("dr_owner", UserRole.Researcher, "Res Cohort", null, [], ct);
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.AddGroupMemberAsync("dr_owner", UserRole.Researcher, resGroup.Id, "pat_unauthorized", ct));
 
-        // Grant dr_owner access to pat_authorized
-        await _service.GrantSubjectAccessAsync("admin", "dr_owner", "pat_authorized", SubjectAccessLevel.ReadAccess, null, ct);
+        // Grant dr_owner access to pat_authorized with GenomicAccess (Tier 2) so they are authorized to add to cohort
+        await _service.GrantSubjectAccessAsync("admin", "dr_owner", "pat_authorized", SubjectAccessLevel.GenomicAccess, null, ct);
         // Researcher owner adds authorized subject -> succeeds!
         bool resAdded = await _service.AddGroupMemberAsync("dr_owner", UserRole.Researcher, resGroup.Id, "pat_authorized", ct);
         Assert.True(resAdded);
@@ -508,6 +519,23 @@ public sealed class SubjectAccessServiceTests : IDisposable
         // Revoking non-existent subject grant returns false
         bool subjRevokedNone = await _service.RevokeSubjectAccessAsync("admin", "dr_res", "nonexistent_pat", ct);
         Assert.False(subjRevokedNone);
+    }
+
+    /// <summary>
+    /// Verifies GetEffectiveAccessLevelAsync when a researcher created a group containing the subject.
+    /// </summary>
+    [Fact]
+    public async Task GetEffectiveAccessLevelAsync_GroupCreatorGrantsGenomicAccess_ReturnsGenomicAccess()
+    {
+        // WHAT: Tests GetEffectiveAccessLevelAsync where group creator matches researcher.
+        // WHY:  Ensures group creators get at least GenomicAccess without explicit group grant, covering ternary true branch.
+        // HOW:  Creates group with Creator=dr_creator, adds subject to group, calls GetEffectiveAccessLevelAsync.
+        CancellationToken ct = CancellationToken.None;
+        await _accessRepo.SaveGroupAsync(new SubjectGroup { Id = "grp_creator", Name = "Creator Group", Description = "Desc", CreatedBy = "res_creator", CreatedAtUtc = DateTimeOffset.UtcNow, UpdatedAtUtc = DateTimeOffset.UtcNow }, ct);
+        await _accessRepo.AddGroupMemberAsync("grp_creator", "subj_creator", DateTimeOffset.UtcNow, ct);
+
+        SubjectAccessLevel? level = await _service.GetEffectiveAccessLevelAsync("res_creator", "subj_creator", ct);
+        Assert.Equal(SubjectAccessLevel.GenomicAccess, level);
     }
 
     /// <summary>

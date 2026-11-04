@@ -39,13 +39,30 @@ public sealed class FabricationService : IFabricationService
     {
         int a = 0, t = 0, g = 0, c = 0;
 
-        // WHAT: Counts individual nucleotide occurrences without allocating heap strings.
-        // WHY:  Preserves strict zero-allocation performance on large sequence streams.
-        // HOW:  Loops over the ReadOnlySpan of characters, incrementing base counters.
+        // WHAT: Counts individual nucleotide occurrences without allocating heap strings, skipping FASTA header lines.
+        // WHY:  Preserves strict zero-allocation performance on large sequence streams and ignores non-sequence comments.
+        // HOW:  Loops over the ReadOnlySpan of characters, skipping from '>' to '\n', and incrementing base counters.
         ReadOnlySpan<char> span = sequence.AsSpan();
+        bool insideHeader = false;
         for (int i = 0; i < span.Length; i++)
         {
-            char ch = char.ToUpperInvariant(span[i]);
+            char rawCh = span[i];
+            if (insideHeader)
+            {
+                if (rawCh == '\n')
+                {
+                    insideHeader = false;
+                }
+                continue;
+            }
+
+            if (rawCh == '>')
+            {
+                insideHeader = true;
+                continue;
+            }
+
+            char ch = char.ToUpperInvariant(rawCh);
             switch (ch)
             {
                 case 'A': a++; break;
@@ -150,7 +167,7 @@ public sealed class FabricationService : IFabricationService
         DiyFabricationGuide diyGuide = GenerateDiyFabricationGuide(regimen, geometry, staples.Count);
 
         // Compute deterministic SHA-256 fingerprint for the package definition
-        string signatureMaterial = $"{packageId}|{regimen}|{geometry}|{targetTissue}|{targetKd}|{staples.Count}";
+        string signatureMaterial = $"{sequenceOrSampleId.Trim()}|{regimen}|{geometry}|{targetTissue}|{targetKd:F4}|{staples.Count}|{string.Join(',', staples.Select(s => s.Sequence))}";
         byte[] hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(signatureMaterial));
         string sha256 = Convert.ToHexString(hashBytes).ToLowerInvariant();
 

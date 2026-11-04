@@ -1,5 +1,9 @@
 using System.Runtime.InteropServices;
+using NanoWeaverHrt.Client.Api;
+using NanoWeaverHrt.Client.Security;
+using NanoWeaverHrt.Client.Storage;
 using NanoWeaverHrt.Desktop.Platform;
+using NanoWeaverHrt.Gui.Core.Services;
 
 namespace NanoWeaverHrt.Desktop;
 
@@ -37,6 +41,9 @@ public static class DesktopProgram
     /// <param name="mutexName">Optional mutex name override for test isolation.</param>
     /// <param name="ct">Cancellation token for terminating asynchronous operations.</param>
     /// <param name="uiHost">Optional desktop UI host abstraction.</param>
+    /// <param name="daemonMonitor">Optional background instance monitor override for daemon mode.</param>
+    /// <param name="daemonTrayController">Optional tray controller override for daemon mode.</param>
+    /// <param name="daemonCoordinator">Optional coordinator override for daemon mode.</param>
     /// <returns>Process exit code: 0 for clean execution, 1 for CLI syntax error, 2 for instance collision.</returns>
     public static async Task<int> RunAsync(
         string[] args,
@@ -45,7 +52,10 @@ public static class DesktopProgram
         IPlatformProcessRunner? processRunner = null,
         string? mutexName = null,
         CancellationToken ct = default,
-        IDesktopUiHost? uiHost = null)
+        IDesktopUiHost? uiHost = null,
+        IBackgroundInstanceMonitor? daemonMonitor = null,
+        ITrayIconController? daemonTrayController = null,
+        IMultiInstanceCoordinator? daemonCoordinator = null)
     {
         // WHAT: Validate and initialize output stream writers.
         // WHY:  Permits redirection of output to string buffers during test assertions.
@@ -71,7 +81,16 @@ public static class DesktopProgram
                 return RunVerifySelf(outWriter, processRunner);
 
             case "--headless-daemon":
-                return await RunHeadlessDaemonAsync(outWriter, errWriter, mutexName, ct).ConfigureAwait(false);
+            case "--headless":
+            case "--tray-only":
+                return await RunHeadlessDaemonAsync(
+                    outWriter,
+                    errWriter,
+                    mutexName,
+                    ct,
+                    daemonMonitor,
+                    daemonTrayController,
+                    daemonCoordinator).ConfigureAwait(false);
 
             default:
                 await errWriter.WriteLineAsync($"[NanoWeaver HRT Desktop] Unrecognized option: {command}").ConfigureAwait(false);
@@ -95,7 +114,7 @@ public static class DesktopProgram
         writer.WriteLine("Options:");
         writer.WriteLine("  --gui               Launches the interactive desktop GUI shell (default when run without arguments).");
         writer.WriteLine("  --verify-self       Executes platform diagnostics and exits 0 if healthy.");
-        writer.WriteLine("  --headless-daemon   Runs the background instance monitoring daemon without a GUI.");
+        writer.WriteLine("  --headless-daemon   Runs the background instance monitoring daemon without a GUI (aliases: --headless, --tray-only).");
         writer.WriteLine("  --help, -h          Displays this help documentation.");
     }
 
@@ -129,16 +148,22 @@ public static class DesktopProgram
     /// <param name="stderr">Standard error text stream.</param>
     /// <param name="mutexName">System mutex name for single-instance verification.</param>
     /// <param name="ct">Cancellation token signalling process shutdown.</param>
+    /// <param name="customMonitor">Optional background instance monitor override.</param>
+    /// <param name="customTrayController">Optional tray controller override.</param>
+    /// <param name="customCoordinator">Optional coordinator override.</param>
     /// <returns>Integer status code: 0 on normal shutdown, 2 on mutex collision.</returns>
     private static async Task<int> RunHeadlessDaemonAsync(
         TextWriter stdout,
         TextWriter stderr,
         string? mutexName,
-        CancellationToken ct)
+        CancellationToken ct,
+        IBackgroundInstanceMonitor? customMonitor = null,
+        ITrayIconController? customTrayController = null,
+        IMultiInstanceCoordinator? customCoordinator = null)
     {
-        // WHAT: Enforce single-instance lock and execute continuous background loop.
-        // WHY:  Guarantees only one daemon polls connected instances per host user session.
-        // HOW:  Acquires SingleInstanceMutexGuard; if not primary, logs error and exits 2; else awaits cancellation.
+        // WHAT: Enforce single-instance lock and execute continuous background monitoring loop.
+        // WHY:  Issue #84 (P81): Actively polls configured instances and routes alerts via BackgroundInstanceMonitor in daemon mode.
+        // HOW:  Acquires SingleInstanceMutexGuard; wires monitor, tray, and coordinator; executes ticks; shuts down cleanly on cancellation.
         string effectiveMutex = mutexName ?? SingleInstanceMutexGuard.DefaultMutexName;
         using var guard = new SingleInstanceMutexGuard(effectiveMutex);
 
@@ -148,12 +173,44 @@ public static class DesktopProgram
             return 2;
         }
 
+        ITrayIconController tray = customTrayController ?? new DesktopTrayIconController();
+        IPlatformProcessRunner processRunner = new SystemPlatformProcessRunner();
+        INativeNotificationSink sink = new DesktopNativeNotificationSink(processRunner);
+
+        IMultiInstanceCoordinator coordinator;
+        if (customCoordinator != null)
+        {
+            coordinator = customCoordinator;
+        }
+        else
+        {
+            string dbPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "NanoWeaverHrt", "profiles.db");
+            var repo = new SqliteInstanceProfileRepository($"Data Source={dbPath}");
+            var httpClient = new HttpClient();
+            var keyVault = new AesGcmClientKeyRingVault();
+            var nodeClient = new NanoWeaverNodeClient(httpClient, keyVault);
+            coordinator = new MultiInstanceCoordinator(repo, nodeClient);
+        }
+
+        IBackgroundInstanceMonitor monitor = customMonitor ?? new BackgroundInstanceMonitor(coordinator, tray, sink);
+
         await stdout.WriteLineAsync("NanoWeaver HRT Headless Daemon started. Press Ctrl+C to terminate.").ConfigureAwait(false);
 
-        var tcs = new TaskCompletionSource();
-        using (ct.Register(static s => ((TaskCompletionSource)s!).TrySetResult(), tcs))
+        try
         {
-            await tcs.Task.ConfigureAwait(false);
+            while (true)
+            {
+                await monitor.ExecuteMonitoringTickAsync(DateTimeOffset.UtcNow, ct).ConfigureAwait(false);
+                await Task.Delay(50, ct).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected normal cancellation path on SIGINT/SIGTERM
+        }
+        finally
+        {
+            (coordinator as IDisposable)?.Dispose();
         }
 
         await stdout.WriteLineAsync("NanoWeaver HRT Headless Daemon stopped cleanly.").ConfigureAwait(false);

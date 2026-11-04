@@ -1,5 +1,6 @@
 using NanoWeaverHrt.Client.Api;
 using NanoWeaverHrt.Gui.Core.Services;
+using NanoWeaverHrt.Mobile.Security;
 
 namespace NanoWeaverHrt.Mobile.Platform;
 
@@ -9,7 +10,7 @@ namespace NanoWeaverHrt.Mobile.Platform;
 /// <remarks>
 /// // WHAT: Central mobile hosting and lifecycle verification entrypoint.
 /// // WHY:  Provides deterministic lifecycle testing, bundle verification, and initialization hooks for mobile shells.
-/// // HOW:  Exposes manifest metadata accessors, platform self-verification, and an asynchronous lifecycle runner.
+/// // HOW:  Exposes manifest metadata accessors, platform self-verification, biometric vault coordination, and an asynchronous lifecycle runner.
 /// </remarks>
 public static class MobileEntryPoint
 {
@@ -27,6 +28,79 @@ public static class MobileEntryPoint
     /// Current sovereign semantic release version.
     /// </summary>
     public const string SovereignAppVersion = "1.0.0";
+
+    /// <summary>
+    /// Synchronized lock guarding thread-safe access to the static biometric vault.
+    /// </summary>
+    private static readonly object s_vaultLock = new();
+
+    /// <summary>
+    /// Backing field holding the static mobile biometric vault instance.
+    /// </summary>
+    private static UnifiedMobileBiometricVault? s_biometricVault = new();
+
+    /// <summary>
+    /// Gets or sets the unified mobile biometric vault managing cryptographic patient DNA regimens and lifecycle zeroization.
+    /// </summary>
+    public static UnifiedMobileBiometricVault? BiometricVault
+    {
+        get
+        {
+            lock (s_vaultLock)
+            {
+                return s_biometricVault;
+            }
+        }
+        set
+        {
+            lock (s_vaultLock)
+            {
+                s_biometricVault = value;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Dispatches Android onPause / iOS applicationWillResignActive lifecycle hook, locking the biometric vault and zeroizing decrypted RAM.
+    /// </summary>
+    public static void OnPause()
+    {
+        // WHAT: Handle mobile application onPause event.
+        // WHY:  Zeroizes sensitive patient DNA regimens immediately when application loses foreground focus.
+        // HOW:  Invokes LockVault extension method on the active biometric vault instance.
+        lock (s_vaultLock)
+        {
+            s_biometricVault?.LockVault();
+        }
+    }
+
+    /// <summary>
+    /// Dispatches Android onStop / iOS applicationDidEnterBackground lifecycle hook, locking the biometric vault and zeroizing decrypted RAM.
+    /// </summary>
+    public static void OnStop()
+    {
+        // WHAT: Handle mobile application onStop event.
+        // WHY:  Zeroizes sensitive patient DNA regimens when application is stopped or hidden.
+        // HOW:  Invokes LockVault extension method on the active biometric vault instance.
+        lock (s_vaultLock)
+        {
+            s_biometricVault?.LockVault();
+        }
+    }
+
+    /// <summary>
+    /// Dispatches application backgrounding transition hook, locking the biometric vault and zeroizing decrypted RAM.
+    /// </summary>
+    public static void OnBackground()
+    {
+        // WHAT: Handle mobile application background transition.
+        // WHY:  Purges decrypted patient DNA payloads from memory during background suspension.
+        // HOW:  Invokes LockVault extension method on the active biometric vault instance.
+        lock (s_vaultLock)
+        {
+            s_biometricVault?.LockVault();
+        }
+    }
 
     /// <summary>
     /// Gets the sovereign bundle identifier configured in the platform package manifests.
@@ -102,7 +176,7 @@ public static class MobileEntryPoint
     {
         // WHAT: Execute simulated mobile application lifecycle from onCreate/viewDidLoad to termination.
         // WHY:  Validates background notification dispatch and cooperative cancellation in mobile contexts.
-        // HOW:  Normalizes platform, verifies support, dispatches launch alert, awaits cancellation, and exits cleanly.
+        // HOW:  Normalizes platform, verifies support, dispatches launch alert, awaits cancellation, locks vault, and exits cleanly.
         ArgumentNullException.ThrowIfNull(targetPlatform);
         ArgumentNullException.ThrowIfNull(notificationSink);
 
@@ -129,12 +203,23 @@ public static class MobileEntryPoint
             {
                 await Task.Delay(Timeout.InfiniteTimeSpan, ct).ConfigureAwait(false);
             }
+            else
+            {
+                lock (s_vaultLock)
+                {
+                    s_biometricVault?.LockVault();
+                }
+            }
         }
         catch (OperationCanceledException)
         {
             // WHAT: Catch cooperative lifecycle cancellation.
             // WHY:  Simulates clean mobile application backgrounding or termination signal.
-            // HOW:  Swallows OperationCanceledException and exits with code 0.
+            // HOW:  Locks vault, swallows OperationCanceledException, and exits with code 0.
+            lock (s_vaultLock)
+            {
+                s_biometricVault?.LockVault();
+            }
         }
 
         return 0;

@@ -353,4 +353,41 @@ public sealed class ValkeyEventBridge : BackgroundService, IValkeyEventBridge
         // HOW:  Sets dictionary entry with UtcNow timestamp.
         _locallyProducedEvents[eventId] = DateTimeOffset.UtcNow;
     }
+
+    /// <summary>
+    /// Publishes a raw JSON event payload to a specified Valkey channel and records the published event.
+    /// </summary>
+    /// <param name="channel">The target pub/sub channel name.</param>
+    /// <param name="payloadJson">The serialized JSON event string.</param>
+    /// <param name="ct">Optional cancellation token.</param>
+    /// <returns>A <see cref="ValueTask"/> representing the asynchronous operation.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="channel"/> or <paramref name="payloadJson"/> is empty or whitespace.</exception>
+    public async ValueTask PublishAsync(string channel, string payloadJson, CancellationToken ct = default)
+    {
+        // WHAT: Publishes a raw JSON event string to a Valkey pub/sub channel.
+        // WHY:  Allows external callers and integrations to broadcast raw event JSON across the cluster.
+        // HOW:  Validates inputs, connects to ISubscriber, broadcasts to the prefixed channel, and increments outbound count.
+        ArgumentException.ThrowIfNullOrWhiteSpace(channel);
+        ArgumentException.ThrowIfNullOrWhiteSpace(payloadJson);
+
+        ISubscriber? subscriber = _connectionFactory.GetSubscriber();
+        if (subscriber == null || !_connectionFactory.IsConnected)
+        {
+            return;
+        }
+
+        try
+        {
+            string fullChannel = channel.StartsWith(ChannelPrefix, StringComparison.Ordinal)
+                ? channel
+                : ChannelPrefix + channel;
+            byte[] bytes = System.Text.Encoding.UTF8.GetBytes(payloadJson);
+            await subscriber.PublishAsync(RedisChannel.Literal(fullChannel), bytes).ConfigureAwait(false);
+            Interlocked.Increment(ref _outboundCount);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to publish raw event payload to channel {Channel}.", channel);
+        }
+    }
 }

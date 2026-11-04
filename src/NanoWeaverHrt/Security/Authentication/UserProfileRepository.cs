@@ -60,7 +60,7 @@ public sealed class UserProfileRepository : IUserProfileRepository, IDisposable
                     FROM weaver_user_profiles
                     WHERE username = @u;");
 
-                WeaverDbParameters.Add(cmd, "@u", username);
+                WeaverDbParameters.Add(cmd, "@u", NormalizeUsername(username));
 
                 await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct);
                 if (await reader.ReadAsync(ct))
@@ -121,7 +121,7 @@ public sealed class UserProfileRepository : IUserProfileRepository, IDisposable
                     language_preference = @lang,
                     updated_at_utc = @uat;");
 
-            WeaverDbParameters.Add(cmd, "@u", profile.Username);
+            WeaverDbParameters.Add(cmd, "@u", NormalizeUsername(profile.Username));
             WeaverDbParameters.Add(cmd, "@fn", _protector.EncryptRequiredField(profile.FirstName ?? string.Empty));
             WeaverDbParameters.Add(cmd, "@ln", _protector.EncryptRequiredField(profile.LastName ?? string.Empty));
             WeaverDbParameters.AddNullable(cmd, "@pn", _protector.EncryptField(profile.PreferredName));
@@ -171,7 +171,7 @@ public sealed class UserProfileRepository : IUserProfileRepository, IDisposable
                     WHERE username = @u
                     ORDER BY is_primary DESC, created_at_utc ASC;");
 
-                WeaverDbParameters.Add(cmd, "@u", username);
+                WeaverDbParameters.Add(cmd, "@u", NormalizeUsername(username));
 
                 await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct);
                 while (await reader.ReadAsync(ct))
@@ -223,7 +223,7 @@ public sealed class UserProfileRepository : IUserProfileRepository, IDisposable
                     updated_at_utc = @uat;");
 
             WeaverDbParameters.Add(cmd, "@id", address.Id);
-            WeaverDbParameters.Add(cmd, "@u", address.Username);
+            WeaverDbParameters.Add(cmd, "@u", NormalizeUsername(address.Username));
             WeaverDbParameters.Add(cmd, "@at", address.AddressType);
             WeaverDbParameters.Add(cmd, "@l1", _protector.EncryptRequiredField(address.AddressLine1));
             WeaverDbParameters.AddNullable(cmd, "@l2", _protector.EncryptField(address.AddressLine2));
@@ -261,7 +261,7 @@ public sealed class UserProfileRepository : IUserProfileRepository, IDisposable
                 await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
                 await using DbCommand cmd = session.CreateCommand("DELETE FROM weaver_patient_addresses WHERE id = @id AND username = @u;");
                 WeaverDbParameters.Add(cmd, "@id", id);
-                WeaverDbParameters.Add(cmd, "@u", username);
+                WeaverDbParameters.Add(cmd, "@u", NormalizeUsername(username));
 
                 int affected = await cmd.ExecuteNonQueryAsync(ct);
                 result = affected > 0;
@@ -297,7 +297,7 @@ public sealed class UserProfileRepository : IUserProfileRepository, IDisposable
                     WHERE username = @u
                     ORDER BY priority_order ASC, created_at_utc ASC;");
 
-                WeaverDbParameters.Add(cmd, "@u", username);
+                WeaverDbParameters.Add(cmd, "@u", NormalizeUsername(username));
 
                 await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct);
                 while (await reader.ReadAsync(ct))
@@ -348,7 +348,7 @@ public sealed class UserProfileRepository : IUserProfileRepository, IDisposable
                     updated_at_utc = @uat;");
 
             WeaverDbParameters.Add(cmd, "@id", contact.Id);
-            WeaverDbParameters.Add(cmd, "@u", contact.Username);
+            WeaverDbParameters.Add(cmd, "@u", NormalizeUsername(contact.Username));
             WeaverDbParameters.Add(cmd, "@cn", _protector.EncryptRequiredField(contact.ContactName));
             WeaverDbParameters.Add(cmd, "@rel", _protector.EncryptRequiredField(contact.Relationship));
             WeaverDbParameters.Add(cmd, "@ph", _protector.EncryptRequiredField(contact.PhoneNumber));
@@ -385,7 +385,7 @@ public sealed class UserProfileRepository : IUserProfileRepository, IDisposable
                 await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
                 await using DbCommand cmd = session.CreateCommand("DELETE FROM weaver_patient_contacts WHERE id = @id AND username = @u;");
                 WeaverDbParameters.Add(cmd, "@id", id);
-                WeaverDbParameters.Add(cmd, "@u", username);
+                WeaverDbParameters.Add(cmd, "@u", NormalizeUsername(username));
 
                 int affected = await cmd.ExecuteNonQueryAsync(ct);
                 result = affected > 0;
@@ -548,4 +548,19 @@ public sealed class UserProfileRepository : IUserProfileRepository, IDisposable
     {
         _lock.Dispose();
     }
+
+    /// <summary>
+    /// Normalizes an account username by trimming surrounding whitespace and converting to lowercase invariant form.
+    /// </summary>
+    /// <param name="username">The raw username supplied by the caller.</param>
+    /// <returns>The trimmed, lowercase-normalized username string.</returns>
+    private static string NormalizeUsername(string username)
+    {
+        // WHAT: Trims whitespace and normalizes the username to lowercase invariant characters.
+        // WHY:  Ensures username case-normalization parity across repositories and services.
+        // HOW:  Calls Trim().ToLowerInvariant() on the validated non-empty string.
+        return username.Trim().ToLowerInvariant();
+    }
+
+
 }

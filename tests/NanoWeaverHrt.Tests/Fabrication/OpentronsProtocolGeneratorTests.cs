@@ -210,11 +210,12 @@ public sealed class OpentronsProtocolGeneratorTests
 
         Assert.Contains("tc_mod = protocol.load_module('thermocycler module gen2')", result.PythonScript);
         Assert.Contains("tc_mod.open_lid()", result.PythonScript);
+        Assert.Contains("pipette.mix(3, 20.0, dest_well)", result.PythonScript);
         Assert.Contains("tc_mod.close_lid()", result.PythonScript);
         Assert.Contains("tc_mod.set_lid_temperature(temperature=105)", result.PythonScript);
-        Assert.Contains("tc_mod.set_block_temperature(temperature=90.0, hold_time_minutes=5)", result.PythonScript);
-        Assert.Contains("tc_mod.set_block_temperature(temperature=65.0, hold_time_minutes=15)", result.PythonScript);
-        Assert.Contains("tc_mod.set_block_temperature(temperature=4.0, hold_time_minutes=10)", result.PythonScript);
+        Assert.Contains("tc_mod.set_block_temperature(temperature=90.0, hold_time_minutes=5, ramp_rate=2.0)", result.PythonScript);
+        Assert.Contains("tc_mod.set_block_temperature(temperature=65.0, hold_time_minutes=15, ramp_rate=1.0)", result.PythonScript);
+        Assert.Contains("tc_mod.set_block_temperature(temperature=4.0, hold_time_minutes=10, ramp_rate=2.0)", result.PythonScript);
         Assert.Contains("tc_mod.deactivate_lid()", result.PythonScript);
     }
 
@@ -407,6 +408,8 @@ public sealed class OpentronsProtocolGeneratorTests
     [InlineData(OpentronsPipetteModel.P20_Single_Gen2, "p20_single_gen2", "opentrons_96_tiprack_20ul", "left")]
     [InlineData(OpentronsPipetteModel.P20_Multi_Gen2, "p20_multi_gen2", "opentrons_96_tiprack_20ul", "left")]
     [InlineData(OpentronsPipetteModel.P300_Single_Gen2, "p300_single_gen2", "opentrons_96_tiprack_300ul", "right")]
+    [InlineData(OpentronsPipetteModel.P300_Multi_Gen2, "p300_multi_gen2", "opentrons_96_tiprack_300ul", "right")]
+    [InlineData(OpentronsPipetteModel.P1000_Single_Gen2, "p1000_single_gen2", "opentrons_96_tiprack_1000ul", "right")]
     [InlineData(OpentronsPipetteModel.Flex_1Channel_50, "flex_1channel_50", "opentrons_flex_96_tiprack_50ul", "left")]
     [InlineData(OpentronsPipetteModel.Flex_8Channel_50, "flex_8channel_50", "opentrons_flex_96_tiprack_50ul", "left")]
     public void GenerateProtocol_AllPipetteModels_MapsCorrectInstrumentAndTipRack(
@@ -417,7 +420,7 @@ public sealed class OpentronsProtocolGeneratorTests
     {
         // WHAT: Tests pipette model to labware and mount mappings.
         // WHY:  Guarantees 100% branch coverage across GetPipetteApiName and GetTipRackLabware.
-        // HOW:  Iterates all 5 OpentronsPipetteModel enum entries.
+        // HOW:  Iterates all 7 OpentronsPipetteModel enum entries.
         OpentronsProtocolGenerator generator = new();
         FabricationPackage package = CreateTestPackage(8);
         OpentronsProtocolOptions options = new()
@@ -543,6 +546,8 @@ public sealed class OpentronsProtocolGeneratorTests
         // Transition = |90 - 60| / 1.0 (fallback) = 30 min.
         // Total = 48.0 min.
         Assert.Equal(48.0, result.EstimatedRunDurationMinutes);
+        Assert.Contains("tc_mod.set_block_temperature(temperature=90.0, hold_time_minutes=5)", result.PythonScript);
+        Assert.Contains("tc_mod.set_block_temperature(temperature=60.0, hold_time_minutes=10, ramp_rate=2.0)", result.PythonScript);
         AssertPythonAstCompiles(result.PythonScript);
     }
 
@@ -568,5 +573,148 @@ public sealed class OpentronsProtocolGeneratorTests
         AssertPythonAstCompiles(result.PythonScript);
         Assert.Contains("tc_mod.close_lid()", result.PythonScript);
         Assert.Contains("tc_mod.open_lid()", result.PythonScript);
+    }
+
+    /// <summary>
+    /// Verifies that master mix dispensing splits into multiple pipetting transfers when volume exceeds pipette capacity.
+    /// </summary>
+    [Fact]
+    public void GenerateProtocol_MasterMixExceedsPipetteVolume_SplitsAspirationIntoMultipleTransfers()
+    {
+        // WHAT: Tests multi-step volume splitting for master mix dispensing (e.g., 36.0 µL with 20 µL pipette).
+        // WHY:  Prevents Opentrons runtime crash with CannotAspirateMoreThanMaxVolumeError.
+        // HOW:  Creates 14 staples yielding 36.0 µL master mix with default P20, verifying 20.0 µL and 16.0 µL steps.
+        OpentronsProtocolGenerator generator = new();
+        FabricationPackage package = CreateTestPackage(14);
+        OpentronsProtocolOptions options = new()
+        {
+            PipetteModel = OpentronsPipetteModel.P20_Single_Gen2,
+            TotalReactionVolumeMicroliters = 50.0
+        };
+
+        OpentronsProtocolResult result = generator.GenerateProtocol(package, options);
+
+        AssertPythonAstCompiles(result.PythonScript);
+        Assert.Contains("pipette.aspirate(20.0, master_mix_tube)", result.PythonScript);
+        Assert.Contains("pipette.dispense(20.0, dest_well)", result.PythonScript);
+        Assert.Contains("pipette.aspirate(16.0, master_mix_tube)", result.PythonScript);
+        Assert.Contains("pipette.dispense(16.0, dest_well)", result.PythonScript);
+    }
+
+    /// <summary>
+    /// Verifies single-channel staple transfers split into multiple aliquots and scale transfer count when staple volume exceeds pipette capacity.
+    /// </summary>
+    [Fact]
+    public void GenerateProtocol_StapleVolumeExceedsPipetteVolume_SingleChannel_SplitsTransfersAndScalesTransferCount()
+    {
+        // WHAT: Tests staple aliquot volume splitting for single-channel pipettes when stapleVolume > maxPipetteVolume.
+        // WHY:  Enforces volume capacity constraints and scales TransferCount to reflect actual robot aspiration cycles.
+        // HOW:  Configures 30.0 µL staple volume with P20 (max 20 µL), asserting 2 transfers per staple and 20.0 + 10.0 µL steps.
+        OpentronsProtocolGenerator generator = new();
+        FabricationPackage package = CreateTestPackage(10);
+        OpentronsProtocolOptions options = new()
+        {
+            PipetteModel = OpentronsPipetteModel.P20_Single_Gen2,
+            ScaffoldConcentrationNanomolar = 50.0,
+            StapleMolarExcessRatio = 20.0,
+            TotalReactionVolumeMicroliters = 300.0
+        };
+
+        OpentronsProtocolResult result = generator.GenerateProtocol(package, options);
+
+        Assert.Equal(20, result.TransferCount); // 10 staples * 2 transfers per staple = 20
+        AssertPythonAstCompiles(result.PythonScript);
+        Assert.Contains("pipette.aspirate(20.0, source_plates[plate_idx][well_name])", result.PythonScript);
+        Assert.Contains("pipette.aspirate(10.0, source_plates[plate_idx][well_name])", result.PythonScript);
+    }
+
+    /// <summary>
+    /// Verifies multi-channel staple column transfers split into multiple aliquots when staple volume exceeds pipette capacity.
+    /// </summary>
+    [Fact]
+    public void GenerateProtocol_StapleVolumeExceedsPipetteVolume_MultiChannel_SplitsTransfers()
+    {
+        // WHAT: Tests staple aliquot volume splitting for 8-channel multi-channel pipettes when stapleVolume > maxPipetteVolume.
+        // WHY:  Enforces volume capacity constraints on multi-channel dispensing.
+        // HOW:  Configures 30.0 µL staple volume with P20_Multi_Gen2, asserting 20.0 + 10.0 µL aspiration steps in column loop.
+        OpentronsProtocolGenerator generator = new();
+        FabricationPackage package = CreateTestPackage(16);
+        OpentronsProtocolOptions options = new()
+        {
+            PipetteModel = OpentronsPipetteModel.P20_Multi_Gen2,
+            ScaffoldConcentrationNanomolar = 50.0,
+            StapleMolarExcessRatio = 20.0,
+            TotalReactionVolumeMicroliters = 300.0
+        };
+
+        OpentronsProtocolResult result = generator.GenerateProtocol(package, options);
+
+        AssertPythonAstCompiles(result.PythonScript);
+        Assert.Contains("pipette.aspirate(20.0, source_plates[plate_idx][top_well])", result.PythonScript);
+        Assert.Contains("pipette.aspirate(10.0, source_plates[plate_idx][top_well])", result.PythonScript);
+    }
+
+    /// <summary>
+    /// Verifies deck slot overflow guard throws <see cref="InvalidOperationException"/> when required labware exceeds available deck slots.
+    /// </summary>
+    [Fact]
+    public void GenerateProtocol_DeckLayoutOverflow_ThrowsInvalidOperationException()
+    {
+        // WHAT: Tests deck overflow guard on OT-2 and Flex with and without thermocycler.
+        // WHY:  Prevents robot deck collisions and invalid slot assignments when plates/racks exceed physical slots.
+        // HOW:  Creates packages requiring more labware slots than available, asserting InvalidOperationException.
+        OpentronsProtocolGenerator generator = new();
+
+        // 1. OT-2 without thermocycler: 11 available slots. 7 source plates + 7 tip racks + 1 dest + 1 mm = 16 > 11.
+        FabricationPackage ot2Package = CreateTestPackage(672);
+        OpentronsProtocolOptions ot2Options = new()
+        {
+            RobotModel = OpentronsRobotModel.OT2,
+            UseThermocyclerModule = false
+        };
+        var exOt2 = Assert.Throws<InvalidOperationException>(() => generator.GenerateProtocol(ot2Package, ot2Options));
+        Assert.Contains("exceeds available robot deck slots", exOt2.Message);
+        Assert.Contains("OT-2", exOt2.Message);
+
+        // 2. OT-2 WITH thermocycler: 7 available slots. 4 source plates + 4 tip racks + 1 mm = 9 > 7.
+        FabricationPackage tcPackage = CreateTestPackage(384);
+        OpentronsProtocolOptions tcOptions = new()
+        {
+            RobotModel = OpentronsRobotModel.OT2,
+            UseThermocyclerModule = true
+        };
+        var exTc = Assert.Throws<InvalidOperationException>(() => generator.GenerateProtocol(tcPackage, tcOptions));
+        Assert.Contains("exceeds available robot deck slots", exTc.Message);
+        Assert.Contains("OT-2", exTc.Message);
+
+        // 3. Flex WITH thermocycler: 10 available slots. 6 source plates + 6 tip racks + 1 mm = 13 > 10.
+        FabricationPackage flexPackage = CreateTestPackage(576);
+        OpentronsProtocolOptions flexOptions = new()
+        {
+            RobotModel = OpentronsRobotModel.Flex,
+            UseThermocyclerModule = true
+        };
+        var exFlex = Assert.Throws<InvalidOperationException>(() => generator.GenerateProtocol(flexPackage, flexOptions));
+        Assert.Contains("exceeds available robot deck slots", exFlex.Message);
+        Assert.Contains("Flex", exFlex.Message);
+    }
+
+    /// <summary>
+    /// Verifies maximum pipette volume capacities across all supported pipette models including fallbacks.
+    /// </summary>
+    [Fact]
+    public void GetMaxPipetteVolumeMicroliters_AllModels_ReturnsExpectedCapacities()
+    {
+        // WHAT: Tests capacity mapping across all pipette enum values and unknown fallback.
+        // WHY:  Guarantees 100% branch coverage across GetMaxPipetteVolumeMicroliters.
+        // HOW:  Directly invokes GetMaxPipetteVolumeMicroliters with each model.
+        Assert.Equal(20.0, OpentronsProtocolGenerator.GetMaxPipetteVolumeMicroliters(OpentronsPipetteModel.P20_Single_Gen2));
+        Assert.Equal(20.0, OpentronsProtocolGenerator.GetMaxPipetteVolumeMicroliters(OpentronsPipetteModel.P20_Multi_Gen2));
+        Assert.Equal(300.0, OpentronsProtocolGenerator.GetMaxPipetteVolumeMicroliters(OpentronsPipetteModel.P300_Single_Gen2));
+        Assert.Equal(300.0, OpentronsProtocolGenerator.GetMaxPipetteVolumeMicroliters(OpentronsPipetteModel.P300_Multi_Gen2));
+        Assert.Equal(1000.0, OpentronsProtocolGenerator.GetMaxPipetteVolumeMicroliters(OpentronsPipetteModel.P1000_Single_Gen2));
+        Assert.Equal(50.0, OpentronsProtocolGenerator.GetMaxPipetteVolumeMicroliters(OpentronsPipetteModel.Flex_1Channel_50));
+        Assert.Equal(50.0, OpentronsProtocolGenerator.GetMaxPipetteVolumeMicroliters(OpentronsPipetteModel.Flex_8Channel_50));
+        Assert.Equal(50.0, OpentronsProtocolGenerator.GetMaxPipetteVolumeMicroliters((OpentronsPipetteModel)999));
     }
 }

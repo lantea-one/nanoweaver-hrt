@@ -290,10 +290,6 @@ The Opentrons automation engine is embedded directly into **Stage 5 (Wet-Lab Aut
 
 ---
 
-## 9. Quality Verification & Gel Electrophoresis QC
-
-Following automated robotic synthesis, verify assembly yield using native agarose gel electrophoresis:
-- **Matrix**: 1.5% to 2.0% Agarose gel in 0.5× TBE buffer supplemented with 11 mM MgCl₂.
-- **Voltage**: Run at 60 V to 70 V on ice for 2.5 hours to prevent thermal denaturation of nanostructures.
-- **Staining**: GelRed or SYBR Gold nucleic acid gel stain.
-- **Expected Banding**: Correctly folded DNA origami nanostructures exhibit higher electrophoretic mobility (sharp, clean monomer band running faster) than unstructured single-stranded M13mp18 scaffold DNA.
+## 10. Opentrons Multi-Step Volume Splitting & Thermal Ramp Rate Controllers
+- **Multi-Step Volume Splitting**: Opentrons pipetting protocols automatically calculate and split large volume transfers (exceeding pipette tip capacity) across multiple sequential aspirations and dispenses.
+- **Thermal Ramp Rate Controllers**: Precise thermal cycling protocols incorporate programmable peltier ramp rate controllers (`0.1°C/min` to `1.0°C/min`) to ensure defect-free structural annealing of DNA origami nanocarriers.

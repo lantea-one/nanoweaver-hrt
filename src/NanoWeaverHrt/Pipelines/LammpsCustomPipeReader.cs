@@ -81,6 +81,9 @@ public sealed class LammpsCustomPipeReader : ITrajectoryParser
         bool inAtomsSection = false;
         bool expectAtomCountLine = false;
         int boxBoundsLinesToSkip = 0;
+        int colX = 2;
+        int colY = 3;
+        int colZ = 4;
 
         AtomCoordinate[] atomBuffer = Array.Empty<AtomCoordinate>();
         byte[] lineByteBuffer = ArrayPool<byte>.Shared.Rent(TrajectoryLineBuffer.InitialLineCapacity);
@@ -92,8 +95,26 @@ public sealed class LammpsCustomPipeReader : ITrajectoryParser
                 ReadResult result = await reader.ReadAsync(cancellationToken);
                 ReadOnlySequence<byte> buffer = result.Buffer;
 
-                while (TryReadLine(ref buffer, out ReadOnlySequence<byte> lineSequence))
+                while (true)
                 {
+                    ReadOnlySequence<byte> lineSequence;
+                    if (TryReadLine(ref buffer, out lineSequence))
+                    {
+                        // Successfully read a newline-terminated line
+                    }
+                    else if (result.IsCompleted && !buffer.IsEmpty)
+                    {
+                        // WHAT: Flushes and parses the final trailing line at EOF when a trailing newline is absent.
+                        // WHY:  Simulation trajectories frequently end on a final coordinate row without a trailing '\n'.
+                        // HOW:  Takes the remaining buffer as the line sequence and advances the buffer slice to its end.
+                        lineSequence = buffer;
+                        buffer = buffer.Slice(buffer.End);
+                    }
+                    else
+                    {
+                        break;
+                    }
+
                     if (lineSequence.IsEmpty)
                     {
                         continue;
@@ -164,6 +185,7 @@ public sealed class LammpsCustomPipeReader : ITrajectoryParser
                         {
                             inAtomsSection = true;
                             currentAtomIndex = 0;
+                            ResolveLammpsColumns(headerRemainder[AtomsTag.Length..], out colX, out colY, out colZ);
                             continue;
                         }
 
@@ -208,7 +230,7 @@ public sealed class LammpsCustomPipeReader : ITrajectoryParser
                         // WHAT: Parses atomic coordinates from lines formatted as "id type x y z [vx vy vz ...]"
                         // WHY:  Zero string allocations using SimdCoordinateParser.
                         // HOW:  Skips the first two integer columns (id, type) then parses floating-point X, Y, Z.
-                        if (TryParseLammpsAtomLine(lineSpan, out AtomCoordinate coordinate))
+                        if (TryParseLammpsAtomLine(lineSpan, colX, colY, colZ, out AtomCoordinate coordinate))
                         {
                             // WHAT: Expands the rented coordinate buffer only once the atoms to fill it have arrived.
                             // WHY:  Keeps reserved memory proportional to the coordinates the dump really contains
@@ -252,48 +274,75 @@ public sealed class LammpsCustomPipeReader : ITrajectoryParser
     }
 
     /// <summary>
-    /// Parses a single LAMMPS custom dump atom line formatted as "id type x y z" into an <see cref="AtomCoordinate"/>.
+    /// Parses a single LAMMPS custom dump atom line formatted as "id type x y z" into an <see cref="AtomCoordinate"/>
+    /// using standard column positions (2, 3, 4).
     /// </summary>
     /// <param name="span">The UTF-8 line byte span.</param>
     /// <param name="coordinate">The parsed 3D coordinate on success.</param>
     /// <returns>True if spatial coordinates were successfully extracted; otherwise false.</returns>
     internal static bool TryParseLammpsAtomLine(ReadOnlySpan<byte> span, out AtomCoordinate coordinate)
+        => TryParseLammpsAtomLine(span, 2, 3, 4, out coordinate);
+
+    /// <summary>
+    /// Parses a single LAMMPS custom dump atom line extracting coordinates from dynamically resolved column indices.
+    /// </summary>
+    /// <param name="span">The UTF-8 line byte span.</param>
+    /// <param name="colX">0-based column index containing the X coordinate (or xs/xu).</param>
+    /// <param name="colY">0-based column index containing the Y coordinate (or ys/yu).</param>
+    /// <param name="colZ">0-based column index containing the Z coordinate (or zs/zu).</param>
+    /// <param name="coordinate">The parsed 3D coordinate on success.</param>
+    /// <returns>True if spatial coordinates were successfully extracted; otherwise false.</returns>
+    internal static bool TryParseLammpsAtomLine(ReadOnlySpan<byte> span, int colX, int colY, int colZ, out AtomCoordinate coordinate)
     {
+        // WHAT: Zero-allocation extraction of 3D coordinates from dynamic LAMMPS column offsets.
+        // WHY:  Allows reading custom dump files with varying column ordering (e.g. id type xs ys zs vx vy vz).
+        // HOW:  Iterates across whitespace-delimited columns, parsing floats at matching column indices and skipping others.
         coordinate = default;
         ReadOnlySpan<byte> remaining = SimdCoordinateParser.TrimStartWhitespaceSimd(span);
+        int currentCol = 0;
+        float x = 0f, y = 0f, z = 0f;
+        int foundCount = 0;
+        int maxCol = Math.Max(colX, Math.Max(colY, colZ));
 
-        // Skip Column 1: Atom ID
-        int sep1 = SimdCoordinateParser.FindFirstWhitespaceSimd(remaining);
-        if (sep1 == -1) return false;
-        remaining = SimdCoordinateParser.TrimStartWhitespaceSimd(remaining[sep1..]);
-
-        // Skip Column 2: Atom Type
-        int sep2 = SimdCoordinateParser.FindFirstWhitespaceSimd(remaining);
-        if (sep2 == -1) return false;
-        remaining = SimdCoordinateParser.TrimStartWhitespaceSimd(remaining[sep2..]);
-
-        // Parse Column 3: X coordinate via SIMD
-        if (!SimdCoordinateParser.TryParseFloatSimd(remaining, out float x, out int bytesX))
+        while (!remaining.IsEmpty && currentCol <= maxCol)
         {
-            return false;
+            if (currentCol == colX)
+            {
+                if (!SimdCoordinateParser.TryParseFloatSimd(remaining, out x, out int bytesConsumed)) return false;
+                remaining = SimdCoordinateParser.TrimStartWhitespaceSimd(remaining[bytesConsumed..]);
+                foundCount++;
+            }
+            else if (currentCol == colY)
+            {
+                if (!SimdCoordinateParser.TryParseFloatSimd(remaining, out y, out int bytesConsumed)) return false;
+                remaining = SimdCoordinateParser.TrimStartWhitespaceSimd(remaining[bytesConsumed..]);
+                foundCount++;
+            }
+            else if (currentCol == colZ)
+            {
+                if (!SimdCoordinateParser.TryParseFloatSimd(remaining, out z, out int bytesConsumed)) return false;
+                remaining = SimdCoordinateParser.TrimStartWhitespaceSimd(remaining[bytesConsumed..]);
+                foundCount++;
+            }
+            else
+            {
+                int sep = SimdCoordinateParser.FindFirstWhitespaceSimd(remaining);
+                if (sep == -1)
+                {
+                    return false;
+                }
+                remaining = SimdCoordinateParser.TrimStartWhitespaceSimd(remaining[sep..]);
+            }
+            currentCol++;
         }
-        remaining = SimdCoordinateParser.TrimStartWhitespaceSimd(remaining[bytesX..]);
 
-        // Parse Column 4: Y coordinate via SIMD
-        if (!SimdCoordinateParser.TryParseFloatSimd(remaining, out float y, out int bytesY))
+        if (foundCount == 3)
         {
-            return false;
-        }
-        remaining = SimdCoordinateParser.TrimStartWhitespaceSimd(remaining[bytesY..]);
-
-        // Parse Column 5: Z coordinate via SIMD
-        if (!SimdCoordinateParser.TryParseFloatSimd(remaining, out float z, out _))
-        {
-            return false;
+            coordinate = new AtomCoordinate(x, y, z);
+            return true;
         }
 
-        coordinate = new AtomCoordinate(x, y, z);
-        return true;
+        return false;
     }
 
     /// <summary>
@@ -314,5 +363,63 @@ public sealed class LammpsCustomPipeReader : ITrajectoryParser
         line = buffer.Slice(0, position.Value);
         buffer = buffer.Slice(buffer.GetPosition(1, position.Value));
         return true;
+    }
+
+    /// <summary>
+    /// Parses column name identifiers following "ITEM: ATOMS" to dynamically identify 0-based column indices
+    /// for X, Y, and Z Cartesian coordinates.
+    /// </summary>
+    /// <param name="columnsSpan">The remainder of the "ITEM: ATOMS" header line after the "ATOMS" keyword.</param>
+    /// <param name="colX">The resolved 0-based column index for the X coordinate.</param>
+    /// <param name="colY">The resolved 0-based column index for the Y coordinate.</param>
+    /// <param name="colZ">The resolved 0-based column index for the Z coordinate.</param>
+    internal static void ResolveLammpsColumns(ReadOnlySpan<byte> columnsSpan, out int colX, out int colY, out int colZ)
+    {
+        // WHAT: Dynamically resolves column positions for x/xs/xu, y/ys/yu, and z/zs/zu from the LAMMPS ATOMS header.
+        // WHY:  Eliminates hardcoded (2, 3, 4) column assumptions for diverse MD dump specifications.
+        // HOW:  Scans tokens delimited by whitespace, matching coordinate names, and falls back to (2, 3, 4).
+        colX = 2;
+        colY = 3;
+        colZ = 4;
+
+        ReadOnlySpan<byte> remaining = SimdCoordinateParser.TrimStartWhitespaceSimd(columnsSpan);
+        if (remaining.IsEmpty)
+        {
+            return;
+        }
+
+        int currentColumn = 0;
+        int foundX = -1;
+        int foundY = -1;
+        int foundZ = -1;
+
+        while (!remaining.IsEmpty)
+        {
+            int sep = SimdCoordinateParser.FindFirstWhitespaceSimd(remaining);
+            ReadOnlySpan<byte> token = sep == -1 ? remaining : remaining[..sep];
+            remaining = sep == -1 ? default : SimdCoordinateParser.TrimStartWhitespaceSimd(remaining[sep..]);
+
+            if (token.SequenceEqual("x"u8) || token.SequenceEqual("xs"u8) || token.SequenceEqual("xu"u8))
+            {
+                foundX = currentColumn;
+            }
+            else if (token.SequenceEqual("y"u8) || token.SequenceEqual("ys"u8) || token.SequenceEqual("yu"u8))
+            {
+                foundY = currentColumn;
+            }
+            else if (token.SequenceEqual("z"u8) || token.SequenceEqual("zs"u8) || token.SequenceEqual("zu"u8))
+            {
+                foundZ = currentColumn;
+            }
+
+            currentColumn++;
+        }
+
+        if (foundX >= 0 && foundY >= 0 && foundZ >= 0)
+        {
+            colX = foundX;
+            colY = foundY;
+            colZ = foundZ;
+        }
     }
 }

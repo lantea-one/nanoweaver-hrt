@@ -226,6 +226,7 @@ public static class SimdCoordinateParser
         long mantissa = 0;
         int decimalPlaces = -1;
         bool hasDigits = false;
+        int significantDigits = 0;
 
         // Fast digit parsing loop
         while (index < length)
@@ -234,11 +235,20 @@ public static class SimdCoordinateParser
 
             if ((uint)(c - '0') <= 9)
             {
-                mantissa = (mantissa * 10) + (c - '0');
                 hasDigits = true;
-                if (decimalPlaces >= 0)
+                if (significantDigits < 18)
                 {
-                    decimalPlaces++;
+                    mantissa = (mantissa * 10) + (c - '0');
+                    significantDigits++;
+                    if (decimalPlaces >= 0)
+                    {
+                        decimalPlaces++;
+                    }
+                }
+                else
+                {
+                    // Fall back to Utf8Parser for long mantissas to avoid 64-bit integer overflow
+                    return Utf8Parser.TryParse(span, out value, out bytesConsumed);
                 }
                 index++;
             }
@@ -264,7 +274,36 @@ public static class SimdCoordinateParser
         if (index < length && (span[index] == (byte)'e' || span[index] == (byte)'E'))
         {
             // Defer complex exponent calculation to standard Utf8Parser for absolute IEEE 754 fidelity
-            return Utf8Parser.TryParse(span, out value, out bytesConsumed);
+            if (!Utf8Parser.TryParse(span, out value, out bytesConsumed))
+            {
+                return false;
+            }
+
+            // Reject malformed tokens where trailing character is '.', '-', '+', or an ASCII letter
+            if (bytesConsumed < length)
+            {
+                byte trailing = span[bytesConsumed];
+                if (trailing == DotByte || trailing == MinusByte || trailing == PlusByte ||
+                    (trailing >= (byte)'a' && trailing <= (byte)'z') ||
+                    (trailing >= (byte)'A' && trailing <= (byte)'Z'))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        // Reject malformed tokens halted by another '.', '-', '+', or an ASCII letter (e.g. "1.2.3", "1.0-2.0", "12a")
+        if (index < length)
+        {
+            byte haltingByte = span[index];
+            if (haltingByte == DotByte || haltingByte == MinusByte || haltingByte == PlusByte ||
+                (haltingByte >= (byte)'a' && haltingByte <= (byte)'z') ||
+                (haltingByte >= (byte)'A' && haltingByte <= (byte)'Z'))
+            {
+                return false;
+            }
         }
 
         float result = (float)mantissa;
@@ -426,7 +465,43 @@ public static class SimdCoordinateParser
         float cy = centroid.Y;
         float cz = centroid.Z;
 
-        // Scalar fallback loop for accurate and safe calculation
+        Vector128<float> vcx = Vector128.Create(cx);
+        Vector128<float> vcy = Vector128.Create(cy);
+        Vector128<float> vcz = Vector128.Create(cz);
+
+        // 4-wide Vector128 SIMD batch processing loop
+        while (index + 4 <= count)
+        {
+            Vector128<float> vx = Vector128.Create(
+                coordinates[index].X,
+                coordinates[index + 1].X,
+                coordinates[index + 2].X,
+                coordinates[index + 3].X);
+
+            Vector128<float> vy = Vector128.Create(
+                coordinates[index].Y,
+                coordinates[index + 1].Y,
+                coordinates[index + 2].Y,
+                coordinates[index + 3].Y);
+
+            Vector128<float> vz = Vector128.Create(
+                coordinates[index].Z,
+                coordinates[index + 1].Z,
+                coordinates[index + 2].Z,
+                coordinates[index + 3].Z);
+
+            Vector128<float> dx = vx - vcx;
+            Vector128<float> dy = vy - vcy;
+            Vector128<float> dz = vz - vcz;
+
+            Vector128<float> distSq = (dx * dx) + (dy * dy) + (dz * dz);
+            Vector128<float> distVec = Vector128.Sqrt(distSq);
+
+            distVec.CopyTo(destination.Slice(index, 4));
+            index += 4;
+        }
+
+        // Scalar fallback loop for remaining tail coordinates
         while (index < count)
         {
             AtomCoordinate c = coordinates[index];

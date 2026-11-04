@@ -32,6 +32,8 @@ const {
     uint8ArrayToBase64,
     formatPem,
     encryptKeyEnvelope,
+    encryptPrivateKeyEnvelope,
+    decryptPrivateKeyEnvelope,
     generateEd25519Keypair,
     generateMlDsa65Keypair,
     weaverGenerateKeyBundle
@@ -88,6 +90,9 @@ test('Module publishes all helpers as globals and named exports', () => {
     assert.equal(typeof window.parsePrivateKeyPem, 'function');
     assert.equal(typeof window.extractKeyMaterialFromPkcs8, 'function');
     assert.equal(typeof window.decryptKeyEnvelope, 'function');
+    assert.equal(typeof window.encryptKeyEnvelope, 'function');
+    assert.equal(typeof window.decryptPrivateKeyEnvelope, 'function');
+    assert.equal(typeof window.encryptPrivateKeyEnvelope, 'function');
     assert.equal(typeof window.zeroizeBytes, 'function');
     assert.equal(typeof window.signChallenge, 'function');
     assert.equal(typeof window.requestChallenge, 'function');
@@ -982,4 +987,99 @@ test('weaverGenerateKeyBundle: generates unencrypted and password-protected bund
     await assert.rejects(async () => {
         await weaverGenerateKeyBundle('Frank', 'Admin', 'Api', 'Ed25519', 'pass', { cryptoAdapter: failingAdapter });
     }, /Failed to encrypt private key/);
+});
+
+test('encryptPrivateKeyEnvelope and decryptPrivateKeyEnvelope: WebCrypto AES-GCM with salt as additionalData AAD', async () => {
+    const plainDer = new Uint8Array([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
+    const passphrase = 'test_aad_interop_passphrase';
+
+    // 1. Validation failures on encrypt
+    assert.equal((await encryptPrivateKeyEnvelope(null, passphrase)).ok, false);
+    assert.equal((await encryptPrivateKeyEnvelope(new Uint8Array(0), passphrase)).ok, false);
+    assert.equal((await encryptPrivateKeyEnvelope(plainDer, '')).ok, false);
+    assert.equal((await encryptPrivateKeyEnvelope(plainDer, 123)).ok, false);
+
+    // 2. Missing subtle provider
+    assert.equal((await encryptPrivateKeyEnvelope(plainDer, passphrase, { subtle: {} })).ok, false);
+
+    // 3. Verify mock subtle captures additionalData equal to saltBytes and tagLength 128
+    let capturedEncryptParams = null;
+    let capturedDecryptParams = null;
+    const fixedSalt = new Uint8Array(16).fill(0x77);
+    const fixedNonce = new Uint8Array(12).fill(0x33);
+
+    const mockSubtle = {
+        importKey: async () => ({ type: 'secret' }),
+        deriveKey: async () => ({ type: 'aes' }),
+        encrypt: async (params, _key, data) => {
+            capturedEncryptParams = params;
+            const res = new Uint8Array(data.length + 16);
+            res.set(data, 0);
+            res.fill(0x99, data.length);
+            return res.buffer;
+        },
+        decrypt: async (params, _key, data) => {
+            capturedDecryptParams = params;
+            return data.slice(0, data.length - 16).buffer;
+        }
+    };
+
+    const mockEncRes = await encryptPrivateKeyEnvelope(plainDer, passphrase, {
+        subtle: mockSubtle,
+        salt: fixedSalt,
+        nonce: fixedNonce
+    });
+    assert.equal(mockEncRes.ok, true);
+    assert.equal(capturedEncryptParams.name, 'AES-GCM');
+    assert.equal(capturedEncryptParams.tagLength, 128);
+    assert.deepEqual(capturedEncryptParams.additionalData, fixedSalt);
+    assert.deepEqual(capturedEncryptParams.iv, fixedNonce);
+    assert.equal(mockEncRes.envelopeBytes.length, 16 + 12 + 16 + plainDer.length);
+
+    // 4. Mock subtle decrypt verifies additionalData
+    const mockDecRes = await decryptPrivateKeyEnvelope(mockEncRes.envelopeBytes, passphrase, { subtle: mockSubtle });
+    assert.equal(mockDecRes.ok, true);
+    assert.equal(capturedDecryptParams.name, 'AES-GCM');
+    assert.equal(capturedDecryptParams.tagLength, 128);
+    assert.deepEqual(capturedDecryptParams.additionalData, fixedSalt);
+    assert.deepEqual(capturedDecryptParams.iv, fixedNonce);
+    assert.deepEqual(mockDecRes.derBytes, plainDer);
+
+    // 5. Encrypt with throwing subtle
+    const throwingSubtle = {
+        importKey: async () => { throw new Error('subtle failure'); },
+        deriveKey: async () => ({ type: 'aes' }),
+        encrypt: async () => { throw new Error('encrypt failure'); },
+        decrypt: async () => { throw new Error('decrypt failure'); }
+    };
+    assert.equal((await encryptPrivateKeyEnvelope(plainDer, passphrase, { subtle: throwingSubtle })).ok, false);
+
+    // 6. Validation failures on decrypt
+    assert.equal((await decryptPrivateKeyEnvelope(null, passphrase)).ok, false);
+    assert.equal((await decryptPrivateKeyEnvelope(new Uint8Array(40), passphrase)).ok, false);
+    assert.equal((await decryptPrivateKeyEnvelope(mockEncRes.envelopeBytes, '')).ok, false);
+    assert.equal((await decryptPrivateKeyEnvelope(mockEncRes.envelopeBytes, 123)).ok, false);
+    assert.equal((await decryptPrivateKeyEnvelope(mockEncRes.envelopeBytes, passphrase, { subtle: {} })).ok, false);
+
+    // 7. Decrypt with throwing subtle
+    assert.equal((await decryptPrivateKeyEnvelope(mockEncRes.envelopeBytes, passphrase, { subtle: throwingSubtle })).ok, false);
+
+    // 8. Full end-to-end round-trip with native Node WebCrypto
+    const realEncRes = await encryptPrivateKeyEnvelope(plainDer, passphrase);
+    assert.equal(realEncRes.ok, true);
+    assert.equal(realEncRes.envelopeBytes.length, 16 + 12 + 16 + plainDer.length);
+
+    const realDecRes = await decryptPrivateKeyEnvelope(realEncRes.envelopeBytes, passphrase);
+    assert.equal(realDecRes.ok, true);
+    assert.deepEqual(realDecRes.derBytes, plainDer);
+
+    // 9. Wrong passphrase fails authentication
+    const badPassRes = await decryptPrivateKeyEnvelope(realEncRes.envelopeBytes, 'wrong_passphrase');
+    assert.equal(badPassRes.ok, false);
+
+    // 10. Tampered salt fails authentication because salt is authenticated as AAD!
+    const tamperedEnvelope = new Uint8Array(realEncRes.envelopeBytes);
+    tamperedEnvelope[0] ^= 0xff; // Flip a bit in the salt
+    const tamperedRes = await decryptPrivateKeyEnvelope(tamperedEnvelope, passphrase);
+    assert.equal(tamperedRes.ok, false, 'Tampered salt must fail GCM authentication because it is bound as AAD');
 });

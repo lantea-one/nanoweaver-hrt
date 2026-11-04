@@ -755,4 +755,133 @@ public sealed class EventBusAndValkeyTests : IClassFixture<WebApplicationFactory
         Assert.NotNull(telemetry.ValkeyEndpoint);
         Assert.NotNull(telemetry.ActiveSubscribers);
     }
+
+    /// <summary>
+    /// Verifies constant-time ownership verification and release logic in <see cref="ValkeyLockService.ReleaseLockAsync"/>.
+    /// </summary>
+    [Fact]
+    public async Task ValkeyLockService_ReleaseLockAsync_ValidatesOwnershipInConstantTime()
+    {
+        // WHAT: Tests ReleaseLockAsync across invalid parameters, mismatched tokens, and matching tokens.
+        // WHY:  Guarantees locks are only released by callers holding the identical token, validated in constant time.
+        // HOW:  Acquires local lock, attempts release with wrong token, releases with correct token, and tests distributed Lua path.
+        Mock<IValkeyConnectionFactory> mockFactory = new();
+        ValkeyLockService lockService = new(mockFactory.Object);
+
+        // 1. Argument validation
+        await Assert.ThrowsAsync<ArgumentException>(async () => await lockService.ReleaseLockAsync("", "token"));
+        await Assert.ThrowsAsync<ArgumentException>(async () => await lockService.ReleaseLockAsync("resource", ""));
+
+        // 2. Local in-memory lock ownership verification
+        string resource = "local_release_test";
+        await using (IAsyncDisposable? token = await lockService.AcquireLockAsync(resource, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(1)))
+        {
+            Assert.NotNull(token);
+
+            // Releasing with incorrect token fails and retains lock
+            bool wrongRelease = await lockService.ReleaseLockAsync(resource, "wrong_token_123");
+            Assert.False(wrongRelease);
+
+            // Releasing with correct token succeeds and executes lines 309-322
+            string actualToken = ((ValkeyLockService.LocalLockToken)token).TokenValue;
+            bool rightRelease = await lockService.ReleaseLockAsync(resource, actualToken);
+            Assert.True(rightRelease);
+        }
+
+        // 3. Distributed release via ScriptEvaluateAsync
+        Mock<IDatabase> mockDb = new();
+        mockFactory.Setup(f => f.GetDatabase(It.IsAny<int>())).Returns(mockDb.Object);
+
+        mockDb.Setup(d => d.ScriptEvaluateAsync(
+            It.IsAny<string>(),
+            It.IsAny<RedisKey[]>(),
+            It.IsAny<RedisValue[]>(),
+            It.IsAny<CommandFlags>())).ReturnsAsync(RedisResult.Create(1));
+
+        bool distSuccess = await lockService.ReleaseLockAsync("dist_resource", "valid_token");
+        Assert.True(distSuccess);
+
+        // Distributed script returns 0 (token mismatch)
+        mockDb.Setup(d => d.ScriptEvaluateAsync(
+            It.IsAny<string>(),
+            It.IsAny<RedisKey[]>(),
+            It.IsAny<RedisValue[]>(),
+            It.IsAny<CommandFlags>())).ReturnsAsync(RedisResult.Create(0));
+
+        bool distMismatch = await lockService.ReleaseLockAsync("dist_resource", "wrong_token");
+        Assert.False(distMismatch);
+
+        // Distributed script throws exception
+        mockDb.Setup(d => d.ScriptEvaluateAsync(
+            It.IsAny<string>(),
+            It.IsAny<RedisKey[]>(),
+            It.IsAny<RedisValue[]>(),
+            It.IsAny<CommandFlags>())).ThrowsAsync(new RedisException("Simulated release failure"));
+
+        bool distFault = await lockService.ReleaseLockAsync("dist_resource", "token");
+        Assert.False(distFault);
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="ValkeyCacheService.Dispose"/> safely cleans up local memory and connection state.
+    /// </summary>
+    [Fact]
+    public void ValkeyCacheService_Dispose_CleansUpResourcesSafely()
+    {
+        // WHAT: Tests ValkeyCacheService.Dispose.
+        // WHY:  Guarantees memory cache and underlying disposable factory are cleanly disposed.
+        // HOW:  Creates instance with disposable mock factory and invokes Dispose.
+        var disposableFactory = new Mock<IDisposableValkeyFactory>();
+        ValkeyCacheService cacheService = new(disposableFactory.Object);
+
+        cacheService.Dispose();
+        disposableFactory.Verify(f => f.Dispose(), Times.Once);
+    }
+
+    /// <summary>
+    /// Verifies <see cref="ValkeyEventBridge.PublishAsync"/> argument validation, outbound publication, and error handling.
+    /// </summary>
+    [Fact]
+    public async Task ValkeyEventBridge_PublishAsync_ValidatesInputAndPublishesAccurately()
+    {
+        // WHAT: Tests ValkeyEventBridge.PublishAsync.
+        // WHY:  Verifies raw JSON publishing validates arguments, connects to subscriber, and updates event counters.
+        // HOW:  Tests empty channel/payload, successful subscriber publish, and fault logging.
+        ChannelEventBus bus = new();
+        Mock<IValkeyConnectionFactory> mockFactory = new();
+        Mock<ISubscriber> mockSub = new();
+        mockFactory.Setup(f => f.IsConnected).Returns(true);
+        mockFactory.Setup(f => f.GetSubscriber()).Returns(mockSub.Object);
+
+        ValkeyEventBridge bridge = new(bus, mockFactory.Object);
+
+        // 1. Argument validation
+        await Assert.ThrowsAsync<ArgumentException>(async () => await bridge.PublishAsync("", "{}"));
+        await Assert.ThrowsAsync<ArgumentException>(async () => await bridge.PublishAsync("channel", ""));
+
+        // 2. Successful publish increments outbound count
+        long beforeCount = bridge.OutboundEventsCount;
+        await bridge.PublishAsync("custom:events", "{\"message\":\"hello\"}");
+        Assert.Equal(beforeCount + 1, bridge.OutboundEventsCount);
+
+        // 3. Disconnected factory skips publish without incrementing
+        mockFactory.Setup(f => f.IsConnected).Returns(false);
+        await bridge.PublishAsync("custom:events", "{\"message\":\"skipped\"}");
+        Assert.Equal(beforeCount + 1, bridge.OutboundEventsCount);
+
+        // 4. Exception in subscriber is handled gracefully
+        mockFactory.Setup(f => f.IsConnected).Returns(true);
+        mockSub.Setup(s => s.PublishAsync(It.IsAny<RedisChannel>(), It.IsAny<RedisValue>(), It.IsAny<CommandFlags>()))
+            .ThrowsAsync(new RedisException("Simulated pub error"));
+        await bridge.PublishAsync("custom:events", "{\"message\":\"fault\"}");
+        // Outbound count not incremented on failure
+        Assert.Equal(beforeCount + 1, bridge.OutboundEventsCount);
+    }
+
+    /// <summary>
+    /// Helper interface for testing ValkeyCacheService disposal with disposable connection factory.
+    /// </summary>
+    public interface IDisposableValkeyFactory : IValkeyConnectionFactory, IDisposable
+    {
+    }
 }

@@ -59,6 +59,13 @@ public sealed class ParquetWriterTests
 
             long queriedCount = await writer.QueryRecordCountAsync(destParquet);
             Assert.Equal(6, queriedCount);
+
+            // Test ExportToParquetAsync and QueryParquetAsync delegation
+            string exportPath = Path.Combine(tempDir, "exported.parquet");
+            long exportedCount = await writer.ExportToParquetAsync(sourceXyz, exportPath, parser);
+            Assert.Equal(6, exportedCount);
+            long queriedExportCount = await writer.QueryParquetAsync(exportPath);
+            Assert.Equal(6, queriedExportCount);
         }
         finally
         {
@@ -67,5 +74,30 @@ public sealed class ParquetWriterTests
                 Directory.Delete(tempDir, recursive: true);
             }
         }
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="DuckDbParquetWriter"/> rejects path traversal segments in file paths.
+    /// </summary>
+    [Fact]
+    public async Task ParquetWriter_RejectsPathTraversal()
+    {
+        // WHAT: Tests path traversal validation in DuckDbParquetWriter methods.
+        // WHY:  Prevents directory traversal attacks ('..') in output and query paths.
+        // HOW:  Passes traversal strings to ConvertTrajectoryToParquetAsync, ExportToParquetAsync, and QueryParquetAsync.
+        DuckDbParquetWriter writer = new();
+        XyzPipeReader parser = new();
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            writer.ConvertTrajectoryToParquetAsync("in.xyz", "../out.parquet", parser));
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            writer.ExportToParquetAsync("in.xyz", "../out.parquet", parser));
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            writer.QueryRecordCountAsync("../test.parquet"));
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            writer.QueryParquetAsync("../test.parquet"));
     }
 }

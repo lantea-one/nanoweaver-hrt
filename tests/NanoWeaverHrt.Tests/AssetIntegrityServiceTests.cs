@@ -377,4 +377,43 @@ public sealed class AssetIntegrityServiceTests
         string vendorSri = service.GetSubresourceIntegrity("lib/weaver-crypto-vendor.js");
         Assert.Equal("sha384-2PWlMHMrV/enpeAeEB0EtHqLjYv9Rql4aPLZNGynBOQPFkoacC01+5WwbCsr8lgD", vendorSri);
     }
+
+    /// <summary>
+    /// Verifies constant-time SRI verification via <see cref="AssetIntegrityService.VerifyAssetSri"/>.
+    /// </summary>
+    [Fact]
+    public void VerifyAssetSri_ConstantTimeVerification_ValidatesMatchingAndRejectsMismatches()
+    {
+        // WHAT: Tests VerifyAssetSri with matching, mismatching, and empty inputs.
+        // WHY:  Ensures constant-time validation is reliable and handles invalid arguments safely.
+        // HOW:  Mocks IFileInfo, computes SRI, and asserts true for match and false for mismatch/empty.
+        byte[] testBytes = Encoding.UTF8.GetBytes("function test() { return 42; }");
+        byte[] hash = SHA384.HashData(testBytes);
+        string expectedSri = $"sha384-{Convert.ToBase64String(hash)}";
+
+        Mock<IFileInfo> fileMock = new();
+        fileMock.SetupGet(f => f.Exists).Returns(true);
+        fileMock.Setup(f => f.CreateReadStream()).Returns(() => new MemoryStream(testBytes));
+
+        Mock<IFileProvider> providerMock = new();
+        providerMock.Setup(p => p.GetFileInfo("js/sample.js")).Returns(fileMock.Object);
+
+        Mock<IWebHostEnvironment> envMock = new();
+        envMock.SetupGet(e => e.WebRootFileProvider).Returns(providerMock.Object);
+
+        AssetIntegrityService service = new(envMock.Object);
+
+        // Matching SRI returns true
+        Assert.True(service.VerifyAssetSri("js/sample.js", expectedSri));
+
+        // Tampered SRI returns false
+        Assert.False(service.VerifyAssetSri("js/sample.js", "sha384-tamperedHashValue1234567890"));
+
+        // Whitespace or empty returns false
+        Assert.False(service.VerifyAssetSri("js/sample.js", ""));
+        Assert.False(service.VerifyAssetSri("js/sample.js", "   "));
+
+        // Nonexistent asset returns false
+        Assert.False(service.VerifyAssetSri("js/missing.js", expectedSri));
+    }
 }

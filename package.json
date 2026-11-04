@@ -3,8 +3,9 @@
   "version": "1.0.0",
   "description": "Decentralized Synthetic Biology, DNA Origami & Hormone Replacement Therapy Research Platform",
   "private": true,
+  "type": "module",
   "scripts": {
-    "test": "node --test --experimental-test-coverage --test-coverage-branches=100 --test-coverage-lines=100 --test-coverage-functions=100 tests/weaver-visualizer.test.mjs tests/weaver-session.test.mjs tests/weaver-auth.test.mjs"
+    "test": "node -e \"import('node:fs').then(fs => fs.writeFileSync('src/NanoWeaverHrt/wwwroot/js/package.json', '{\\\"type\\\":\\\"commonjs\\\"}'))\" && node --test --test-isolation=process --experimental-test-coverage --test-coverage-branches=100 --test-coverage-lines=100 --test-coverage-functions=100 tests/weaver-visualizer.test.mjs tests/weaver-session.test.mjs tests/weaver-auth.test.mjs; STATUS=$?; rm -f src/NanoWeaverHrt/wwwroot/js/package.json; exit $STATUS"
   },
   "keywords": [
     "synthetic-biology",

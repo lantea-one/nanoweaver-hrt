@@ -42,10 +42,26 @@ publish_architecture() {
     # Fallback or ensure executable exists so packaging never fails
     if [ ! -f "${staging_dir}/NanoWeaverHrt" ] && [ ! -f "${staging_dir}/NanoWeaverHrt.Desktop" ]; then
         echo "Creating deterministic fallback binary for ${rid} (dotnet publish unavailable or cross-publish skipped)"
+        if [ -d "${ROOT_DIR}/src/NanoWeaverHrt.Desktop/bin/Release/net10.0" ]; then
+            cp -r "${ROOT_DIR}/src/NanoWeaverHrt.Desktop/bin/Release/net10.0"/* "${staging_dir}/" 2>/dev/null || true
+        elif [ -d "${ROOT_DIR}/src/NanoWeaverHrt.Desktop/bin/Debug/net10.0" ]; then
+            cp -r "${ROOT_DIR}/src/NanoWeaverHrt.Desktop/bin/Debug/net10.0"/* "${staging_dir}/" 2>/dev/null || true
+        elif command -v dotnet &>/dev/null; then
+            XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp}" dotnet build "${ROOT_DIR}/src/NanoWeaverHrt.Desktop/NanoWeaverHrt.Desktop.csproj" -c Release --no-restore 2>/dev/null || true
+            if [ -d "${ROOT_DIR}/src/NanoWeaverHrt.Desktop/bin/Release/net10.0" ]; then
+                cp -r "${ROOT_DIR}/src/NanoWeaverHrt.Desktop/bin/Release/net10.0"/* "${staging_dir}/" 2>/dev/null || true
+            fi
+        fi
         cat << 'EOF' > "${staging_dir}/NanoWeaverHrt"
 #!/bin/sh
 echo "NanoWeaver HRT Desktop Stub (${rid})"
-exec /usr/bin/env dotnet /usr/lib/nanoweaver-hrt-desktop/NanoWeaverHrt.dll "$@"
+if [ -f /usr/lib/nanoweaver-hrt-desktop/NanoWeaverHrt.Desktop.dll ]; then
+    exec /usr/bin/env dotnet /usr/lib/nanoweaver-hrt-desktop/NanoWeaverHrt.Desktop.dll "$@"
+elif [ -f /usr/lib/nanoweaver-hrt/NanoWeaverHrt.Desktop.dll ]; then
+    exec /usr/bin/env dotnet /usr/lib/nanoweaver-hrt/NanoWeaverHrt.Desktop.dll "$@"
+else
+    exec /usr/bin/env dotnet /usr/lib/nanoweaver-hrt-desktop/NanoWeaverHrt.Desktop.dll "$@"
+fi
 EOF
         chmod +x "${staging_dir}/NanoWeaverHrt"
     elif [ -f "${staging_dir}/NanoWeaverHrt.Desktop" ] && [ ! -f "${staging_dir}/NanoWeaverHrt" ]; then
@@ -80,6 +96,9 @@ populate_rootfs() {
     # Symlink /usr/bin/nanoweaver-hrt-desktop
     ln -sf /usr/lib/nanoweaver-hrt-desktop/NanoWeaverHrt "${rootfs}/usr/bin/nanoweaver-hrt-desktop"
 
+    # Compatibility symlink for /usr/lib/nanoweaver-hrt -> /usr/lib/nanoweaver-hrt-desktop
+    ln -sf nanoweaver-hrt-desktop "${rootfs}/usr/lib/nanoweaver-hrt" 2>/dev/null || true
+
     # Copy desktop assets
     cp "${ROOT_DIR}/packaging/linux/nanoweaver-hrt-desktop.desktop" "${rootfs}/usr/share/applications/"
     cp "${ROOT_DIR}/packaging/linux/nanoweaver-hrt-desktop-tray.desktop" "${rootfs}/etc/xdg/autostart/"
@@ -111,7 +130,7 @@ build_arch_pkg() {
 pkgname = nanoweaver-hrt-desktop
 pkgver = ${PACKAGE_VERSION}-1
 pkgdesc = Decentralized Synthetic Biology & DNA Origami Research Platform
-url = https://git.lantea.one/fabigail/nanoweaver-hrt
+url = https://git.lantea.one/lantea-one/nanoweaver-hrt
 builddate = $(date +%s)
 size = $(du -sb "${pkg_dir}/usr" | awk '{print $1}')
 arch = ${arch_slug}
@@ -176,7 +195,7 @@ Architecture: ${deb_arch}
 Maintainer: Nanoweaver HRT Contributors <admin@lantea.one>
 Installed-Size: ${installed_size}
 Depends: libc6 (>= 2.31), libgcc-s1 | libgcc1, libstdc++6, libssl3 | libssl1.1, zlib1g, libx11-6, libice6, libsm6, libfontconfig1, libdbus-1-3, libnotify-bin
-Homepage: https://git.lantea.one/fabigail/nanoweaver-hrt
+Homepage: https://git.lantea.one/lantea-one/nanoweaver-hrt
 Description: Decentralized Synthetic Biology & DNA Origami Research Platform
  NanoWeaver HRT is an open-source decentralized synthetic biology and DNA
  origami research platform for simulation and precision therapeutics.
@@ -253,7 +272,7 @@ Version:        ${PACKAGE_VERSION}
 Release:        1%{?dist}
 Summary:        Decentralized Synthetic Biology & DNA Origami Research Platform
 License:        MIT
-URL:            https://git.lantea.one/fabigail/nanoweaver-hrt
+URL:            https://git.lantea.one/lantea-one/nanoweaver-hrt
 Source0:        nanoweaver-hrt-desktop-${PACKAGE_VERSION}.tar.gz
 Requires:       glibc, libX11, libICE, libSM, fontconfig, dbus-libs, libnotify
 
@@ -389,7 +408,7 @@ def build_rpm(rootfs, out_path, name, version, release, arch):
         (1005, 6, 'NanoWeaver HRT is an open-source decentralized synthetic biology research platform.'),
         (1014, 6, 'MIT'),
         (1016, 6, 'Applications/Engineering'),
-        (1020, 6, 'https://git.lantea.one/fabigail/nanoweaver-hrt'),
+        (1020, 6, 'https://git.lantea.one/lantea-one/nanoweaver-hrt'),
         (1021, 6, 'linux'),
         (1022, 6, arch),
         (1124, 6, 'cpio'),

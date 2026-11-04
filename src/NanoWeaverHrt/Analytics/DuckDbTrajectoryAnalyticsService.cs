@@ -57,7 +57,22 @@ public sealed class DuckDbTrajectoryAnalyticsService : ITrajectoryAnalyticsServi
         "COPY",
         "PRAGMA",
         "INSTALL",
-        "LOAD"
+        "LOAD",
+        "READ_CSV",
+        "READ_CSV_AUTO",
+        "READ_PARQUET",
+        "READ_JSON",
+        "READ_JSON_AUTO",
+        "READ_JSON_OBJECTS",
+        "READ_BLOB",
+        "READ_TEXT",
+        "SCAN_ARROW_IPC",
+        "SQLITE_SCAN",
+        "POSTGRES_SCAN",
+        "MYSQL_SCAN",
+        "ICEBERG_SCAN",
+        "DELTA_SCAN",
+        "GLOB"
     };
 
     /// <summary>
@@ -486,5 +501,31 @@ public sealed class DuckDbTrajectoryAnalyticsService : ITrajectoryAnalyticsServi
         return string.Equals(datasetName, "sample", StringComparison.OrdinalIgnoreCase)
             || string.Equals(datasetName, "samples", StringComparison.OrdinalIgnoreCase)
             || string.Equals(datasetName, "synthetic", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Checks whether the provided SQL query is a valid read-only select query that does not access external files or modify schema/data.
+    /// </summary>
+    /// <param name="sql">The SQL statement to inspect.</param>
+    /// <returns><c>true</c> if the statement is non-empty and contains no prohibited keywords; otherwise, <c>false</c>.</returns>
+    public static bool IsReadOnlySelectQuery(string? sql)
+    {
+        // WHAT: Validates whether a SQL query string is read-only and free from prohibited keywords.
+        // WHY:  Exposes a standalone security predicate for analytical queries.
+        // HOW:  Returns false on null/whitespace, otherwise scans tokens against ProhibitedKeywords.
+        if (string.IsNullOrWhiteSpace(sql))
+        {
+            return false;
+        }
+
+        try
+        {
+            ValidateReadOnlyQuery(sql);
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
     }
 }

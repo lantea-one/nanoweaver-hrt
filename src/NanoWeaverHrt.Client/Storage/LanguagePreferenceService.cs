@@ -34,7 +34,7 @@ public sealed class LanguagePreferenceService : ILanguagePreferenceService, IDis
         CREATE TABLE IF NOT EXISTS weaver_gui_preferences (
             preference_key VARCHAR(128) PRIMARY KEY NOT NULL,
             preference_value TEXT NOT NULL,
-            updated_at_utc TIMESTAMPTZ NOT NULL
+            updated_at_utc VARCHAR(64) NOT NULL
         );
         """;
 
@@ -42,25 +42,25 @@ public sealed class LanguagePreferenceService : ILanguagePreferenceService, IDis
     /// Schema creation DDL for DuckDB preferences table.
     /// </summary>
     private const string DuckDbSchemaDdl =
-        "CREATE TABLE IF NOT EXISTS weaver_gui_preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at_utc TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP);";
+        "CREATE TABLE IF NOT EXISTS weaver_gui_preferences (preference_key VARCHAR(128) PRIMARY KEY, preference_value TEXT NOT NULL, updated_at_utc VARCHAR(64) NOT NULL);";
 
     /// <summary>
     /// Schema creation DDL for MySQL preferences table.
     /// </summary>
     private const string MySqlSchemaDdl =
-        "CREATE TABLE IF NOT EXISTS weaver_gui_preferences (key VARCHAR(128) PRIMARY KEY, value VARCHAR(512) NOT NULL, updated_at_utc DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6));";
+        "CREATE TABLE IF NOT EXISTS weaver_gui_preferences (preference_key VARCHAR(128) PRIMARY KEY, preference_value TEXT NOT NULL, updated_at_utc VARCHAR(64) NOT NULL);";
 
     /// <summary>
     /// Upsert DML statement for DuckDB preferences.
     /// </summary>
     private const string DuckDbUpsertDml =
-        "INSERT INTO weaver_gui_preferences (key, value, updated_at_utc) VALUES (@k, @v, @t) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at_utc = EXCLUDED.updated_at_utc;";
+        "INSERT INTO weaver_gui_preferences (preference_key, preference_value, updated_at_utc) VALUES ($key, $value, $updatedAt) ON CONFLICT (preference_key) DO UPDATE SET preference_value = EXCLUDED.preference_value, updated_at_utc = EXCLUDED.updated_at_utc;";
 
     /// <summary>
     /// Upsert DML statement for MySQL preferences.
     /// </summary>
     private const string MySqlUpsertDml =
-        "INSERT INTO weaver_gui_preferences (key, value, updated_at_utc) VALUES (@k, @v, @t) ON DUPLICATE KEY UPDATE value = VALUES(value), updated_at_utc = VALUES(updated_at_utc);";
+        "INSERT INTO weaver_gui_preferences (preference_key, preference_value, updated_at_utc) VALUES (@key, @value, @updatedAt) ON DUPLICATE KEY UPDATE preference_value = VALUES(preference_value), updated_at_utc = VALUES(updated_at_utc);";
 
     /// <summary>
     /// Key used to store language preference in the database.
@@ -217,12 +217,10 @@ public sealed class LanguagePreferenceService : ILanguagePreferenceService, IDis
         {
             await using DbConnection connection = await OpenConnectionAsync(ct).ConfigureAwait(false);
             await using DbCommand cmd = connection.CreateCommand();
-            bool isNewSchema = _backend is WeaverDatabaseBackend.DuckDb or WeaverDatabaseBackend.MySql;
-            cmd.CommandText = isNewSchema
-                ? "SELECT value FROM weaver_gui_preferences WHERE key = @k;"
+            cmd.CommandText = _backend == WeaverDatabaseBackend.DuckDb
+                ? "SELECT preference_value FROM weaver_gui_preferences WHERE preference_key = $key;"
                 : "SELECT preference_value FROM weaver_gui_preferences WHERE preference_key = @key;";
-
-            AddParameter(cmd, isNewSchema ? "@k" : "@key", LanguageKey);
+            AddParameter(cmd, _backend == WeaverDatabaseBackend.DuckDb ? "key" : "@key", LanguageKey);
 
             object? result = await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false);
 
@@ -253,16 +251,16 @@ public sealed class LanguagePreferenceService : ILanguagePreferenceService, IDis
             if (_backend == WeaverDatabaseBackend.DuckDb)
             {
                 cmd.CommandText = DuckDbUpsertDml;
-                AddParameter(cmd, "@k", LanguageKey);
-                AddParameter(cmd, "@v", value);
-                AddParameter(cmd, "@t", DateTime.UtcNow);
+                AddParameter(cmd, "key", LanguageKey);
+                AddParameter(cmd, "value", value);
+                AddParameter(cmd, "updatedAt", updatedAt);
             }
             else if (_backend == WeaverDatabaseBackend.MySql)
             {
                 cmd.CommandText = MySqlUpsertDml;
-                AddParameter(cmd, "@k", LanguageKey);
-                AddParameter(cmd, "@v", value);
-                AddParameter(cmd, "@t", DateTime.UtcNow);
+                AddParameter(cmd, "@key", LanguageKey);
+                AddParameter(cmd, "@value", value);
+                AddParameter(cmd, "@updatedAt", updatedAt);
             }
             else if (_backend == WeaverDatabaseBackend.PostgreSql)
             {
@@ -276,7 +274,7 @@ public sealed class LanguagePreferenceService : ILanguagePreferenceService, IDis
                     """;
                 AddParameter(cmd, "@key", LanguageKey);
                 AddParameter(cmd, "@value", value);
-                AddParameter(cmd, "@updatedAt", DateTimeOffset.UtcNow);
+                AddParameter(cmd, "@updatedAt", updatedAt);
             }
             else
             {

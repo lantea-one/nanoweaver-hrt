@@ -115,11 +115,11 @@ public sealed class PostQuantumCryptoProvider : IPostQuantumCryptoProvider
         ArgumentException.ThrowIfNullOrWhiteSpace(recipientPublicKeyBase64);
         ArgumentException.ThrowIfNullOrWhiteSpace(keyId);
 
-        // WHAT: Parse recipient ML-KEM public key from Base64 DER bytes.
+        // WHAT: Parse recipient ML-KEM public key from Base64 DER bytes or raw FIPS 203 encoding.
         // WHY:  Enables key encapsulation to the recipient's public lattice identity.
-        // HOW:  Decodes Base64 and constructs MLKemPublicKeyParameters via PublicKeyFactory.
+        // HOW:  Decodes Base64 and parses via ParseKemPublicKey supporting raw 1184-byte and SPKI encodings.
         byte[] pubBytes = Convert.FromBase64String(recipientPublicKeyBase64);
-        var recipientPubKey = (MLKemPublicKeyParameters)PublicKeyFactory.CreateKey(pubBytes);
+        MLKemPublicKeyParameters recipientPubKey = ParseKemPublicKey(pubBytes);
 
         // WHAT: Encapsulate a fresh 256-bit shared secret key.
         // WHY:  Produces a quantum-secure symmetric key known only to sender and private key holder.
@@ -179,11 +179,11 @@ public sealed class PostQuantumCryptoProvider : IPostQuantumCryptoProvider
         ArgumentNullException.ThrowIfNull(envelope);
         ArgumentException.ThrowIfNullOrWhiteSpace(recipientPrivateKeyBase64);
 
-        // WHAT: Parse recipient ML-KEM private key from Base64 DER bytes.
+        // WHAT: Parse recipient ML-KEM private key from Base64 DER bytes or raw FIPS 203 encoding.
         // WHY:  Enables decapsulation of the symmetric shared secret.
-        // HOW:  Decodes Base64 and constructs MLKemPrivateKeyParameters via PrivateKeyFactory.
+        // HOW:  Decodes Base64 and parses via ParseKemPrivateKey supporting raw 2400-byte and PKCS#8 encodings.
         byte[] privBytes = Convert.FromBase64String(recipientPrivateKeyBase64);
-        var recipientPrivKey = (MLKemPrivateKeyParameters)PrivateKeyFactory.CreateKey(privBytes);
+        MLKemPrivateKeyParameters recipientPrivKey = ParseKemPrivateKey(privBytes);
 
         // WHAT: Decapsulate the 256-bit shared secret key.
         // WHY:  Recovers the exact symmetric key used during envelope encryption.
@@ -335,5 +335,131 @@ public sealed class PostQuantumCryptoProvider : IPostQuantumCryptoProvider
         {
             CryptographicOperations.ZeroMemory(seedCopy);
         }
+    }
+
+    /// <summary>
+    /// Generates a raw FIPS 203 ML-KEM-768 key pair producing standard byte lengths.
+    /// </summary>
+    /// <returns>A tuple of raw 1184-byte encapsulation key and 2400-byte decapsulation key.</returns>
+    public (byte[] EncapsulationKey, byte[] DecapsulationKey) GenerateKemRawKeyPair()
+    {
+        // WHAT: Generates an ML-KEM-768 key pair and extracts raw FIPS 203 wire encodings.
+        // WHY:  Standard FIPS 203 defines 1184-byte encapsulation key and 2400-byte decapsulation key.
+        // HOW:  Uses BouncyCastle MLKemKeyPairGenerator with MLKemParameters.ml_kem_768 and calls GetEncoded().
+        MLKemKeyPairGenerator keyGen = new();
+        keyGen.Init(new MLKemKeyGenerationParameters(_secureRandom, MLKemParameters.ml_kem_768));
+        var keyPair = keyGen.GenerateKeyPair();
+
+        var pubKey = (MLKemPublicKeyParameters)keyPair.Public;
+        var privKey = (MLKemPrivateKeyParameters)keyPair.Private;
+
+        return (pubKey.GetEncoded(), privKey.GetEncoded());
+    }
+
+    /// <summary>
+    /// Encapsulates a fresh shared secret against an ML-KEM-768 encapsulation key.
+    /// </summary>
+    /// <param name="encapsulationKey">The recipient's encapsulation key bytes (raw 1184 bytes or SPKI DER).</param>
+    /// <returns>A tuple containing the 1088-byte ciphertext and 32-byte shared secret.</returns>
+    /// <exception cref="ArgumentNullException">Thrown if <paramref name="encapsulationKey"/> is null.</exception>
+    public (byte[] Ciphertext, byte[] SharedSecret) Encapsulate(byte[] encapsulationKey)
+    {
+        ArgumentNullException.ThrowIfNull(encapsulationKey);
+
+        // WHAT: Encapsulates a fresh 256-bit shared secret using FIPS 203 ML-KEM-768.
+        // WHY:  Produces standard 1088-byte ciphertext and 32-byte shared secret without leaking secret to eavesdroppers.
+        // HOW:  Constructs MLKemPublicKeyParameters, initializes MLKemEncapsulator, and extracts encapsulation and secret.
+        MLKemPublicKeyParameters pubKey = ParseKemPublicKey(encapsulationKey);
+        MLKemEncapsulator encapsulator = new(pubKey.Parameters);
+        encapsulator.Init(pubKey);
+
+        byte[] ciphertext = new byte[encapsulator.EncapsulationLength];
+        byte[] sharedSecret = new byte[encapsulator.SecretLength];
+        encapsulator.Encapsulate(ciphertext, sharedSecret);
+
+        return (ciphertext, sharedSecret);
+    }
+
+    /// <summary>
+    /// Decapsulates an ML-KEM-768 ciphertext using an ML-KEM-768 decapsulation key.
+    /// </summary>
+    /// <param name="decapsulationKey">The decapsulation key bytes (raw 2400 bytes or PKCS#8 DER).</param>
+    /// <param name="ciphertext">The 1088-byte encapsulation ciphertext.</param>
+    /// <returns>The recovered 32-byte shared secret (or an implicitly rejected pseudo-random secret if ciphertext or key is invalid).</returns>
+    /// <exception cref="ArgumentNullException">Thrown if <paramref name="decapsulationKey"/> or <paramref name="ciphertext"/> is null.</exception>
+    public byte[] Decapsulate(byte[] decapsulationKey, byte[] ciphertext)
+    {
+        ArgumentNullException.ThrowIfNull(decapsulationKey);
+        ArgumentNullException.ThrowIfNull(ciphertext);
+
+        // WHAT: Recovers shared secret from ML-KEM-768 ciphertext using decapsulation key.
+        // WHY:  Standard FIPS 203 decapsulation provides implicit rejection on invalid/tampered ciphertext.
+        // HOW:  Constructs MLKemPrivateKeyParameters, initializes MLKemDecapsulator, and decapsulates ciphertext.
+        MLKemPrivateKeyParameters privKey = ParseKemPrivateKey(decapsulationKey);
+        MLKemDecapsulator decapsulator = new(privKey.Parameters);
+        decapsulator.Init(privKey);
+
+        byte[] sharedSecret = new byte[decapsulator.SecretLength];
+        decapsulator.Decapsulate(ciphertext, sharedSecret);
+
+        return sharedSecret;
+    }
+
+    /// <summary>
+    /// Fallback alias generating an ML-KEM-768 key pair.
+    /// </summary>
+    /// <param name="keyId">The unique key identifier.</param>
+    /// <returns>A new <see cref="PqcKeyMaterial"/> record.</returns>
+    public PqcKeyMaterial GenerateKemFallbackKeyPair(string keyId) => GenerateKemKeyPair(keyId);
+
+    /// <summary>
+    /// Fallback alias encapsulating a shared secret against an ML-KEM-768 encapsulation key.
+    /// </summary>
+    /// <param name="encapsulationKey">The recipient's encapsulation key bytes.</param>
+    /// <returns>A tuple containing the ciphertext and shared secret.</returns>
+    public (byte[] Ciphertext, byte[] SharedSecret) EncapsulateKemFallback(byte[] encapsulationKey) => Encapsulate(encapsulationKey);
+
+    /// <summary>
+    /// Fallback alias decapsulating an ML-KEM-768 ciphertext.
+    /// </summary>
+    /// <param name="decapsulationKey">The decapsulation key bytes.</param>
+    /// <param name="ciphertext">The encapsulation ciphertext.</param>
+    /// <returns>The recovered shared secret.</returns>
+    public byte[] DecapsulateKemFallback(byte[] decapsulationKey, byte[] ciphertext) => Decapsulate(decapsulationKey, ciphertext);
+
+    /// <summary>
+    /// Parses an ML-KEM-768 public key from either raw 1184-byte encoding or SubjectPublicKeyInfo ASN.1 DER.
+    /// </summary>
+    /// <param name="keyBytes">The raw or SPKI-encoded public key bytes.</param>
+    /// <returns>An initialized <see cref="MLKemPublicKeyParameters"/> instance.</returns>
+    private static MLKemPublicKeyParameters ParseKemPublicKey(byte[] keyBytes)
+    {
+        // WHAT: Parses ML-KEM-768 public key supporting both raw FIPS 203 wire encoding and X.509 SPKI DER.
+        // WHY:  Allows wire formats (1184 bytes) and standard ASN.1 certificates/envelopes to be consumed transparently.
+        // HOW:  Checks byte length; if 1184 bytes, uses MLKemPublicKeyParameters.FromEncoding, otherwise PublicKeyFactory.
+        if (keyBytes.Length == 1184)
+        {
+            return MLKemPublicKeyParameters.FromEncoding(MLKemParameters.ml_kem_768, keyBytes);
+        }
+
+        return (MLKemPublicKeyParameters)PublicKeyFactory.CreateKey(keyBytes);
+    }
+
+    /// <summary>
+    /// Parses an ML-KEM-768 private key from either raw 2400-byte encoding or PKCS#8 ASN.1 DER.
+    /// </summary>
+    /// <param name="keyBytes">The raw or PKCS#8-encoded private key bytes.</param>
+    /// <returns>An initialized <see cref="MLKemPrivateKeyParameters"/> instance.</returns>
+    private static MLKemPrivateKeyParameters ParseKemPrivateKey(byte[] keyBytes)
+    {
+        // WHAT: Parses ML-KEM-768 private key supporting both raw FIPS 203 wire encoding and PKCS#8 DER.
+        // WHY:  Allows wire formats (2400 bytes) and PKCS#8 persisted key envelopes to be consumed transparently.
+        // HOW:  Checks byte length; if 2400 bytes, uses MLKemPrivateKeyParameters.FromEncoding, otherwise PrivateKeyFactory.
+        if (keyBytes.Length == 2400)
+        {
+            return MLKemPrivateKeyParameters.FromEncoding(MLKemParameters.ml_kem_768, keyBytes);
+        }
+
+        return (MLKemPrivateKeyParameters)PrivateKeyFactory.CreateKey(keyBytes);
     }
 }

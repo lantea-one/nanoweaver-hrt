@@ -275,6 +275,13 @@ jobs:
       - name: Checkout Source Code
         uses: actions/checkout@v4
 
+      - name: Restore Dependencies
+        # WHAT: Restores all NuGet packages and dependencies across the multi-project solution.
+        # WHY:  Ensures subsequent standalone build and packaging scripts running with --no-restore
+        #       find all required target framework packages deterministically.
+        # HOW:  Executes dotnet restore on NanoWeaverHrt.slnx.
+        run: dotnet restore NanoWeaverHrt.slnx
+
       - name: Build and Sign Standalone Release Packages
         run: ./scripts/packaging/build-all-packages.sh
 

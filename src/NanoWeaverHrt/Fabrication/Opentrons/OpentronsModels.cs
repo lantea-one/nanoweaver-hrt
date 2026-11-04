@@ -29,6 +29,12 @@ public enum OpentronsPipetteModel
     /// <summary>OT-2 Single-channel 300 µL pipette (Gen2) for master mixes.</summary>
     P300_Single_Gen2,
 
+    /// <summary>OT-2 8-channel 300 µL pipette (Gen2).</summary>
+    P300_Multi_Gen2,
+
+    /// <summary>OT-2 Single-channel 1000 µL pipette (Gen2).</summary>
+    P1000_Single_Gen2,
+
     /// <summary>Flex 1-channel 50 µL pipette.</summary>
     Flex_1Channel_50,
 

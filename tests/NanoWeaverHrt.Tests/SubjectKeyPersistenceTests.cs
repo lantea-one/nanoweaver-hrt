@@ -119,14 +119,14 @@ public sealed class SubjectKeyPersistenceTests : IDisposable
         }
 
         using DatabaseMigrationRunner runner = new();
-        Assert.Equal(11, runner.RegisteredMigrations.Count);
+        Assert.Equal(12, runner.RegisteredMigrations.Count);
         Assert.Contains(runner.RegisteredMigrations, m => m is Migration008_SubjectKeyStore);
 
         await using SqliteConnection conn = new("Data Source=:memory:");
         await conn.OpenAsync();
         int firstApply = await runner.ApplyPendingMigrationsAsync(conn, "sqlite");
-        Assert.Equal(11, firstApply);
-        Assert.Equal(new long[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 }, await runner.GetAppliedVersionsAsync(conn, "sqlite"));
+        Assert.Equal(12, firstApply);
+        Assert.Equal(new long[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 }, await runner.GetAppliedVersionsAsync(conn, "sqlite"));
         Assert.Equal(0, await runner.ApplyPendingMigrationsAsync(conn, "sqlite"));
     }
 
@@ -217,8 +217,8 @@ public sealed class SubjectKeyPersistenceTests : IDisposable
             SubjectId = "sub_Alpha",
             KeyId = "kid_alpha",
             Algorithm = "ML-KEM-768",
-            PublicKeyBase64 = "pub_alpha",
-            SealedPrivateKey = "sealed_alpha",
+            PublicKeyBase64 = "cHViX2FscGhh",
+            SealedPrivateKey = "c2VhbGVkX2FscGhh",
             IsShredded = false,
             CreatedAtUtc = t1,
             ShreddedAtUtc = null
@@ -227,12 +227,17 @@ public sealed class SubjectKeyPersistenceTests : IDisposable
         // Argument validation on TryInsertActiveAsync
         await Assert.ThrowsAsync<ArgumentException>(() => repo.TryInsertActiveAsync(activeRow with { IsShredded = true }));
         await Assert.ThrowsAsync<ArgumentException>(() => repo.TryInsertActiveAsync(activeRow with { KeyId = null }));
+        await Assert.ThrowsAsync<ArgumentException>(() => repo.TryInsertActiveAsync(activeRow with { KeyId = "   " }));
         await Assert.ThrowsAsync<ArgumentException>(() => repo.TryInsertActiveAsync(activeRow with { PublicKeyBase64 = null }));
+        await Assert.ThrowsAsync<ArgumentException>(() => repo.TryInsertActiveAsync(activeRow with { PublicKeyBase64 = "   " }));
+        await Assert.ThrowsAsync<ArgumentException>(() => repo.TryInsertActiveAsync(activeRow with { PublicKeyBase64 = "not-valid-base64!@" }));
         await Assert.ThrowsAsync<ArgumentException>(() => repo.TryInsertActiveAsync(activeRow with { SealedPrivateKey = null }));
+        await Assert.ThrowsAsync<ArgumentException>(() => repo.TryInsertActiveAsync(activeRow with { SealedPrivateKey = "   " }));
+        await Assert.ThrowsAsync<ArgumentException>(() => repo.TryInsertActiveAsync(activeRow with { SealedPrivateKey = "not-valid-base64!@" }));
 
         // A4: first insert true, second insert false and row unchanged
         Assert.True(await repo.TryInsertActiveAsync(activeRow));
-        Assert.False(await repo.TryInsertActiveAsync(activeRow with { PublicKeyBase64 = "pub_different", SealedPrivateKey = "sealed_different" }));
+        Assert.False(await repo.TryInsertActiveAsync(activeRow with { PublicKeyBase64 = "cHViX2RpZmZlcmVudA==", SealedPrivateKey = "c2VhbGVkX2RpZmZlcmVudA==" }));
         SubjectKeyRow loadedActive = await repo.GetRequiredAsync("SUB_ALPHA");
         Assert.Equal(activeRow, loadedActive);
 
@@ -255,7 +260,7 @@ public sealed class SubjectKeyPersistenceTests : IDisposable
         Assert.Null(stillTombstone.SealedPrivateKey);
 
         // A8: Insert a second row (active, properly sealed) and a third row with null key_id (tombstone) to test ordering and null key_id mapping
-        string secondBinding = SubjectKeyVault.ComputeBinding("SUB_AA", "kid_alpha", "pub_alpha");
+        string secondBinding = SubjectKeyVault.ComputeBinding("SUB_AA", "kid_alpha", "cHViX2FscGhh");
         SubjectKeyRow secondRow = activeRow with
         {
             SubjectKey = "SUB_AA",
@@ -694,7 +699,7 @@ public sealed class SubjectKeyPersistenceTests : IDisposable
             SubjectId = "U",
             KeyId = "kid_u",
             Algorithm = "ML-KEM-768",
-            PublicKeyBase64 = "pub_u",
+            PublicKeyBase64 = "cHViX3U=",
             SealedPrivateKey = tSealed,
             IsShredded = false,
             CreatedAtUtc = DateTimeOffset.UtcNow

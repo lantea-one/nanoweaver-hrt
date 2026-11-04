@@ -43,6 +43,10 @@ services:
     ports:
       # Bound strictly to loopback interface for local inspection; not exposed publicly
       - "127.0.0.1:6379:6379"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
 
   trajectory-parser:
     image: git.lantea.one/lantea-one/nanoweaver-hrt-web:latest

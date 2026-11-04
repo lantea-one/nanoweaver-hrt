@@ -122,11 +122,7 @@ public sealed class SubjectAccessService : ISubjectAccessService
             SubjectGroup? group = await _accessRepo.GetGroupAsync(groupId, ct).ConfigureAwait(false);
             if (group != null && string.Equals(group.CreatedBy, cleanRes, StringComparison.OrdinalIgnoreCase))
             {
-                SubjectAccessLevel ownerLevel = SubjectAccessLevel.GenomicAccess;
-                if (!maxLevel.HasValue || ownerLevel > maxLevel.Value)
-                {
-                    maxLevel = ownerLevel;
-                }
+                maxLevel = !maxLevel.HasValue || SubjectAccessLevel.GenomicAccess > maxLevel.Value ? SubjectAccessLevel.GenomicAccess : maxLevel;
             }
         }
 
@@ -194,14 +190,17 @@ public sealed class SubjectAccessService : ISubjectAccessService
             }
         }
 
-        // Groups created by researcher
-        var createdGroups = await _accessRepo.ListGroupsAsync(createdBy: cleanCaller, ct: ct).ConfigureAwait(false);
-        foreach (var group in createdGroups)
+        // Groups created by researcher (grants GenomicAccess Tier 2; never escalates to FullReadAccess Tier 3)
+        if (minimumLevel <= SubjectAccessLevel.GenomicAccess)
         {
-            var members = await _accessRepo.ListGroupMemberUsernamesAsync(group.Id, ct).ConfigureAwait(false);
-            foreach (string m in members)
+            var createdGroups = await _accessRepo.ListGroupsAsync(createdBy: cleanCaller, ct: ct).ConfigureAwait(false);
+            foreach (var group in createdGroups)
             {
-                accessible.Add(m.ToLowerInvariant());
+                var members = await _accessRepo.ListGroupMemberUsernamesAsync(group.Id, ct).ConfigureAwait(false);
+                foreach (string m in members)
+                {
+                    accessible.Add(m.ToLowerInvariant());
+                }
             }
         }
 
@@ -264,7 +263,7 @@ public sealed class SubjectAccessService : ISubjectAccessService
             return true;
         }
 
-        var accessible = await GetAccessibleSubjectUsernamesAsync(callerUsername, callerRole, SubjectAccessLevel.ReadAccess, ct).ConfigureAwait(false);
+        var accessible = await GetAccessibleSubjectUsernamesAsync(callerUsername, callerRole, SubjectAccessLevel.GenomicAccess, ct).ConfigureAwait(false);
         HashSet<string> accessibleSet = new(accessible, StringComparer.OrdinalIgnoreCase);
 
         return candidateList.All(accessibleSet.Contains);

@@ -11,6 +11,7 @@ using Org.BouncyCastle.X509;
 using NanoWeaverHrt.Configuration;
 using NanoWeaverHrt.Models;
 using NanoWeaverHrt.Security.Authentication;
+using NanoWeaverHrt.Security.Cryptography;
 using NanoWeaverHrt.Security.Secrets;
 using NanoWeaverHrt.Security.Signing;
 using NanoWeaverHrt.Storage;
@@ -48,6 +49,16 @@ public sealed class TrajectoryFederationService : ITrajectoryFederationService
     private const string AlgorithmEd25519 = "Ed25519";
 
     /// <summary>
+    /// Canonical algorithm identifier for ML-DSA-65 signatures (compact casing).
+    /// </summary>
+    private const string AlgorithmMlDsa65 = "MlDsa65";
+
+    /// <summary>
+    /// Canonical algorithm identifier for ML-DSA-65 signatures (NIST FIPS 204 casing).
+    /// </summary>
+    private const string AlgorithmMlDsa65Fips = "ML-DSA-65";
+
+    /// <summary>
     /// Configuration key for the incoming trajectory directory path.
     /// </summary>
     private const string TrajectoryIncomingConfigKey = "Storage:TrajectoryIncomingDir";
@@ -56,6 +67,16 @@ public sealed class TrajectoryFederationService : ITrajectoryFederationService
     /// Fallback trajectory incoming directory when not explicitly configured.
     /// </summary>
     private const string DefaultIncomingDir = "./simulations/shared-data";
+
+    /// <summary>
+    /// Configuration key for the columnar trajectory parquet directory path.
+    /// </summary>
+    private const string TrajectoryParquetConfigKey = "Storage:TrajectoryParquetDir";
+
+    /// <summary>
+    /// Fallback trajectory parquet directory when not explicitly configured.
+    /// </summary>
+    private const string DefaultParquetDir = "./simulations/parquet";
 
     /// <summary>
     /// Strict UTF-8 encoding without BOM that throws on invalid surrogates.
@@ -83,18 +104,25 @@ public sealed class TrajectoryFederationService : ITrajectoryFederationService
     private readonly ILogger<TrajectoryFederationService> _logger;
 
     /// <summary>
+    /// Post-quantum cryptographic provider for verifying ML-DSA-65 signatures.
+    /// </summary>
+    private readonly IPostQuantumCryptoProvider _pqcProvider;
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="TrajectoryFederationService"/> class.
     /// </summary>
     /// <param name="configRepo">System configuration repository.</param>
     /// <param name="peerKeyRegistry">Registry of trusted peer public keys.</param>
     /// <param name="secretStore">Node secret store providing key material.</param>
     /// <param name="logger">Logger instance.</param>
+    /// <param name="pqcProvider">Optional post-quantum cryptographic provider for ML-DSA-65 verification; defaults to a new <see cref="PostQuantumCryptoProvider"/> instance.</param>
     /// <exception cref="ArgumentNullException">Any required dependency is <c>null</c>.</exception>
     public TrajectoryFederationService(
         IConfigurationRepository configRepo,
         IPeerKeyRegistry peerKeyRegistry,
         INodeSecretStore secretStore,
-        ILogger<TrajectoryFederationService> logger)
+        ILogger<TrajectoryFederationService> logger,
+        IPostQuantumCryptoProvider? pqcProvider = null)
     {
         ArgumentNullException.ThrowIfNull(configRepo);
         ArgumentNullException.ThrowIfNull(peerKeyRegistry);
@@ -105,6 +133,7 @@ public sealed class TrajectoryFederationService : ITrajectoryFederationService
         _peerKeyRegistry = peerKeyRegistry;
         _secretStore = secretStore;
         _logger = logger;
+        _pqcProvider = pqcProvider ?? new PostQuantumCryptoProvider();
     }
 
     /// <inheritdoc/>
@@ -220,15 +249,41 @@ public sealed class TrajectoryFederationService : ITrajectoryFederationService
         }
 
         // WHAT: Validate signature algorithm compatibility.
-        // WHY:  Currently Ed25519 is the authoritative federation signature format.
-        // HOW:  Compares algorithm string ordinally against AlgorithmEd25519.
-        if (!string.Equals(manifest.SignatureAlgorithm, AlgorithmEd25519, StringComparison.Ordinal))
+        // WHY:  Supports Ed25519 standard signatures and post-quantum ML-DSA-65 (NIST FIPS 204) lattice signatures.
+        // HOW:  Checks against known algorithm identifiers ordinally or case-insensitively.
+        bool isEd25519 = string.Equals(manifest.SignatureAlgorithm, AlgorithmEd25519, StringComparison.Ordinal);
+        bool isMlDsa65 = string.Equals(manifest.SignatureAlgorithm, AlgorithmMlDsa65, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(manifest.SignatureAlgorithm, AlgorithmMlDsa65Fips, StringComparison.OrdinalIgnoreCase);
+
+        if (!isEd25519 && !isMlDsa65)
         {
             return false;
         }
 
         try
         {
+            byte[] canonicalBytes = ComputeCanonicalBytes(manifest);
+
+            if (isMlDsa65)
+            {
+                // WHAT: Look up active, trusted peer key and verify ML-DSA-65 post-quantum signature.
+                // WHY:  NIST FIPS 204 lattice signatures provide quantum-resistant federation dataset authenticity.
+                // HOW:  Queries IPeerKeyRegistry.FindActiveAsync, normalizes public key, and verifies via IPostQuantumCryptoProvider.
+                PeerKeyRecord? peer = await _peerKeyRegistry.FindActiveAsync(manifest.SigningNodeId, ct).ConfigureAwait(false);
+                if (peer is null || !peer.IsActive || peer.Algorithm != KeyAlgorithm.MlDsa65)
+                {
+                    return false;
+                }
+
+                if (!PeerKeyValidation.TryNormalizePublicKey(KeyAlgorithm.MlDsa65, peer.PublicKeyBase64, out string normBase64, out string normKeyId) ||
+                    !string.Equals(normKeyId, manifest.SigningNodeId, StringComparison.Ordinal))
+                {
+                    return false;
+                }
+
+                return _pqcProvider.VerifySignature(canonicalBytes, manifest.SignatureBase64, normBase64);
+            }
+
             // WHAT: Resolve the signer's public key (from local node secret store or active peer registry).
             // WHY:  Allows verification of manifests generated locally or received from registered peer laboratories.
             // HOW:  Checks local node public key match first; if not local, looks up active peer in IPeerKeyRegistry.
@@ -269,8 +324,7 @@ public sealed class TrajectoryFederationService : ITrajectoryFederationService
 
             // WHAT: Reconstruct canonical byte payload and verify Ed25519 digital signature.
             // WHY:  Ensures data integrity and authenticity without timing side channels.
-            // HOW:  Calls ComputeCanonicalBytes, decodes Base64 signature, and verifies via BouncyCastle Ed25519Signer.
-            byte[] canonicalBytes = ComputeCanonicalBytes(manifest);
+            // HOW:  Decodes Base64 signature and verifies via BouncyCastle Ed25519Signer.
             byte[] sigBytes = Convert.FromBase64String(manifest.SignatureBase64);
 
             Ed25519Signer verifier = new();
@@ -417,20 +471,68 @@ public sealed class TrajectoryFederationService : ITrajectoryFederationService
     }
 
     /// <summary>
-    /// Resolves the file system path of a trajectory dataset.
+    /// Resolves the canonical file system path of a trajectory dataset, preventing path traversal attacks.
     /// </summary>
-    /// <param name="trajectoryFileName">The filename or path.</param>
+    /// <param name="trajectoryFileName">The simple filename.</param>
     /// <param name="ct">Cancellation token.</param>
-    /// <returns>The resolved absolute or incoming-directory relative path.</returns>
+    /// <returns>The resolved absolute canonical path within allowed storage directories.</returns>
+    /// <exception cref="ArgumentException"><paramref name="trajectoryFileName"/> is rooted, contains navigation segments, or escapes allowed roots.</exception>
     private async Task<string> ResolveTrajectoryFilePathAsync(string trajectoryFileName, CancellationToken ct)
     {
-        if (Path.IsPathRooted(trajectoryFileName))
+        // WHAT: Strict path-traversal hardening for trajectory file names.
+        // WHY:  Prevents arbitrary file system reads and path escape exploits (e.g. ../ or absolute paths).
+        // HOW:  Validates that trajectoryFileName is a simple file name, resolves against incoming and parquet roots,
+        //       and verifies canonical prefix containment.
+        if (Path.IsPathRooted(trajectoryFileName) ||
+            trajectoryFileName.Contains('/') ||
+            trajectoryFileName.Contains('\\') ||
+            trajectoryFileName.Contains("..", StringComparison.Ordinal) ||
+            !string.Equals(Path.GetFileName(trajectoryFileName), trajectoryFileName, StringComparison.Ordinal))
         {
-            return trajectoryFileName;
+            throw new ArgumentException($"Trajectory file name '{trajectoryFileName}' contains invalid path separators or navigation segments.", nameof(trajectoryFileName));
         }
 
         string incomingDir = await _configRepo.GetValueAsync(TrajectoryIncomingConfigKey, DefaultIncomingDir, ct).ConfigureAwait(false);
-        return Path.Combine(incomingDir, Path.GetFileName(trajectoryFileName));
+        string parquetDir = await _configRepo.GetValueAsync(TrajectoryParquetConfigKey, DefaultParquetDir, ct).ConfigureAwait(false);
+
+        string canonicalIncoming = Path.GetFullPath(incomingDir).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        string canonicalParquet = Path.GetFullPath(parquetDir).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+
+        string candidateIncoming = Path.Combine(incomingDir, trajectoryFileName);
+        string candidateParquet = Path.Combine(parquetDir, trajectoryFileName);
+
+        string resolvedPath = File.Exists(candidateIncoming)
+            ? candidateIncoming
+            : File.Exists(candidateParquet)
+                ? candidateParquet
+                : trajectoryFileName.EndsWith(".parquet", StringComparison.OrdinalIgnoreCase)
+                    ? candidateParquet
+                    : candidateIncoming;
+
+        string canonicalResolved = Path.GetFullPath(resolvedPath);
+        VerifyCanonicalContainment(canonicalResolved, canonicalIncoming, canonicalParquet, trajectoryFileName);
+
+        return canonicalResolved;
+    }
+
+    /// <summary>
+    /// Verifies that the canonical resolved path starts with either the incoming or parquet directory.
+    /// </summary>
+    /// <param name="canonicalResolved">Canonical resolved absolute trajectory file path.</param>
+    /// <param name="canonicalIncoming">Canonical incoming directory path with trailing directory separator.</param>
+    /// <param name="canonicalParquet">Canonical parquet directory path with trailing directory separator.</param>
+    /// <param name="trajectoryFileName">Original trajectory file name for exception diagnostic context.</param>
+    /// <exception cref="ArgumentException">The resolved path escapes the allowed storage directories.</exception>
+    internal static void VerifyCanonicalContainment(string canonicalResolved, string canonicalIncoming, string canonicalParquet, string trajectoryFileName)
+    {
+        // WHAT: Validate that canonical resolved path is strictly within the allowed directory roots.
+        // WHY:  Defense-in-depth enforcement preventing symlink or directory-escape attacks.
+        // HOW:  Checks whether canonicalResolved starts with canonicalIncoming or canonicalParquet.
+        if (!canonicalResolved.StartsWith(canonicalIncoming, StringComparison.Ordinal) &&
+            !canonicalResolved.StartsWith(canonicalParquet, StringComparison.Ordinal))
+        {
+            throw new ArgumentException($"Resolved path '{canonicalResolved}' escapes allowed trajectory directories.", nameof(trajectoryFileName));
+        }
     }
 
     /// <summary>
@@ -525,5 +627,57 @@ public sealed class TrajectoryFederationService : ITrajectoryFederationService
         Span<byte> hash = stackalloc byte[32];
         SHA256.HashData(buffer.AsSpan(0, length), hash);
         return Convert.ToHexStringLower(hash);
+    }
+
+    /// <inheritdoc/>
+    public async Task<int> ReadChunkIntoAsync(
+        string trajectoryFileName,
+        long offsetBytes,
+        Memory<byte> destination,
+        CancellationToken ct = default)
+    {
+        // WHAT: Zero-allocation streaming of a trajectory file slice directly into caller-provided memory.
+        // WHY:  High-frequency trajectory streaming eliminates LOH and GC allocation pressure across the P2P swarm.
+        // HOW:  Validates bounds, resolves path within canonical directories, seeks to offset, and reads asynchronously in a loop.
+        ArgumentException.ThrowIfNullOrWhiteSpace(trajectoryFileName);
+        ArgumentOutOfRangeException.ThrowIfNegative(offsetBytes);
+        if (destination.Length == 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(destination), "Destination memory slice must not be empty.");
+        }
+
+        string resolvedPath = await ResolveTrajectoryFilePathAsync(trajectoryFileName, ct).ConfigureAwait(false);
+        if (!File.Exists(resolvedPath))
+        {
+            throw new FileNotFoundException($"Trajectory file '{trajectoryFileName}' was not found at '{resolvedPath}'.", resolvedPath);
+        }
+
+        int totalBytesRead = 0;
+        {
+            await using FileStream stream = new(resolvedPath, FileMode.Open, FileAccess.Read, FileShare.Read, 65536, useAsync: true);
+            long fileLength = stream.Length;
+            if (offsetBytes >= fileLength)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(offsetBytes),
+                    offsetBytes,
+                    $"Offset {offsetBytes} is out of bounds for file of length {fileLength} bytes.");
+            }
+
+            stream.Seek(offsetBytes, SeekOrigin.Begin);
+            while (totalBytesRead < destination.Length)
+            {
+                ct.ThrowIfCancellationRequested();
+                int bytesRead = await stream.ReadAsync(destination[totalBytesRead..], ct).ConfigureAwait(false);
+                if (bytesRead == 0)
+                {
+                    break;
+                }
+
+                totalBytesRead += bytesRead;
+            }
+        }
+
+        return totalBytesRead;
     }
 }

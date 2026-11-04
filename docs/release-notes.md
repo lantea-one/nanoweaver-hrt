@@ -4,6 +4,32 @@
 
 ---
 
+## v2026.11.03.2 — Full-Repository Hardening, Multi-Engine Parity & Scientific Fidelity Release (2026-11-03)
+
+Major milestone release completing Work Packages `P61–P85` (Forgejo Issues `#64–#88`), delivering rigorous multi-engine database persistence, FIPS-compliant post-quantum cryptography, advanced closed-loop endocrine feedback modeling, zero-allocation gel densitometry, Opentrons automation, and hardware-backed mobile enclaves.
+
+### Highlights
+* **Multi-Engine Persistence & Dialect Parity (Forgejo #64 / P61)**:
+  - `Migration012_GuiPreferences` introducing `weaver_gui_preferences` across SQLite, PostgreSQL, DuckDB, and MySQL / MariaDB connection factories.
+  - DuckDB sandboxing enforcing `enable_external_access = false`.
+  - Mandatory AES-256-GCM PHI encryption at rest for sensitive column payloads.
+* **Cryptographic & Access Hardening (Forgejo #70 / P67)**:
+  - BouncyCastle FIPS 203 `ML-KEM-768` and FIPS 204 `ML-DSA-65` dataset manifest signing.
+  - AES-256-GCM salt AAD interop and `GenomicAccess` cohort role gating across all 14 scientific API endpoints.
+  - Server-side logout token revocation and abandoned mutex exception recovery.
+* **Scientific & Wet-Lab Engines (Forgejo #77 / P74)**:
+  - Closed-loop HPG axis simulation with `K_p = 14.0` proportional gain and steady-state clearance feedforward calibration.
+  - `isMtF` gonadal suppression kinetics modeling.
+  - 4-wide `Vector128<float>` SIMD coordinate parser and Fortran DCD binary block marker validation.
+  - Zero-allocation gel densitometry image processing and Stage 4 SVG lane plot rendering.
+  - Opentrons multi-step pipette volume splitting and thermal ramp rate controllers.
+* **Desktop, Mobile & Packaging (Forgejo #85 / P81)**:
+  - Android Keystore (`IAndroidKeyStoreBridge`) and Apple Secure Enclave (`IAppleSecureEnclaveBridge`) Ed25519 identity bridges.
+  - Lifecycle vault auto-lock and single-handshake `ZeroizableSecretBuffer` session caching.
+  - Hardened Docker Compose production overlays and canonical `one.lantea.nanoweaver.hrt` desktop/mobile packaging.
+
+---
+
 ## Release v2026.11.03.1 (P2P Swarm Federation, Closed-Loop Endocrine Modeling, Gel QC & Mobile Enclave Biometrics — 2026-11-03)
 
 Major milestone release delivering decentralized P2P trajectory swarm federation with cryptographic Ed25519 manifests, dynamic closed-loop endocrine simulation solving coupled HPG axis non-linear ODEs via Runge-Kutta 4th-order (RK4) numerical integration, automated agarose gel electrophoresis image densitometry, and native mobile hardware-backed biometric authentication with Secure Enclave vault zeroization.

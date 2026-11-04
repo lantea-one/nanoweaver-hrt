@@ -78,6 +78,9 @@ public sealed class TrajectoryBrowserTests : TestContext
         Services.AddSingleton<DcdPipeReader>();
         Services.AddSingleton<LammpsCustomPipeReader>();
         Services.AddSingleton<ITrajectoryAnalyticsService>(_analyticsService);
+        var fedMock = new Mock<NanoWeaverHrt.Federation.ITrajectoryFederationService>();
+        fedMock.Setup(f => f.DiscoverPeersAsync(default)).ReturnsAsync(new List<NanoWeaverHrt.Federation.FederationPeerNode>());
+        Services.AddSingleton<NanoWeaverHrt.Federation.ITrajectoryFederationService>(fedMock.Object);
     }
 
     /// <summary>

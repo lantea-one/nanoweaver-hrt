@@ -100,7 +100,7 @@ so_x86_64 = make_elf_so(62)  # EM_X86_64
 
 android_manifest = f'''<?xml version=\"1.0\" encoding=\"utf-8\"?>
 <manifest xmlns:android=\"http://schemas.android.com/apk/res/android\"
-    package=\"org.lantea.nanoweaver_hrt\"
+    package=\"one.lantea.nanoweaver.hrt\"
     android:versionCode=\"1\"
     android:versionName=\"${PACKAGE_VERSION}\">
     <uses-sdk android:minSdkVersion=\"26\" android:targetSdkVersion=\"34\" />
@@ -111,7 +111,7 @@ android_manifest = f'''<?xml version=\"1.0\" encoding=\"utf-8\"?>
         android:allowBackup=\"false\"
         android:icon=\"@drawable/icon\">
         <activity
-            android:name=\"org.lantea.nanoweaver_hrt.MainActivity\"
+            android:name=\"one.lantea.nanoweaver.hrt.MainActivity\"
             android:exported=\"true\"
             android:label=\"NanoWeaver HRT\"
             android:configChanges=\"orientation|screenSize|uiMode\">
@@ -212,7 +212,7 @@ with open('${app_dir}/${icon_filename}', 'wb') as f:
     <key>CFBundleExecutable</key>
     <string>NanoWeaverHrt</string>
     <key>CFBundleIdentifier</key>
-    <string>org.lantea.nanoweaver-hrt.mobile</string>
+    <string>one.lantea.nanoweaver.hrt</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
@@ -226,7 +226,7 @@ with open('${app_dir}/${icon_filename}', 'wb') as f:
     <key>LSRequiresIPhoneOS</key>
     <true/>
     <key>MinimumOSVersion</key>
-    <string>16.0</string>
+    <string>17.0</string>
     <key>UIDeviceFamily</key>
     <array>
         <integer>${device_family}</integer>

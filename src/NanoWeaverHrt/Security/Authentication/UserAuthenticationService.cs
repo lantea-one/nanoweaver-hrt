@@ -130,6 +130,7 @@ public sealed class UserAuthenticationService : IUserAuthenticationService, IDis
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(adminUsername);
         ArgumentException.ThrowIfNullOrWhiteSpace(publicKeyBase64);
+        ValidatePublicKey(publicKeyBase64, algorithm);
 
         if (!await IsSetupRequiredAsync(ct))
         {
@@ -349,6 +350,7 @@ public sealed class UserAuthenticationService : IUserAuthenticationService, IDis
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(username);
         ArgumentException.ThrowIfNullOrWhiteSpace(publicKeyBase64);
+        ValidatePublicKey(publicKeyBase64, algorithm);
 
         UserAccount user = new()
         {
@@ -383,6 +385,7 @@ public sealed class UserAuthenticationService : IUserAuthenticationService, IDis
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(username);
         ArgumentException.ThrowIfNullOrWhiteSpace(publicKeyBase64);
+        ValidatePublicKey(publicKeyBase64, algorithm);
 
         UserAccount user = new()
         {
@@ -470,7 +473,9 @@ public sealed class UserAuthenticationService : IUserAuthenticationService, IDis
             if (user.Algorithm == KeyAlgorithm.Ed25519)
             {
                 byte[] pubBytes = Convert.FromBase64String(user.PublicKeyBase64);
-                var pubKey = (Ed25519PublicKeyParameters)PublicKeyFactory.CreateKey(pubBytes);
+                Ed25519PublicKeyParameters pubKey = pubBytes.Length == 32
+                    ? new Ed25519PublicKeyParameters(pubBytes, 0)
+                    : (Ed25519PublicKeyParameters)PublicKeyFactory.CreateKey(pubBytes);
                 Ed25519Signer signer = new();
                 signer.Init(false, pubKey);
                 signer.BlockUpdate(data, 0, data.Length);
@@ -619,5 +624,78 @@ public sealed class UserAuthenticationService : IUserAuthenticationService, IDis
     public void Dispose()
     {
         _pruneTimer.Dispose();
+    }
+
+    /// <summary>
+    /// Validates that a Base64-encoded public key conforms to the expected format and byte length for the specified algorithm.
+    /// </summary>
+    /// <param name="publicKeyBase64">The Base64-encoded public key string.</param>
+    /// <param name="algorithm">The declared cryptographic algorithm.</param>
+    /// <exception cref="ArgumentException">Thrown when the key is null, whitespace, invalid Base64, incorrect length, or malformed.</exception>
+    private static void ValidatePublicKey(string publicKeyBase64, KeyAlgorithm algorithm)
+    {
+        // WHAT: Validates public key bytes against algorithm specifications before persisting or using them.
+        // WHY:  Prevents malformed, truncated, or algorithm-mismatched public keys from entering the repository.
+        // HOW:  Decodes Base64 and validates wire lengths / ASN.1 structures for Ed25519 and ML-DSA-65.
+        ArgumentException.ThrowIfNullOrWhiteSpace(publicKeyBase64);
+
+        byte[] pubBytes;
+        try
+        {
+            pubBytes = Convert.FromBase64String(publicKeyBase64.Trim());
+        }
+        catch (FormatException ex)
+        {
+            throw new ArgumentException("Public key is not valid Base64.", nameof(publicKeyBase64), ex);
+        }
+
+        if (algorithm == KeyAlgorithm.Ed25519)
+        {
+            if (pubBytes.Length == 32)
+            {
+                return;
+            }
+
+            if (pubBytes.Length == 44)
+            {
+                try
+                {
+                    var keyParam = PublicKeyFactory.CreateKey(pubBytes);
+                    if (keyParam is Ed25519PublicKeyParameters)
+                    {
+                        return;
+                    }
+                }
+                catch
+                {
+                    // Fall through to throw ArgumentException
+                }
+            }
+
+            throw new ArgumentException(
+                $"Invalid Ed25519 public key length ({pubBytes.Length} bytes). Expected 32-byte raw key or 44-byte SPKI DER.",
+                nameof(publicKeyBase64));
+        }
+        else if (algorithm == KeyAlgorithm.MlDsa65)
+        {
+            try
+            {
+                var keyParam = PublicKeyFactory.CreateKey(pubBytes);
+                if (keyParam is MLDsaPublicKeyParameters)
+                {
+                    return;
+                }
+            }
+            catch
+            {
+                // Fall through to throw ArgumentException
+            }
+
+            throw new ArgumentException("Invalid ML-DSA-65 public key encoding or algorithm mismatch.", nameof(publicKeyBase64));
+        }
+        else
+        {
+            throw new ArgumentException($"Unsupported key algorithm: {algorithm}", nameof(algorithm));
+        }
     }
 }

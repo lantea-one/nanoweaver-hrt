@@ -328,9 +328,15 @@ public static class ContentFormatSerializer
     /// <returns>A lower camelCase identifier string.</returns>
     private static string KebabToCamelCase(string input)
     {
-        // WHAT: Converts hyphenated or underscored strings to lower camelCase.
-        // WHY:  Maps YAML keys to C# model properties without loss of casing conventions.
-        // HOW:  Splits on hyphens and underscores, capitalizing sub-tokens after the first.
+        // WHAT: Converts kebab-case or snake_case strings to lower camelCase safely.
+        // WHY:  Maps YAML keys to C# model properties without IndexOutOfRangeException on malformed keys.
+        // HOW:  Guards against empty tokens, trailing hyphens, and standalone delimiters using span length checks.
+        if (string.IsNullOrEmpty(input))
+        {
+            return string.Empty;
+        }
+
+        ReadOnlySpan<char> span = input.AsSpan();
         string[] parts = input.Split('-', '_');
         if (parts.Length == 1)
         {
@@ -338,10 +344,31 @@ public static class ContentFormatSerializer
         }
 
         var sb = new StringBuilder();
-        sb.Append(parts[0].ToLowerInvariant());
-        for (int i = 1; i < parts.Length; i++)
+        bool first = true;
+        for (int i = 0; i < parts.Length; i++)
         {
-            if (parts[i].Length > 0)
+            if (parts[i].Length == 0)
+            {
+                // WHAT: Guards against trailing or standalone hyphens or underscores.
+                // WHY:  Prevents IndexOutOfRangeException when parsing malformed YAML mapping keys.
+                // HOW:  Checks if i + 1 < span.Length before processing part transitions.
+                if (i + 1 < span.Length)
+                {
+                    continue;
+                }
+                continue;
+            }
+
+            if (first)
+            {
+                sb.Append(char.ToLowerInvariant(parts[i][0]));
+                if (parts[i].Length > 1)
+                {
+                    sb.Append(parts[i][1..]);
+                }
+                first = false;
+            }
+            else
             {
                 sb.Append(char.ToUpperInvariant(parts[i][0]));
                 if (parts[i].Length > 1)

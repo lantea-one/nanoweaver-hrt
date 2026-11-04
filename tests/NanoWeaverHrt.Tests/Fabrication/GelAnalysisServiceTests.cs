@@ -247,6 +247,8 @@ public sealed class GelAnalysisServiceTests
         }
 
         Assert.Contains("Suboptimal folding", result.QualityAssessmentNotes);
+        Assert.Contains("Mg²⁺", result.QualityAssessmentNotes);
+        Assert.Contains("11–12.5 mM", result.QualityAssessmentNotes);
     }
 
     /// <summary>

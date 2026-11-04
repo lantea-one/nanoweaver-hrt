@@ -17,6 +17,11 @@ public sealed class SingleInstanceMutexGuard : IDisposable
     public const string DefaultMutexName = "Global\\one.lantea.nanoweaver.hrt.singleinstance";
 
     /// <summary>
+    /// Thread-safe registry of mutex names currently held within this process.
+    /// </summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> ActiveProcessMutexes = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
     /// Underlying operating system synchronization mutex handle.
     /// </summary>
     private readonly Mutex? _mutex;
@@ -49,7 +54,7 @@ public sealed class SingleInstanceMutexGuard : IDisposable
     {
         // WHAT: Attempt to create and acquire the single-instance synchronization mutex.
         // WHY:  Determines whether this process is the primary instance or a redundant secondary invocation.
-        // HOW:  Constructs Mutex with initiallyOwned=true and checks the boolean createdNew output.
+        // HOW:  Constructs Mutex, verifies within-process uniqueness, and checks OS mutex ownership/abandonment.
         ArgumentNullException.ThrowIfNull(mutexName);
         MutexName = mutexName;
 
@@ -61,18 +66,44 @@ public sealed class SingleInstanceMutexGuard : IDisposable
                 _mutex = customMutex;
                 _hasHandle = created;
                 IsPrimaryInstance = created;
+                if (created)
+                {
+                    ActiveProcessMutexes.TryAdd(mutexName, 1);
+                }
             }
             else
             {
-                _mutex = new Mutex(initiallyOwned: true, mutexName, out bool createdNew);
-                _hasHandle = createdNew;
-                IsPrimaryInstance = createdNew;
+                if (!ActiveProcessMutexes.TryAdd(mutexName, 1))
+                {
+                    // WHAT: Mutex is already held by another active guard instance in this process.
+                    // WHY:  Prevent recursive within-thread reentrancy from granting duplicate primary status.
+                    // HOW:  Yield immediate non-primary status without querying OS mutex.
+                    _hasHandle = false;
+                    IsPrimaryInstance = false;
+                    return;
+                }
+
+                _mutex = new Mutex(initiallyOwned: false, mutexName, out _);
+                bool acquired = _mutex.WaitOne(0);
+                _hasHandle = acquired;
+                IsPrimaryInstance = acquired;
+                if (!acquired)
+                {
+                    ActiveProcessMutexes.TryRemove(mutexName, out _);
+                }
             }
+        }
+        catch (AbandonedMutexException)
+        {
+            _hasHandle = true;
+            IsPrimaryInstance = true;
+            ActiveProcessMutexes.TryAdd(mutexName, 1);
         }
         catch (Exception)
         {
             _hasHandle = false;
             IsPrimaryInstance = false;
+            ActiveProcessMutexes.TryRemove(mutexName, out _);
         }
     }
 
@@ -98,6 +129,11 @@ public sealed class SingleInstanceMutexGuard : IDisposable
         }
 
         _disposed = true;
+        if (_hasHandle)
+        {
+            ActiveProcessMutexes.TryRemove(MutexName, out _);
+        }
+
         if (_hasHandle && _mutex != null)
         {
             try

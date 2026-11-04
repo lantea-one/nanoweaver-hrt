@@ -196,7 +196,9 @@ The interactive Blazor dashboard provides continuous compliance monitoring:
 
 ---
 
-## 9. Asymmetric PKI Identity, Role Gating & Browser Idle Expiration
+## 10. BouncyCastle FIPS 203 ML-KEM-768 & AES-256-GCM Salt AAD Interop
+- **BouncyCastle FIPS 203 `ML-KEM-768`**: Integrated via BouncyCastle cryptographic provider to guarantee standardized module learning with errors encapsulation and decapsulation.
+- **AES-256-GCM Salt & Additional Authenticated Data (AAD)**: Encrypted payloads bind cryptographic salts, initialization vectors, and deterministic Additional Authenticated Data (such as subject IDs and timestamps) to prevent ciphertext substitution and replay attacks across P2P federation channels.
 
 To prevent credential leakage, eliminate brute-force password attacks, and protect against administrative hijacking, NanoWeaverHrt implements a **zero-password cryptographic public-key infrastructure (PKI)** for all user accounts and API clients.
 

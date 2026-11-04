@@ -670,8 +670,10 @@ public sealed class ComprehensiveCoverageTests : IClassFixture<WebApplicationFac
                 writer.Write(2); // 2 atoms
                 writer.Write(4);
 
-                // Frame: Unit Cell block (56 bytes total)
-                writer.Write(new byte[56]);
+                // Frame: Unit Cell block (56 bytes total: 4 marker + 48 payload + 4 marker)
+                writer.Write(48);
+                writer.Write(new byte[48]);
+                writer.Write(48);
 
                 // Coordinate X block: 4 + 8 + 4 = 16 bytes
                 writer.Write(8);

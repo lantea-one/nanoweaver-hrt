@@ -35,10 +35,11 @@ public sealed class OpentronsProtocolGenerator : IOpentronsProtocolGenerator
         // WHAT: Resolves hardware pipette attributes and channel geometry.
         // WHY:  Multi-channel pipettes transfer entire columns at once, altering deck layouts and tip counts.
         // HOW:  Inspects pipette model enum for 8-channel variants and maps to Opentrons API identifier.
-        bool isMultiChannel = options.PipetteModel is OpentronsPipetteModel.P20_Multi_Gen2 or OpentronsPipetteModel.Flex_8Channel_50;
+        bool isMultiChannel = options.PipetteModel is OpentronsPipetteModel.P20_Multi_Gen2 or OpentronsPipetteModel.P300_Multi_Gen2 or OpentronsPipetteModel.Flex_8Channel_50;
         string pipetteApiName = GetPipetteApiName(options.PipetteModel);
         string tipRackLabware = GetTipRackLabware(options.PipetteModel);
-        string mount = options.PipetteModel == OpentronsPipetteModel.P300_Single_Gen2 ? "right" : "left";
+        string mount = options.PipetteModel is OpentronsPipetteModel.P300_Single_Gen2 or OpentronsPipetteModel.P300_Multi_Gen2 or OpentronsPipetteModel.P1000_Single_Gen2 ? "right" : "left";
+        double maxPipetteVolume = GetMaxPipetteVolumeMicroliters(options.PipetteModel);
 
         // WHAT: Resolves source and destination labware definitions.
         // WHY:  Opentrons engine needs exact labware identifiers from the Opentrons Labware Library.
@@ -80,6 +81,14 @@ public sealed class OpentronsProtocolGenerator : IOpentronsProtocolGenerator
         // HOW:  Combines pipetting cycle duration with thermal annealing ramp stages.
         double estimatedDurationMinutes = EstimateRunDuration(package, options, isMultiChannel, stapleCount);
 
+        // WHAT: Computes scheduled transfer operations accounting for multi-step volume splitting.
+        // WHY:  Aliquots exceeding pipette capacity require multiple aspiration/dispense cycles.
+        // HOW:  Calculates transfers per staple based on ceiling of stapleVolume over maxPipetteVolume.
+        int transfersPerStaple = (stapleCount > 0 && stapleVolume > maxPipetteVolume)
+            ? (int)Math.Ceiling(stapleVolume / maxPipetteVolume)
+            : 1;
+        int transferCount = stapleCount * transfersPerStaple;
+
         // WHAT: Generates the complete, syntactically valid Opentrons Protocol API v2 Python script.
         // WHY:  Directly executable on Opentrons OT-2 and Opentrons Flex robots via Opentrons App or CLI.
         // HOW:  Builds PEP-8 formatted Python code including metadata, deck loading, transfer loops, and ramps.
@@ -95,7 +104,8 @@ public sealed class OpentronsProtocolGenerator : IOpentronsProtocolGenerator
             isMultiChannel,
             stapleVolume,
             masterMixVolume,
-            wellsPerPlate);
+            wellsPerPlate,
+            maxPipetteVolume);
 
         // WHAT: Computes deterministic SHA-256 hash of the generated Python script.
         // WHY:  Guarantees cryptographic provenance and tamper-evidence for laboratory verification.
@@ -107,7 +117,7 @@ public sealed class OpentronsProtocolGenerator : IOpentronsProtocolGenerator
         {
             PythonScript = pythonScript,
             ScriptSha256 = scriptSha256,
-            TransferCount = stapleCount,
+            TransferCount = transferCount,
             SourcePlatesRequired = sourcePlatesRequired,
             TipRacksRequired = tipRacksRequired,
             HasThermocyclerRamp = options.UseThermocyclerModule,
@@ -125,6 +135,8 @@ public sealed class OpentronsProtocolGenerator : IOpentronsProtocolGenerator
         OpentronsPipetteModel.P20_Single_Gen2 => "p20_single_gen2",
         OpentronsPipetteModel.P20_Multi_Gen2 => "p20_multi_gen2",
         OpentronsPipetteModel.P300_Single_Gen2 => "p300_single_gen2",
+        OpentronsPipetteModel.P300_Multi_Gen2 => "p300_multi_gen2",
+        OpentronsPipetteModel.P1000_Single_Gen2 => "p1000_single_gen2",
         OpentronsPipetteModel.Flex_1Channel_50 => "flex_1channel_50",
         _ => "flex_8channel_50"
     };
@@ -137,7 +149,8 @@ public sealed class OpentronsProtocolGenerator : IOpentronsProtocolGenerator
     private static string GetTipRackLabware(OpentronsPipetteModel model) => model switch
     {
         OpentronsPipetteModel.P20_Single_Gen2 or OpentronsPipetteModel.P20_Multi_Gen2 => "opentrons_96_tiprack_20ul",
-        OpentronsPipetteModel.P300_Single_Gen2 => "opentrons_96_tiprack_300ul",
+        OpentronsPipetteModel.P300_Single_Gen2 or OpentronsPipetteModel.P300_Multi_Gen2 => "opentrons_96_tiprack_300ul",
+        OpentronsPipetteModel.P1000_Single_Gen2 => "opentrons_96_tiprack_1000ul",
         _ => "opentrons_flex_96_tiprack_50ul"
     };
 
@@ -218,11 +231,12 @@ public sealed class OpentronsProtocolGenerator : IOpentronsProtocolGenerator
     /// <param name="sourcePlatesRequired">Number of staple source plates required.</param>
     /// <param name="tipRacksRequired">Number of sterile tip racks required.</param>
     /// <returns>Allocated deck layout records.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when total required labware exceeds available deck slots.</exception>
     private static DeckLayout PlanDeckLayout(OpentronsProtocolOptions options, int sourcePlatesRequired, int tipRacksRequired)
     {
         // WHAT: Reserves hardware module slots and assigns remaining deck positions sequentially.
         // WHY:  Avoids deck slot collisions and complies with robot physical module placement guidelines.
-        // HOW:  Selects available slot list based on robot type and module configuration.
+        // HOW:  Selects available slot list based on robot type and module configuration, validating capacity upfront.
         string robotType = options.RobotModel == OpentronsRobotModel.Flex ? "Flex" : "OT-2";
         string[] availableSlots;
 
@@ -237,6 +251,14 @@ public sealed class OpentronsProtocolGenerator : IOpentronsProtocolGenerator
             availableSlots = options.UseThermocyclerModule
                 ? ["1", "2", "3", "4", "5", "6", "9"]
                 : ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"];
+        }
+
+        // 1 destination plate (when not mounted inside on-deck thermocycler) + 1 master mix rack + tip racks + source plates
+        int requiredSlots = (options.UseThermocyclerModule ? 0 : 1) + 1 + tipRacksRequired + sourcePlatesRequired;
+        if (requiredSlots > availableSlots.Length)
+        {
+            throw new InvalidOperationException(
+                $"Required labware ({requiredSlots} deck slots) exceeds available robot deck slots ({availableSlots.Length}) on {robotType}.");
         }
 
         int slotIndex = 0;
@@ -256,16 +278,14 @@ public sealed class OpentronsProtocolGenerator : IOpentronsProtocolGenerator
         List<string> tipRackSlots = [];
         for (int i = 0; i < tipRacksRequired; i++)
         {
-            string slot = availableSlots[slotIndex % availableSlots.Length];
-            slotIndex++;
+            string slot = availableSlots[slotIndex++];
             tipRackSlots.Add(slot);
         }
 
         List<string> sourcePlateSlots = [];
         for (int i = 0; i < sourcePlatesRequired; i++)
         {
-            string slot = availableSlots[slotIndex % availableSlots.Length];
-            slotIndex++;
+            string slot = availableSlots[slotIndex++];
             sourcePlateSlots.Add(slot);
         }
 
@@ -334,6 +354,7 @@ public sealed class OpentronsProtocolGenerator : IOpentronsProtocolGenerator
     /// <param name="stapleVolume">Staple aliquot volume in microliters.</param>
     /// <param name="masterMixVolume">Master mix volume in microliters.</param>
     /// <param name="wellsPerPlate">Wells per source plate (96 or 384).</param>
+    /// <param name="maxPipetteVolume">Maximum pipette volume capacity in microliters.</param>
     /// <returns>Syntactically valid Python Protocol API v2 script text.</returns>
     private static string BuildPythonScript(
         FabricationPackage package,
@@ -347,7 +368,8 @@ public sealed class OpentronsProtocolGenerator : IOpentronsProtocolGenerator
         bool isMultiChannel,
         double stapleVolume,
         double masterMixVolume,
-        int wellsPerPlate)
+        int wellsPerPlate,
+        double maxPipetteVolume)
     {
         // WHAT: Assembles the complete Python script text adhering strictly to PEP-8 and Opentrons Protocol API v2.
         // WHY:  Ensures flawless parsing by Python AST and execution on physical OT-2 / Flex robots.
@@ -468,8 +490,14 @@ public sealed class OpentronsProtocolGenerator : IOpentronsProtocolGenerator
         sb.AppendLine("    # -------------------------------------------------------------------------");
         sb.AppendLine("    protocol.comment('Dispensing scaffold and buffer master mix...')");
         sb.AppendLine("    pipette.pick_up_tip()");
-        sb.AppendLine($"    pipette.aspirate({masterMixVolume.ToString("F1", CultureInfo.InvariantCulture)}, master_mix_tube)");
-        sb.AppendLine($"    pipette.dispense({masterMixVolume.ToString("F1", CultureInfo.InvariantCulture)}, dest_well)");
+        double remainingMasterMix = masterMixVolume;
+        while (remainingMasterMix > 0.0)
+        {
+            double stepVol = Math.Min(remainingMasterMix, maxPipetteVolume);
+            remainingMasterMix = Math.Round(remainingMasterMix - stepVol, 4);
+            sb.AppendLine($"    pipette.aspirate({stepVol.ToString("F1", CultureInfo.InvariantCulture)}, master_mix_tube)");
+            sb.AppendLine($"    pipette.dispense({stepVol.ToString("F1", CultureInfo.InvariantCulture)}, dest_well)");
+        }
         sb.AppendLine("    pipette.drop_tip()");
         sb.AppendLine();
 
@@ -500,8 +528,22 @@ public sealed class OpentronsProtocolGenerator : IOpentronsProtocolGenerator
             }
             sb.AppendLine("    for plate_idx, top_well, vol_ul in column_transfers:");
             sb.AppendLine("        pipette.pick_up_tip()");
-            sb.AppendLine("        pipette.aspirate(vol_ul, source_plates[plate_idx][top_well])");
-            sb.AppendLine("        pipette.dispense(vol_ul, dest_well)");
+            if (stapleVolume <= maxPipetteVolume)
+            {
+                sb.AppendLine("        pipette.aspirate(vol_ul, source_plates[plate_idx][top_well])");
+                sb.AppendLine("        pipette.dispense(vol_ul, dest_well)");
+            }
+            else
+            {
+                double rem = stapleVolume;
+                while (rem > 0.0)
+                {
+                    double stepVol = Math.Min(rem, maxPipetteVolume);
+                    rem = Math.Round(rem - stepVol, 4);
+                    sb.AppendLine($"        pipette.aspirate({stepVol.ToString("F1", CultureInfo.InvariantCulture)}, source_plates[plate_idx][top_well])");
+                    sb.AppendLine($"        pipette.dispense({stepVol.ToString("F1", CultureInfo.InvariantCulture)}, dest_well)");
+                }
+            }
             sb.AppendLine("        pipette.drop_tip()");
         }
         else
@@ -527,8 +569,22 @@ public sealed class OpentronsProtocolGenerator : IOpentronsProtocolGenerator
             }
             sb.AppendLine("    for plate_idx, well_name, vol_ul, staple_id in staple_transfers:");
             sb.AppendLine("        pipette.pick_up_tip()");
-            sb.AppendLine("        pipette.aspirate(vol_ul, source_plates[plate_idx][well_name])");
-            sb.AppendLine("        pipette.dispense(vol_ul, dest_well)");
+            if (stapleVolume <= maxPipetteVolume)
+            {
+                sb.AppendLine("        pipette.aspirate(vol_ul, source_plates[plate_idx][well_name])");
+                sb.AppendLine("        pipette.dispense(vol_ul, dest_well)");
+            }
+            else
+            {
+                double rem = stapleVolume;
+                while (rem > 0.0)
+                {
+                    double stepVol = Math.Min(rem, maxPipetteVolume);
+                    rem = Math.Round(rem - stepVol, 4);
+                    sb.AppendLine($"        pipette.aspirate({stepVol.ToString("F1", CultureInfo.InvariantCulture)}, source_plates[plate_idx][well_name])");
+                    sb.AppendLine($"        pipette.dispense({stepVol.ToString("F1", CultureInfo.InvariantCulture)}, dest_well)");
+                }
+            }
             sb.AppendLine("        pipette.drop_tip()");
         }
         sb.AppendLine();
@@ -539,6 +595,11 @@ public sealed class OpentronsProtocolGenerator : IOpentronsProtocolGenerator
         sb.AppendLine("    # -------------------------------------------------------------------------");
         if (options.UseThermocyclerModule)
         {
+            double mixVolume = Math.Round(Math.Min(maxPipetteVolume, options.TotalReactionVolumeMicroliters * 0.5), 1);
+            sb.AppendLine("    # Mix scaffold, staples, and Mg²⁺ folding buffer prior to thermal ramp");
+            sb.AppendLine("    pipette.pick_up_tip()");
+            sb.AppendLine($"    pipette.mix(3, {mixVolume.ToString("F1", CultureInfo.InvariantCulture)}, dest_well)");
+            sb.AppendLine("    pipette.drop_tip()");
             sb.AppendLine("    protocol.comment('Closing thermocycler lid and executing thermal annealing ramp...')");
             sb.AppendLine("    tc_mod.close_lid()");
             sb.AppendLine("    tc_mod.set_lid_temperature(temperature=105)");
@@ -546,7 +607,14 @@ public sealed class OpentronsProtocolGenerator : IOpentronsProtocolGenerator
             {
                 string safePurpose = step.BiophysicalPurpose.Replace("'", "\\'", StringComparison.Ordinal);
                 sb.AppendLine($"    # Step {step.StepIndex}: {step.TargetTemperatureCelsius.ToString("F1", CultureInfo.InvariantCulture)}°C for {step.HoldDurationMinutes} min ({safePurpose})");
-                sb.AppendLine($"    tc_mod.set_block_temperature(temperature={step.TargetTemperatureCelsius.ToString("F1", CultureInfo.InvariantCulture)}, hold_time_minutes={step.HoldDurationMinutes})");
+                if (step.RampRateCelsiusPerMinute > 0.0)
+                {
+                    sb.AppendLine($"    tc_mod.set_block_temperature(temperature={step.TargetTemperatureCelsius.ToString("F1", CultureInfo.InvariantCulture)}, hold_time_minutes={step.HoldDurationMinutes}, ramp_rate={step.RampRateCelsiusPerMinute.ToString("F1", CultureInfo.InvariantCulture)})");
+                }
+                else
+                {
+                    sb.AppendLine($"    tc_mod.set_block_temperature(temperature={step.TargetTemperatureCelsius.ToString("F1", CultureInfo.InvariantCulture)}, hold_time_minutes={step.HoldDurationMinutes})");
+                }
             }
             sb.AppendLine("    tc_mod.deactivate_lid()");
             sb.AppendLine("    tc_mod.open_lid()");
@@ -579,4 +647,17 @@ public sealed class OpentronsProtocolGenerator : IOpentronsProtocolGenerator
         string MasterMixSlot,
         IReadOnlyList<string> TipRackSlots,
         IReadOnlyList<string> SourcePlateSlots);
+
+    /// <summary>
+    /// Resolves the maximum liquid volume capacity in microliters for the designated pipette model.
+    /// </summary>
+    /// <param name="model">The pipette model enum.</param>
+    /// <returns>Maximum pipette volume capacity in microliters.</returns>
+    internal static double GetMaxPipetteVolumeMicroliters(OpentronsPipetteModel model) => model switch
+    {
+        OpentronsPipetteModel.P20_Single_Gen2 or OpentronsPipetteModel.P20_Multi_Gen2 => 20.0,
+        OpentronsPipetteModel.P300_Single_Gen2 or OpentronsPipetteModel.P300_Multi_Gen2 => 300.0,
+        OpentronsPipetteModel.P1000_Single_Gen2 => 1000.0,
+        _ => 50.0
+    };
 }

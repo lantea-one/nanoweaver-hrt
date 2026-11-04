@@ -1,6 +1,11 @@
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using Org.BouncyCastle.Crypto;
+using Org.BouncyCastle.Crypto.Generators;
+using Org.BouncyCastle.Crypto.Parameters;
+using Org.BouncyCastle.Crypto.Signers;
+using Org.BouncyCastle.Security;
 
 namespace NanoWeaverHrt.Mobile.Security;
 
@@ -13,7 +18,7 @@ namespace NanoWeaverHrt.Mobile.Security;
 /// // WHY:  Guarantees cryptographic patient DNA regimen protection on Apple iOS/iPadOS/macOS devices.
 /// // HOW:  Simulates Apple Secure Enclave hardware key generation, Touch ID / Face ID evaluation, and AES-256-GCM envelope crypto.
 /// </remarks>
-public sealed class AppleSecureEnclaveSecurityProvider : IBiometricSecurityProvider
+public sealed class AppleSecureEnclaveSecurityProvider : IBiometricSecurityProvider, IDisposable
 {
     /// <summary>
     /// AES-GCM nonce size in bytes (96 bits).
@@ -34,6 +39,11 @@ public sealed class AppleSecureEnclaveSecurityProvider : IBiometricSecurityProvi
     /// In-memory simulated Apple Secure Enclave keychain holding 256-bit hardware-bound symmetric keys.
     /// </summary>
     private readonly ConcurrentDictionary<string, byte[]> _keyStore = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Apple Secure Enclave bridge handling hardware keychain persistence and LocalAuthentication policy evaluation.
+    /// </summary>
+    private readonly IAppleSecureEnclaveBridge _enclaveBridge;
 
     /// <summary>
     /// Optional delegate evaluating whether the host platform matches Apple iOS / macOS / Darwin.
@@ -62,20 +72,28 @@ public sealed class AppleSecureEnclaveSecurityProvider : IBiometricSecurityProvi
     /// <param name="statusProbe">Optional status probe delegate simulating LAContext responses.</param>
     /// <param name="biometricType">Biometric modality supported on this Apple device (defaults to AppleFaceId).</param>
     /// <param name="typeProbe">Optional dynamic type probe delegate returning AppleFaceId or AppleTouchId.</param>
+    /// <param name="enclaveBridge">Optional Apple Secure Enclave bridge abstraction (defaults to <see cref="DefaultAppleSecureEnclaveBridge"/>).</param>
     public AppleSecureEnclaveSecurityProvider(
         Func<string, bool>? isPlatform = null,
         Func<BiometricStatus>? statusProbe = null,
         BiometricType biometricType = BiometricType.AppleFaceId,
-        Func<BiometricType>? typeProbe = null)
+        Func<BiometricType>? typeProbe = null,
+        IAppleSecureEnclaveBridge? enclaveBridge = null)
     {
-        // WHAT: Initialize Apple Secure Enclave provider with test hooks.
+        // WHAT: Initialize Apple Secure Enclave provider with test hooks and bridge.
         // WHY:  Allows deterministic testing of LAContext Touch ID / Face ID states without Apple hardware.
-        // HOW:  Stores injected platform predicate, status probe, static modality, and dynamic type probe.
+        // HOW:  Stores injected platform predicate, status probe, static modality, dynamic type probe, and bridge.
         _isPlatform = isPlatform;
         _statusProbe = statusProbe;
         _biometricType = biometricType;
         _typeProbe = typeProbe;
+        _enclaveBridge = enclaveBridge ?? new DefaultAppleSecureEnclaveBridge();
     }
+
+    /// <summary>
+    /// Gets the Apple Secure Enclave bridge used by this provider.
+    /// </summary>
+    public IAppleSecureEnclaveBridge EnclaveBridge => _enclaveBridge;
 
     /// <inheritdoc/>
     public Task<BiometricAvailabilityResult> CheckBiometricAvailabilityAsync(CancellationToken ct = default)
@@ -104,10 +122,117 @@ public sealed class AppleSecureEnclaveSecurityProvider : IBiometricSecurityProvi
     {
         // WHAT: Generate a hardware-bound key inside Apple Secure Enclave keychain.
         // WHY:  Provides a secure key alias bound to device biometric authentication.
-        // HOW:  Validates alias, checks platform, generates 256-bit key in simulated keychain, and returns public key digest.
+        // HOW:  Validates alias, checks platform, generates genuine Ed25519 key in keychain bridge, and returns public key metadata.
         ArgumentException.ThrowIfNullOrWhiteSpace(keyAlias);
 
         return Task.FromResult(GenerateHardwareBoundKeyCore(keyAlias, ct));
+    }
+
+    /// <summary>
+    /// Generates a genuine RFC 8032 Ed25519 key pair inside the Apple Secure Enclave bridge and returns the raw 32-byte public key.
+    /// </summary>
+    /// <param name="keyAlias">Unique alias identifying the key inside the Apple Secure Enclave keychain.</param>
+    /// <param name="ct">Cancellation token for cancelling the key generation operation.</param>
+    /// <returns>A task yielding the genuine 32-byte RFC 8032 Ed25519 public key bytes.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="keyAlias"/> is null or whitespace.</exception>
+    /// <exception cref="PlatformNotSupportedException">Thrown when the current platform is not Apple.</exception>
+    public Task<byte[]> GenerateHardwareKeyAsync(string keyAlias, CancellationToken ct = default)
+    {
+        // WHAT: Generate genuine RFC 8032 Ed25519 keypair and persist seed in Secure Enclave bridge.
+        // WHY:  Provides hardware-bound asymmetric identity for node and patient federation on Apple platforms.
+        // HOW:  Validates inputs, initializes Ed25519 generator, stores wrapped seed, zeroes seed buffer, and returns public key bytes.
+        ArgumentException.ThrowIfNullOrWhiteSpace(keyAlias);
+        ct.ThrowIfCancellationRequested();
+
+        if (!IsPlatformApple())
+        {
+            throw new PlatformNotSupportedException("Apple Secure Enclave is unavailable on this platform.");
+        }
+
+        var secureRandom = new SecureRandom();
+        var keyGen = new Ed25519KeyPairGenerator();
+        keyGen.Init(new Ed25519KeyGenerationParameters(secureRandom));
+        AsymmetricCipherKeyPair keyPair = keyGen.GenerateKeyPair();
+        var privKeyParams = (Ed25519PrivateKeyParameters)keyPair.Private;
+        var pubKeyParams = (Ed25519PublicKeyParameters)keyPair.Public;
+
+        byte[] seedBytes = privKeyParams.GetEncoded();
+        try
+        {
+            _enclaveBridge.StoreKeychainSecret(keyAlias, seedBytes);
+            _keyStore[keyAlias] = (byte[])seedBytes.Clone();
+            return Task.FromResult(pubKeyParams.GetEncoded());
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(seedBytes);
+        }
+    }
+
+    /// <summary>
+    /// Signs a challenge byte array using the Ed25519 private key stored under the specified alias in the Apple Secure Enclave bridge.
+    /// </summary>
+    /// <param name="keyAlias">Unique alias of the hardware key in Apple Secure Enclave keychain.</param>
+    /// <param name="challengeBytes">Challenge bytes to sign.</param>
+    /// <param name="ct">Cancellation token for cancelling the signing operation.</param>
+    /// <returns>A task yielding the genuine 64-byte RFC 8032 Ed25519 signature.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="keyAlias"/> is null or whitespace.</exception>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="challengeBytes"/> is null.</exception>
+    /// <exception cref="InvalidOperationException">Thrown when the key alias does not exist in Apple Secure Enclave keychain.</exception>
+    public Task<byte[]> SignChallengeAsync(string keyAlias, byte[] challengeBytes, CancellationToken ct = default)
+    {
+        // WHAT: Produce RFC 8032 Ed25519 signature over challenge using Secure Enclave-backed private key.
+        // WHY:  Allows iOS/macOS mobile clients to prove private-key possession during node challenge-response authentication.
+        // HOW:  Loads secret seed, initializes Ed25519Signer, generates 64-byte signature, and zeroizes private key memory.
+        ArgumentException.ThrowIfNullOrWhiteSpace(keyAlias);
+        ArgumentNullException.ThrowIfNull(challengeBytes);
+        ct.ThrowIfCancellationRequested();
+
+        byte[] keyBytes;
+        bool loadedFromBridge = _enclaveBridge.TryReadKeychainSecret(keyAlias, out byte[]? bridgeBytes);
+        if (loadedFromBridge)
+        {
+            keyBytes = bridgeBytes;
+        }
+        else if (_keyStore.TryGetValue(keyAlias, out byte[]? storeBytes))
+        {
+            keyBytes = (byte[])storeBytes.Clone();
+        }
+        else
+        {
+            throw new InvalidOperationException($"Hardware key '{keyAlias}' does not exist in Apple Secure Enclave keychain.");
+        }
+
+        try
+        {
+            var privKeyParams = new Ed25519PrivateKeyParameters(keyBytes, 0);
+            var signer = new Ed25519Signer();
+            signer.Init(true, privKeyParams);
+            signer.BlockUpdate(challengeBytes, 0, challengeBytes.Length);
+            byte[] signature = signer.GenerateSignature();
+            return Task.FromResult(signature);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(keyBytes);
+        }
+    }
+
+    /// <summary>
+    /// Signs a challenge memory slice using the Ed25519 private key stored under the specified alias in the Apple Secure Enclave bridge.
+    /// </summary>
+    /// <param name="keyAlias">Unique alias of the hardware key in Apple Secure Enclave keychain.</param>
+    /// <param name="challengeBytes">Challenge memory slice to sign.</param>
+    /// <param name="ct">Cancellation token for cancelling the signing operation.</param>
+    /// <returns>A task yielding the genuine 64-byte RFC 8032 Ed25519 signature.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="keyAlias"/> is null or whitespace.</exception>
+    /// <exception cref="InvalidOperationException">Thrown when the key alias does not exist in Apple Secure Enclave keychain.</exception>
+    public Task<byte[]> SignChallengeAsync(string keyAlias, ReadOnlyMemory<byte> challengeBytes, CancellationToken ct = default)
+    {
+        // WHAT: Overload accepting ReadOnlyMemory<byte> for challenge signing.
+        // WHY:  Simplifies caller integration with modern memory slices.
+        // HOW:  Converts memory slice to array and delegates to primary signature method.
+        return SignChallengeAsync(keyAlias, challengeBytes.ToArray(), ct);
     }
 
     /// <summary>
@@ -122,31 +247,74 @@ public sealed class AppleSecureEnclaveSecurityProvider : IBiometricSecurityProvi
     {
         // WHAT: Encrypt plaintext payload with AES-256-GCM using Secure Enclave key.
         // WHY:  Provides symmetric vault encryption aligned with Apple Secure Enclave capabilities.
-        // HOW:  Generates 12-byte random nonce, encrypts plaintext, appends authentication tag, and formats envelope.
+        // HOW:  Loads key defensively, generates 12-byte random nonce, encrypts plaintext, appends authentication tag, and formats envelope.
         ArgumentException.ThrowIfNullOrWhiteSpace(keyAlias);
 
-        if (!_keyStore.TryGetValue(keyAlias, out byte[]? keyBytes))
+        byte[] keyBytes;
+        bool loadedFromBridge = _enclaveBridge.TryReadKeychainSecret(keyAlias, out byte[]? bridgeBytes);
+        if (loadedFromBridge)
+        {
+            keyBytes = bridgeBytes;
+        }
+        else if (_keyStore.TryGetValue(keyAlias, out byte[]? storeBytes))
+        {
+            keyBytes = (byte[])storeBytes.Clone();
+        }
+        else
         {
             throw new InvalidOperationException($"Hardware key '{keyAlias}' does not exist in Apple Secure Enclave keychain.");
         }
 
-        byte[] nonce = new byte[NonceSizeBytes];
-        RandomNumberGenerator.Fill(nonce);
-
-        byte[] tag = new byte[TagSizeBytes];
-        byte[] ciphertext = new byte[plaintext.Length];
-
-        using (var aesGcm = new AesGcm(keyBytes, TagSizeBytes))
+        try
         {
-            aesGcm.Encrypt(nonce, plaintext, ciphertext, tag);
+            byte[] nonce = new byte[NonceSizeBytes];
+            RandomNumberGenerator.Fill(nonce);
+
+            byte[] tag = new byte[TagSizeBytes];
+            byte[] ciphertext = new byte[plaintext.Length];
+
+            using (var aesGcm = new AesGcm(keyBytes, TagSizeBytes))
+            {
+                aesGcm.Encrypt(nonce, plaintext, ciphertext, tag);
+            }
+
+            byte[] envelope = new byte[NonceSizeBytes + TagSizeBytes + ciphertext.Length];
+            Buffer.BlockCopy(nonce, 0, envelope, 0, NonceSizeBytes);
+            Buffer.BlockCopy(tag, 0, envelope, NonceSizeBytes, TagSizeBytes);
+            Buffer.BlockCopy(ciphertext, 0, envelope, MinimumEnvelopeLength, ciphertext.Length);
+
+            return envelope;
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(keyBytes);
+        }
+    }
+
+    /// <summary>
+    /// Purges and zeroizes all cached and session secrets in memory and the Secure Enclave bridge.
+    /// </summary>
+    public void ZeroizeMemory()
+    {
+        // WHAT: Zeroize and clear all keys in provider memory and Secure Enclave bridge.
+        // WHY:  Ensures no cryptographic key material remains in memory when locked or disposed.
+        // HOW:  Clears bridge session secrets and zeroizes and clears the in-memory dictionary.
+        _enclaveBridge.ClearAllSessionSecrets();
+        foreach (byte[] key in _keyStore.Values)
+        {
+            CryptographicOperations.ZeroMemory(key);
         }
 
-        byte[] envelope = new byte[NonceSizeBytes + TagSizeBytes + ciphertext.Length];
-        Buffer.BlockCopy(nonce, 0, envelope, 0, NonceSizeBytes);
-        Buffer.BlockCopy(tag, 0, envelope, NonceSizeBytes, TagSizeBytes);
-        Buffer.BlockCopy(ciphertext, 0, envelope, MinimumEnvelopeLength, ciphertext.Length);
+        _keyStore.Clear();
+    }
 
-        return envelope;
+    /// <inheritdoc/>
+    public void Dispose()
+    {
+        // WHAT: Disposes the provider and zeroizes sensitive key memory.
+        // WHY:  Fulfills IDisposable to guarantee RAM hygiene.
+        // HOW:  Delegates to ZeroizeMemory.
+        ZeroizeMemory();
     }
 
     /// <summary>
@@ -281,7 +449,17 @@ public sealed class AppleSecureEnclaveSecurityProvider : IBiometricSecurityProvi
                 Status: availability.Status);
         }
 
-        if (!_keyStore.TryGetValue(request.KeyAlias, out byte[]? keyBytes))
+        byte[] keyBytes;
+        bool loadedFromBridge = _enclaveBridge.TryReadKeychainSecret(request.KeyAlias, out byte[]? bridgeBytes);
+        if (loadedFromBridge)
+        {
+            keyBytes = bridgeBytes;
+        }
+        else if (_keyStore.TryGetValue(request.KeyAlias, out byte[]? storeBytes))
+        {
+            keyBytes = (byte[])storeBytes.Clone();
+        }
+        else
         {
             return new BiometricAuthResult(
                 Success: false,
@@ -292,6 +470,7 @@ public sealed class AppleSecureEnclaveSecurityProvider : IBiometricSecurityProvi
 
         if (request.EncryptedVaultPayload.Length < MinimumEnvelopeLength)
         {
+            CryptographicOperations.ZeroMemory(keyBytes);
             return new BiometricAuthResult(
                 Success: false,
                 DecryptedPayload: null,
@@ -325,6 +504,10 @@ public sealed class AppleSecureEnclaveSecurityProvider : IBiometricSecurityProvi
                 ErrorMessage: $"Decryption failed: {ex.Message}",
                 Status: BiometricStatus.Failed);
         }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(keyBytes);
+        }
     }
 
     /// <summary>
@@ -337,7 +520,7 @@ public sealed class AppleSecureEnclaveSecurityProvider : IBiometricSecurityProvi
     {
         // WHAT: Core key generation routine for Apple Secure Enclave.
         // WHY:  Simulates hardware key generation backed by Apple T2/T3/M-series/A-series Secure Enclave processor.
-        // HOW:  Checks cancellation, confirms Apple platform, generates 256-bit key, and calculates public digest.
+        // HOW:  Checks cancellation, confirms Apple platform, generates genuine Ed25519 key, and stores wrapped seed in bridge.
         if (ct.IsCancellationRequested)
         {
             return new HardwareKeyGenerationResult(
@@ -356,17 +539,31 @@ public sealed class AppleSecureEnclaveSecurityProvider : IBiometricSecurityProvi
                 ErrorMessage: "Apple Secure Enclave is unavailable on this platform.");
         }
 
-        byte[] keyBytes = new byte[32];
-        RandomNumberGenerator.Fill(keyBytes);
-        _keyStore[keyAlias] = keyBytes;
+        var secureRandom = new SecureRandom();
+        var keyGen = new Ed25519KeyPairGenerator();
+        keyGen.Init(new Ed25519KeyGenerationParameters(secureRandom));
+        AsymmetricCipherKeyPair keyPair = keyGen.GenerateKeyPair();
+        var privKeyParams = (Ed25519PrivateKeyParameters)keyPair.Private;
+        var pubKeyParams = (Ed25519PublicKeyParameters)keyPair.Public;
 
-        byte[] publicKeyDigest = SHA256.HashData(keyBytes);
-        string publicKeyBase64 = Convert.ToBase64String(publicKeyDigest);
+        byte[] seedBytes = privKeyParams.GetEncoded();
+        try
+        {
+            _enclaveBridge.StoreKeychainSecret(keyAlias, seedBytes);
+            _keyStore[keyAlias] = (byte[])seedBytes.Clone();
 
-        return new HardwareKeyGenerationResult(
-            Success: true,
-            KeyAlias: keyAlias,
-            PublicKeyBase64: publicKeyBase64,
-            ErrorMessage: null);
+            byte[] pubBytes = pubKeyParams.GetEncoded();
+            string publicKeyBase64 = Convert.ToBase64String(pubBytes);
+
+            return new HardwareKeyGenerationResult(
+                Success: true,
+                KeyAlias: keyAlias,
+                PublicKeyBase64: publicKeyBase64,
+                ErrorMessage: null);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(seedBytes);
+        }
     }
 }

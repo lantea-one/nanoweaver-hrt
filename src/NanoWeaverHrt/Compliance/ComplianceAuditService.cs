@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Configuration;
 using NanoWeaverHrt.Events;
 using NanoWeaverHrt.Events.Models;
 using NanoWeaverHrt.Security.Cryptography;
@@ -74,17 +75,24 @@ public sealed class ComplianceAuditService : IComplianceAuditService
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     /// <summary>
+    /// Secret key bytes used for HMAC-SHA256 subject pseudonymization.
+    /// </summary>
+    private readonly byte[] _pseudonymizationKey;
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="ComplianceAuditService"/> class.
     /// </summary>
     /// <param name="keyManagement">The key management service.</param>
     /// <param name="cryptoProvider">The post-quantum cryptographic algorithm provider.</param>
     /// <param name="eventBus">Optional event bus instance for real-time compliance broadcasting.</param>
     /// <param name="repository">Optional persistent repository storing audit records across restarts.</param>
+    /// <param name="configuration">Optional application configuration providing custom pseudonymization secrets.</param>
     public ComplianceAuditService(
         IKeyManagementService keyManagement,
         IPostQuantumCryptoProvider cryptoProvider,
         IInternalEventBus? eventBus = null,
-        IAuditLedgerRepository? repository = null)
+        IAuditLedgerRepository? repository = null,
+        IConfiguration? configuration = null)
     {
         ArgumentNullException.ThrowIfNull(keyManagement);
         ArgumentNullException.ThrowIfNull(cryptoProvider);
@@ -93,6 +101,7 @@ public sealed class ComplianceAuditService : IComplianceAuditService
         _cryptoProvider = cryptoProvider;
         _eventBus = eventBus;
         _repository = repository;
+        _pseudonymizationKey = ResolvePseudonymizationKey(configuration);
 
         // WHAT: Initializes or restores the FDA 21 CFR Part 11 audit ledger.
         // WHY:  Provides a deterministic, cryptographic origin for the unbroken hash chain, restored across restarts.
@@ -370,15 +379,10 @@ public sealed class ComplianceAuditService : IComplianceAuditService
         }
 
         // WHAT: Derive an irreversible pseudonym for the subject.
-        // WHY:  HIPAA Safe Harbor (§ 164.514(b)) requires stripping direct personal identifiers.
-        // HOW:  Computes SHA-384 digest of salted identifier and formats as "sub_<16-hex>".
-        byte[] saltBytes = Encoding.UTF8.GetBytes("HRT_SAFE_HARBOR_SALT_2026_");
+        // WHY:  HIPAA Safe Harbor (§ 164.514(b)) requires stripping direct personal identifiers; HMAC-SHA256 with node-bound key prevents rainbow table reversal.
+        // HOW:  Computes HMAC-SHA256 digest of normalized identifier using _pseudonymizationKey and formats as "sub_<16-hex>".
         byte[] rawBytes = Encoding.UTF8.GetBytes(rawSubjectIdentifier.Trim().ToLowerInvariant());
-        byte[] combined = new byte[saltBytes.Length + rawBytes.Length];
-        saltBytes.CopyTo(combined, 0);
-        rawBytes.CopyTo(combined, saltBytes.Length);
-
-        byte[] hash = SHA384.HashData(combined);
+        byte[] hash = HMACSHA256.HashData(_pseudonymizationKey, rawBytes);
         string pseudonym = "sub_" + Convert.ToHexString(hash)[..16].ToLowerInvariant();
 
         // WHAT: Scan and sanitize any direct identifiers found in FASTA headers or comment lines.
@@ -476,7 +480,12 @@ public sealed class ComplianceAuditService : IComplianceAuditService
         string resource,
         string detailsJson)
     {
-        string raw = $"{sequenceNumber}|{timestamp:O}|{previousHash}|{operatorId}|{action}|{resource}|{detailsJson}";
+        // WHAT: Computes deterministic SHA-384 hash with length-prefixed canonical fields.
+        // WHY:  Length prefixing prevents hash canonicalization collisions even if fields contain delimiter '|' characters.
+        // HOW:  Encodes each field as "{length}:{value}|" and computes SHA-384.
+        string seqStr = sequenceNumber.ToString();
+        string tsStr = timestamp.ToString("O");
+        string raw = $"{seqStr.Length}:{seqStr}|{tsStr.Length}:{tsStr}|{previousHash.Length}:{previousHash}|{operatorId.Length}:{operatorId}|{action.Length}:{action}|{resource.Length}:{resource}|{detailsJson.Length}:{detailsJson}";
         byte[] hash = SHA384.HashData(Encoding.UTF8.GetBytes(raw));
         return Convert.ToHexString(hash).ToLowerInvariant();
     }
@@ -503,5 +512,52 @@ public sealed class ComplianceAuditService : IComplianceAuditService
 
         publicKeyBase64 = string.Empty;
         return false;
+    }
+
+    /// <summary>
+    /// Resolves or generates the 32-byte secret key used for HMAC-SHA256 subject pseudonymization.
+    /// </summary>
+    /// <param name="configuration">Host application configuration.</param>
+    /// <returns>A 32-byte secret key for HMAC pseudonymization.</returns>
+    private static byte[] ResolvePseudonymizationKey(IConfiguration? configuration)
+    {
+        // WHAT: Resolves configured pseudonymization secret or generates a secure CSPRNG fallback key.
+        // WHY:  Keyed pseudonymization prevents rainbow table lookups while ensuring node consistency.
+        // HOW:  Attempts Base64, hex, or SHA-256 derivation of Security:PseudonymizationSecret, falling back to RandomNumberGenerator.
+        string? secret = configuration?["Security:PseudonymizationSecret"];
+        if (!string.IsNullOrWhiteSpace(secret))
+        {
+            try
+            {
+                byte[] decoded = Convert.FromBase64String(secret.Trim());
+                if (decoded.Length == 32)
+                {
+                    return decoded;
+                }
+            }
+            catch (FormatException)
+            {
+                // Not valid Base64
+            }
+
+            try
+            {
+                byte[] hexDecoded = Convert.FromHexString(secret.Trim());
+                if (hexDecoded.Length == 32)
+                {
+                    return hexDecoded;
+                }
+            }
+            catch (FormatException)
+            {
+                // Not valid hex
+            }
+
+            return SHA256.HashData(Encoding.UTF8.GetBytes(secret.Trim()));
+        }
+
+        byte[] fallbackKey = new byte[32];
+        RandomNumberGenerator.Fill(fallbackKey);
+        return fallbackKey;
     }
 }

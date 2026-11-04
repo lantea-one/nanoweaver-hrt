@@ -36,20 +36,8 @@ public sealed class EndocrineStateEngine
     {
         // WHAT: Initializes a default target profile tuned for Male-to-Female (MtF) Feminizing HRT.
         // WHY:  Provides a valid baseline for immediate clinical simulation upon service boot.
-        // HOW:  Sets E2 to 550 pmol/L (approx 150 pg/mL) and T to 1.2 nmol/L (suppressed).
-        _currentProfile = new EndocrineTargetProfile
-        {
-            PatientId = "ANON-PATIENT-001",
-            Regimen = TherapeuticRegimen.MaleToFemale,
-            TargetState = ToggleState.EstrogenicDominant,
-            TargetTissue = TargetTissueType.AnteriorPituitaryGonadotrope,
-            TargetEstradiolPmolL = 550.0,
-            TargetTestosteroneNmolL = 1.2,
-            TargetProgesteroneNmolL = 5.0,
-            BindingAffinityKdTargetNanoMolar = 4.2,
-            DeliveryVehicle = NanocarrierDeliveryVehicle.Default,
-            UpdatedUtc = DateTime.UtcNow.ToString("o")
-        };
+        // HOW:  Delegates to CreateMtfPreset to guarantee alignment with standardized clinical defaults.
+        _currentProfile = CreateMtfPreset("ANON-PATIENT-001");
     }
 
     /// <summary>
@@ -64,9 +52,9 @@ public sealed class EndocrineStateEngine
         TargetState = ToggleState.EstrogenicDominant,
         TargetTissue = TargetTissueType.AnteriorPituitaryGonadotrope,
         TargetEstradiolPmolL = 550.0,
-        TargetTestosteroneNmolL = 1.1,
+        TargetTestosteroneNmolL = 1.2,
         TargetProgesteroneNmolL = 5.0,
-        BindingAffinityKdTargetNanoMolar = 3.8,
+        BindingAffinityKdTargetNanoMolar = 4.2,
         DeliveryVehicle = NanocarrierDeliveryVehicle.Default,
         UpdatedUtc = DateTime.UtcNow.ToString("o")
     };
@@ -191,6 +179,10 @@ public sealed class EndocrineStateEngine
         double currentE2 = profile.TargetState == ToggleState.EstrogenicDominant ? 120.0 : 600.0;
         double currentT = profile.TargetState == ToggleState.EstrogenicDominant ? 18.0 : 1.5;
 
+        // Target setpoints modulated by genomic clearance if applicable
+        double targetE2 = profile.TargetEstradiolPmolL;
+        double targetT = profile.TargetTestosteroneNmolL;
+
         // Exponential approach rate toward target setpoints (representing closed-loop aptamer/feedback kinetics)
         // WHAT: Modulates baseline rate constant (0.08 h⁻¹) by the patient's genetic clearance multiplier.
         // WHY:  Rapid metabolizers (e.g. CYP1B1*3) clear faster, whereas poor metabolizers (COMT/UGT2B17) clear slower.
@@ -200,6 +192,11 @@ public sealed class EndocrineStateEngine
         {
             double clearance = genomicProfile.OverallClearanceMultiplier;
             rateConstant *= clearance > 0 ? clearance : 1.0;
+
+            if (clearance > 1.0)
+            {
+                targetE2 /= Math.Max(0.5, clearance);
+            }
 
             // If thrombosis risk is elevated (> 1.5), dampen release rate to model continuous micro-infusion
             if (genomicProfile.ThrombosisRiskIndex > 1.5)
@@ -213,8 +210,8 @@ public sealed class EndocrineStateEngine
             // WHAT: Models continuous feedback regulation using differential exponential relaxation.
             // WHY:  Approximates biologically realistic in-vivo transition curves without discontinuous step jumps.
             // HOW:  current = target + (initial - target) * exp(-rate * t)
-            double e2AtHour = profile.TargetEstradiolPmolL + (currentE2 - profile.TargetEstradiolPmolL) * Math.Exp(-rateConstant * h);
-            double tAtHour = profile.TargetTestosteroneNmolL + (currentT - profile.TargetTestosteroneNmolL) * Math.Exp(-rateConstant * h);
+            double e2AtHour = targetE2 + (currentE2 - targetE2) * Math.Exp(-rateConstant * h);
+            double tAtHour = targetT + (currentT - targetT) * Math.Exp(-rateConstant * h);
 
             points.Add(new HormoneCurvePoint
             {

@@ -1,5 +1,9 @@
 using System.Security.Cryptography;
+using NanoWeaverHrt.Gui.Core.Services;
+using NanoWeaverHrt.Mobile.Platform;
 using NanoWeaverHrt.Mobile.Security;
+using Org.BouncyCastle.Crypto.Parameters;
+using Org.BouncyCastle.Crypto.Signers;
 using Xunit;
 
 namespace NanoWeaverHrt.Tests.Mobile;
@@ -806,5 +810,444 @@ public sealed class MobileBiometricSecurityTests
         var keyClone = keyRes with { Success = false, ErrorMessage = "Fail" };
         Assert.False(keyClone.Success);
         Assert.Equal("Fail", keyClone.ErrorMessage);
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="DefaultAndroidKeyStoreBridge"/> correctly handles key storage, retrieval, deletion, and biometric authentication.
+    /// </summary>
+    [Fact]
+    public async Task DefaultAndroidKeyStoreBridge_LifecycleAndStorage_Branches()
+    {
+        // WHAT: Test DefaultAndroidKeyStoreBridge CRUD, zeroization, and biometric authentication prompt handling.
+        // WHY:  Guarantees robust in-memory Android Keystore simulation for test environments.
+        // HOW:  Tests store, overwrite, load, delete, clear, invalid parameters, and cancellation branches.
+        var bridge = new DefaultAndroidKeyStoreBridge();
+        Assert.True(bridge.IsHardwareBackedAvailable);
+
+        var unavailableBridge = new DefaultAndroidKeyStoreBridge(hardwareAvailable: false);
+        Assert.False(unavailableBridge.IsHardwareBackedAvailable);
+
+        // Biometric prompt authentication default and cancellation
+        Assert.True(await bridge.AuthenticateBiometricPromptAsync("Reason"));
+        using (var cts = new CancellationTokenSource())
+        {
+            cts.Cancel();
+            Assert.False(await bridge.AuthenticateBiometricPromptAsync("Reason", cts.Token));
+        }
+
+        // Custom auth handler
+        var customBridge = new DefaultAndroidKeyStoreBridge(
+            hardwareAvailable: true,
+            authHandler: (reason, ct) => Task.FromResult(reason == "allowed"));
+        Assert.True(await customBridge.AuthenticateBiometricPromptAsync("allowed"));
+        Assert.False(await customBridge.AuthenticateBiometricPromptAsync("denied"));
+
+        // Store validation
+        Assert.Throws<ArgumentNullException>(() => bridge.StoreWrappedKey(null!, [1, 2, 3]));
+        Assert.Throws<ArgumentException>(() => bridge.StoreWrappedKey("", [1, 2, 3]));
+        Assert.Throws<ArgumentException>(() => bridge.StoreWrappedKey("   ", [1, 2, 3]));
+
+        // Store and overwrite
+        bridge.StoreWrappedKey("key-1", [1, 2, 3, 4]);
+        bridge.StoreWrappedKey("key-1", [5, 6, 7, 8]); // Overwrites and zeroizes existing
+
+        // Load validation and defensive copy
+        Assert.Throws<ArgumentNullException>(() => bridge.TryLoadWrappedKey(null!, out _));
+        Assert.Throws<ArgumentException>(() => bridge.TryLoadWrappedKey("", out _));
+        Assert.Throws<ArgumentException>(() => bridge.TryLoadWrappedKey("   ", out _));
+
+        Assert.True(bridge.TryLoadWrappedKey("key-1", out byte[] loaded));
+        Assert.Equal(new byte[] { 5, 6, 7, 8 }, loaded);
+        loaded[0] = 99; // Mutate local buffer
+        Assert.True(bridge.TryLoadWrappedKey("key-1", out byte[] loadedAgain));
+        Assert.Equal((byte)5, loadedAgain[0]); // Internal buffer remains unmodified
+
+        Assert.False(bridge.TryLoadWrappedKey("nonexistent", out byte[] missing));
+        Assert.Empty(missing);
+
+        // Delete validation and execution
+        Assert.Throws<ArgumentNullException>(() => bridge.DeleteWrappedKey(null!));
+        Assert.Throws<ArgumentException>(() => bridge.DeleteWrappedKey(""));
+        Assert.Throws<ArgumentException>(() => bridge.DeleteWrappedKey("   "));
+
+        Assert.True(bridge.DeleteWrappedKey("key-1"));
+        Assert.False(bridge.DeleteWrappedKey("key-1")); // Already deleted
+
+        // ClearAllSessionKeys
+        bridge.StoreWrappedKey("key-a", [10, 20]);
+        bridge.StoreWrappedKey("key-b", [30, 40]);
+        bridge.ClearAllSessionKeys();
+        Assert.False(bridge.TryLoadWrappedKey("key-a", out _));
+        Assert.False(bridge.TryLoadWrappedKey("key-b", out _));
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="DefaultAppleSecureEnclaveBridge"/> correctly handles secret storage, retrieval, deletion, and policy evaluation.
+    /// </summary>
+    [Fact]
+    public async Task DefaultAppleSecureEnclaveBridge_LifecycleAndStorage_Branches()
+    {
+        // WHAT: Test DefaultAppleSecureEnclaveBridge CRUD, zeroization, and LocalAuthentication access control policy handling.
+        // WHY:  Guarantees robust in-memory Apple Secure Enclave simulation for test environments.
+        // HOW:  Tests store, overwrite, load, delete, clear, invalid parameters, and cancellation branches.
+        var bridge = new DefaultAppleSecureEnclaveBridge();
+        Assert.True(bridge.IsSecureEnclaveAvailable);
+
+        var unavailableBridge = new DefaultAppleSecureEnclaveBridge(hardwareAvailable: false);
+        Assert.False(unavailableBridge.IsSecureEnclaveAvailable);
+
+        // Policy evaluation default and cancellation
+        Assert.True(await bridge.EvaluateAccessControlPolicyAsync("Reason"));
+        using (var cts = new CancellationTokenSource())
+        {
+            cts.Cancel();
+            Assert.False(await bridge.EvaluateAccessControlPolicyAsync("Reason", cts.Token));
+        }
+
+        // Custom policy handler
+        var customBridge = new DefaultAppleSecureEnclaveBridge(
+            hardwareAvailable: true,
+            policyHandler: (reason, ct) => Task.FromResult(reason == "allowed"));
+        Assert.True(await customBridge.EvaluateAccessControlPolicyAsync("allowed"));
+        Assert.False(await customBridge.EvaluateAccessControlPolicyAsync("denied"));
+
+        // Store validation
+        Assert.Throws<ArgumentNullException>(() => bridge.StoreKeychainSecret(null!, [1, 2, 3]));
+        Assert.Throws<ArgumentException>(() => bridge.StoreKeychainSecret("", [1, 2, 3]));
+        Assert.Throws<ArgumentException>(() => bridge.StoreKeychainSecret("   ", [1, 2, 3]));
+
+        // Store and overwrite
+        bridge.StoreKeychainSecret("tag-1", [1, 2, 3, 4]);
+        bridge.StoreKeychainSecret("tag-1", [5, 6, 7, 8]); // Overwrites and zeroizes existing
+
+        // Read validation and defensive copy
+        Assert.Throws<ArgumentNullException>(() => bridge.TryReadKeychainSecret(null!, out _));
+        Assert.Throws<ArgumentException>(() => bridge.TryReadKeychainSecret("", out _));
+        Assert.Throws<ArgumentException>(() => bridge.TryReadKeychainSecret("   ", out _));
+
+        Assert.True(bridge.TryReadKeychainSecret("tag-1", out byte[] loaded));
+        Assert.Equal(new byte[] { 5, 6, 7, 8 }, loaded);
+        loaded[0] = 99; // Mutate local buffer
+        Assert.True(bridge.TryReadKeychainSecret("tag-1", out byte[] loadedAgain));
+        Assert.Equal((byte)5, loadedAgain[0]); // Internal buffer remains unmodified
+
+        Assert.False(bridge.TryReadKeychainSecret("nonexistent", out byte[] missing));
+        Assert.Empty(missing);
+
+        // Delete validation and execution
+        Assert.Throws<ArgumentNullException>(() => bridge.DeleteKeychainSecret(null!));
+        Assert.Throws<ArgumentException>(() => bridge.DeleteKeychainSecret(""));
+        Assert.Throws<ArgumentException>(() => bridge.DeleteKeychainSecret("   "));
+
+        Assert.True(bridge.DeleteKeychainSecret("tag-1"));
+        Assert.False(bridge.DeleteKeychainSecret("tag-1")); // Already deleted
+
+        // ClearAllSessionSecrets
+        bridge.StoreKeychainSecret("tag-a", [10, 20]);
+        bridge.StoreKeychainSecret("tag-b", [30, 40]);
+        bridge.ClearAllSessionSecrets();
+        Assert.False(bridge.TryReadKeychainSecret("tag-a", out _));
+        Assert.False(bridge.TryReadKeychainSecret("tag-b", out _));
+    }
+
+    /// <summary>
+    /// Verifies genuine BouncyCastle RFC 8032 Ed25519 key generation and signature verification in <see cref="AndroidBiometricSecurityProvider"/>.
+    /// </summary>
+    [Fact]
+    public async Task AndroidBiometricSecurityProvider_Ed25519_BridgeSigningAndZeroization()
+    {
+        // WHAT: Test genuine Ed25519 key generation, challenge signing, signature verification, and memory zeroization on Android provider.
+        // WHY:  Guarantees cryptographic patient identity security and full branch coverage.
+        // HOW:  Validates inputs, generates key, signs challenge, verifies via Ed25519Signer, tests fallbacks and zeroization.
+        static bool AndroidPlatform(string p) => p.Equals("Android", StringComparison.OrdinalIgnoreCase);
+        var provider = new AndroidBiometricSecurityProvider(AndroidPlatform);
+        Assert.NotNull(provider.KeyStoreBridge);
+
+        // Input validation for GenerateHardwareKeyAsync
+        await Assert.ThrowsAsync<ArgumentNullException>(() => provider.GenerateHardwareKeyAsync(null!));
+        await Assert.ThrowsAsync<ArgumentException>(() => provider.GenerateHardwareKeyAsync(""));
+        await Assert.ThrowsAsync<ArgumentException>(() => provider.GenerateHardwareKeyAsync("   "));
+
+        // Cancellation on GenerateHardwareKeyAsync
+        using (var cts = new CancellationTokenSource())
+        {
+            cts.Cancel();
+            await Assert.ThrowsAsync<OperationCanceledException>(() => provider.GenerateHardwareKeyAsync("alias-cancel", cts.Token));
+        }
+
+        // Platform not supported on GenerateHardwareKeyAsync
+        var nonAndroidProvider = new AndroidBiometricSecurityProvider(_ => false);
+        await Assert.ThrowsAsync<PlatformNotSupportedException>(() => nonAndroidProvider.GenerateHardwareKeyAsync("alias-fail"));
+
+        // Successful Ed25519 key generation
+        byte[] publicKey = await provider.GenerateHardwareKeyAsync("ed25519-android-key");
+        Assert.Equal(32, publicKey.Length);
+
+        // Input validation for SignChallengeAsync
+        byte[] challenge = "PATIENT-SESSION-CHALLENGE-2026"u8.ToArray();
+        await Assert.ThrowsAsync<ArgumentNullException>(() => provider.SignChallengeAsync(null!, challenge));
+        await Assert.ThrowsAsync<ArgumentException>(() => provider.SignChallengeAsync("", challenge));
+        await Assert.ThrowsAsync<ArgumentException>(() => provider.SignChallengeAsync("   ", challenge));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => provider.SignChallengeAsync("ed25519-android-key", (byte[])null!));
+
+        // Cancellation on SignChallengeAsync
+        using (var cts = new CancellationTokenSource())
+        {
+            cts.Cancel();
+            await Assert.ThrowsAsync<OperationCanceledException>(() => provider.SignChallengeAsync("ed25519-android-key", challenge, cts.Token));
+        }
+
+        // Missing key on SignChallengeAsync
+        await Assert.ThrowsAsync<InvalidOperationException>(() => provider.SignChallengeAsync("missing-alias", challenge));
+
+        // Genuine signature generation and RFC 8032 verification
+        byte[] signature = await provider.SignChallengeAsync("ed25519-android-key", challenge);
+        Assert.Equal(64, signature.Length);
+
+        var verifier = new Ed25519Signer();
+        var pubParams = new Ed25519PublicKeyParameters(publicKey, 0);
+        verifier.Init(false, pubParams);
+        verifier.BlockUpdate(challenge, 0, challenge.Length);
+        Assert.True(verifier.VerifySignature(signature));
+
+        // Tampered challenge verification fails
+        byte[] tamperedChallenge = "TAMPERED-CHALLENGE-2026"u8.ToArray();
+        verifier.Reset();
+        verifier.BlockUpdate(tamperedChallenge, 0, tamperedChallenge.Length);
+        Assert.False(verifier.VerifySignature(signature));
+
+        // ReadOnlyMemory<byte> overload
+        byte[] memorySig = await provider.SignChallengeAsync("ed25519-android-key", new ReadOnlyMemory<byte>(challenge));
+        Assert.Equal(64, memorySig.Length);
+        verifier.Reset();
+        verifier.BlockUpdate(challenge, 0, challenge.Length);
+        Assert.True(verifier.VerifySignature(memorySig));
+
+        // Fallback branch where key is in _keyStore but not in bridge
+        var mockBridge = new DefaultAndroidKeyStoreBridge();
+        var fallbackProvider = new AndroidBiometricSecurityProvider(AndroidPlatform, keyStoreBridge: mockBridge);
+        await fallbackProvider.GenerateHardwareBoundKeyAsync("fallback-key");
+        mockBridge.ClearAllSessionKeys(); // Delete from bridge, keeping in fallbackProvider._keyStore
+
+        byte[] plaintext = "REGIMEN-SECRET"u8.ToArray();
+        byte[] envelope = fallbackProvider.EncryptPayload("fallback-key", plaintext);
+        Assert.NotNull(envelope);
+
+        var authReq = new BiometricAuthRequest("Auth", "Sub", "Desc", "fallback-key", envelope);
+        var authRes = await fallbackProvider.AuthenticateAndDecryptAsync(authReq);
+        Assert.True(authRes.Success);
+        Assert.Equal(plaintext, authRes.DecryptedPayload);
+
+        byte[] fallbackSig = await fallbackProvider.SignChallengeAsync("fallback-key", challenge);
+        Assert.Equal(64, fallbackSig.Length);
+
+        // AuthenticateAndDecrypt with key present but payload length < 28 bytes (exercising ZeroMemory on keyBytes)
+        var shortReq = new BiometricAuthRequest("Auth", "Sub", "Desc", "fallback-key", [1, 2, 3]);
+        var shortRes = await fallbackProvider.AuthenticateAndDecryptAsync(shortReq);
+        Assert.False(shortRes.Success);
+        Assert.Contains("invalid", shortRes.ErrorMessage);
+
+        // ZeroizeMemory and Dispose
+        provider.ZeroizeMemory();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => provider.SignChallengeAsync("ed25519-android-key", challenge));
+        provider.Dispose();
+    }
+
+    /// <summary>
+    /// Verifies genuine BouncyCastle RFC 8032 Ed25519 key generation and signature verification in <see cref="AppleSecureEnclaveSecurityProvider"/>.
+    /// </summary>
+    [Fact]
+    public async Task AppleSecureEnclaveSecurityProvider_Ed25519_BridgeSigningAndZeroization()
+    {
+        // WHAT: Test genuine Ed25519 key generation, challenge signing, signature verification, and memory zeroization on Apple provider.
+        // WHY:  Guarantees cryptographic patient identity security and full branch coverage on Apple platforms.
+        // HOW:  Validates inputs, generates key, signs challenge, verifies via Ed25519Signer, tests fallbacks and zeroization.
+        static bool ApplePlatform(string p) => p.Equals("iOS", StringComparison.OrdinalIgnoreCase);
+        var provider = new AppleSecureEnclaveSecurityProvider(ApplePlatform);
+        Assert.NotNull(provider.EnclaveBridge);
+
+        // Input validation for GenerateHardwareKeyAsync
+        await Assert.ThrowsAsync<ArgumentNullException>(() => provider.GenerateHardwareKeyAsync(null!));
+        await Assert.ThrowsAsync<ArgumentException>(() => provider.GenerateHardwareKeyAsync(""));
+        await Assert.ThrowsAsync<ArgumentException>(() => provider.GenerateHardwareKeyAsync("   "));
+
+        // Cancellation on GenerateHardwareKeyAsync
+        using (var cts = new CancellationTokenSource())
+        {
+            cts.Cancel();
+            await Assert.ThrowsAsync<OperationCanceledException>(() => provider.GenerateHardwareKeyAsync("alias-cancel", cts.Token));
+        }
+
+        // Platform not supported on GenerateHardwareKeyAsync
+        var nonAppleProvider = new AppleSecureEnclaveSecurityProvider(_ => false);
+        await Assert.ThrowsAsync<PlatformNotSupportedException>(() => nonAppleProvider.GenerateHardwareKeyAsync("alias-fail"));
+
+        // Successful Ed25519 key generation
+        byte[] publicKey = await provider.GenerateHardwareKeyAsync("ed25519-apple-key");
+        Assert.Equal(32, publicKey.Length);
+
+        // Input validation for SignChallengeAsync
+        byte[] challenge = "APPLE-PATIENT-CHALLENGE-2026"u8.ToArray();
+        await Assert.ThrowsAsync<ArgumentNullException>(() => provider.SignChallengeAsync(null!, challenge));
+        await Assert.ThrowsAsync<ArgumentException>(() => provider.SignChallengeAsync("", challenge));
+        await Assert.ThrowsAsync<ArgumentException>(() => provider.SignChallengeAsync("   ", challenge));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => provider.SignChallengeAsync("ed25519-apple-key", (byte[])null!));
+
+        // Cancellation on SignChallengeAsync
+        using (var cts = new CancellationTokenSource())
+        {
+            cts.Cancel();
+            await Assert.ThrowsAsync<OperationCanceledException>(() => provider.SignChallengeAsync("ed25519-apple-key", challenge, cts.Token));
+        }
+
+        // Missing key on SignChallengeAsync
+        await Assert.ThrowsAsync<InvalidOperationException>(() => provider.SignChallengeAsync("missing-alias", challenge));
+
+        // Genuine signature generation and RFC 8032 verification
+        byte[] signature = await provider.SignChallengeAsync("ed25519-apple-key", challenge);
+        Assert.Equal(64, signature.Length);
+
+        var verifier = new Ed25519Signer();
+        var pubParams = new Ed25519PublicKeyParameters(publicKey, 0);
+        verifier.Init(false, pubParams);
+        verifier.BlockUpdate(challenge, 0, challenge.Length);
+        Assert.True(verifier.VerifySignature(signature));
+
+        // Tampered challenge verification fails
+        byte[] tamperedChallenge = "TAMPERED-APPLE-CHALLENGE-2026"u8.ToArray();
+        verifier.Reset();
+        verifier.BlockUpdate(tamperedChallenge, 0, tamperedChallenge.Length);
+        Assert.False(verifier.VerifySignature(signature));
+
+        // ReadOnlyMemory<byte> overload
+        byte[] memorySig = await provider.SignChallengeAsync("ed25519-apple-key", new ReadOnlyMemory<byte>(challenge));
+        Assert.Equal(64, memorySig.Length);
+        verifier.Reset();
+        verifier.BlockUpdate(challenge, 0, challenge.Length);
+        Assert.True(verifier.VerifySignature(memorySig));
+
+        // Fallback branch where key is in _keyStore but not in bridge
+        var mockBridge = new DefaultAppleSecureEnclaveBridge();
+        var fallbackProvider = new AppleSecureEnclaveSecurityProvider(ApplePlatform, enclaveBridge: mockBridge);
+        await fallbackProvider.GenerateHardwareBoundKeyAsync("fallback-key");
+        mockBridge.ClearAllSessionSecrets(); // Delete from bridge, keeping in fallbackProvider._keyStore
+
+        byte[] plaintext = "REGIMEN-SECRET"u8.ToArray();
+        byte[] envelope = fallbackProvider.EncryptPayload("fallback-key", plaintext);
+        Assert.NotNull(envelope);
+
+        var authReq = new BiometricAuthRequest("Auth", "Sub", "Desc", "fallback-key", envelope);
+        var authRes = await fallbackProvider.AuthenticateAndDecryptAsync(authReq);
+        Assert.True(authRes.Success);
+        Assert.Equal(plaintext, authRes.DecryptedPayload);
+
+        byte[] fallbackSig = await fallbackProvider.SignChallengeAsync("fallback-key", challenge);
+        Assert.Equal(64, fallbackSig.Length);
+
+        // AuthenticateAndDecrypt with key present but payload length < 28 bytes (exercising ZeroMemory on keyBytes)
+        var shortReq = new BiometricAuthRequest("Auth", "Sub", "Desc", "fallback-key", [1, 2, 3]);
+        var shortRes = await fallbackProvider.AuthenticateAndDecryptAsync(shortReq);
+        Assert.False(shortRes.Success);
+        Assert.Contains("invalid", shortRes.ErrorMessage);
+
+        // ZeroizeMemory and Dispose
+        provider.ZeroizeMemory();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => provider.SignChallengeAsync("ed25519-apple-key", challenge));
+        provider.Dispose();
+    }
+
+    /// <summary>
+    /// Verifies <see cref="MobileEntryPoint"/> biometric vault property, lifecycle zeroization hooks, and vault lock extension method.
+    /// </summary>
+    [Fact]
+    public async Task MobileEntryPoint_BiometricVault_LifecycleAndZeroization_AllBranches()
+    {
+        // WHAT: Test MobileEntryPoint static biometric vault property and lifecycle zeroization hooks.
+        // WHY:  Guarantees patient DNA regimens are purged from RAM across OnPause, OnStop, and backgrounding.
+        // HOW:  Caches regimen, triggers lifecycle hooks, verifies zeroization, tests null vault safety, and checks extension method.
+        // Extension method null check
+        Assert.Throws<ArgumentNullException>(() => UnifiedMobileBiometricVaultExtensions.LockVault(null!));
+
+        // LockVault with Android provider
+        static bool AndroidPlatform(string p) => p.Equals("Android", StringComparison.OrdinalIgnoreCase);
+        var androidVault = new UnifiedMobileBiometricVault(new AndroidBiometricSecurityProvider(AndroidPlatform));
+        androidVault.CacheDecryptedRegimen("patient-1", [1, 2, 3, 4]);
+        Assert.Equal(1, androidVault.CachedCount);
+        androidVault.LockVault();
+        Assert.Equal(0, androidVault.CachedCount);
+
+        // LockVault with Apple provider
+        static bool ApplePlatform(string p) => p.Equals("iOS", StringComparison.OrdinalIgnoreCase);
+        var appleVault = new UnifiedMobileBiometricVault(new AppleSecureEnclaveSecurityProvider(ApplePlatform));
+        appleVault.CacheDecryptedRegimen("patient-2", [5, 6, 7, 8]);
+        Assert.Equal(1, appleVault.CachedCount);
+        appleVault.LockVault();
+        Assert.Equal(0, appleVault.CachedCount);
+
+        // LockVault with other / fallback provider (exercises the final 'else' branch in LockVault)
+        var otherVault = new UnifiedMobileBiometricVault(new DisposableTestBiometricProvider());
+        otherVault.CacheDecryptedRegimen("patient-3", [9, 10]);
+        Assert.Equal(1, otherVault.CachedCount);
+        otherVault.LockVault();
+        Assert.Equal(0, otherVault.CachedCount);
+
+        // MobileEntryPoint BiometricVault getter and setter
+        var originalVault = MobileEntryPoint.BiometricVault;
+        try
+        {
+            var testVault = new UnifiedMobileBiometricVault(new AndroidBiometricSecurityProvider(AndroidPlatform));
+            MobileEntryPoint.BiometricVault = testVault;
+            Assert.Same(testVault, MobileEntryPoint.BiometricVault);
+
+            // OnPause purges memory
+            testVault.CacheDecryptedRegimen("patient-android", [11, 12, 13]);
+            Assert.Equal(1, testVault.CachedCount);
+            MobileEntryPoint.OnPause();
+            Assert.Equal(0, testVault.CachedCount);
+
+            // OnStop purges memory
+            testVault.CacheDecryptedRegimen("patient-android", [14, 15, 16]);
+            Assert.Equal(1, testVault.CachedCount);
+            MobileEntryPoint.OnStop();
+            Assert.Equal(0, testVault.CachedCount);
+
+            // OnBackground purges memory
+            testVault.CacheDecryptedRegimen("patient-android", [17, 18, 19]);
+            Assert.Equal(1, testVault.CachedCount);
+            MobileEntryPoint.OnBackground();
+            Assert.Equal(0, testVault.CachedCount);
+
+            // Safe execution when BiometricVault is null
+            MobileEntryPoint.BiometricVault = null;
+            Assert.Null(MobileEntryPoint.BiometricVault);
+            MobileEntryPoint.OnPause();
+            MobileEntryPoint.OnStop();
+            MobileEntryPoint.OnBackground();
+
+            // RunMobileLifecycleAsync pre-cancelled token triggers LockVault
+            MobileEntryPoint.BiometricVault = testVault;
+            testVault.CacheDecryptedRegimen("patient-lifecycle", [20, 21]);
+            Assert.Equal(1, testVault.CachedCount);
+            using var preCts = new CancellationTokenSource();
+            preCts.Cancel();
+            var sink = new MobileNotificationSink("android");
+            int preExit = await MobileEntryPoint.RunMobileLifecycleAsync("android", sink, preCts.Token);
+            Assert.Equal(0, preExit);
+            Assert.Equal(0, testVault.CachedCount);
+
+            // RunMobileLifecycleAsync active delay cancellation triggers LockVault in catch block
+            testVault.CacheDecryptedRegimen("patient-lifecycle-live", [22, 23]);
+            Assert.Equal(1, testVault.CachedCount);
+            using var liveCts = new CancellationTokenSource();
+            var lifecycleTask = MobileEntryPoint.RunMobileLifecycleAsync("android", sink, liveCts.Token);
+            liveCts.Cancel();
+            int liveExit = await lifecycleTask;
+            Assert.Equal(0, liveExit);
+            Assert.Equal(0, testVault.CachedCount);
+        }
+        finally
+        {
+            MobileEntryPoint.BiometricVault = originalVault;
+        }
     }
 }

@@ -61,33 +61,6 @@ When the user switches apps, receives a phone call, or locks the screen:
 
 ---
 
-## 3. Developer Usage
-
-```csharp
-// 1. Initialize the unified vault
-using var vault = new UnifiedMobileBiometricVault();
-
-// 2. Query biometric sensor availability
-BiometricAvailabilityResult availability = await vault.CheckBiometricAvailabilityAsync();
-if (availability.IsAvailable)
-{
-    // 3. Authenticate and decrypt patient vault
-    var request = new BiometricAuthRequest(
-        Title: "Unlock Patient Regimen",
-        Subtitle: "Biometric authentication required",
-        Description: "Authenticate with Face ID / Fingerprint to decrypt personalized DNA carrier payload.",
-        KeyAlias: "patient-vault-key-01",
-        EncryptedVaultPayload: encryptedBytes);
-
-    BiometricAuthResult result = await vault.AuthenticateAndDecryptAsync(request);
-    if (result.Success && result.DecryptedPayload is not null)
-    {
-        // 4. Cache in memory for active clinical session
-        vault.CacheDecryptedRegimen("patient-001", result.DecryptedPayload);
-    }
-}
-
-// 5. When the user minimizes or pauses the app:
-vault.OnAppLifecycleStateChanged(MobileAppLifecycleState.Backgrounded);
-// -> Decrypted memory is instantly zeroized!
-```
+## 4. `IAndroidKeyStoreBridge` & `IAppleSecureEnclaveBridge` Lifecycle Auto-Lock
+- **`IAndroidKeyStoreBridge` & `IAppleSecureEnclaveBridge`**: Dedicated hardware abstraction interfaces linking Android Keystore StrongBox and Apple Secure Enclave coprocessors to platform Ed25519 authentication flows.
+- **Lifecycle Auto-Lock & Zeroization**: Automated background monitoring immediately invokes `CryptographicOperations.ZeroMemory` on session vault buffers upon application pausing or backgrounding, ensuring uncompromised mobile data security.

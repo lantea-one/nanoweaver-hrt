@@ -94,6 +94,21 @@ public sealed class EndocrineClosedLoopEngine : IEndocrineClosedLoopEngine
     private const double BaseKClearT = 0.09;
 
     /// <summary>
+    /// Proportional gain constant for aptamer-gated nanocarrier 17β-estradiol delivery in h⁻¹.
+    /// </summary>
+    private const double KGainEstradiol = 14.0;
+
+    /// <summary>
+    /// Proportional gain constant for aptamer-gated nanocarrier testosterone delivery in h⁻¹.
+    /// </summary>
+    private const double KGainTestosterone = 14.0;
+
+    /// <summary>
+    /// Pituitary LH threshold below which endogenous gonadal sex steroid synthesis is suppressed in IU/L.
+    /// </summary>
+    private const double GonadotropinSuppressionThresholdLh = 1.5;
+
+    /// <summary>
     /// Reference physiological LH baseline in IU/L used for aptamer feedback normalization.
     /// </summary>
     private const double ReferenceLhBaseline = 6.5;
@@ -341,24 +356,29 @@ public sealed class EndocrineClosedLoopEngine : IEndocrineClosedLoopEngine
         double denomFsh = 1.0 + Math.Pow(eOverKiFsh, M1) + Math.Pow(tOverKiFsh, M2);
         dfsh = (VmaxFsh / denomFsh) - (KClearFsh * safeFsh);
 
-        // WHAT: Aptamer-gated nanocarrier payload release rate with gonadotropin feedback modulation.
+        // WHAT: Aptamer-gated nanocarrier payload release rate with feedforward clearance compensation and gonadotropin feedback.
         // WHY:  When circulating hormone is below target, aptamer latches open in response to elevated LH,
-        //       releasing payload until homeostasis is re-established.
-        // HOW:  Deficit multiplied by (1.0 + 0.3 * (LH / 6.5)).
+        //       releasing payload with proportional feedback and feedforward clearance compensation to eliminate steady-state droop.
+        // HOW:  Combines baseline clearance feedforward with proportional gain: (kClear * Target * act) + (KGain * deficit * lhMod).
         double lhModulation = 1.0 + (0.3 * (safeLh / ReferenceLhBaseline));
         double rCarrierE = 0.0;
         double rCarrierT = 0.0;
 
-        if (request.TargetState == ToggleState.EstrogenicDominant)
+        bool isMtF = request.TargetState == ToggleState.EstrogenicDominant;
+        bool isFtm = request.TargetState == ToggleState.AndrogenicDominant;
+
+        if (isMtF)
         {
             double deficitE = Math.Max(0.0, request.TargetEstradiolPmolL - safeE);
-            rCarrierE = deficitE * lhModulation;
+            double carrierActivation = Math.Clamp(deficitE / 1.0, 0.0, 1.0);
+            rCarrierE = (kClearE * request.TargetEstradiolPmolL * carrierActivation) + (KGainEstradiol * deficitE * lhModulation);
             carrierRate = rCarrierE;
         }
-        else if (request.TargetState == ToggleState.AndrogenicDominant)
+        else if (isFtm)
         {
             double deficitT = Math.Max(0.0, request.TargetTestosteroneNmolL - safeT);
-            rCarrierT = deficitT * lhModulation;
+            double carrierActivation = Math.Clamp(deficitT / 0.1, 0.0, 1.0);
+            rCarrierT = (kClearT * request.TargetTestosteroneNmolL * carrierActivation) + (KGainTestosterone * deficitT * lhModulation);
             carrierRate = rCarrierT;
         }
         else
@@ -366,8 +386,37 @@ public sealed class EndocrineClosedLoopEngine : IEndocrineClosedLoopEngine
             carrierRate = 0.0;
         }
 
-        // Coupled hormone dynamics: endogenous LH stimulation + nanocarrier release - metabolic clearance
-        de = (KEndoE * safeLh) + rCarrierE - (kClearE * safeE);
-        dt = (KEndoT * safeLh) + rCarrierT - (kClearT * safeT);
+        // WHAT: Regimen-specific endogenous gonadal production with gonadotropin suppression feedback.
+        // WHY:  In MtF (assigned male), testicular T synthesis is strongly suppressed when LH drops below 1.5 IU/L,
+        //       reducing circulating testosterone into the female physiological range (<= 1.8 nmol/L).
+        //       In FtM (assigned female), ovarian E2 synthesis is strongly suppressed when LH/FSH drops below 1.5 IU/L,
+        //       reducing circulating 17β-estradiol into the male physiological range (< 100 pmol/L).
+        // HOW:  Applies a cubic suppression factor (safeLh / 1.5)^3 when safeLh < 1.5 IU/L to the active gonadal axis.
+        double lhSuppression = safeLh < GonadotropinSuppressionThresholdLh
+            ? Math.Pow(safeLh / GonadotropinSuppressionThresholdLh, 3.0)
+            : 1.0;
+
+        double endoE;
+        double endoT;
+
+        if (isMtF)
+        {
+            endoT = KEndoT * safeLh * lhSuppression;
+            endoE = 0.0;
+        }
+        else if (isFtm)
+        {
+            endoE = KEndoE * safeLh * lhSuppression;
+            endoT = 0.0;
+        }
+        else
+        {
+            endoE = KEndoE * safeLh * lhSuppression;
+            endoT = KEndoT * safeLh * lhSuppression;
+        }
+
+        // Coupled hormone dynamics: endogenous gonadal synthesis + nanocarrier release - metabolic clearance
+        de = endoE + rCarrierE - (kClearE * safeE);
+        dt = endoT + rCarrierT - (kClearT * safeT);
     }
 }

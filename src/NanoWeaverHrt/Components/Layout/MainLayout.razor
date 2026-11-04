@@ -145,9 +145,9 @@
 @code {
     /// <summary>
     /// Routes that are reachable without an authenticated session, in lower-case
-    /// base-relative form: the sign-in form and the first-launch setup wizard.
+    /// base-relative form: the sign-in form, the setup wizard, and public peer/telemetry connect routes.
     /// </summary>
-    private static readonly string[] PublicRoutes = ["login", "setup"];
+    private static readonly HashSet<string> PublicRoutes = new(StringComparer.OrdinalIgnoreCase) { "login", "setup", "connect" };
 
     /// <summary>
     /// Indicates whether first-launch setup is still outstanding, which locks the
@@ -197,8 +197,8 @@
     /// <summary>
     /// Determines whether the current route is reachable without a session.
     /// </summary>
-    /// <returns>True for the sign-in form and the setup wizard; otherwise, false.</returns>
-    private bool IsPublicRoute() => Array.IndexOf(PublicRoutes, CurrentRoute()) >= 0;
+    /// <returns>True for the sign-in form, setup wizard, and connect route; otherwise, false.</returns>
+    private bool IsPublicRoute() => PublicRoutes.Contains(CurrentRoute());
 
     /// <summary>
     /// Redirects to the setup wizard or the sign-in form when the current route is
@@ -224,7 +224,7 @@
             return;
         }
 
-        if (!SessionState.IsAuthenticated && Array.IndexOf(PublicRoutes, route) < 0)
+        if (!SessionState.IsAuthenticated && !PublicRoutes.Contains(route))
         {
             Navigation.NavigateTo("/login");
         }

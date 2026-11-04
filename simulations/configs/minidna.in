@@ -14,6 +14,9 @@ boundary        p p p
 # Define simulation box (Angstroms)
 region          simbox block -50.0 50.0 -50.0 50.0 -50.0 50.0
 create_box      1 simbox
+lattice         fcc 0.1
+create_atoms    1 box
+mass            1 12.0
 
 # Pair potentials (soft repulsion for initial energy minimization)
 pair_style      soft 4.0
@@ -27,4 +30,4 @@ dump            traj_stream all xyz 100 /workspace/data/minidna_run.xyz
 
 # Run energy relaxation
 minimize        1.0e-4 1.0e-6 100 1000
-run             500
+run             100

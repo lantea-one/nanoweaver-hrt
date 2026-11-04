@@ -125,6 +125,21 @@ public sealed class DuckDbTrajectoryAnalyticsServiceTests
     [InlineData("INSTALL httpfs;")]
     [InlineData("LOAD httpfs;")]
     [InlineData("SELECT 1; DROP TABLE trajectory;")]
+    [InlineData("SELECT * FROM read_csv('/etc/passwd');")]
+    [InlineData("SELECT * FROM read_csv_auto('/etc/passwd');")]
+    [InlineData("SELECT * FROM read_parquet('/tmp/secret.parquet');")]
+    [InlineData("SELECT * FROM read_json('/tmp/secret.json');")]
+    [InlineData("SELECT * FROM read_json_auto('/tmp/secret.json');")]
+    [InlineData("SELECT * FROM read_json_objects('/tmp/secret.json');")]
+    [InlineData("SELECT * FROM read_blob('/etc/shadow');")]
+    [InlineData("SELECT * FROM read_text('/etc/passwd');")]
+    [InlineData("SELECT * FROM scan_arrow_ipc('stream');")]
+    [InlineData("SELECT * FROM sqlite_scan('db.sqlite', 't');")]
+    [InlineData("SELECT * FROM postgres_scan('conn', 's', 't');")]
+    [InlineData("SELECT * FROM mysql_scan('conn', 'db', 't');")]
+    [InlineData("SELECT * FROM iceberg_scan('table');")]
+    [InlineData("SELECT * FROM delta_scan('table');")]
+    [InlineData("SELECT * FROM glob('/*');")]
     public async Task ExecuteQueryAsync_WithProhibitedKeywords_ThrowsInvalidOperationException(string prohibitedQuery)
     {
         // WHAT: Tests rejection of destructive and administrative SQL keywords.
@@ -573,5 +588,24 @@ public sealed class DuckDbTrajectoryAnalyticsServiceTests
         Assert.Equal(50L, stats.FrameCount);
         Assert.Equal(1250.0, stats.BoundingBoxVolume);
         Assert.Equal(5.5, stats.MeanRadiusOfGyration);
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="DuckDbTrajectoryAnalyticsService.IsReadOnlySelectQuery"/> identifies valid queries and rejects file-reading functions.
+    /// </summary>
+    [Fact]
+    public void IsReadOnlySelectQuery_ValidatesReadinessAndRejectsFileScanning()
+    {
+        // WHAT: Tests IsReadOnlySelectQuery predicate across valid SELECTs and forbidden file access scans.
+        // WHY:  Guarantees that file reading functions and mutations are detected and rejected.
+        // HOW:  Asserts true for standard SELECT queries and false for null, mutations, and read_parquet/read_csv queries.
+        Assert.False(DuckDbTrajectoryAnalyticsService.IsReadOnlySelectQuery(null));
+        Assert.False(DuckDbTrajectoryAnalyticsService.IsReadOnlySelectQuery("   "));
+        Assert.True(DuckDbTrajectoryAnalyticsService.IsReadOnlySelectQuery("SELECT 1;"));
+        Assert.True(DuckDbTrajectoryAnalyticsService.IsReadOnlySelectQuery("SELECT atom_index, x, y FROM trajectory;"));
+        Assert.False(DuckDbTrajectoryAnalyticsService.IsReadOnlySelectQuery("DROP TABLE trajectory;"));
+        Assert.False(DuckDbTrajectoryAnalyticsService.IsReadOnlySelectQuery("SELECT * FROM read_parquet('/tmp/secret.parquet');"));
+        Assert.False(DuckDbTrajectoryAnalyticsService.IsReadOnlySelectQuery("SELECT * FROM read_csv('/etc/passwd');"));
+        Assert.False(DuckDbTrajectoryAnalyticsService.IsReadOnlySelectQuery("SELECT * FROM glob('/*');"));
     }
 }

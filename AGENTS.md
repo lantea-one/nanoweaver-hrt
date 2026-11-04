@@ -29,7 +29,7 @@
 
 5. **Mandatory 100.00% Line & Branch Code Coverage Threshold**:
    - Gate step 4 enforces 100.00% line and branch coverage across all developer-authored C# code and security-critical Razor components (defined by `coverlet.runsettings`).
-   - Gate step 7 tracks all compiler-generated state machines against a committed downward-only ratchet baseline (`coverage-baseline.json`, currently 99.51% line / 96.38% branch with 59 uncovered lines across 29 classes), prohibiting any regression until 100.00% is reached.
+   - Gate step 7 tracks all compiler-generated state machines against a committed downward-only ratchet baseline (`coverage-baseline.json`, currently 99.72% line / 98.03% branch with 54 uncovered lines across 28 classes), prohibiting any regression until 100.00% is reached.
    - Any new method, logic branch (`if`, `switch`, `catch`, ternary operators), or boundary condition MUST have comprehensive unit tests in `tests/NanoWeaverHrt.Tests`.
    - Never use `[ExcludeFromCodeCoverage]` as a shortcut to avoid writing tests.
    - Client-side JavaScript (`weaver-visualizer.js`, `weaver-session.js`, `weaver-auth.js`) MUST maintain 100% line, branch, and function coverage via `npm test`.

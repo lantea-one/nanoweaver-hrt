@@ -657,11 +657,176 @@ async function weaverGenerateKeyBundle(username, role, accessGate, algorithm, pa
     };
 }
 
+/**
+ * Encrypts raw private key DER bytes into a password-protected envelope with authenticated salt AAD.
+ *
+ * WHAT: Derives AES-256 key via PBKDF2-SHA256 and encrypts DER bytes using AES-GCM with salt as additionalData.
+ * WHY:  Fulfills Issue #83 (P80): Matches AesGcmClientKeyRingVault.cs by authenticating the 16-byte salt as AAD.
+ * HOW:  Generates random 16-byte salt and 12-byte nonce, derives key using crypto.subtle, encrypts with additionalData: salt,
+ *       and formats output as [Salt: 16][Nonce: 12][Tag: 16][Ciphertext: N].
+ *
+ * @param {Uint8Array} derBytes Raw private key DER bytes to encrypt.
+ * @param {string} passphrase User-entered passphrase.
+ * @param {object} [options] Optional parameters (subtle, salt, nonce).
+ * @returns {Promise<{ ok: boolean, envelopeBytes?: Uint8Array, error?: string }>}
+ */
+async function encryptPrivateKeyEnvelope(derBytes, passphrase, options = {}) {
+    // WHAT: Validates input arguments, derives PBKDF2 AES-GCM key, and encrypts with authenticated salt AAD.
+    // WHY:  Ensures the PBKDF2 salt cannot be modified in the envelope without failing GCM authentication.
+    // HOW:  Uses WebCrypto subtle.importKey, deriveKey, and subtle.encrypt with additionalData: saltBytes.
+    if (!(derBytes instanceof Uint8Array) || derBytes.length === 0 ||
+        typeof passphrase !== 'string' || passphrase.length === 0) {
+        return { ok: false, error: 'Failed to encrypt private key. Invalid input or empty passphrase.' };
+    }
+
+    const subtle = (options && options.subtle) || globalThis.crypto?.subtle;
+    if (!subtle || typeof subtle.importKey !== 'function' || typeof subtle.deriveKey !== 'function' || typeof subtle.encrypt !== 'function') {
+        return { ok: false, error: 'Failed to encrypt private key. WebCrypto subtle provider unavailable.' };
+    }
+
+    try {
+        const saltBytes = (options && options.salt) || new Uint8Array(16);
+        if (!(options && options.salt) && globalThis.crypto?.getRandomValues) {
+            globalThis.crypto.getRandomValues(saltBytes);
+        }
+
+        const nonceBytes = (options && options.nonce) || new Uint8Array(12);
+        if (!(options && options.nonce) && globalThis.crypto?.getRandomValues) {
+            globalThis.crypto.getRandomValues(nonceBytes);
+        }
+
+        const enc = new TextEncoder();
+        const baseKey = await subtle.importKey(
+            'raw',
+            enc.encode(passphrase),
+            { name: 'PBKDF2' },
+            false,
+            ['deriveKey']
+        );
+
+        const aesKey = await subtle.deriveKey(
+            {
+                name: 'PBKDF2',
+                salt: saltBytes,
+                iterations: 100000,
+                hash: 'SHA-256'
+            },
+            baseKey,
+            { name: 'AES-GCM', length: 256 },
+            false,
+            ['encrypt']
+        );
+
+        const encryptedWithTagBuffer = await subtle.encrypt(
+            {
+                name: 'AES-GCM',
+                iv: nonceBytes,
+                additionalData: saltBytes,
+                tagLength: 128
+            },
+            aesKey,
+            derBytes
+        );
+
+        const encryptedWithTag = new Uint8Array(encryptedWithTagBuffer);
+        const tag = encryptedWithTag.slice(encryptedWithTag.length - 16);
+        const ciphertext = encryptedWithTag.slice(0, encryptedWithTag.length - 16);
+
+        // Standard layout: [Salt: 16][Nonce: 12][Tag: 16][Ciphertext: N]
+        const envelopeBytes = new Uint8Array(16 + 12 + 16 + ciphertext.length);
+        envelopeBytes.set(saltBytes, 0);
+        envelopeBytes.set(nonceBytes, 16);
+        envelopeBytes.set(tag, 28);
+        envelopeBytes.set(ciphertext, 44);
+
+        return { ok: true, envelopeBytes };
+    } catch {
+        return { ok: false, error: 'Failed to encrypt private key envelope.' };
+    }
+}
+
+/**
+ * Decrypts an authenticated AES-256-GCM private key envelope using WebCrypto and validates salt AAD.
+ *
+ * WHAT: Parses [Salt: 16][Nonce: 12][Tag: 16][Ciphertext: N] and decrypts via WebCrypto AES-GCM with salt as additionalData.
+ * WHY:  Fulfills Issue #83 (P80): Interoperates with envelopes encrypted by C# AesGcmClientKeyRingVault.SealBytes.
+ * HOW:  Extracts header components, derives key from passphrase and saltBytes, decrypts with additionalData: saltBytes.
+ *
+ * @param {Uint8Array} envelopeBytes Decoded bytes of the encrypted envelope.
+ * @param {string} passphrase User-entered passphrase.
+ * @param {object} [options] Optional parameters (subtle).
+ * @returns {Promise<{ ok: boolean, derBytes?: Uint8Array, error?: string }>}
+ */
+async function decryptPrivateKeyEnvelope(envelopeBytes, passphrase, options = {}) {
+    // WHAT: Validates envelope bytes and unseals private key DER bytes using PBKDF2-SHA256 and AES-GCM.
+    // WHY:  Provides WebCrypto authenticated private key unsealing without external libraries.
+    // HOW:  Derives 256-bit key from passphrase and salt, calls subtle.decrypt with additionalData: saltBytes.
+    if (!(envelopeBytes instanceof Uint8Array) || envelopeBytes.length < 44 ||
+        typeof passphrase !== 'string' || passphrase.length === 0) {
+        return { ok: false, error: 'Failed to parse or decrypt private key. Check passphrase or format.' };
+    }
+
+    const subtle = (options && options.subtle) || globalThis.crypto?.subtle;
+    if (!subtle || typeof subtle.importKey !== 'function' || typeof subtle.deriveKey !== 'function' || typeof subtle.decrypt !== 'function') {
+        return { ok: false, error: 'Failed to parse or decrypt private key. WebCrypto subtle provider unavailable.' };
+    }
+
+    const saltBytes = envelopeBytes.subarray(0, 16);
+    const nonceBytes = envelopeBytes.subarray(16, 28);
+    const tagBytes = envelopeBytes.subarray(28, 44);
+    const ciphertextBytes = envelopeBytes.subarray(44);
+
+    const ciphertextWithTag = new Uint8Array(ciphertextBytes.length + 16);
+    ciphertextWithTag.set(ciphertextBytes, 0);
+    ciphertextWithTag.set(tagBytes, ciphertextBytes.length);
+
+    try {
+        const enc = new TextEncoder();
+        const baseKey = await subtle.importKey(
+            'raw',
+            enc.encode(passphrase),
+            { name: 'PBKDF2' },
+            false,
+            ['deriveKey']
+        );
+
+        const aesKey = await subtle.deriveKey(
+            {
+                name: 'PBKDF2',
+                salt: saltBytes,
+                iterations: 100000,
+                hash: 'SHA-256'
+            },
+            baseKey,
+            { name: 'AES-GCM', length: 256 },
+            false,
+            ['decrypt']
+        );
+
+        const decryptedBuffer = await subtle.decrypt(
+            {
+                name: 'AES-GCM',
+                iv: nonceBytes,
+                additionalData: saltBytes,
+                tagLength: 128
+            },
+            aesKey,
+            ciphertextWithTag
+        );
+
+        return { ok: true, derBytes: new Uint8Array(decryptedBuffer) };
+    } catch {
+        return { ok: false, error: 'Failed to parse or decrypt private key. Check passphrase or format.' };
+    }
+}
+
 const WeaverAuth = {
     parsePrivateKeyPem,
     extractKeyMaterialFromPkcs8,
     decryptKeyEnvelope,
     encryptKeyEnvelope,
+    decryptPrivateKeyEnvelope,
+    encryptPrivateKeyEnvelope,
     zeroizeBytes,
     signChallenge,
     requestChallenge,
@@ -680,6 +845,8 @@ if (typeof window !== 'undefined') {
     window.extractKeyMaterialFromPkcs8 = extractKeyMaterialFromPkcs8;
     window.decryptKeyEnvelope = decryptKeyEnvelope;
     window.encryptKeyEnvelope = encryptKeyEnvelope;
+    window.decryptPrivateKeyEnvelope = decryptPrivateKeyEnvelope;
+    window.encryptPrivateKeyEnvelope = encryptPrivateKeyEnvelope;
     window.zeroizeBytes = zeroizeBytes;
     window.signChallenge = signChallenge;
     window.requestChallenge = requestChallenge;

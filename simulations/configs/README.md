@@ -20,7 +20,11 @@ In the NanoWeaver container architecture (`docker/simulation/Dockerfile.simulati
 | Configuration File | Engine | Scale / Method | Biomedical Objective |
 | :--- | :--- | :--- | :--- |
 | `oxdna_input` | oxDNA 2.4 | Coarse-Grained DNA Model | Foundational benchmark template for DNA duplex folding and staple crossover thermodynamics. |
+| `duplex.top` | oxDNA 2.4 | Topology Definition | 8-nucleotide 2-strand DNA duplex topology definition referenced by `oxdna_input`. |
+| `duplex.conf` | oxDNA 2.4 | Starting Configuration | Initial 3D coordinates, orientation vectors, and box boundaries for the 8-nucleotide duplex. |
 | `oxdna_serum_stability.in` | oxDNA 2.4 | Coarse-Grained (OpenCL/SYCL) | Physiological serum stability verification under human blood ionic conditions (37.0°C, 150 mM NaCl, 0.8 mM Mg²⁺) to detect crossover fraying or premature denaturation. |
+| `nanotube_m13mp18.top` | oxDNA 2.4 | Topology Definition | 16-nucleotide scaffold-staple topology model for M13mp18 DNA origami nanotube serum stability runs. |
+| `nanotube_m13mp18.conf` | oxDNA 2.4 | Starting Configuration | Initial 3D coordinates, orientation vectors, and box boundaries for the M13mp18 nanotube model. |
 | `lammps_aptamer_gating.in` | LAMMPS | Atomistic Steered MD (SMD) | Steered MD and umbrella sampling to compute the Potential of Mean Force (PMF) for aptamer latch opening; verifies nanocarrier remains locked (ΔG ≥ +8.5 kcal/mol) until triggered by LH/FSH receptor docking. |
 | `lammps_steroid_payload.in` | LAMMPS | Atomistic NPT Ensemble | Steroid hormone confinement and micro-leakage dynamics of 17β-estradiol and testosterone inside DNA nanocage cavities with explicit TIP3P water solvation. |
 | `minidna.in` | LAMMPS | Atomistic Benchmark | Minimalist DNA double-helix sanity deck for rapid engine verification across CPU and GPU hardware backends. |

@@ -7,6 +7,7 @@ namespace NanoWeaverHrt.Tests.Hardware;
 /// <summary>
 /// Unit test suite for the hardware accelerator qualification and diagnostic benchmark engine.
 /// </summary>
+[Collection("AcceleratorTelemetryEnvironmentTests")]
 public sealed class AcceleratorBenchmarkServiceTests : IDisposable
 {
     /// <summary>

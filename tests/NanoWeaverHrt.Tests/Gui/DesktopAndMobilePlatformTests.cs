@@ -628,4 +628,122 @@ public sealed class DesktopAndMobilePlatformTests
         var copyRecord = alertRecord with { Platform = "iOS" };
         Assert.Equal("iOS", copyRecord.Platform);
     }
+
+    /// <summary>
+    /// Verifies that <see cref="SingleInstanceMutexGuard"/> recovers lock ownership upon catching <see cref="AbandonedMutexException"/>.
+    /// </summary>
+    [Fact]
+    public void SingleInstanceMutexGuard_AbandonedMutex_RecoversOwnership()
+    {
+        // WHAT: Test abandoned mutex recovery in SingleInstanceMutexGuard.
+        // WHY:  Issue #84 (P81): Ensures that a crashed prior process does not permanently deadlock the platform head.
+        // HOW:  Injected factory throws AbandonedMutexException; guard catches and sets IsPrimaryInstance = true.
+        using var guard = new SingleInstanceMutexGuard("abandoned-test-mutex", _ => throw new AbandonedMutexException());
+        Assert.True(guard.IsPrimaryInstance);
+
+        // Real OS thread abandonment to trigger inner catch (AbandonedMutexException) on WaitOne(0)
+        string abandonedMutexName = $"Test_Abandoned_{Guid.NewGuid():N}";
+        var thread = new Thread(() =>
+        {
+            var m = new Mutex(false, abandonedMutexName);
+            m.WaitOne();
+        });
+        thread.Start();
+        thread.Join();
+
+        using var guardReal = new SingleInstanceMutexGuard(abandonedMutexName);
+        Assert.True(guardReal.IsPrimaryInstance);
+
+        // External thread holding mutex to trigger !acquired branch and active process mutex cleanup
+        string heldMutexName = $"Test_Held_{Guid.NewGuid():N}";
+        using var heldEvent = new ManualResetEventSlim(false);
+        using var releasedEvent = new ManualResetEventSlim(false);
+
+        var holderThread = new Thread(() =>
+        {
+            using var m = new Mutex(false, heldMutexName);
+            m.WaitOne();
+            heldEvent.Set();
+            releasedEvent.Wait();
+            m.ReleaseMutex();
+        });
+        holderThread.Start();
+        heldEvent.Wait();
+
+        try
+        {
+            using var guardContended = new SingleInstanceMutexGuard(heldMutexName);
+            Assert.False(guardContended.IsPrimaryInstance);
+        }
+        finally
+        {
+            releasedEvent.Set();
+            holderThread.Join();
+        }
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="DesktopProgram"/> handles --headless, --tray-only, and wires background instance monitoring.
+    /// </summary>
+    [Fact]
+    public async Task DesktopProgram_HeadlessAndTrayOnly_And_CustomDaemonWiring()
+    {
+        // WHAT: Test --headless and --tray-only daemon invocations with custom monitor, tray, and coordinator.
+        // WHY:  Issue #84 (P81): Guarantees background daemon actively executes ticks and disposes dependencies on exit.
+        // HOW:  Mocks monitor and coordinator, invokes RunAsync with --headless and --tray-only, verifies ticks and disposal.
+        using var stdout = new StringWriter();
+        using var stderr = new StringWriter();
+
+        var monitorMock = new Mock<IBackgroundInstanceMonitor>();
+        var trayMock = new Mock<ITrayIconController>();
+        var disposableCoordMock = new Mock<IDisposable>();
+        var coordMock = disposableCoordMock.As<IMultiInstanceCoordinator>();
+
+        monitorMock.Setup(m => m.ExecuteMonitoringTickAsync(It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(0);
+
+        // 1. --headless flag with cancellation
+        using (var cts1 = new CancellationTokenSource())
+        {
+            cts1.CancelAfter(60);
+            string mutex1 = $"DaemonMutex_Headless_{Guid.NewGuid():N}";
+            int exit1 = await DesktopProgram.RunAsync(
+                ["--headless"],
+                stdout,
+                stderr,
+                mutexName: mutex1,
+                ct: cts1.Token,
+                daemonMonitor: monitorMock.Object,
+                daemonTrayController: trayMock.Object,
+                daemonCoordinator: coordMock.Object);
+
+            Assert.Equal(0, exit1);
+            Assert.Contains("NanoWeaver HRT Headless Daemon started.", stdout.ToString());
+            Assert.Contains("NanoWeaver HRT Headless Daemon stopped cleanly.", stdout.ToString());
+        }
+
+        monitorMock.Verify(m => m.ExecuteMonitoringTickAsync(It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.AtLeastOnce);
+        disposableCoordMock.Verify(d => d.Dispose(), Times.Once);
+
+        // 2. --tray-only flag with cancellation
+        stdout.GetStringBuilder().Clear();
+        using (var cts2 = new CancellationTokenSource())
+        {
+            cts2.CancelAfter(60);
+            string mutex2 = $"DaemonMutex_TrayOnly_{Guid.NewGuid():N}";
+            int exit2 = await DesktopProgram.RunAsync(
+                ["--tray-only"],
+                stdout,
+                stderr,
+                mutexName: mutex2,
+                ct: cts2.Token,
+                daemonMonitor: monitorMock.Object,
+                daemonTrayController: trayMock.Object,
+                daemonCoordinator: coordMock.Object);
+
+            Assert.Equal(0, exit2);
+            Assert.Contains("NanoWeaver HRT Headless Daemon started.", stdout.ToString());
+            Assert.Contains("NanoWeaver HRT Headless Daemon stopped cleanly.", stdout.ToString());
+        }
+    }
 }

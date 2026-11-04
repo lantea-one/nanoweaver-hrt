@@ -1,5 +1,6 @@
 @page "/trajectories"
 @using NanoWeaverHrt.Analytics
+@using NanoWeaverHrt.Federation
 @inject IDatasetManager DatasetManager
 @inject XyzPipeReader XyzParser
 @inject DcdPipeReader DcdParser
@@ -7,6 +8,7 @@
 @inject IParquetTrajectoryWriter ParquetWriter
 @inject IConfigurationRepository ConfigRepo
 @inject ITrajectoryAnalyticsService AnalyticsService
+@inject ITrajectoryFederationService FederationService
 
 <div class="trajectory-container">
     <div class="panel-header">
@@ -287,6 +289,52 @@
             </table>
         </div>
     </div>
+
+    <!-- P2P Swarm Federation Status -->
+    <div class="card panel mt-4">
+        <div class="panel-header">
+            <div>
+                <h3>P2P Swarm Federation Status</h3>
+                <p class="panel-desc">Active decentralized peer nodes participating in trajectory dataset swarm distribution and chunk-level verification.</p>
+            </div>
+            <button class="btn btn-secondary btn-sm" @onclick="LoadPeersAsync">
+                ⟳ Refresh Peers
+            </button>
+        </div>
+
+        <div class="table-container mt-3">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Node ID / Fingerprint</th>
+                        <th>Endpoint URI</th>
+                        <th>Algorithm</th>
+                        <th>Latency</th>
+                        <th>Last Seen</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_activePeers == null || _activePeers.Count == 0)
+                    {
+                        <tr><td colspan="5" class="empty-state">No active P2P federation swarm peers currently discovered.</td></tr>
+                    }
+                    else
+                    {
+                        @foreach (FederationPeerNode peer in _activePeers)
+                        {
+                            <tr>
+                                <td class="font-mono text-accent"><strong>@peer.NodeId[..16]...</strong></td>
+                                <td class="font-mono">@peer.EndpointUri</td>
+                                <td><span class="badge badge-outline">@peer.Algorithm</span></td>
+                                <td class="font-mono">@peer.LatencyMilliseconds.ToString("F1") ms</td>
+                                <td class="subtext">@peer.LastSeenUtc.ToString("yyyy-MM-dd HH:mm:ss") UTC</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
 </div>
 
 @code {
@@ -331,14 +379,38 @@
     private IReadOnlyList<TrajectoryFileItem> _files = [];
 
     /// <summary>
-    /// Collection of discovered exported bundle files.
+    /// Collection of active P2P federation swarm peers discovered by the federation service.
     /// </summary>
-    private IReadOnlyList<ExportFileItem> _exports = [];
+    private IReadOnlyList<FederationPeerNode> _activePeers = [];
+
+    /// <summary>
+    /// Discovers active P2P federation swarm peer nodes.
+    /// </summary>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    private async Task LoadPeersAsync()
+    {
+        // WHAT: Discovers registered active peer nodes in the federation swarm.
+        // WHY:  Allows monitoring peer connectivity and cryptographic verification status.
+        // HOW:  Calls FederationService.DiscoverPeersAsync.
+        try
+        {
+            _activePeers = await FederationService.DiscoverPeersAsync();
+        }
+        catch (Exception)
+        {
+            _activePeers = [];
+        }
+    }
 
     /// <summary>
     /// Loading state flag for trajectory files.
     /// </summary>
     private bool _isLoading;
+
+    /// <summary>
+    /// Collection of exported archive file items.
+    /// </summary>
+    private IReadOnlyList<ExportFileItem> _exports = [];
 
     /// <summary>
     /// Loading state flag for exported files.
@@ -371,10 +443,10 @@
     /// <returns>A task representing the asynchronous operation.</returns>
     protected override async Task OnInitializedAsync()
     {
-        // WHAT: Discovers both active trajectory inputs and exported packages on startup.
-        // WHY: Prepares the user interface with full volume oversight.
-        // HOW: Concurrently queries both directory listings.
-        await Task.WhenAll(LoadTrajectoriesAsync(), LoadExportsAsync());
+        // WHAT: Discovers active trajectory inputs, exported packages, and P2P federation swarm peers on startup.
+        // WHY: Prepares the user interface with full volume oversight and federation status.
+        // HOW: Concurrently queries directory listings and peer discovery.
+        await Task.WhenAll(LoadTrajectoriesAsync(), LoadExportsAsync(), LoadPeersAsync());
     }
 
     /// <summary>

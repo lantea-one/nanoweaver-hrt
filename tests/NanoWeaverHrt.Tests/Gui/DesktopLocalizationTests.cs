@@ -375,19 +375,19 @@ public sealed class DesktopLocalizationTests : IDisposable
         await service.InitializeAsync();
         Assert.Single(recordingConn.ExecutedCommandTexts);
         Assert.Contains("CREATE TABLE IF NOT EXISTS weaver_gui_preferences", recordingConn.ExecutedCommandTexts[0]);
-        Assert.Contains("DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)", recordingConn.ExecutedCommandTexts[0]);
+        Assert.Contains("preference_key", recordingConn.ExecutedCommandTexts[0]);
 
         await service.SetPreferredLanguageAsync(WeaverLanguage.Japanese);
         Assert.Equal(2, recordingConn.ExecutedCommandTexts.Count);
         Assert.Contains("ON DUPLICATE KEY UPDATE", recordingConn.ExecutedCommandTexts[1]);
-        Assert.Contains("@k", recordingConn.ExecutedCommandTexts[1]);
-        Assert.Contains("@v", recordingConn.ExecutedCommandTexts[1]);
-        Assert.Contains("@t", recordingConn.ExecutedCommandTexts[1]);
+        Assert.Contains("@key", recordingConn.ExecutedCommandTexts[1]);
+        Assert.Contains("@value", recordingConn.ExecutedCommandTexts[1]);
+        Assert.Contains("@updatedAt", recordingConn.ExecutedCommandTexts[1]);
 
         recordingConn.ScalarResultToReturn = "Japanese";
         WeaverLanguage lang = await service.GetPreferredLanguageAsync();
         Assert.Equal(WeaverLanguage.Japanese, lang);
-        Assert.Equal("SELECT value FROM weaver_gui_preferences WHERE key = @k;", recordingConn.ExecutedCommandTexts[2]);
+        Assert.Equal("SELECT preference_value FROM weaver_gui_preferences WHERE preference_key = @key;", recordingConn.ExecutedCommandTexts[2]);
     }
 
     /// <summary>

@@ -10,7 +10,7 @@ namespace NanoWeaverHrt.Caching;
 /// Hybrid distributed caching service utilizing Valkey when connected, with automatic, transparent
 /// fallback to a high-speed in-memory store when operating in standalone offline mode.
 /// </summary>
-public sealed class ValkeyCacheService : IValkeyCacheService
+public sealed class ValkeyCacheService : IValkeyCacheService, IDisposable
 {
     /// <summary>
     /// Key prefix applied to all cache keys to avoid collision with other cluster services.
@@ -222,6 +222,21 @@ public sealed class ValkeyCacheService : IValkeyCacheService
         {
             Value = value;
             ExpiresAtUtc = expiresAtUtc;
+        }
+    }
+
+    /// <summary>
+    /// Disposes local in-memory cache resources and safely releases connections if disposable.
+    /// </summary>
+    public void Dispose()
+    {
+        // WHAT: Disposes cached state and ensures underlying connection disposal is safe.
+        // WHY:  Prevents leaking in-memory objects or multiplexer sockets on service shutdown.
+        // HOW:  Clears local cache and disposes connection factory if it implements IDisposable.
+        _inMemoryCache.Clear();
+        if (_connectionFactory is IDisposable disposableFactory)
+        {
+            disposableFactory.Dispose();
         }
     }
 }

@@ -93,6 +93,34 @@ public sealed record SystemTelemetry : IExamplesProvider<SystemTelemetry>
     public required string Uptime { get; init; }
 
     /// <summary>
+    /// Current CPU utilization percentage across processing cores.
+    /// </summary>
+    [Description("Current CPU utilization percentage across processing cores.")]
+    [JsonPropertyName("cpuUtilizationPercent")]
+    public double CpuUtilizationPercent { get; init; }
+
+    /// <summary>
+    /// Current GPU or hardware accelerator utilization percentage.
+    /// </summary>
+    [Description("Current GPU or hardware accelerator utilization percentage.")]
+    [JsonPropertyName("gpuUtilizationPercent")]
+    public double GpuUtilizationPercent { get; init; }
+
+    /// <summary>
+    /// Current GPU die temperature in degrees Celsius.
+    /// </summary>
+    [Description("Current GPU die temperature in degrees Celsius.")]
+    [JsonPropertyName("gpuTemperatureCelsius")]
+    public double GpuTemperatureCelsius { get; init; }
+
+    /// <summary>
+    /// Number of active molecular dynamics simulation pipelines running concurrently.
+    /// </summary>
+    [Description("Number of active molecular dynamics simulation pipelines running concurrently.")]
+    [JsonPropertyName("activeSimulationCount")]
+    public int ActiveSimulationCount { get; init; }
+
+    /// <summary>
     /// Generates a representative example instance of <see cref="SystemTelemetry"/> for OpenAPI documentation.
     /// </summary>
     /// <returns>A populated telemetry snapshot example.</returns>
@@ -107,6 +135,10 @@ public sealed record SystemTelemetry : IExamplesProvider<SystemTelemetry>
         GcGen0Collections = 0,
         GcGen1Collections = 0,
         GcGen2Collections = 0,
-        Uptime = "04:15:32"
+        Uptime = "04:15:32",
+        CpuUtilizationPercent = 14.2,
+        GpuUtilizationPercent = 68.5,
+        GpuTemperatureCelsius = 58.0,
+        ActiveSimulationCount = 2
     };
 }

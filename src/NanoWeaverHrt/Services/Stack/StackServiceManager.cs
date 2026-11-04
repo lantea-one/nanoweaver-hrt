@@ -281,7 +281,7 @@ public sealed class StackServiceManager : IStackServiceManager
             ServiceId = "pg-duckdb",
             DisplayName = isPostgres ? "PostgreSQL & pg_duckdb Columnar Analytics" : "Embedded SQLite & DuckDB Parquet Storage",
             RoleDescription = "Vectorized SQL analytical query execution and zero-copy columnar Apache Parquet storage.",
-            EndpointOrLocation = isPostgres ? connStr.Split(';')[0] : "Local Embedded Storage",
+            EndpointOrLocation = isPostgres ? SanitizeEndpoint(connStr) : "Local Embedded Storage",
             Health = isPostgres ? ServiceHealthState.Healthy : ServiceHealthState.DegradedOrFallback,
             StatusMessage = isPostgres ? "PostgreSQL pg_duckdb Active" : "Operational (Embedded SQLite Fallback Active)",
             TechnologyStack = isPostgres ? "PostgreSQL 18 + pg_duckdb v1.1.1" : "Microsoft.Data.Sqlite + DuckDB.NET Full",
@@ -386,5 +386,82 @@ public sealed class StackServiceManager : IStackServiceManager
                 ["Total Share Links Generated"] = $"{keys.Count} total"
             }
         };
+    }
+
+    /// <summary>
+    /// Sanitizes database connection strings or endpoint URLs to strip sensitive credentials (e.g. passwords).
+    /// </summary>
+    /// <param name="rawConnectionString">The raw connection string or URI.</param>
+    /// <returns>A redacted, safe endpoint or location string.</returns>
+    internal static string SanitizeEndpoint(string? rawConnectionString)
+    {
+        // WHAT: Sanitizes PostgreSQL connection strings and URIs by removing password and user credentials.
+        // WHY:  Prevents leaking database passwords in UI telemetry or API diagnostic endpoints.
+        // HOW:  If URI (postgres:// or postgresql://), strips userInfo; if key-value, extracts Host/Port/Database or redacts Password/User ID.
+        if (string.IsNullOrWhiteSpace(rawConnectionString))
+        {
+            return "Unknown Endpoint";
+        }
+
+        string trimmed = rawConnectionString.Trim();
+
+        if (trimmed.StartsWith("postgres://", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("postgresql://", StringComparison.OrdinalIgnoreCase))
+        {
+            if (Uri.TryCreate(trimmed, UriKind.Absolute, out Uri? uri))
+            {
+                int uriPort = uri.Port > 0 ? uri.Port : 5432;
+                return $"{uri.Scheme}://{uri.Host}:{uriPort}{uri.AbsolutePath}";
+            }
+        }
+
+        string[] parts = trimmed.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        string? host = null;
+        string? port = null;
+        string? db = null;
+
+        foreach (string part in parts)
+        {
+            int eqIdx = part.IndexOf('=');
+            if (eqIdx <= 0)
+            {
+                continue;
+            }
+
+            string key = part[..eqIdx].Trim();
+            string val = part[(eqIdx + 1)..].Trim();
+
+            if (string.Equals(key, "Host", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(key, "Server", StringComparison.OrdinalIgnoreCase))
+            {
+                host = val;
+            }
+            else if (string.Equals(key, "Port", StringComparison.OrdinalIgnoreCase))
+            {
+                port = val;
+            }
+            else if (string.Equals(key, "Database", StringComparison.OrdinalIgnoreCase))
+            {
+                db = val;
+            }
+        }
+
+        if (!string.IsNullOrEmpty(host))
+        {
+            string endpoint = host;
+            if (!string.IsNullOrEmpty(port))
+            {
+                endpoint += $":{port}";
+            }
+
+            if (!string.IsNullOrEmpty(db))
+            {
+                endpoint += $"/{db}";
+            }
+
+            return endpoint;
+        }
+
+        return System.Text.RegularExpressions.Regex.Replace(trimmed, @"(?i)(password|pwd)\s*=\s*[^;]+", "$1=***");
     }
 }

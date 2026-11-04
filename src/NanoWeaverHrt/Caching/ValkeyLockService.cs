@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using StackExchange.Redis;
@@ -36,6 +38,11 @@ public sealed class ValkeyLockService : IValkeyLockService
     /// Thread-safe dictionary of in-memory semaphores used for local locking fallback.
     /// </summary>
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _localLocks = new();
+
+    /// <summary>
+    /// Thread-safe dictionary tracking active local in-memory lock tokens.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, string> _localLockTokens = new();
 
     /// <summary>
     /// Logger instance used to record lock lifecycle diagnostics.
@@ -108,7 +115,8 @@ public sealed class ValkeyLockService : IValkeyLockService
         bool localAcquired = await semaphore.WaitAsync(timeout, ct).ConfigureAwait(false);
         if (localAcquired)
         {
-            return new LocalLockToken(semaphore);
+            _localLockTokens[lockKey] = lockValue;
+            return new LocalLockToken(semaphore, _localLockTokens, lockKey, lockValue);
         }
 
         return null;
@@ -185,14 +193,34 @@ public sealed class ValkeyLockService : IValkeyLockService
     }
 
     /// <summary>
-    /// Lock token releasing an in-memory SemaphoreSlim on disposal.
+    /// Lock token releasing an in-memory SemaphoreSlim on disposal after validating ownership.
     /// </summary>
-    private sealed class LocalLockToken : IAsyncDisposable
+    internal sealed class LocalLockToken : IAsyncDisposable
     {
         /// <summary>
         /// Semaphore instance held by the lock.
         /// </summary>
         private readonly SemaphoreSlim _semaphore;
+
+        /// <summary>
+        /// Local lock tokens dictionary.
+        /// </summary>
+        private readonly ConcurrentDictionary<string, string> _localLockTokens;
+
+        /// <summary>
+        /// Resource lock key.
+        /// </summary>
+        private readonly string _lockKey;
+
+        /// <summary>
+        /// Lock ownership token.
+        /// </summary>
+        private readonly string _lockValue;
+
+        /// <summary>
+        /// Gets the token value associated with this local lock handle.
+        /// </summary>
+        internal string TokenValue => _lockValue;
 
         /// <summary>
         /// Flag tracking whether disposal has occurred.
@@ -203,23 +231,96 @@ public sealed class ValkeyLockService : IValkeyLockService
         /// Initializes a new instance of the <see cref="LocalLockToken"/> class.
         /// </summary>
         /// <param name="semaphore">The semaphore to release.</param>
-        public LocalLockToken(SemaphoreSlim semaphore)
+        /// <param name="localLockTokens">The local tokens dictionary.</param>
+        /// <param name="lockKey">The lock key.</param>
+        /// <param name="lockValue">The lock value token.</param>
+        public LocalLockToken(
+            SemaphoreSlim semaphore,
+            ConcurrentDictionary<string, string> localLockTokens,
+            string lockKey,
+            string lockValue)
         {
             _semaphore = semaphore;
+            _localLockTokens = localLockTokens;
+            _lockKey = lockKey;
+            _lockValue = lockValue;
         }
 
         /// <inheritdoc/>
         public ValueTask DisposeAsync()
         {
-            // WHAT: Releases the local semaphore.
-            // WHY:  Allows the next local waiting thread to acquire the lock.
-            // HOW:  Invokes Release on the SemaphoreSlim.
+            // WHAT: Releases the local semaphore after verifying ownership in constant time.
+            // WHY:  Allows the next local waiting thread to acquire the lock and guarantees ownership validity.
+            // HOW:  Validates ownership with FixedTimeEquals, removes key from local dictionary, and releases semaphore.
             if (Interlocked.Exchange(ref _isDisposed, 1) == 0)
             {
-                _semaphore.Release();
+                if (_localLockTokens.TryGetValue(_lockKey, out string? currentToken))
+                {
+                    byte[] expected = Encoding.UTF8.GetBytes(currentToken);
+                    byte[] actual = Encoding.UTF8.GetBytes(_lockValue);
+                    if (CryptographicOperations.FixedTimeEquals(expected, actual))
+                    {
+                        _localLockTokens.TryRemove(_lockKey, out _);
+                        _semaphore.Release();
+                    }
+                }
             }
 
             return ValueTask.CompletedTask;
         }
+    }
+
+    /// <summary>
+    /// Explicitly releases an acquired lock by verifying token ownership before removal.
+    /// </summary>
+    /// <param name="resource">The logical resource name.</param>
+    /// <param name="lockToken">The unique ownership token supplied when acquiring the lock.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns><c>true</c> if the lock was owned and successfully released; otherwise, <c>false</c>.</returns>
+    public async ValueTask<bool> ReleaseLockAsync(string resource, string lockToken, CancellationToken ct = default)
+    {
+        // WHAT: Releases a lock explicitly by validating ownership.
+        // WHY:  Allows callers to release locks via token comparison without holding an IAsyncDisposable instance.
+        // HOW:  Executes atomic Lua script on Valkey; if in-memory, verifies with CryptographicOperations.FixedTimeEquals.
+        ArgumentException.ThrowIfNullOrWhiteSpace(resource);
+        ArgumentException.ThrowIfNullOrWhiteSpace(lockToken);
+
+        string lockKey = LockKeyPrefix + resource;
+        IDatabase? db = _connectionFactory.GetDatabase();
+        if (db != null)
+        {
+            try
+            {
+                RedisResult result = await db.ScriptEvaluateAsync(
+                    ReleaseLuaScript,
+                    new RedisKey[] { lockKey },
+                    new RedisValue[] { lockToken }).ConfigureAwait(false);
+
+                return (int)result == 1;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to execute atomic Lua release for '{LockKey}'.", lockKey);
+            }
+        }
+
+        if (_localLockTokens.TryGetValue(lockKey, out string? currentToken))
+        {
+            byte[] expected = Encoding.UTF8.GetBytes(currentToken);
+            byte[] actual = Encoding.UTF8.GetBytes(lockToken);
+            if (CryptographicOperations.FixedTimeEquals(expected, actual))
+            {
+                if (_localLockTokens.TryRemove(lockKey, out _))
+                {
+                    if (_localLocks.TryGetValue(lockKey, out SemaphoreSlim? sem))
+                    {
+                        sem.Release();
+                    }
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 }

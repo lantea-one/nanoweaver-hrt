@@ -1207,7 +1207,7 @@
         PatientDigitalDnaPackage package = record.ToPackage();
         string json = JsonSerializer.Serialize(package, new JsonSerializerOptions { WriteIndented = true });
         string fileName = $"{record.Username}_dna_{record.Id}.json";
-        await JSRuntime.InvokeVoidAsync("weaverDownloadBlob", fileName, "application/json", json);
+        await JSRuntime.InvokeVoidAsync("weaverDownloadBlob", fileName, json, "application/json");
     }
 
     /// <summary>
@@ -1216,7 +1216,7 @@
     private async Task DownloadImport(PatientDnaImportRecord record)
     {
         string mimeType = record.ImportType == "FASTA" ? "text/plain" : "application/json";
-        await JSRuntime.InvokeVoidAsync("weaverDownloadBlob", record.FileName, mimeType, record.SequenceOrData);
+        await JSRuntime.InvokeVoidAsync("weaverDownloadBlob", record.FileName, record.SequenceOrData, mimeType);
     }
 
     /// <summary>

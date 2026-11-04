@@ -101,13 +101,6 @@ NanoWeaverHrt prohibits ad-hoc DDL in repositories or application startup code. 
 
 ---
 
-## 4. Multi-Engine Client Preferences Storage
-
-User interface preferences, such as selected language (from the 18 community translations) and theme choices, are stored via `LanguagePreferenceService`.
-
-- **Client-Side Cache**: Immediate session reflection in browser `sessionStorage` and `SameSite=Strict` cookie (`weaver_lang`).
-- **Server-Side Persistence**: Synchronized to `weaver_gui_preferences` across any active backend:
-  - SQLite: Local file storage in `weaver_preferences.db`.
-  - PostgreSQL: Enterprise user preferences with UTC timestamping.
-  - DuckDB: In-process analytical preference table.
-  - MySQL: UTF-8mb4 table with atomic upserts on key collision.
+## 5. Migration012_GuiPreferences & DuckDB Sandboxing
+- **`Migration012_GuiPreferences`**: Establishes the `weaver_gui_preferences` table across all 4 database dialects, storing user UI configuration, localization choices, and theme states with transactional safety.
+- **DuckDB Sandboxing**: Enforces `enable_external_access = false` on DuckDB connections to prevent unauthorized local file system traversal or remote network calls during analytical query execution.

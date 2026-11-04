@@ -509,7 +509,7 @@ public sealed class WeaverDbConnectionFactoryTests : IDisposable
         await cmd.ExecuteNonQueryAsync();
 
         await using var ins = conn.CreateCommand();
-        ins.CommandText = "INSERT INTO weaver_schema_migrations (version, name) VALUES (1, '001'), (2, '002'), (3, '003'), (4, '004'), (5, '005'), (6, '006'), (7, '007'), (8, '008'), (9, '009'), (10, '010'), (11, '011');";
+        ins.CommandText = "INSERT INTO weaver_schema_migrations (version, name) VALUES (1, '001'), (2, '002'), (3, '003'), (4, '004'), (5, '005'), (6, '006'), (7, '007'), (8, '008'), (9, '009'), (10, '010'), (11, '011'), (12, '012');";
         await ins.ExecuteNonQueryAsync();
     }
 

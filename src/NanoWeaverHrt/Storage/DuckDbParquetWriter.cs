@@ -50,6 +50,11 @@ public sealed class DuckDbParquetWriter : IParquetTrajectoryWriter
         ArgumentException.ThrowIfNullOrWhiteSpace(destinationParquetPath);
         ArgumentNullException.ThrowIfNull(parser);
 
+        if (destinationParquetPath.Contains(".."))
+        {
+            throw new ArgumentException("Path traversal segments ('..') are prohibited in Parquet output path.", nameof(destinationParquetPath));
+        }
+
         if (!File.Exists(sourceTrajectoryPath))
         {
             throw new FileNotFoundException("Source trajectory file does not exist.", sourceTrajectoryPath);
@@ -180,6 +185,11 @@ public sealed class DuckDbParquetWriter : IParquetTrajectoryWriter
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(parquetFilePath);
 
+        if (parquetFilePath.Contains(".."))
+        {
+            throw new ArgumentException("Path traversal segments ('..') are prohibited in Parquet file path.", nameof(parquetFilePath));
+        }
+
         if (!File.Exists(parquetFilePath))
         {
             throw new FileNotFoundException("Target Parquet file does not exist.", parquetFilePath);
@@ -249,5 +259,53 @@ public sealed class DuckDbParquetWriter : IParquetTrajectoryWriter
         }
 
         return ScaffoldRegionTag;
+    }
+
+    /// <summary>
+    /// Exports trajectory simulation data to an Apache Parquet file, validating against path traversal and ensuring invariant float formatting.
+    /// </summary>
+    /// <param name="sourceTrajectoryPath">The path to the raw source trajectory file.</param>
+    /// <param name="outputFilePath">The target Apache Parquet file path.</param>
+    /// <param name="parser">The trajectory parser extracting coordinate frames.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Total atomic records serialized.</returns>
+    public Task<long> ExportToParquetAsync(
+        string sourceTrajectoryPath,
+        string outputFilePath,
+        ITrajectoryParser parser,
+        CancellationToken cancellationToken = default)
+    {
+        // WHAT: Delegates to ConvertTrajectoryToParquetAsync with strict path traversal checking.
+        // WHY:  Provides a standardized export API validating outputFilePath against traversal attacks.
+        // HOW:  Validates outputFilePath does not contain ".." and passes to ConvertTrajectoryToParquetAsync.
+        ArgumentException.ThrowIfNullOrWhiteSpace(outputFilePath);
+        if (outputFilePath.Contains(".."))
+        {
+            throw new ArgumentException("Path traversal segments ('..') are prohibited in Parquet output path.", nameof(outputFilePath));
+        }
+
+        return ConvertTrajectoryToParquetAsync(sourceTrajectoryPath, outputFilePath, parser, cancellationToken);
+    }
+
+    /// <summary>
+    /// Queries the total record count from a Parquet file, validating against path traversal.
+    /// </summary>
+    /// <param name="parquetFilePath">Path to the Parquet file on disk.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Total number of records stored in the Parquet file.</returns>
+    public Task<long> QueryParquetAsync(
+        string parquetFilePath,
+        CancellationToken cancellationToken = default)
+    {
+        // WHAT: Queries total record count from the specified Parquet file.
+        // WHY:  Ensures internal Parquet query operations validate paths and sandboxing.
+        // HOW:  Validates path traversal segments and delegates to QueryRecordCountAsync.
+        ArgumentException.ThrowIfNullOrWhiteSpace(parquetFilePath);
+        if (parquetFilePath.Contains(".."))
+        {
+            throw new ArgumentException("Path traversal segments ('..') are prohibited in Parquet file path.", nameof(parquetFilePath));
+        }
+
+        return QueryRecordCountAsync(parquetFilePath, cancellationToken);
     }
 }

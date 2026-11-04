@@ -58,4 +58,14 @@ public interface ITrajectoryFederationService
     /// <param name="ct">Cancellation token for aborting the operation.</param>
     /// <returns>A read-only collection of active <see cref="FederationPeerNode"/> instances.</returns>
     Task<IReadOnlyList<FederationPeerNode>> DiscoverPeersAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Reads a slice of a trajectory file directly into caller-provided memory with zero heap allocations.
+    /// </summary>
+    /// <param name="trajectoryFileName">The simple file name of the trajectory dataset to read.</param>
+    /// <param name="offsetBytes">The non-negative byte offset within the file to begin reading from.</param>
+    /// <param name="destination">The destination memory buffer where trajectory bytes will be written.</param>
+    /// <param name="ct">Cancellation token for aborting the operation.</param>
+    /// <returns>The total number of bytes read into <paramref name="destination"/>.</returns>
+    Task<int> ReadChunkIntoAsync(string trajectoryFileName, long offsetBytes, Memory<byte> destination, CancellationToken ct = default);
 }

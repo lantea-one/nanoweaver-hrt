@@ -84,10 +84,35 @@ public sealed class SubjectKeyRepository : ISubjectKeyRepository
     {
         // WHAT: Inserts a new active subject key row if no row exists for the same subject_key.
         // WHY:  Uses ON CONFLICT DO NOTHING so an existing active key or erasure tombstone can never be overwritten.
-        // HOW:  Validates that active key columns are present, then executes a single parameterized INSERT.
-        if (row.IsShredded || row.KeyId is null || row.PublicKeyBase64 is null || row.SealedPrivateKey is null)
+        // HOW:  Validates that active key columns are present, non-empty, and valid Base64, then executes parameterized INSERT.
+        if (row.IsShredded || string.IsNullOrWhiteSpace(row.KeyId) || string.IsNullOrWhiteSpace(row.PublicKeyBase64) || string.IsNullOrWhiteSpace(row.SealedPrivateKey))
         {
             throw new ArgumentException("Active subject key rows must not be shredded and must populate all key columns.", nameof(row));
+        }
+
+        string pubKey = row.PublicKeyBase64;
+        string sealedKey = row.SealedPrivateKey;
+
+        try
+        {
+            Convert.FromBase64String(pubKey.Trim());
+        }
+        catch (FormatException ex)
+        {
+            throw new ArgumentException("SubjectPublicKeyBase64 must be a valid Base64 string.", nameof(row), ex);
+        }
+
+        string dekToValidate = sealedKey.StartsWith("data:application/encrypted;base64,", StringComparison.OrdinalIgnoreCase)
+            ? sealedKey["data:application/encrypted;base64,".Length..].Trim()
+            : sealedKey.Trim();
+
+        try
+        {
+            Convert.FromBase64String(dekToValidate);
+        }
+        catch (FormatException ex)
+        {
+            throw new ArgumentException("WrappedDekBase64 must be a valid Base64 string.", nameof(row), ex);
         }
 
         int affected;
@@ -99,8 +124,8 @@ public sealed class SubjectKeyRepository : ISubjectKeyRepository
             WeaverDbParameters.Add(cmd, "@id", row.SubjectId);
             WeaverDbParameters.Add(cmd, "@kid", row.KeyId);
             WeaverDbParameters.Add(cmd, "@alg", row.Algorithm);
-            WeaverDbParameters.Add(cmd, "@pub", row.PublicKeyBase64);
-            WeaverDbParameters.Add(cmd, "@priv", row.SealedPrivateKey);
+            WeaverDbParameters.Add(cmd, "@pub", pubKey);
+            WeaverDbParameters.Add(cmd, "@priv", sealedKey);
             WeaverDbParameters.Add(cmd, "@c", session.Dialect.TimestampValue(row.CreatedAtUtc));
             affected = await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }

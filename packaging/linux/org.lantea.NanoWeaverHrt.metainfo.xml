@@ -18,12 +18,12 @@
   <launchable type="desktop-id">nanoweaver-hrt-desktop.desktop</launchable>
   <screenshots>
     <screenshot type="default">
-      <image>https://git.lantea.one/fabigail/nanoweaver-hrt/raw/branch/main/docs/assets/screenshot-dashboard.png</image>
+      <image>https://git.lantea.one/lantea-one/nanoweaver-hrt/raw/branch/main/docs/assets/screenshot-dashboard.png</image>
       <caption>NanoWeaver HRT Main Telemetry Dashboard</caption>
     </screenshot>
   </screenshots>
-  <url type="homepage">https://git.lantea.one/fabigail/nanoweaver-hrt</url>
-  <url type="bugtracker">https://git.lantea.one/fabigail/nanoweaver-hrt/issues</url>
+  <url type="homepage">https://git.lantea.one/lantea-one/nanoweaver-hrt</url>
+  <url type="bugtracker">https://git.lantea.one/lantea-one/nanoweaver-hrt/issues</url>
   <content_rating type="oars-1.1"/>
   <releases>
     <release version="2026.10.29.2" date="2026-10-29">

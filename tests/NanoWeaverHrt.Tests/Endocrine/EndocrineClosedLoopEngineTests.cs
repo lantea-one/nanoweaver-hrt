@@ -47,8 +47,8 @@ public sealed class EndocrineClosedLoopEngineTests
         Assert.True(result.TimeToSuppressionHours <= 10.0);
         Assert.True(result.FinalLhIuL < 1.0, $"Expected final LH < 1.0 IU/L but got {result.FinalLhIuL}");
         Assert.True(result.FinalFshIuL < 1.5, $"Expected final FSH < 1.5 IU/L but got {result.FinalFshIuL}");
-        Assert.True(result.FinalEstradiolPmolL > 500.0, $"Expected final E2 > 500 pmol/L but got {result.FinalEstradiolPmolL}");
-        Assert.True(result.FinalTestosteroneNmolL < request.InitialTestosteroneNmolL, "Testosterone should be suppressed from baseline.");
+        Assert.InRange(result.FinalEstradiolPmolL, 545.0, 550.0);
+        Assert.True(result.FinalTestosteroneNmolL <= 1.8, $"Expected final T <= 1.8 nmol/L but got {result.FinalTestosteroneNmolL}");
     }
 
     /// <summary>
@@ -83,8 +83,8 @@ public sealed class EndocrineClosedLoopEngineTests
         Assert.True(result.TimeToSuppressionHours > 0.0);
         Assert.True(result.FinalLhIuL < 1.0, $"Expected final LH < 1.0 IU/L but got {result.FinalLhIuL}");
         Assert.True(result.FinalFshIuL < 1.5, $"Expected final FSH < 1.5 IU/L but got {result.FinalFshIuL}");
-        Assert.True(result.FinalTestosteroneNmolL > 15.0, $"Expected final T > 15 nmol/L but got {result.FinalTestosteroneNmolL}");
-        Assert.True(result.FinalEstradiolPmolL < 100.0, $"Expected final E2 < 100 pmol/L but got {result.FinalEstradiolPmolL}");
+        Assert.InRange(result.FinalTestosteroneNmolL, 19.8, 20.0);
+        Assert.True(result.FinalEstradiolPmolL < 50.0, $"Expected final E2 < 50 pmol/L but got {result.FinalEstradiolPmolL}");
     }
 
     /// <summary>
@@ -306,5 +306,135 @@ public sealed class EndocrineClosedLoopEngineTests
         Assert.NotEmpty(resExample.Points);
         Assert.True(resExample.SteadyStateReached);
         Assert.Equal(5.0, resExample.TimeToSuppressionHours);
+    }
+
+    /// <summary>
+    /// Verifies that calibrated proportional gain eliminates steady-state droop, converging within 1% of target estradiol.
+    /// </summary>
+    [Fact]
+    public void Simulate_Mtf_EliminatesSteadyStateDroop_WithinOnePercent()
+    {
+        // WHAT: Tests feminizing endocrine simulation for steady-state droop elimination.
+        // WHY:  Uncalibrated models drooped by ~8% (509 pmol/L); calibrated gain and feedforward converge to target setpoint (548–550 pmol/L).
+        // HOW:  Runs 72h simulation with target 550.0 pmol/L and asserts droop is strictly less than 1.0%.
+        ClosedLoopSimulationRequest request = new()
+        {
+            InitialEstradiolPmolL = 120.0,
+            InitialTestosteroneNmolL = 18.0,
+            InitialLhIuL = 6.5,
+            InitialFshIuL = 5.0,
+            TargetEstradiolPmolL = 550.0,
+            TargetTestosteroneNmolL = 1.2,
+            TargetState = ToggleState.EstrogenicDominant,
+            TotalHours = 72,
+            StepHours = 1.0,
+            ClearanceMultiplier = 1.0
+        };
+
+        ClosedLoopSimulationResult result = _engine.Simulate(request);
+
+        double droopPercent = Math.Abs(request.TargetEstradiolPmolL - result.FinalEstradiolPmolL) / request.TargetEstradiolPmolL * 100.0;
+        Assert.True(droopPercent < 1.0, $"Expected droop < 1% but got {droopPercent:F3}% (Final E: {result.FinalEstradiolPmolL:F2} pmol/L).");
+        Assert.InRange(result.FinalEstradiolPmolL, 545.0, 550.0);
+        Assert.True(result.FinalTestosteroneNmolL <= 1.8, $"Expected female T range (<= 1.8 nmol/L) but got {result.FinalTestosteroneNmolL:F3} nmol/L.");
+    }
+
+    /// <summary>
+    /// Verifies that calibrated proportional gain eliminates steady-state droop for masculinizing FtM regimens.
+    /// </summary>
+    /// <param name="targetTestosterone">Target testosterone setpoint in nmol/L.</param>
+    [Theory]
+    [InlineData(18.5)]
+    [InlineData(20.0)]
+    public void Simulate_Ftm_EliminatesSteadyStateDroop_WithinOnePercent(double targetTestosterone)
+    {
+        // WHAT: Tests masculinizing endocrine simulation for steady-state droop elimination across standard setpoints.
+        // WHY:  Ensures that autonomous aptamer delivery delivers therapeutic testosterone without persistent deficit.
+        // HOW:  Executes 72h simulation and validates final testosterone is within 1.0% of target setpoint.
+        ClosedLoopSimulationRequest request = new()
+        {
+            InitialEstradiolPmolL = 600.0,
+            InitialTestosteroneNmolL = 1.5,
+            InitialLhIuL = 6.5,
+            InitialFshIuL = 5.0,
+            TargetEstradiolPmolL = 80.0,
+            TargetTestosteroneNmolL = targetTestosterone,
+            TargetState = ToggleState.AndrogenicDominant,
+            TotalHours = 72,
+            StepHours = 1.0,
+            ClearanceMultiplier = 1.0
+        };
+
+        ClosedLoopSimulationResult result = _engine.Simulate(request);
+
+        double droopPercent = Math.Abs(targetTestosterone - result.FinalTestosteroneNmolL) / targetTestosterone * 100.0;
+        Assert.True(droopPercent < 1.0, $"Expected droop < 1% but got {droopPercent:F3}% (Final T: {result.FinalTestosteroneNmolL:F3} nmol/L).");
+        Assert.InRange(result.FinalTestosteroneNmolL, targetTestosterone * 0.99, targetTestosterone);
+        Assert.True(result.FinalEstradiolPmolL < 100.0, $"Expected male E2 range (< 100 pmol/L) but got {result.FinalEstradiolPmolL:F2} pmol/L.");
+    }
+
+    /// <summary>
+    /// Verifies 4th-order Runge-Kutta numerical integration remains unconditionally stable across step sizes.
+    /// </summary>
+    /// <param name="stepHours">Temporal sampling step size in hours.</param>
+    [Theory]
+    [InlineData(0.1)]
+    [InlineData(0.5)]
+    [InlineData(1.0)]
+    [InlineData(2.0)]
+    public void Simulate_NumericalStability_AcrossStepSizes(double stepHours)
+    {
+        // WHAT: Tests RK4 numerical stability across fine and coarse temporal discretization intervals.
+        // WHY:  Verifies that sub-stepping (dt <= 0.05 h) prevents stiffness and numerical divergence.
+        // HOW:  Simulates MtF regimen and asserts non-negative values, target convergence, and steady-state attainment.
+        ClosedLoopSimulationRequest request = new()
+        {
+            InitialEstradiolPmolL = 120.0,
+            InitialTestosteroneNmolL = 18.0,
+            InitialLhIuL = 6.5,
+            InitialFshIuL = 5.0,
+            TargetEstradiolPmolL = 550.0,
+            TargetTestosteroneNmolL = 1.2,
+            TargetState = ToggleState.EstrogenicDominant,
+            TotalHours = 48,
+            StepHours = stepHours
+        };
+
+        ClosedLoopSimulationResult result = _engine.Simulate(request);
+
+        Assert.NotNull(result);
+        Assert.True(result.FinalEstradiolPmolL > 0.0);
+        Assert.True(result.FinalTestosteroneNmolL > 0.0);
+        Assert.True(result.FinalLhIuL > 0.0);
+        Assert.True(result.FinalFshIuL > 0.0);
+        Assert.InRange(result.FinalEstradiolPmolL, 545.0, 550.0);
+    }
+
+    /// <summary>
+    /// Verifies that in Transitioning operational state under suppressed LH, endogenous synthesis follows symmetric suppression.
+    /// </summary>
+    [Fact]
+    public void Simulate_TransitioningState_WithSuppressedLh_ExecutesSymmetricSuppressionBranch()
+    {
+        // WHAT: Tests Transitioning operational state with suppressed baseline gonadotropins (< 1.5 IU/L).
+        // WHY:  Exercises the non-MtF non-FtM baseline suppression branch in ComputeDerivatives.
+        // HOW:  Configures InitialLhIuL = 0.5 IU/L with TargetState = ToggleState.Transitioning.
+        ClosedLoopSimulationRequest request = new()
+        {
+            InitialEstradiolPmolL = 100.0,
+            InitialTestosteroneNmolL = 2.0,
+            InitialLhIuL = 0.5,
+            InitialFshIuL = 1.0,
+            TargetState = ToggleState.Transitioning,
+            TotalHours = 12,
+            StepHours = 1.0
+        };
+
+        ClosedLoopSimulationResult result = _engine.Simulate(request);
+
+        Assert.NotNull(result);
+        Assert.All(result.Points, pt => Assert.Equal(0.0, pt.CarrierReleaseRate));
+        Assert.True(result.FinalEstradiolPmolL > 0.0);
+        Assert.True(result.FinalTestosteroneNmolL > 0.0);
     }
 }

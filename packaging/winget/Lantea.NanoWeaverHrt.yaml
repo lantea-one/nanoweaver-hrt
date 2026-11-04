@@ -1,0 +1,14 @@
+PackageIdentifier: Lantea.NanoWeaverHrt
+PackageVersion: 2026.11.03.1
+PackageName: NanoWeaver HRT Desktop
+Publisher: Lantea
+License: MIT
+ShortDescription: Decentralized Synthetic Biology & DNA Origami Research Platform
+PackageUrl: https://git.lantea.one/lantea-one/nanoweaver-hrt
+Installers:
+  - Architecture: x64
+    InstallerType: nullsoft
+    InstallerUrl: https://git.lantea.one/lantea-one/nanoweaver-hrt/releases/download/v2026.11.03.1/nanoweaver-hrt-desktop-installer.exe
+    InstallerSha256: 0000000000000000000000000000000000000000000000000000000000000000
+ManifestType: singleton
+ManifestVersion: 1.6.0

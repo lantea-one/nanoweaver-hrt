@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using NanoWeaverHrt.Configuration;
 using NanoWeaverHrt.Endocrine;
+using NanoWeaverHrt.Federation;
 using NanoWeaverHrt.Models;
 using NanoWeaverHrt.Security.Authentication;
 using NanoWeaverHrt.Security.ExceptionHandling;
@@ -1266,5 +1267,85 @@ public sealed class ApiRoleGatingAndDisclosureTests : IClassFixture<WebApplicati
         Assert.Equal("Configured by TRAJECTORY_INCOMING_DIR; absolute path withheld.", descriptor);
         Assert.DoesNotContain("/", descriptor);
         Assert.Throws<ArgumentNullException>(() => Program.DescribeStorageLocation(null!));
+    }
+
+    /// <summary>
+    /// Verifies P2P federation endpoints work correctly for active peers, manifest building, verification, and chunk downloads.
+    /// </summary>
+    [Fact]
+    public async Task FederationEndpoints_WorkAsExpected()
+    {
+        // WHAT: Invokes the federation endpoints for peer discovery, manifest operations, and chunk streams.
+        // WHY:  Validates P2P networking and data distribution routes, covering all success and error paths (404, 400, 200).
+        // HOW:  Creates temporary dummy trajectory file in shared-data, tests valid build/chunk, missing file (404), traversal (400), and invalid chunk index.
+        var (adminToken, _, _) = await ProvisionRoleTokensAsync();
+        using HttpClient client = CreateClientWithToken(adminToken);
+
+        // 1. Get active peers
+        var peersResponse = await client.GetAsync("/api/federation/peers");
+        Assert.Equal(HttpStatusCode.OK, peersResponse.StatusCode);
+
+        // Prepare shared data path temp file
+        string sharedDataDir = Path.Combine("simulations", "shared-data");
+        Directory.CreateDirectory(sharedDataDir);
+        string tempFileName = "test_fed_temp.xyz";
+        string tempFilePath = Path.Combine(sharedDataDir, tempFileName);
+        await File.WriteAllTextAsync(tempFilePath, "ATOM 1\nATOM 2\n");
+
+        try
+        {
+            // 2a. Build manifest with missing.xyz -> 404 (covering line 4231)
+            var missingBuildReq = new { TrajectoryFileName = "missing.xyz", NodeId = "node-1", PrivateKeyBase64 = "dGVzdA==", Algorithm = "Ed25519" };
+            var missingBuildRes = await client.PostAsJsonAsync("/api/federation/manifests/build", missingBuildReq);
+            Assert.Equal(HttpStatusCode.NotFound, missingBuildRes.StatusCode);
+
+            // 2b. Build manifest with traversal path -> 400 (covering lines 4233-4235)
+            var traversalBuildReq = new { TrajectoryFileName = "../traversal.xyz", NodeId = "node-1", PrivateKeyBase64 = "dGVzdA==", Algorithm = "Ed25519" };
+            var traversalBuildRes = await client.PostAsJsonAsync("/api/federation/manifests/build", traversalBuildReq);
+            Assert.Equal(HttpStatusCode.BadRequest, traversalBuildRes.StatusCode);
+
+            // 2c. Build manifest with valid temp file -> 200 OK (covering line 4227)
+            var validBuildReq = new { TrajectoryFileName = tempFileName, NodeId = "node-1", PrivateKeyBase64 = "dGVzdA==", Algorithm = "Ed25519" };
+            var validBuildRes = await client.PostAsJsonAsync("/api/federation/manifests/build", validBuildReq);
+            Assert.Equal(HttpStatusCode.OK, validBuildRes.StatusCode);
+
+            // 3. Verify manifest
+            var manifest = new TrajectoryFederationManifest
+            {
+                DatasetName = tempFileName,
+                TotalSizeBytes = 100,
+                ChunkSizeBytes = 100,
+                TotalChunks = 1,
+                SigningNodeId = "node-1",
+                SignatureAlgorithm = "Ed25519",
+                SignatureBase64 = "sig",
+                ManifestTimestampUtc = DateTimeOffset.UtcNow,
+                Chunks = [new TrajectoryChunkDescriptor { ChunkIndex = 0, OffsetBytes = 0, LengthBytes = 100, Sha256Checksum = "abc" }]
+            };
+            var verifyResponse = await client.PostAsJsonAsync("/api/federation/manifests/verify", manifest);
+            Assert.Equal(HttpStatusCode.OK, verifyResponse.StatusCode);
+
+            // 4a. Get chunk for missing file -> 404 (covering line 4274)
+            var missingChunkRes = await client.GetAsync("/api/federation/chunks/missing.xyz?index=0");
+            Assert.Equal(HttpStatusCode.NotFound, missingChunkRes.StatusCode);
+
+            // 4b. Get chunk with path traversal or negative index -> 400 (covering lines 4276-4278)
+            var traversalChunkRes = await client.GetAsync($"/api/federation/chunks/..%2Ftraversal.xyz?index=0");
+            Assert.Equal(HttpStatusCode.BadRequest, traversalChunkRes.StatusCode);
+
+            var negativeIndexChunkRes = await client.GetAsync($"/api/federation/chunks/{tempFileName}?index=-1");
+            Assert.Equal(HttpStatusCode.BadRequest, negativeIndexChunkRes.StatusCode);
+
+            // 4c. Get valid chunk -> 200 OK (covering line 4270)
+            var validChunkRes = await client.GetAsync($"/api/federation/chunks/{tempFileName}?index=0");
+            Assert.Equal(HttpStatusCode.OK, validChunkRes.StatusCode);
+        }
+        finally
+        {
+            if (File.Exists(tempFilePath))
+            {
+                File.Delete(tempFilePath);
+            }
+        }
     }
 }

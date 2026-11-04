@@ -119,12 +119,6 @@ $$
 
 ---
 
-## 4. Clinical Setpoint Targets
-
-| Clinical Metric | Baseline Male (Pre-MtF) | Target MtF (Feminizing) | Baseline Female (Pre-FtM) | Target FtM (Masculinizing) |
-| :--- | :--- | :--- | :--- | :--- |
-| **17β-Estradiol (pmol/L)** | 70 – 150 | **500 – 600** (approx 150 pg/mL) | 200 – 1200 | **< 150** (suppressed) |
-| **Total Testosterone (nmol/L)**| 15.0 – 28.0 | **< 1.8** (deep suppression) | 0.5 – 1.8 | **15.0 – 25.0** (approx 550 ng/dL)|
-| **Luteinizing Hormone (IU/L)** | 2.0 – 8.0 | **< 1.0** (suppressed) | 2.0 – 12.0 | **< 1.0** (suppressed) |
-| **Follicle-Stimulating Hormone**| 1.5 – 7.0 | **< 1.5** (suppressed) | 1.5 – 10.0 | **< 1.5** (suppressed) |
-| **Aptamer Dissociation (Kd)** | N/A | **3.8 nM** (high affinity) | N/A | **4.5 nM** (high affinity) |
+## 5. Closed-Loop Feedforward Clearance Calibration & isMtF Gonadal Suppression
+- **Feedforward Clearance Calibration**: The closed-loop ODE solver incorporates proportional feedback gain (`K_p = 14.0`) combined with steady-state metabolic clearance feedforward terms, ensuring rapid convergence to target endocrine setpoints without integral overshoot or oscillatory rebound.
+- **`isMtF` Gonadal Suppression Kinetics**: The simulation engine evaluates the boolean flag `isMtF` to configure estrogenic dominant target matrices, applying targeted inhibitory Hill coefficients to suppress endogenous testicular testosterone production and luteinizing hormone secretion.

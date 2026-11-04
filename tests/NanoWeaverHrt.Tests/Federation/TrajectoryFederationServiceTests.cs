@@ -12,6 +12,8 @@ using NanoWeaverHrt.Configuration;
 using NanoWeaverHrt.Federation;
 using NanoWeaverHrt.Models;
 using NanoWeaverHrt.Security.Authentication;
+using NanoWeaverHrt.Security.Cryptography;
+using NanoWeaverHrt.Security.Models;
 using NanoWeaverHrt.Security.Secrets;
 using NanoWeaverHrt.Security.Signing;
 using NanoWeaverHrt.Storage;
@@ -103,6 +105,10 @@ public sealed class TrajectoryFederationServiceTests : IDisposable
         _secretStoreMock.Setup(s => s.GetDatasetSigningKey()).Returns(_nodeSeed);
         _configMock.Setup(c => c.GetValueAsync("Storage:TrajectoryIncomingDir", "./simulations/shared-data", It.IsAny<CancellationToken>()))
             .ReturnsAsync(_tempDirectory);
+        string parquetDir = Path.Combine(_tempDirectory, "parquet");
+        Directory.CreateDirectory(parquetDir);
+        _configMock.Setup(c => c.GetValueAsync("Storage:TrajectoryParquetDir", "./simulations/parquet", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(parquetDir);
     }
 
     /// <summary>
@@ -151,7 +157,8 @@ public sealed class TrajectoryFederationServiceTests : IDisposable
     }
 
     /// <summary>
-    /// Verifies <see cref="ITrajectoryFederationService.BuildManifestAsync"/> throws <see cref="FileNotFoundException"/> when file does not exist.
+    /// Verifies <see cref="ITrajectoryFederationService.BuildManifestAsync"/> throws <see cref="FileNotFoundException"/> when file does not exist,
+    /// and throws <see cref="ArgumentException"/> when a rooted or traversing path is passed.
     /// </summary>
     /// <returns>A task representing the asynchronous test.</returns>
     [Fact]
@@ -162,7 +169,7 @@ public sealed class TrajectoryFederationServiceTests : IDisposable
         await Assert.ThrowsAsync<FileNotFoundException>(() => service.BuildManifestAsync("non_existent.xyz"));
 
         string rootedPath = Path.Combine(_tempDirectory, "non_existent_rooted.xyz");
-        await Assert.ThrowsAsync<FileNotFoundException>(() => service.BuildManifestAsync(rootedPath));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.BuildManifestAsync(rootedPath));
     }
 
     /// <summary>
@@ -209,7 +216,7 @@ public sealed class TrajectoryFederationServiceTests : IDisposable
         await File.WriteAllBytesAsync(filePath, payload);
 
         TrajectoryFederationService service = CreateService();
-        TrajectoryFederationManifest manifest = await service.BuildManifestAsync(filePath, chunkSizeBytes: 1000);
+        TrajectoryFederationManifest manifest = await service.BuildManifestAsync("trajectory.xyz", chunkSizeBytes: 1000);
 
         Assert.Equal("trajectory.xyz", manifest.DatasetName);
         Assert.Equal(2500, manifest.TotalSizeBytes);
@@ -276,8 +283,8 @@ public sealed class TrajectoryFederationServiceTests : IDisposable
         string filePath = Path.Combine(_tempDirectory, "data.xyz");
         await File.WriteAllBytesAsync(filePath, new byte[100]);
 
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => service.ReadChunkAsync(filePath, chunkIndex: 1, chunkSizeBytes: 100));
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => service.ReadChunkAsync(filePath, chunkIndex: 2, chunkSizeBytes: 50));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => service.ReadChunkAsync("data.xyz", chunkIndex: 1, chunkSizeBytes: 100));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => service.ReadChunkAsync("data.xyz", chunkIndex: 2, chunkSizeBytes: 50));
     }
 
     /// <summary>
@@ -291,7 +298,7 @@ public sealed class TrajectoryFederationServiceTests : IDisposable
         await File.WriteAllBytesAsync(filePath, []);
 
         TrajectoryFederationService service = CreateService();
-        byte[] chunk = await service.ReadChunkAsync(filePath, chunkIndex: 0, chunkSizeBytes: 1024);
+        byte[] chunk = await service.ReadChunkAsync("empty.xyz", chunkIndex: 0, chunkSizeBytes: 1024);
 
         Assert.Empty(chunk);
     }
@@ -318,7 +325,7 @@ public sealed class TrajectoryFederationServiceTests : IDisposable
         Assert.Equal(100, chunk0.Length);
         Assert.Equal(payload.AsSpan(0, 100).ToArray(), chunk0);
 
-        byte[] chunk1 = await service.ReadChunkAsync(filePath, chunkIndex: 1, chunkSizeBytes: 100);
+        byte[] chunk1 = await service.ReadChunkAsync("sample.xyz", chunkIndex: 1, chunkSizeBytes: 100);
         Assert.Equal(100, chunk1.Length);
         Assert.Equal(payload.AsSpan(100, 100).ToArray(), chunk1);
 
@@ -425,7 +432,7 @@ public sealed class TrajectoryFederationServiceTests : IDisposable
         await File.WriteAllBytesAsync(filePath, [10, 20, 30, 40]);
 
         TrajectoryFederationService service = CreateService();
-        TrajectoryFederationManifest manifest = await service.BuildManifestAsync(filePath, 2);
+        TrajectoryFederationManifest manifest = await service.BuildManifestAsync("valid.xyz", 2);
 
         Assert.True(await service.VerifyManifestAsync(manifest));
 
@@ -753,7 +760,437 @@ public sealed class TrajectoryFederationServiceTests : IDisposable
     /// <summary>
     /// Creates a new <see cref="TrajectoryFederationService"/> instance with test mock dependencies.
     /// </summary>
+    /// <param name="pqcProvider">Optional post-quantum crypto provider.</param>
     /// <returns>A populated service instance.</returns>
-    private TrajectoryFederationService CreateService() =>
-        new(_configMock.Object, _peerRegistryMock.Object, _secretStoreMock.Object, _loggerMock.Object);
+    private TrajectoryFederationService CreateService(IPostQuantumCryptoProvider? pqcProvider = null) =>
+        new(_configMock.Object, _peerRegistryMock.Object, _secretStoreMock.Object, _loggerMock.Object, pqcProvider);
+
+    /// <summary>
+    /// Verifies path-traversal hardening rejects malicious file names with rooted paths, separators, and parent navigation.
+    /// </summary>
+    /// <param name="maliciousName">The malicious trajectory file name payload.</param>
+    /// <returns>A task representing the asynchronous test.</returns>
+    [Theory]
+    [InlineData("../escape.xyz")]
+    [InlineData("..\\escape.xyz")]
+    [InlineData("subdir/nested.xyz")]
+    [InlineData("subdir\\nested.xyz")]
+    [InlineData("/etc/shadow")]
+    [InlineData("C:\\Windows\\System32\\calc.exe")]
+    public async Task PathTraversal_MaliciousFileNames_ThrowArgumentException(string maliciousName)
+    {
+        // WHAT: Tests path traversal attack attempts against trajectory operations.
+        // WHY:  Ensures that directory escape and arbitrary local file system disclosure are prevented.
+        // HOW:  Asserts ArgumentException is thrown across BuildManifestAsync, ReadChunkAsync, and ReadChunkIntoAsync.
+        TrajectoryFederationService service = CreateService();
+        byte[] buffer = new byte[64];
+
+        await Assert.ThrowsAsync<ArgumentException>(() => service.BuildManifestAsync(maliciousName));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.ReadChunkAsync(maliciousName, 0));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.ReadChunkIntoAsync(maliciousName, 0, buffer));
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="TrajectoryFederationService.ReadChunkIntoAsync"/> validates argument parameters.
+    /// </summary>
+    /// <returns>A task representing the asynchronous test.</returns>
+    [Fact]
+    public async Task ReadChunkIntoAsync_InvalidArguments_ThrowsExpectedExceptions()
+    {
+        // WHAT: Tests argument validation in ReadChunkIntoAsync.
+        // WHY:  Protects against null or whitespace paths, negative offsets, and zero-length destination memory.
+        // HOW:  Asserts ArgumentNullException, ArgumentException, and ArgumentOutOfRangeException.
+        TrajectoryFederationService service = CreateService();
+        byte[] buffer = new byte[64];
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => service.ReadChunkIntoAsync(null!, 0, buffer));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.ReadChunkIntoAsync("   ", 0, buffer));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => service.ReadChunkIntoAsync("valid.xyz", -1, buffer));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => service.ReadChunkIntoAsync("valid.xyz", 0, Memory<byte>.Empty));
+    }
+
+    /// <summary>
+    /// Verifies <see cref="TrajectoryFederationService.ReadChunkIntoAsync"/> streams slices with zero heap allocations.
+    /// </summary>
+    /// <returns>A task representing the asynchronous test.</returns>
+    [Fact]
+    public async Task ReadChunkIntoAsync_ValidFile_StreamsChunksCorrectly()
+    {
+        // WHAT: Streams data from disk directly into pre-allocated memory slices.
+        // WHY:  Confirms zero-allocation reading across full and partial chunk slices.
+        // HOW:  Writes test payload, calls ReadChunkIntoAsync, and verifies contents and byte count.
+        byte[] payload = new byte[350];
+        for (int i = 0; i < payload.Length; i++)
+        {
+            payload[i] = (byte)(i * 3 + 1);
+        }
+
+        string filePath = Path.Combine(_tempDirectory, "stream.xyz");
+        await File.WriteAllBytesAsync(filePath, payload);
+
+        TrajectoryFederationService service = CreateService();
+        byte[] buffer = new byte[100];
+
+        // Chunk 0: 100 bytes
+        int bytesRead0 = await service.ReadChunkIntoAsync("stream.xyz", 0, buffer);
+        Assert.Equal(100, bytesRead0);
+        Assert.Equal(payload.AsSpan(0, 100).ToArray(), buffer);
+
+        // Chunk 1: 100 bytes
+        int bytesRead1 = await service.ReadChunkIntoAsync("stream.xyz", 100, buffer);
+        Assert.Equal(100, bytesRead1);
+        Assert.Equal(payload.AsSpan(100, 100).ToArray(), buffer);
+
+        // Chunk 3 (partial): remaining 50 bytes into a 100-byte buffer
+        Array.Clear(buffer);
+        int bytesRead3 = await service.ReadChunkIntoAsync("stream.xyz", 300, buffer);
+        Assert.Equal(50, bytesRead3);
+        Assert.Equal(payload.AsSpan(300, 50).ToArray(), buffer.AsSpan(0, 50).ToArray());
+    }
+
+    /// <summary>
+    /// Verifies <see cref="TrajectoryFederationService.ReadChunkIntoAsync"/> throws <see cref="ArgumentOutOfRangeException"/> when offset is out of bounds.
+    /// </summary>
+    /// <returns>A task representing the asynchronous test.</returns>
+    [Fact]
+    public async Task ReadChunkIntoAsync_OffsetOutOfBounds_ThrowsArgumentOutOfRangeException()
+    {
+        // WHAT: Tests offset boundary checks in ReadChunkIntoAsync.
+        // WHY:  Reading at or beyond file EOF must throw ArgumentOutOfRangeException.
+        // HOW:  Creates 100-byte file and passes offset 100 and offset 200.
+        string filePath = Path.Combine(_tempDirectory, "bounds.xyz");
+        await File.WriteAllBytesAsync(filePath, new byte[100]);
+
+        TrajectoryFederationService service = CreateService();
+        byte[] buffer = new byte[50];
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => service.ReadChunkIntoAsync("bounds.xyz", 100, buffer));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => service.ReadChunkIntoAsync("bounds.xyz", 200, buffer));
+    }
+
+    /// <summary>
+    /// Verifies <see cref="TrajectoryFederationService.ReadChunkIntoAsync"/> throws <see cref="FileNotFoundException"/> when file is missing.
+    /// </summary>
+    /// <returns>A task representing the asynchronous test.</returns>
+    [Fact]
+    public async Task ReadChunkIntoAsync_MissingFile_ThrowsFileNotFoundException()
+    {
+        // WHAT: Tests missing file handling in ReadChunkIntoAsync.
+        // WHY:  Target file not found in allowed directories must throw FileNotFoundException.
+        // HOW:  Requests non-existent file name.
+        TrajectoryFederationService service = CreateService();
+        byte[] buffer = new byte[50];
+
+        await Assert.ThrowsAsync<FileNotFoundException>(() => service.ReadChunkIntoAsync("nonexistent.xyz", 0, buffer));
+    }
+
+    /// <summary>
+    /// Verifies <see cref="TrajectoryFederationService.ReadChunkIntoAsync"/> respects cancellation tokens.
+    /// </summary>
+    /// <returns>A task representing the asynchronous test.</returns>
+    [Fact]
+    public async Task ReadChunkIntoAsync_CancellationTokenCancelled_ThrowsOperationCanceledException()
+    {
+        // WHAT: Tests cancellation token responsiveness during chunk streaming.
+        // WHY:  Swarm node disconnects must cleanly cancel pending disk I/O.
+        // HOW:  Passes canceled token and asserts OperationCanceledException.
+        string filePath = Path.Combine(_tempDirectory, "cancel_stream.xyz");
+        await File.WriteAllBytesAsync(filePath, new byte[100]);
+
+        TrajectoryFederationService service = CreateService();
+        using CancellationTokenSource cts = new();
+        cts.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            service.ReadChunkIntoAsync("cancel_stream.xyz", 0, new byte[50], ct: cts.Token));
+    }
+
+    /// <summary>
+    /// Verifies path resolution falls back to the Parquet directory when file exists in parquet storage root.
+    /// </summary>
+    /// <returns>A task representing the asynchronous test.</returns>
+    [Fact]
+    public async Task ResolveTrajectoryFilePathAsync_ParquetStorageFallback_Succeeds()
+    {
+        // WHAT: Tests resolution of trajectory parquet files from the columnar storage directory.
+        // WHY:  Enables federation swarm synchronization of converted columnar parquet datasets.
+        // HOW:  Creates temporary parquet directory, places parquet dataset there, and reads chunks.
+        string parquetDir = Path.Combine(Path.GetTempPath(), "nw_fed_parquet_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(parquetDir);
+        try
+        {
+            string parquetFile = Path.Combine(parquetDir, "trajectory.parquet");
+            await File.WriteAllBytesAsync(parquetFile, [1, 2, 3, 4, 5, 6, 7, 8]);
+
+            _configMock.Setup(c => c.GetValueAsync("Storage:TrajectoryParquetDir", "./simulations/parquet", It.IsAny<CancellationToken>()))
+                .ReturnsAsync(parquetDir);
+
+            TrajectoryFederationService service = CreateService();
+            byte[] dest = new byte[4];
+            int read = await service.ReadChunkIntoAsync("trajectory.parquet", 0, dest);
+
+            Assert.Equal(4, read);
+            Assert.Equal(new byte[] { 1, 2, 3, 4 }, dest);
+        }
+        finally
+        {
+            if (Directory.Exists(parquetDir))
+            {
+                Directory.Delete(parquetDir, recursive: true);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verifies <see cref="TrajectoryFederationService.VerifyManifestAsync"/> verifies valid ML-DSA-65 post-quantum signatures.
+    /// </summary>
+    /// <param name="algorithmName">The algorithm string to test ("MlDsa65" or "ML-DSA-65").</param>
+    /// <returns>A task representing the asynchronous test.</returns>
+    [Theory]
+    [InlineData("MlDsa65")]
+    [InlineData("ML-DSA-65")]
+    public async Task VerifyManifestAsync_MlDsa65ValidSignature_ReturnsTrue(string algorithmName)
+    {
+        // WHAT: Validates post-quantum ML-DSA-65 manifest digital signature verification.
+        // WHY:  Enables quantum-resistant swarm distribution manifests conforming to NIST FIPS 204.
+        // HOW:  Generates ML-DSA-65 keypair via PostQuantumCryptoProvider, registers active peer key, signs canonical bytes, and asserts VerifyManifestAsync is true.
+        PostQuantumCryptoProvider pqc = new();
+        PqcKeyMaterial keyMaterial = pqc.GenerateSigningKeyPair("peer-node-pqc-1");
+
+        bool normalized = PeerKeyValidation.TryNormalizePublicKey(KeyAlgorithm.MlDsa65, keyMaterial.PublicKeyBase64, out string canonicalBase64, out string keyId);
+        Assert.True(normalized);
+
+        PeerKeyRecord peerRecord = new()
+        {
+            KeyId = keyId,
+            Label = "trusted-pqc-peer",
+            Algorithm = KeyAlgorithm.MlDsa65,
+            PublicKeyBase64 = canonicalBase64,
+            RegisteredBy = "admin",
+            RegisteredAtUtc = DateTimeOffset.UtcNow
+        };
+
+        _peerRegistryMock.Setup(r => r.FindActiveAsync(keyId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(peerRecord);
+
+        TrajectoryFederationManifest unsignedManifest = new()
+        {
+            DatasetName = "pqc_sim.xyz",
+            TotalSizeBytes = 1000,
+            ChunkSizeBytes = 500,
+            TotalChunks = 2,
+            Chunks =
+            [
+                new TrajectoryChunkDescriptor { ChunkIndex = 0, OffsetBytes = 0, LengthBytes = 500, Sha256Checksum = new string('a', 64) },
+                new TrajectoryChunkDescriptor { ChunkIndex = 1, OffsetBytes = 500, LengthBytes = 500, Sha256Checksum = new string('b', 64) }
+            ],
+            SigningNodeId = keyId,
+            SignatureAlgorithm = algorithmName,
+            SignatureBase64 = string.Empty,
+            ManifestTimestampUtc = DateTimeOffset.UtcNow
+        };
+
+        byte[] canonicalBytes = TrajectoryFederationService.ComputeCanonicalBytes(unsignedManifest);
+        Assert.NotNull(keyMaterial.PrivateKeyBase64);
+        PqcSignature signature = pqc.SignData(canonicalBytes, keyMaterial.PrivateKeyBase64!, keyMaterial.KeyId); // Justification: Assert.NotNull above confirms non-null.
+
+        TrajectoryFederationManifest signedManifest = unsignedManifest with { SignatureBase64 = signature.SignatureBase64 };
+
+        TrajectoryFederationService service = CreateService(pqc);
+        bool verified = await service.VerifyManifestAsync(signedManifest);
+
+        Assert.True(verified);
+    }
+
+    /// <summary>
+    /// Verifies <see cref="TrajectoryFederationService.VerifyManifestAsync"/> rejects ML-DSA-65 manifests when peer key is revoked, unknown, or mismatched.
+    /// </summary>
+    /// <returns>A task representing the asynchronous test.</returns>
+    [Fact]
+    public async Task VerifyManifestAsync_MlDsa65InvalidPeerOrSignature_ReturnsFalse()
+    {
+        // WHAT: Tests negative branches in ML-DSA-65 manifest verification.
+        // WHY:  Unknown peers, revoked keys, algorithm mismatches, or tampered signatures must not pass verification.
+        // HOW:  Mocks invalid states in IPeerKeyRegistry and asserts VerifyManifestAsync returns false.
+        PostQuantumCryptoProvider pqc = new();
+        PqcKeyMaterial keyMaterial = pqc.GenerateSigningKeyPair("peer-node-pqc-2");
+        PeerKeyValidation.TryNormalizePublicKey(KeyAlgorithm.MlDsa65, keyMaterial.PublicKeyBase64, out string canonicalBase64, out string keyId);
+
+        TrajectoryFederationManifest manifest = new()
+        {
+            DatasetName = "pqc_sim.xyz",
+            TotalSizeBytes = 500,
+            ChunkSizeBytes = 500,
+            TotalChunks = 1,
+            Chunks = [new TrajectoryChunkDescriptor { ChunkIndex = 0, OffsetBytes = 0, LengthBytes = 500, Sha256Checksum = new string('a', 64) }],
+            SigningNodeId = keyId,
+            SignatureAlgorithm = "MlDsa65",
+            SignatureBase64 = Convert.ToBase64String(new byte[3309]),
+            ManifestTimestampUtc = DateTimeOffset.UtcNow
+        };
+
+        TrajectoryFederationService service = CreateService(pqc);
+
+        // 1. Unknown peer (null)
+        _peerRegistryMock.Setup(r => r.FindActiveAsync(keyId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((PeerKeyRecord?)null);
+        Assert.False(await service.VerifyManifestAsync(manifest));
+
+        // 2. Revoked peer key
+        PeerKeyRecord revokedPeer = new()
+        {
+            KeyId = keyId,
+            Label = "revoked-peer",
+            Algorithm = KeyAlgorithm.MlDsa65,
+            PublicKeyBase64 = canonicalBase64,
+            RegisteredBy = "admin",
+            RegisteredAtUtc = DateTimeOffset.UtcNow.AddDays(-1),
+            RevokedAtUtc = DateTimeOffset.UtcNow,
+            RevokedBy = "admin"
+        };
+        _peerRegistryMock.Setup(r => r.FindActiveAsync(keyId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(revokedPeer);
+        Assert.False(await service.VerifyManifestAsync(manifest));
+
+        // 3. Algorithm mismatch (registered as Ed25519)
+        PeerKeyRecord mismatchedPeer = new()
+        {
+            KeyId = keyId,
+            Label = "mismatched-peer",
+            Algorithm = KeyAlgorithm.Ed25519,
+            PublicKeyBase64 = canonicalBase64,
+            RegisteredBy = "admin",
+            RegisteredAtUtc = DateTimeOffset.UtcNow
+        };
+        _peerRegistryMock.Setup(r => r.FindActiveAsync(keyId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(mismatchedPeer);
+        Assert.False(await service.VerifyManifestAsync(manifest));
+
+        // 4. Invalid signature bytes
+        PeerKeyRecord validPeer = new()
+        {
+            KeyId = keyId,
+            Label = "valid-peer",
+            Algorithm = KeyAlgorithm.MlDsa65,
+            PublicKeyBase64 = canonicalBase64,
+            RegisteredBy = "admin",
+            RegisteredAtUtc = DateTimeOffset.UtcNow
+        };
+        _peerRegistryMock.Setup(r => r.FindActiveAsync(keyId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(validPeer);
+        Assert.False(await service.VerifyManifestAsync(manifest));
+    }
+
+    /// <summary>
+    /// Verifies <see cref="TrajectoryFederationService.VerifyManifestAsync"/> rejects unrecognized signature algorithms.
+    /// </summary>
+    /// <returns>A task representing the asynchronous test.</returns>
+    [Fact]
+    public async Task VerifyManifestAsync_UnrecognizedAlgorithm_ReturnsFalse()
+    {
+        // WHAT: Tests unsupported signature algorithm rejection.
+        // WHY:  Prevents algorithm downgrade and unknown algorithm exploits.
+        // HOW:  Supplies "RSA-4096" and asserts VerifyManifestAsync returns false.
+        TrajectoryFederationManifest manifest = new()
+        {
+            DatasetName = "data.xyz",
+            TotalSizeBytes = 100,
+            ChunkSizeBytes = 100,
+            TotalChunks = 1,
+            Chunks = [new TrajectoryChunkDescriptor { ChunkIndex = 0, OffsetBytes = 0, LengthBytes = 100, Sha256Checksum = new string('c', 64) }],
+            SigningNodeId = "some-id",
+            SignatureAlgorithm = "RSA-4096",
+            SignatureBase64 = "invalid==",
+            ManifestTimestampUtc = DateTimeOffset.UtcNow
+        };
+
+        TrajectoryFederationService service = CreateService();
+        Assert.False(await service.VerifyManifestAsync(manifest));
+    }
+
+    /// <summary>
+    /// Verifies default constructor initializes without an explicit <see cref="IPostQuantumCryptoProvider"/>.
+    /// </summary>
+    [Fact]
+    public void Constructor_DefaultPqcProvider_InitializesSuccessfully()
+    {
+        // WHAT: Tests default optional parameter for IPostQuantumCryptoProvider.
+        // WHY:  Guarantees backwards-compatible dependency injection.
+        // HOW:  Instantiates TrajectoryFederationService with 4 parameters and asserts instance is created.
+        TrajectoryFederationService service = new(
+            _configMock.Object,
+            _peerRegistryMock.Object,
+            _secretStoreMock.Object,
+            _loggerMock.Object);
+
+        Assert.NotNull(service);
+    }
+
+    /// <summary>
+    /// Verifies <see cref="TrajectoryFederationService.BuildManifestAsync"/> throws <see cref="ArgumentException"/> when trajectoryFileName is whitespace.
+    /// </summary>
+    /// <returns>A task representing the asynchronous test.</returns>
+    [Fact]
+    public async Task BuildManifestAsync_WhitespaceFileName_ThrowsArgumentException()
+    {
+        // WHAT: Tests argument validation in path resolution for empty or whitespace file name.
+        // WHY:  Guarantees line coverage and defense against invalid file names.
+        // HOW:  Calls BuildManifestAsync with whitespace and asserts ArgumentException is thrown.
+        TrajectoryFederationService service = CreateService();
+        await Assert.ThrowsAsync<ArgumentException>(() => service.BuildManifestAsync("   ", 1024));
+    }
+
+    /// <summary>
+    /// Verifies <see cref="TrajectoryFederationService.VerifyCanonicalContainment"/> throws <see cref="ArgumentException"/> when path escapes root.
+    /// </summary>
+    [Fact]
+    public void VerifyCanonicalContainment_EscapedPath_ThrowsArgumentException()
+    {
+        // WHAT: Tests defense-in-depth canonical directory containment validation.
+        // WHY:  Ensures attempts to access files outside incoming/parquet roots are deterministically rejected.
+        // HOW:  Passes path outside incoming/parquet directories and verifies ArgumentException is thrown.
+        Assert.Throws<ArgumentException>(() =>
+            TrajectoryFederationService.VerifyCanonicalContainment("/etc/passwd", "/incoming/", "/parquet/", "passwd"));
+    }
+
+    /// <summary>
+    /// Verifies <see cref="TrajectoryFederationService.VerifyManifestAsync"/> returns false when peer public key ID mismatches manifest.
+    /// </summary>
+    /// <returns>A task representing the asynchronous test.</returns>
+    [Fact]
+    public async Task VerifyManifestAsync_MlDsa65_MismatchedKeyIdOrInvalidBase64_ReturnsFalse()
+    {
+        // WHAT: Tests signature rejection when peer key fails normalization or key ID doesn't match manifest.
+        // WHY:  Prevents spoofing and key-substitution attacks.
+        // HOW:  Configures peer key record with invalid base64 and verifies VerifyManifestAsync returns false.
+        string keyId = "mismatched-node";
+        TrajectoryFederationManifest manifest = new()
+        {
+            DatasetName = "data.xyz",
+            TotalSizeBytes = 100,
+            ChunkSizeBytes = 100,
+            TotalChunks = 1,
+            Chunks = [new TrajectoryChunkDescriptor { ChunkIndex = 0, OffsetBytes = 0, LengthBytes = 100, Sha256Checksum = new string('c', 64) }],
+            SigningNodeId = keyId,
+            SignatureAlgorithm = "MlDsa65",
+            SignatureBase64 = "c2lnbmF0dXJl",
+            ManifestTimestampUtc = DateTimeOffset.UtcNow
+        };
+
+        PeerKeyRecord badPeer = new()
+        {
+            KeyId = keyId,
+            Label = "invalid-peer",
+            Algorithm = KeyAlgorithm.MlDsa65,
+            PublicKeyBase64 = "not-valid-base64!!!",
+            RegisteredBy = "admin",
+            RegisteredAtUtc = DateTimeOffset.UtcNow
+        };
+
+        _peerRegistryMock.Setup(r => r.FindActiveAsync(keyId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(badPeer);
+
+        TrajectoryFederationService service = CreateService();
+        Assert.False(await service.VerifyManifestAsync(manifest));
+    }
 }

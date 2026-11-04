@@ -1869,6 +1869,65 @@ Revokes researcher access from a cohort group. Administrator only.
 
 ---
 
+### `GET /api/federation/peers`
+Lists all active P2P swarm federation peers registered in the `IPeerKeyRegistry`.
+
+* **Method**: `GET`
+* **Response Status**: `200 OK` — array of peer node descriptors (`PeerNodeDescriptor`).
+
+---
+
+### `POST /api/federation/manifests/build`
+Builds a cryptographic dataset federation manifest (`TrajectoryFederationManifest`) for a target simulation dataset, signed via local node asymmetric identity (`INodeSecretStore`).
+
+* **Method**: `POST`
+* **Request Payload (JSON)**:
+  ```json
+  {
+    "datasetId": "ds_sim_2026_01",
+    "totalChunks": 128
+  }
+  ```
+* **Response Status**: `201 Created` — `TrajectoryFederationManifest`.
+* **Errors**: `400 Bad Request`, `403 Forbidden`, `404 Not Found`.
+
+---
+
+### `POST /api/federation/manifests/verify`
+Verifies a foreign dataset federation manifest signature against trusted peer laboratories in `IPeerKeyRegistry`.
+
+* **Method**: `POST`
+* **Request Payload (JSON)**:
+  ```json
+  {
+    "manifestId": "mf_019283",
+    "signature": "base64_ed25519_signature..."
+  }
+  ```
+* **Response Status**: `200 OK` — verification status result.
+* **Errors**: `400 Bad Request`, `401 Unauthorized`.
+
+---
+
+### `GET /api/federation/chunks/{fileName}?index={n}`
+Streams a 1 MB content-addressed trajectory chunk (`TrajectoryChunkDescriptor`) for P2P swarm synchronization.
+
+* **Method**: `GET`
+* **Parameters**: `fileName` (string), `index` (integer query param `?index=0`).
+* **Response Status**: `200 OK` — binary chunk stream (`application/octet-stream`).
+* **Errors**: `404 Not Found`.
+
+---
+
+### SystemTelemetry Expanded Fields
+The telemetry response object (`GET /api/system/telemetry`) includes the following hardware and simulation telemetry fields:
+- `CpuUtilizationPercent` (float): Current CPU core utilization percentage.
+- `GpuUtilizationPercent` (float): Active GPU / accelerator utilization percentage (OpenCL / SYCL / CUDA).
+- `GpuTemperatureCelsius` (float): Current GPU die temperature in degrees Celsius.
+- `ActiveSimulationCount` (integer): Number of concurrent active molecular dynamics simulations running in background containers.
+
+---
+
 ## 16. Automated Test Suite Execution & Coverage Gate
 
 We mandate a 100% test pass rate and 100.00% line and branch code coverage across both .NET and JavaScript codebases.

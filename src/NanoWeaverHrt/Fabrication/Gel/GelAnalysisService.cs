@@ -145,10 +145,26 @@ public sealed class GelAnalysisService : IGelAnalysisService
         }
 
         // Compute overall folding success rate across non-ladder experimental lanes
-        var nonLadderLanes = lanes.Where(l => l.LaneNumber != request.LadderLaneNumber).ToList();
-        double overallFoldingSuccessRate = nonLadderLanes.Count > 0
-            ? Math.Round(nonLadderLanes.Average(l => l.MonomerBandYieldPercentage), 1)
-            : Math.Round(lanes.Average(l => l.MonomerBandYieldPercentage), 1);
+        // WHAT: Computes mean monomer band yield across experimental non-ladder lanes without LINQ allocations.
+        // WHY:  Eliminates heap-allocated closures and List<T> instances in high-throughput densitometry pipelines.
+        // HOW:  Accumulates yield sum and non-ladder count using a single sequential loop, falling back to all lanes.
+        double nonLadderSum = 0.0;
+        int nonLadderCount = 0;
+        double allLanesSum = 0.0;
+        for (int i = 0; i < lanes.Count; i++)
+        {
+            double yield = lanes[i].MonomerBandYieldPercentage;
+            allLanesSum += yield;
+            if (lanes[i].LaneNumber != request.LadderLaneNumber)
+            {
+                nonLadderSum += yield;
+                nonLadderCount++;
+            }
+        }
+
+        double overallFoldingSuccessRate = nonLadderCount > 0
+            ? Math.Round(nonLadderSum / nonLadderCount, 1)
+            : Math.Round(allLanesSum / lanes.Count, 1);
 
         string notes = GenerateDiagnosticNotes(lanes, request.LadderLaneNumber, overallFoldingSuccessRate);
 
@@ -522,9 +538,21 @@ public sealed class GelAnalysisService : IGelAnalysisService
 
             // Step 4: Calculate monomer yield percentage
             // The primary monomer band is the dominant band with highest integrated density
-            GelBand? monomerBand = bands.Count > 0
-                ? bands.OrderByDescending(b => b.IntensityIntegratedDensity).First()
-                : null;
+            // WHAT: Identifies the primary monomer band by finding the peak with maximum integrated density.
+            // WHY:  Avoids LINQ OrderByDescending heap allocation of enumerator and sorted buffer.
+            // HOW:  Scans bands linearly tracking the maximum IntensityIntegratedDensity.
+            GelBand? monomerBand = null;
+            if (bands.Count > 0)
+            {
+                monomerBand = bands[0];
+                for (int i = 1; i < bands.Count; i++)
+                {
+                    if (bands[i].IntensityIntegratedDensity > monomerBand.IntensityIntegratedDensity)
+                    {
+                        monomerBand = bands[i];
+                    }
+                }
+            }
 
             double monomerYieldPct = monomerBand != null
                 ? Math.Round((monomerBand.IntensityIntegratedDensity / totalLaneIntensity) * 100.0, 1)
@@ -772,17 +800,28 @@ public sealed class GelAnalysisService : IGelAnalysisService
     /// <returns>Formatted assessment notes string.</returns>
     private static string GenerateDiagnosticNotes(IReadOnlyList<GelLaneAnalysis> lanes, int ladderLaneNum, double overallSuccessRate)
     {
-        // WHAT: Formulates actionable plain-English feedback on gel assembly quality.
+        // WHAT: Formulates actionable plain-English feedback on gel assembly quality without LINQ allocations.
         // WHY:  Assists researchers and wet-lab technicians in diagnosing folding failures or confirming therapeutic readiness.
-        // HOW:  Counts lanes meeting the 65% monomer yield and 25% staple smear thresholds and formats advisory guidance.
-        var experimentalLanes = lanes.Where(l => l.LaneNumber != ladderLaneNum).ToList();
-        if (experimentalLanes.Count == 0)
+        // HOW:  Counts experimental lanes and acceptable folding lanes via a single sequential loop.
+        int total = 0;
+        int passed = 0;
+        for (int i = 0; i < lanes.Count; i++)
+        {
+            GelLaneAnalysis lane = lanes[i];
+            if (lane.LaneNumber != ladderLaneNum)
+            {
+                total++;
+                if (lane.FoldingQualityAcceptable)
+                {
+                    passed++;
+                }
+            }
+        }
+
+        if (total == 0)
         {
             return "Reference ladder analysis complete. Zero experimental nanocarrier lanes present on the gel.";
         }
-
-        int passed = experimentalLanes.Count(l => l.FoldingQualityAcceptable);
-        int total = experimentalLanes.Count;
 
         if (passed == total)
         {
@@ -794,7 +833,7 @@ public sealed class GelAnalysisService : IGelAnalysisService
             return $"{passed}/{total} experimental lanes met acceptable folding criteria. Mean monomer yield: {overallSuccessRate:F1}%. Elevated unannealed staple smear or concatemer multimer formation detected in {total - passed} lane(s). Verify staple molar excess ratio and magnesium concentration.";
         }
 
-        return $"Suboptimal folding quality across all {total} experimental lanes. Mean monomer yield ({overallSuccessRate:F1}%) fell below the 65.0% threshold. Recommended corrective action: optimize Mg2+ concentration (12.5 mM to 20 mM) and reduce thermal cooling ramp rate (1.0°C/min or slower).";
+        return $"Suboptimal folding quality across all {total} experimental lanes. Mean monomer yield ({overallSuccessRate:F1}%) fell below the 65.0% threshold. Recommended corrective action: optimize Mg²⁺ concentration (11–12.5 mM) and reduce thermal cooling ramp rate (1.0°C/min or slower).";
     }
 
     /// <summary>

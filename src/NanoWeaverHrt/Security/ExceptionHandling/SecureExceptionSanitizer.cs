@@ -29,6 +29,11 @@ public static class SecureExceptionSanitizer
     private static readonly Regex PemKeyRegex = new(@"-----BEGIN[^\-]+-----[A-Za-z0-9+/=\s]+-----END[^\-]+-----", RegexOptions.Compiled);
 
     /// <summary>
+    /// Regular expression matching Bearer authentication tokens.
+    /// </summary>
+    private static readonly Regex BearerTokenRegex = new(@"Bearer\s+[A-Za-z0-9_\-\.\~+\/]+=*", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    /// <summary>
     /// Regular expression matching UNC network share paths such as '\\fileserver\weaver-data\patients'.
     /// </summary>
     /// <remarks>
@@ -76,6 +81,7 @@ public static class SecureExceptionSanitizer
 
         string sanitized = message;
         sanitized = PemKeyRegex.Replace(sanitized, "[REDACTED_KEY]");
+        sanitized = BearerTokenRegex.Replace(sanitized, "Bearer [REDACTED]");
         sanitized = ConnectionStringRegex.Replace(sanitized, "$1=[REDACTED]");
         sanitized = SqlFragmentRegex.Replace(sanitized, "[REDACTED_SQL]");
         sanitized = UncPathRegex.Replace(sanitized, "[REDACTED_PATH]");

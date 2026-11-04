@@ -138,12 +138,20 @@ class SimulationDaemonHandler(BaseHTTPRequestHandler):
             return
 
         if path in ("/telemetry", "/api/system/telemetry"):
+            shm_size = "4 GB Host Shared Memory"
+            if os.path.exists("/dev/shm"):
+                try:
+                    st = os.statvfs("/dev/shm")
+                    shm_size = f"{round((st.f_blocks * st.f_frsize) / (1024**3), 1)} GB Shared Memory"
+                except Exception:
+                    pass
+
             data = {
                 "status": "Healthy",
                 "accelerator": os.environ.get("ACCELERATOR_BACKEND", "Intel iGPU / OpenCL (Default)"),
                 "devices": get_opencl_telemetry(),
                 "driNodes": get_dri_devices(),
-                "shmSize": "4 GB Host Shared Memory",
+                "shmSize": shm_size,
                 "timestampUtc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             }
             self._send_json_response(200, data)
