@@ -22,6 +22,7 @@ using NanoWeaverHrt.Security.Access;
 using NanoWeaverHrt.Security.Authentication;
 using NanoWeaverHrt.Security.Models;
 using NanoWeaverHrt.Services.Stack;
+using NanoWeaverHrt.Simulations.Models;
 using Xunit;
 
 namespace NanoWeaverHrt.Tests.Client;
@@ -3665,6 +3666,185 @@ public sealed class NanoWeaverNodeClientTests : IDisposable
         Assert.NotNull(genomicResult.AdjustedEndocrineProfile);
         Assert.NotNull(genomicResult.ToString());
         Assert.Equal(genomicResult, genomicResult with { });
+    }
+
+    /// <summary>
+    /// Verifies RunSerumStabilityAsync, RunAptamerGatingAsync, RunPayloadLeakageAsync, and RunPbpkSimulationAsync nominal and error paths.
+    /// </summary>
+    [Fact]
+    public async Task SimulationCampaignEndpoints_NominalAndErrors_BehavesExpectedly()
+    {
+        // WHAT: Tests simulation execution endpoints: serum stability, aptamer gating, payload leakage, and PBPK endocrine.
+        // WHY:  Guarantees 100% test coverage and error validation across all simulation campaign REST calls.
+        // HOW:  Stubs endpoints with example DTOs, asserts deserialization, tests HTTP errors, empty bodies, and argument guards.
+
+        // 1. RunSerumStabilityAsync
+        SerumStabilityAnalysisResult serumExample = new SerumStabilityAnalysisResult
+        {
+            ScaffoldName = "M13mp18",
+            TemperatureCelsius = 37.0,
+            DivalentMagnesiumMilliMolar = 0.8,
+            AverageRmsfNm = 0.8,
+            MaxCrossoverRmsfNm = 1.1,
+            DebyeScreeningLengthNm = 0.7,
+            StructuralIntegrityScore = 0.9,
+            CompromisedCrossoverCount = 0,
+            TotalCrossoverCount = 180,
+            Verdict = "OK",
+            RecommendedStabilization = "None",
+            VulnerableCrossovers = [],
+            RmsfProfilePoints = [0.5]
+        }.GetExamples();
+        _httpHandler.SetResponse("/api/simulations/run/serum-stability", HttpStatusCode.OK, JsonSerializer.Serialize(serumExample));
+        SerumStabilityRequest serumReq = new SerumStabilityRequest().GetExamples();
+        SerumStabilityAnalysisResult serumRes = await _client.RunSerumStabilityAsync(_localProfile, "test_token", serumReq);
+        Assert.NotNull(serumRes);
+        Assert.Equal(serumExample.StructuralIntegrityScore, serumRes.StructuralIntegrityScore);
+
+        _httpHandler.SetResponse("/api/simulations/run/serum-stability", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.RunSerumStabilityAsync(_localProfile, "test_token", serumReq));
+        _httpHandler.SetResponse("/api/simulations/run/serum-stability", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.RunSerumStabilityAsync(_localProfile, "test_token", serumReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.RunSerumStabilityAsync(null!, "test_token", serumReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.RunSerumStabilityAsync(_localProfile, "", serumReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.RunSerumStabilityAsync(_localProfile, "test_token", null!));
+
+        // 2. RunAptamerGatingAsync
+        AptamerGatingAnalysisResult aptamerExample = new AptamerGatingAnalysisResult
+        {
+            TargetReceptor = "R",
+            TargetGonadotropin = "LH",
+            UnboundOpeningFreeEnergyKcalMol = 9.0,
+            BoundOpeningFreeEnergyKcalMol = -2.0,
+            AllostericSwitchDeltaKcalMol = -11.0,
+            GnRhReceptorContactRatio = 0.85,
+            EstimatedKdNanoMolar = 4.0,
+            GatingVerdict = "OK",
+            TropismVerdict = "OK",
+            PmfCurve = []
+        }.GetExamples();
+        _httpHandler.SetResponse("/api/simulations/run/aptamer-gating", HttpStatusCode.OK, JsonSerializer.Serialize(aptamerExample));
+        AptamerGatingRequest aptamerReq = new AptamerGatingRequest().GetExamples();
+        AptamerGatingAnalysisResult aptamerRes = await _client.RunAptamerGatingAsync(_localProfile, "test_token", aptamerReq);
+        Assert.NotNull(aptamerRes);
+        Assert.Equal(aptamerExample.GnRhReceptorContactRatio, aptamerRes.GnRhReceptorContactRatio);
+
+        _httpHandler.SetResponse("/api/simulations/run/aptamer-gating", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.RunAptamerGatingAsync(_localProfile, "test_token", aptamerReq));
+        _httpHandler.SetResponse("/api/simulations/run/aptamer-gating", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.RunAptamerGatingAsync(_localProfile, "test_token", aptamerReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.RunAptamerGatingAsync(null!, "test_token", aptamerReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.RunAptamerGatingAsync(_localProfile, "", aptamerReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.RunAptamerGatingAsync(_localProfile, "test_token", null!));
+
+        // 3. RunPayloadLeakageAsync
+        PayloadLeakageAnalysisResult leakageExample = new PayloadLeakageAnalysisResult
+        {
+            ChassisGeometry = "Nanotube",
+            HormoneMolecule = "E2",
+            CavityFunctionalization = "Cyclodextrin",
+            RetentionPercentageClosed = 98.6,
+            PassiveLeakagePercentage = 1.4,
+            ReleaseRatePerMinuteOpen = 8.4,
+            EncapsulationCapacityMolecules = 48,
+            MaxDailyDeliveryNanomoles = 1.25,
+            LeakageVerdict = "OK",
+            RetentionCurve = []
+        }.GetExamples();
+        _httpHandler.SetResponse("/api/simulations/run/payload-leakage", HttpStatusCode.OK, JsonSerializer.Serialize(leakageExample));
+        PayloadLeakageRequest leakageReq = new PayloadLeakageRequest().GetExamples();
+        PayloadLeakageAnalysisResult leakageRes = await _client.RunPayloadLeakageAsync(_localProfile, "test_token", leakageReq);
+        Assert.NotNull(leakageRes);
+        Assert.Equal(leakageExample.RetentionPercentageClosed, leakageRes.RetentionPercentageClosed);
+
+        _httpHandler.SetResponse("/api/simulations/run/payload-leakage", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.RunPayloadLeakageAsync(_localProfile, "test_token", leakageReq));
+        _httpHandler.SetResponse("/api/simulations/run/payload-leakage", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.RunPayloadLeakageAsync(_localProfile, "test_token", leakageReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.RunPayloadLeakageAsync(null!, "test_token", leakageReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.RunPayloadLeakageAsync(_localProfile, "", leakageReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.RunPayloadLeakageAsync(_localProfile, "test_token", null!));
+
+        // 4. RunPbpkSimulationAsync
+        PbpkEndocrineSimulationResult pbpkExample = new PbpkEndocrineSimulationResult
+        {
+            PatientId = "P1",
+            Regimen = TherapeuticRegimen.MaleToFemale,
+            SimulationDurationDays = 90,
+            DepotDoseMg = 25.0,
+            AverageSteadyStateEstradiolPmolL = 500.0,
+            AverageSteadyStateTestosteroneNmolL = 1.0,
+            AverageLhIuL = 2.0,
+            TimeInTargetRangePercent = 95.0,
+            TargetSuppressionAchieved = true,
+            ThromboticSurgeDetected = false,
+            RecommendedDosingIntervalDays = 180,
+            ClinicalFeasibilityVerdict = "OK",
+            OrganBiodistributionSummary = "Summary",
+            DailyKinetics = []
+        }.GetExamples();
+        _httpHandler.SetResponse("/api/simulations/run/pbpk-endocrine", HttpStatusCode.OK, JsonSerializer.Serialize(pbpkExample));
+        PbpkSimulationRequest pbpkReq = new PbpkSimulationRequest().GetExamples();
+        PbpkEndocrineSimulationResult pbpkRes = await _client.RunPbpkSimulationAsync(_localProfile, "test_token", pbpkReq);
+        Assert.NotNull(pbpkRes);
+        Assert.Equal(pbpkExample.AverageSteadyStateEstradiolPmolL, pbpkRes.AverageSteadyStateEstradiolPmolL);
+
+        _httpHandler.SetResponse("/api/simulations/run/pbpk-endocrine", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.RunPbpkSimulationAsync(_localProfile, "test_token", pbpkReq));
+        _httpHandler.SetResponse("/api/simulations/run/pbpk-endocrine", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.RunPbpkSimulationAsync(_localProfile, "test_token", pbpkReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.RunPbpkSimulationAsync(null!, "test_token", pbpkReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.RunPbpkSimulationAsync(_localProfile, "", pbpkReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.RunPbpkSimulationAsync(_localProfile, "test_token", null!));
+    }
+
+    /// <summary>
+    /// Verifies ExchangeWebTokenAsync and GetHealthzAsync nominal and error paths.
+    /// </summary>
+    [Fact]
+    public async Task WebTokenAndHealthzEndpoints_NominalAndErrors_BehavesExpectedly()
+    {
+        // WHAT: Tests web challenge-token exchange (/api/auth/web-token) and cluster liveness health (/healthz).
+        // WHY:  Guarantees 100% test coverage and error validation across session and liveness routes.
+        // HOW:  Stubs endpoints with example DTOs, asserts deserialization, tests HTTP errors, empty bodies, and argument guards.
+
+        // 1. ExchangeWebTokenAsync
+        AuthTokenResponse tokenExample = new AuthTokenResponse().GetExamples();
+        _httpHandler.SetResponse("/api/auth/web-token", HttpStatusCode.OK, JsonSerializer.Serialize(tokenExample));
+        TokenExchangeRequest exchangeReq = new TokenExchangeRequest().GetExamples();
+        AuthTokenResponse tokenRes = await _client.ExchangeWebTokenAsync(_localProfile, exchangeReq);
+        Assert.NotNull(tokenRes);
+        Assert.Equal(tokenExample.Token, tokenRes.Token);
+
+        _httpHandler.SetResponse("/api/auth/web-token", HttpStatusCode.Unauthorized, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.ExchangeWebTokenAsync(_localProfile, exchangeReq));
+        _httpHandler.SetResponse("/api/auth/web-token", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.ExchangeWebTokenAsync(_localProfile, exchangeReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.ExchangeWebTokenAsync(null!, exchangeReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.ExchangeWebTokenAsync(_localProfile, null!));
+
+        // 2. GetHealthzAsync
+        SystemHealthOverview healthExample = new()
+        {
+            Status = "Healthy",
+            TimestampUtc = DateTimeOffset.UtcNow,
+            Version = "1.0.0",
+            Uptime = "0d 4h 12m 30s",
+            UptimeSeconds = 15150.0,
+            SetupRequired = false,
+            AuthenticatedSession = false,
+            Description = "High-level system health status."
+        };
+        _httpHandler.SetResponse("/healthz", HttpStatusCode.OK, JsonSerializer.Serialize(healthExample));
+        SystemHealthOverview healthRes = await _client.GetHealthzAsync(_localProfile);
+        Assert.NotNull(healthRes);
+        Assert.Equal(healthExample.Status, healthRes.Status);
+
+        _httpHandler.SetResponse("/healthz", HttpStatusCode.ServiceUnavailable, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetHealthzAsync(_localProfile));
+        _httpHandler.SetResponse("/healthz", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.GetHealthzAsync(_localProfile));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetHealthzAsync(null!));
     }
 
     /// <summary>

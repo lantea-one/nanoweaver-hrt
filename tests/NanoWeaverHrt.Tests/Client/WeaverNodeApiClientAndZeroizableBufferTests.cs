@@ -18,6 +18,7 @@ using NanoWeaverHrt.Security.Access;
 using NanoWeaverHrt.Security.Authentication;
 using NanoWeaverHrt.Security.Models;
 using NanoWeaverHrt.Services.Stack;
+using NanoWeaverHrt.Simulations.Models;
 using NanoWeaverHrt;
 using Xunit;
 
@@ -679,6 +680,88 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         innerMock.Setup(i => i.GetFederationChunkAsync(profile, "explicit_token", "traj.xyz", null, It.IsAny<CancellationToken>())).ReturnsAsync(dummyBytes);
         innerMock.Setup(i => i.GetFederationChunkAsync(profile, "cached_token", "traj.xyz", null, It.IsAny<CancellationToken>())).ReturnsAsync(dummyBytes);
 
+        var sampleSerumReq = new SerumStabilityRequest().GetExamples();
+        var sampleSerumRes = new SerumStabilityAnalysisResult
+        {
+            ScaffoldName = "M13mp18",
+            TemperatureCelsius = 37.0,
+            DivalentMagnesiumMilliMolar = 0.8,
+            AverageRmsfNm = 0.8,
+            MaxCrossoverRmsfNm = 1.1,
+            DebyeScreeningLengthNm = 0.7,
+            StructuralIntegrityScore = 0.9,
+            CompromisedCrossoverCount = 0,
+            TotalCrossoverCount = 180,
+            Verdict = "OK",
+            RecommendedStabilization = "None",
+            VulnerableCrossovers = [],
+            RmsfProfilePoints = [0.5]
+        }.GetExamples();
+        innerMock.Setup(i => i.RunSerumStabilityAsync(profile, "explicit_token", sampleSerumReq, It.IsAny<CancellationToken>())).ReturnsAsync(sampleSerumRes);
+        innerMock.Setup(i => i.RunSerumStabilityAsync(profile, "cached_token", sampleSerumReq, It.IsAny<CancellationToken>())).ReturnsAsync(sampleSerumRes);
+
+        var sampleAptamerReq = new AptamerGatingRequest().GetExamples();
+        var sampleAptamerRes = new AptamerGatingAnalysisResult
+        {
+            TargetReceptor = "R",
+            TargetGonadotropin = "LH",
+            UnboundOpeningFreeEnergyKcalMol = 9.0,
+            BoundOpeningFreeEnergyKcalMol = -2.0,
+            AllostericSwitchDeltaKcalMol = -11.0,
+            GnRhReceptorContactRatio = 0.85,
+            EstimatedKdNanoMolar = 4.0,
+            GatingVerdict = "OK",
+            TropismVerdict = "OK",
+            PmfCurve = []
+        }.GetExamples();
+        innerMock.Setup(i => i.RunAptamerGatingAsync(profile, "explicit_token", sampleAptamerReq, It.IsAny<CancellationToken>())).ReturnsAsync(sampleAptamerRes);
+        innerMock.Setup(i => i.RunAptamerGatingAsync(profile, "cached_token", sampleAptamerReq, It.IsAny<CancellationToken>())).ReturnsAsync(sampleAptamerRes);
+
+        var sampleLeakageReq = new PayloadLeakageRequest().GetExamples();
+        var sampleLeakageRes = new PayloadLeakageAnalysisResult
+        {
+            ChassisGeometry = "Nanotube",
+            HormoneMolecule = "E2",
+            CavityFunctionalization = "Cyclodextrin",
+            RetentionPercentageClosed = 98.6,
+            PassiveLeakagePercentage = 1.4,
+            ReleaseRatePerMinuteOpen = 8.4,
+            EncapsulationCapacityMolecules = 48,
+            MaxDailyDeliveryNanomoles = 1.25,
+            LeakageVerdict = "OK",
+            RetentionCurve = []
+        }.GetExamples();
+        innerMock.Setup(i => i.RunPayloadLeakageAsync(profile, "explicit_token", sampleLeakageReq, It.IsAny<CancellationToken>())).ReturnsAsync(sampleLeakageRes);
+        innerMock.Setup(i => i.RunPayloadLeakageAsync(profile, "cached_token", sampleLeakageReq, It.IsAny<CancellationToken>())).ReturnsAsync(sampleLeakageRes);
+
+        var samplePbpkReq = new PbpkSimulationRequest().GetExamples();
+        var samplePbpkRes = new PbpkEndocrineSimulationResult
+        {
+            PatientId = "P1",
+            Regimen = TherapeuticRegimen.MaleToFemale,
+            SimulationDurationDays = 90,
+            DepotDoseMg = 25.0,
+            AverageSteadyStateEstradiolPmolL = 500.0,
+            AverageSteadyStateTestosteroneNmolL = 1.0,
+            AverageLhIuL = 2.0,
+            TimeInTargetRangePercent = 95.0,
+            TargetSuppressionAchieved = true,
+            ThromboticSurgeDetected = false,
+            RecommendedDosingIntervalDays = 180,
+            ClinicalFeasibilityVerdict = "OK",
+            OrganBiodistributionSummary = "Summary",
+            DailyKinetics = []
+        }.GetExamples();
+        innerMock.Setup(i => i.RunPbpkSimulationAsync(profile, "explicit_token", samplePbpkReq, It.IsAny<CancellationToken>())).ReturnsAsync(samplePbpkRes);
+        innerMock.Setup(i => i.RunPbpkSimulationAsync(profile, "cached_token", samplePbpkReq, It.IsAny<CancellationToken>())).ReturnsAsync(samplePbpkRes);
+
+        var sampleWebTokenReq = new TokenExchangeRequest().GetExamples();
+        var sampleWebTokenRes = new AuthTokenResponse().GetExamples();
+        innerMock.Setup(i => i.ExchangeWebTokenAsync(profile, sampleWebTokenReq, It.IsAny<CancellationToken>())).ReturnsAsync(sampleWebTokenRes);
+
+        var sampleHealthzRes = sampleHealth;
+        innerMock.Setup(i => i.GetHealthzAsync(profile, It.IsAny<CancellationToken>())).ReturnsAsync(sampleHealthzRes);
+
         using var client = new WeaverNodeApiClient(innerMock.Object);
 
         // 1. Missing token without cache throws InvalidOperationException
@@ -777,6 +860,10 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.ApplyGenomicAdjustmentsAsync(profile, "", sampleGenomicReq));
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.DownloadOpentronsScriptAsync(profile, "", sampleOpentronsReq));
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetFederationChunkAsync(profile, "", "traj.xyz"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.RunSerumStabilityAsync(profile, "", sampleSerumReq));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.RunAptamerGatingAsync(profile, "", sampleAptamerReq));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.RunPayloadLeakageAsync(profile, "", sampleLeakageReq));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.RunPbpkSimulationAsync(profile, "", samplePbpkReq));
 
         // 2. Call with explicit token
         var snapRes1 = await client.PollSnapshotAsync(profile, "explicit_token");
@@ -1057,6 +1144,24 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         var chunk1 = await client.GetFederationChunkAsync(profile, "explicit_token", "traj.xyz");
         Assert.Equal(dummyBytes, chunk1);
 
+        var serum1 = await client.RunSerumStabilityAsync(profile, "explicit_token", sampleSerumReq);
+        Assert.Equal(sampleSerumRes.StructuralIntegrityScore, serum1.StructuralIntegrityScore);
+
+        var apt1 = await client.RunAptamerGatingAsync(profile, "explicit_token", sampleAptamerReq);
+        Assert.Equal(sampleAptamerRes.GnRhReceptorContactRatio, apt1.GnRhReceptorContactRatio);
+
+        var leak1 = await client.RunPayloadLeakageAsync(profile, "explicit_token", sampleLeakageReq);
+        Assert.Equal(sampleLeakageRes.RetentionPercentageClosed, leak1.RetentionPercentageClosed);
+
+        var pbpk1 = await client.RunPbpkSimulationAsync(profile, "explicit_token", samplePbpkReq);
+        Assert.Equal(samplePbpkRes.AverageSteadyStateEstradiolPmolL, pbpk1.AverageSteadyStateEstradiolPmolL);
+
+        var web1 = await client.ExchangeWebTokenAsync(profile, sampleWebTokenReq);
+        Assert.Equal(sampleWebTokenRes.Token, web1.Token);
+
+        var healthz1 = await client.GetHealthzAsync(profile);
+        Assert.Equal(sampleHealthzRes.Status, healthz1.Status);
+
         // 3. Set cached token and call with empty token argument
         client.SetSessionToken("cached_token");
 
@@ -1335,6 +1440,18 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         var chunk2 = await client.GetFederationChunkAsync(profile, "", "traj.xyz");
         Assert.Equal(dummyBytes, chunk2);
 
+        var serum2 = await client.RunSerumStabilityAsync(profile, "", sampleSerumReq);
+        Assert.Equal(sampleSerumRes.StructuralIntegrityScore, serum2.StructuralIntegrityScore);
+
+        var apt2 = await client.RunAptamerGatingAsync(profile, "", sampleAptamerReq);
+        Assert.Equal(sampleAptamerRes.GnRhReceptorContactRatio, apt2.GnRhReceptorContactRatio);
+
+        var leak2 = await client.RunPayloadLeakageAsync(profile, "", sampleLeakageReq);
+        Assert.Equal(sampleLeakageRes.RetentionPercentageClosed, leak2.RetentionPercentageClosed);
+
+        var pbpk2 = await client.RunPbpkSimulationAsync(profile, "", samplePbpkReq);
+        Assert.Equal(samplePbpkRes.AverageSteadyStateEstradiolPmolL, pbpk2.AverageSteadyStateEstradiolPmolL);
+
         // 4. Set whitespace token buffer to exercise whitespace fallback exception
         using var whitespaceBuf = ZeroizableSecretBuffer.FromUtf8("   ");
         client.SetSessionToken(whitespaceBuf);
@@ -1367,6 +1484,11 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         InitialSetupRequest sampleSetupReq = new InitialSetupRequest().GetExamples();
         GenomicAnalysisRequest sampleGenomicReq = new GenomicAnalysisRequest().GetExamples();
         GenerateOpentronsScriptRequest sampleOpentronsReq = new GenerateOpentronsScriptRequest { SequenceOrSampleId = "s1" }.GetExamples();
+        var sampleSerumReq = new SerumStabilityRequest().GetExamples();
+        var sampleAptamerReq = new AptamerGatingRequest().GetExamples();
+        var sampleLeakageReq = new PayloadLeakageRequest().GetExamples();
+        var samplePbpkReq = new PbpkSimulationRequest().GetExamples();
+        var sampleWebTokenReq = new TokenExchangeRequest().GetExamples();
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.AuthenticateAsync(profile, "pass".ToCharArray()));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.PollSnapshotAsync(profile, "token"));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.StartSimulationCampaignAsync(profile, "token", "serum-stability"));
@@ -1467,5 +1589,11 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ApplyGenomicAdjustmentsAsync(profile, "token", sampleGenomicReq));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.DownloadOpentronsScriptAsync(profile, "token", sampleOpentronsReq));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetFederationChunkAsync(profile, "token", "traj.xyz"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.RunSerumStabilityAsync(profile, "token", sampleSerumReq));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.RunAptamerGatingAsync(profile, "token", sampleAptamerReq));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.RunPayloadLeakageAsync(profile, "token", sampleLeakageReq));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.RunPbpkSimulationAsync(profile, "token", samplePbpkReq));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ExchangeWebTokenAsync(profile, sampleWebTokenReq));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetHealthzAsync(profile));
     }
 }

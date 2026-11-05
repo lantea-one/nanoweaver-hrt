@@ -16,6 +16,7 @@ using NanoWeaverHrt.Security.Access;
 using NanoWeaverHrt.Security.Authentication;
 using NanoWeaverHrt.Security.Models;
 using NanoWeaverHrt.Services.Stack;
+using NanoWeaverHrt.Simulations.Models;
 using NanoWeaverHrt;
 
 namespace NanoWeaverHrt.Client.Api;
@@ -1667,6 +1668,91 @@ public sealed class WeaverNodeApiClient : INanoWeaverNodeClient, IDisposable
         ThrowIfDisposed();
         string effectiveToken = ResolveBearerToken(bearerToken);
         return _innerClient.GetFederationChunkAsync(profile, effectiveToken, fileName, chunkIndex, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<SerumStabilityAnalysisResult> RunSerumStabilityAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        SerumStabilityRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/simulations/run/serum-stability using provided or cached session token.
+        // WHY:  Allows running serum stability simulation campaign with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.RunSerumStabilityAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.RunSerumStabilityAsync(profile, effectiveToken, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<AptamerGatingAnalysisResult> RunAptamerGatingAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        AptamerGatingRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/simulations/run/aptamer-gating using provided or cached session token.
+        // WHY:  Allows running aptamer gating conformational simulation with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.RunAptamerGatingAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.RunAptamerGatingAsync(profile, effectiveToken, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<PayloadLeakageAnalysisResult> RunPayloadLeakageAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        PayloadLeakageRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/simulations/run/payload-leakage using provided or cached session token.
+        // WHY:  Allows running cargo retention and leakage simulation with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.RunPayloadLeakageAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.RunPayloadLeakageAsync(profile, effectiveToken, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<PbpkEndocrineSimulationResult> RunPbpkSimulationAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        PbpkSimulationRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/simulations/run/pbpk-endocrine using provided or cached session token.
+        // WHY:  Allows running physiological pharmacokinetic simulation with managed token lifecycle.
+        // HOW:  Resolves effective token, delegates to _innerClient.RunPbpkSimulationAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.RunPbpkSimulationAsync(profile, effectiveToken, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<AuthTokenResponse> ExchangeWebTokenAsync(
+        InstanceProfile profile,
+        TokenExchangeRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/auth/web-token to authenticate and establish a browser session cookie.
+        // WHY:  Allows web challenge verification with session token emission.
+        // HOW:  Validates lifecycle, delegates to _innerClient.ExchangeWebTokenAsync.
+        ThrowIfDisposed();
+        return _innerClient.ExchangeWebTokenAsync(profile, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<SystemHealthOverview> GetHealthzAsync(
+        InstanceProfile profile,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /healthz to evaluate cluster liveness probe.
+        // WHY:  Provides low-overhead container liveness health reporting.
+        // HOW:  Validates lifecycle, delegates to _innerClient.GetHealthzAsync.
+        ThrowIfDisposed();
+        return _innerClient.GetHealthzAsync(profile, ct);
     }
 
     /// <inheritdoc/>

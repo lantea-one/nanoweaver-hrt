@@ -22,6 +22,7 @@ using NanoWeaverHrt.Security.Access;
 using NanoWeaverHrt.Security.Authentication;
 using NanoWeaverHrt.Security.Models;
 using NanoWeaverHrt.Services.Stack;
+using NanoWeaverHrt.Simulations.Models;
 using NanoWeaverHrt;
 
 namespace NanoWeaverHrt.Client.Api;
@@ -3301,6 +3302,193 @@ public sealed class NanoWeaverNodeClient : INanoWeaverNodeClient
         }
 
         return await resp.Content.ReadAsByteArrayAsync(ct);
+    }
+
+    /// <inheritdoc/>
+    public async Task<SerumStabilityAnalysisResult> RunSerumStabilityAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        SerumStabilityRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/simulations/run/serum-stability to execute degradation kinetics simulation.
+        // WHY:  Allows client applications to run serum stability analysis campaigns.
+        // HOW:  Validates inputs, posts serialized SerumStabilityRequest with Bearer auth, and deserializes SerumStabilityAnalysisResult.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/simulations/run/serum-stability");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        SerumStabilityAnalysisResult? result = await resp.Content.ReadFromJsonAsync<SerumStabilityAnalysisResult>(JsonOptions, ct);
+        return result ?? throw new InvalidOperationException("Endpoint returned empty or null serum stability result payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<AptamerGatingAnalysisResult> RunAptamerGatingAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        AptamerGatingRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/simulations/run/aptamer-gating to execute ligand-gated conformational switching simulation.
+        // WHY:  Enables computational verification of aptamer latch release thermodynamics before wet-lab synthesis.
+        // HOW:  Validates inputs, posts serialized AptamerGatingRequest with Bearer auth, and deserializes AptamerGatingAnalysisResult.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/simulations/run/aptamer-gating");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        AptamerGatingAnalysisResult? result = await resp.Content.ReadFromJsonAsync<AptamerGatingAnalysisResult>(JsonOptions, ct);
+        return result ?? throw new InvalidOperationException("Endpoint returned empty or null aptamer gating result payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<PayloadLeakageAnalysisResult> RunPayloadLeakageAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        PayloadLeakageRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/simulations/run/payload-leakage to execute premature encapsulation release simulation.
+        // WHY:  Assesses cargo retention integrity across diverse biological pH and temperature gradients.
+        // HOW:  Validates inputs, posts serialized PayloadLeakageRequest with Bearer auth, and deserializes PayloadLeakageAnalysisResult.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/simulations/run/payload-leakage");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        PayloadLeakageAnalysisResult? result = await resp.Content.ReadFromJsonAsync<PayloadLeakageAnalysisResult>(JsonOptions, ct);
+        return result ?? throw new InvalidOperationException("Endpoint returned empty or null payload leakage result payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<PbpkEndocrineSimulationResult> RunPbpkSimulationAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        PbpkSimulationRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/simulations/run/pbpk-endocrine to run multi-compartment pharmacokinetic simulation.
+        // WHY:  Simulates systemic biodistribution and target organ receptor kinetics for hormone replacement delivery.
+        // HOW:  Validates inputs, posts serialized PbpkSimulationRequest with Bearer auth, and deserializes PbpkEndocrineSimulationResult.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/simulations/run/pbpk-endocrine");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        PbpkEndocrineSimulationResult? result = await resp.Content.ReadFromJsonAsync<PbpkEndocrineSimulationResult>(JsonOptions, ct);
+        return result ?? throw new InvalidOperationException("Endpoint returned empty or null PBPK simulation result payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<AuthTokenResponse> ExchangeWebTokenAsync(
+        InstanceProfile profile,
+        TokenExchangeRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/auth/web-token to authenticate and establish a browser session cookie.
+        // WHY:  Verifies digital challenge signature and mints session token for Web UI environments.
+        // HOW:  Validates inputs, posts serialized TokenExchangeRequest, and deserializes AuthTokenResponse.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/auth/web-token");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        AuthTokenResponse? result = await resp.Content.ReadFromJsonAsync<AuthTokenResponse>(JsonOptions, ct);
+        return result ?? throw new InvalidOperationException("Endpoint returned empty or null auth token response payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<SystemHealthOverview> GetHealthzAsync(
+        InstanceProfile profile,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /healthz to query low-overhead container runtime operational health.
+        // WHY:  Provides kubernetes and docker health probes with deterministic cluster readiness state.
+        // HOW:  Validates inputs, executes unauthenticated GET /healthz, and deserializes SystemHealthOverview.
+        ArgumentNullException.ThrowIfNull(profile);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/healthz");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        SystemHealthOverview? result = await resp.Content.ReadFromJsonAsync<SystemHealthOverview>(JsonOptions, ct);
+        return result ?? throw new InvalidOperationException("Endpoint returned empty or null healthz overview payload.");
     }
 
     /// <summary>

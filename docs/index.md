@@ -132,7 +132,7 @@ Explore the comprehensive guides and references below:
 17. [**REST API Reference**](api-reference.md)
     * Full endpoint catalog, request/response JSON schemas, and test suite execution.
 18. [**Release Notes & Architecture Evolution**](release-notes.md)
-    * Post-quantum cryptographic upgrades, multi-engine database persistence, client REST SDK parity, and milestone releases through v2026.11.04.9.
+    * Post-quantum cryptographic upgrades, multi-engine database persistence, client REST SDK parity, and milestone releases through v2026.11.04.10.
 19. [**Scientific Research & Legal Disclaimer**](disclaimer.md)
     * Formal scientific research scope, medical non-advice, and BSL-1 biosafety declarations.
 

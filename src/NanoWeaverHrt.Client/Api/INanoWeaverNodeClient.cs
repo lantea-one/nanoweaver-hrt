@@ -15,6 +15,7 @@ using NanoWeaverHrt.Security.Access;
 using NanoWeaverHrt.Security.Authentication;
 using NanoWeaverHrt.Security.Models;
 using NanoWeaverHrt.Services.Stack;
+using NanoWeaverHrt.Simulations.Models;
 using NanoWeaverHrt;
 
 namespace NanoWeaverHrt.Client.Api;
@@ -1410,5 +1411,83 @@ public interface INanoWeaverNodeClient
         string bearerToken,
         string fileName,
         int? chunkIndex = null,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Executes a serum stability simulation campaign via POST /api/simulations/run/serum-stability.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="request">Serum stability simulation parameters and environmental conditions.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Simulation campaign results including degradation kinetics and half-life projections.</returns>
+    Task<SerumStabilityAnalysisResult> RunSerumStabilityAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        SerumStabilityRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Executes an aptamer gating simulation campaign via POST /api/simulations/run/aptamer-gating.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="request">Aptamer gating simulation parameters and target ligand conditions.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Simulation campaign results including opening probability and gating thermodynamics.</returns>
+    Task<AptamerGatingAnalysisResult> RunAptamerGatingAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        AptamerGatingRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Executes a payload leakage simulation campaign via POST /api/simulations/run/payload-leakage.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="request">Payload retention parameters and membrane stability conditions.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Simulation campaign results including premature leakage rates and retention efficiency.</returns>
+    Task<PayloadLeakageAnalysisResult> RunPayloadLeakageAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        PayloadLeakageRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Executes a PBPK endocrine pharmacokinetic simulation campaign via POST /api/simulations/run/pbpk-endocrine.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="request">PBPK endocrine dosing, receptor kinetics, and patient demographic parameters.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Simulation campaign results including systemic bioavailability and compartmental kinetics.</returns>
+    Task<PbpkEndocrineSimulationResult> RunPbpkSimulationAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        PbpkSimulationRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Verifies a browser-signed challenge nonce and establishes an authenticated Web UI session cookie via POST /api/auth/web-token.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="request">Token exchange credentials including username, challenge ID, and cryptographic signature.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Issued session token and expiration metadata.</returns>
+    Task<AuthTokenResponse> ExchangeWebTokenAsync(
+        InstanceProfile profile,
+        TokenExchangeRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Evaluates cluster container runtime operational health via the GET /healthz liveness probe.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>High-level system health overview.</returns>
+    Task<SystemHealthOverview> GetHealthzAsync(
+        InstanceProfile profile,
         CancellationToken ct = default);
 }
