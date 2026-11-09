@@ -1,10 +1,12 @@
 @page "/profile"
 @page "/profile/{TargetUsername}"
 @using NanoWeaverHrt.Endocrine
+@using NanoWeaverHrt.Security.Access
 @using NanoWeaverHrt.Security.Authentication
 @using System.Text.Json
 @inject IUserProfileRepository ProfileRepo
 @inject IUserRepository UserRepo
+@inject ISubjectAccessService AccessService
 @inject UserSessionState SessionState
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
@@ -57,11 +59,11 @@
             <div class="d-flex align-center gap-3">
                 @if (!string.IsNullOrEmpty(_avatarPreview))
                 {
-                    <img src="@_avatarPreview" alt="Avatar" style="width: 72px; height: 72px; border-radius: 50%; object-fit: cover; border: 2px solid var(--accent, #00ffff);" />
+                    <img src="@_avatarPreview" alt="Avatar" class="avatar-photo" />
                 }
                 else
                 {
-                    <div style="width: 72px; height: 72px; border-radius: 50%; background: #1a2332; display: flex; align-items: center; justify-content: center; font-size: 2rem; border: 2px dashed #4a5568;">
+                    <div class="avatar-placeholder">
                         👤
                     </div>
                 }
@@ -204,7 +206,7 @@
 
             @if (_showAddressForm)
             {
-                <div class="card mb-3 p-3" style="background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border, #2d3748);">
+                <div class="card mb-3 p-3 profile-subbox">
                     <h4>Add Structured Address</h4>
                     <div class="grid grid-2 mt-2">
                         <div class="form-group">
@@ -327,7 +329,7 @@
 
             @if (_showContactForm)
             {
-                <div class="card mb-3 p-3" style="background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border, #2d3748);">
+                <div class="card mb-3 p-3 profile-subbox">
                     <h4>Add Trusted Outreach Contact</h4>
                     <div class="grid grid-2 mt-2">
                         <div class="form-group">
@@ -536,6 +538,16 @@
             : SessionState.CurrentUser.Username;
 
         _hasAccess = SessionState.IsAdmin || string.Equals(_effectiveUsername, SessionState.CurrentUser.Username, StringComparison.OrdinalIgnoreCase);
+        if (!_hasAccess && SessionState.IsResearcher)
+        {
+            SubjectAccessResult accessResult = await AccessService.EvaluateAccessAsync(
+                SessionState.CurrentUser.Username,
+                SessionState.CurrentUser.Role,
+                _effectiveUsername,
+                SubjectAccessLevel.ReadAccess);
+            _hasAccess = accessResult.IsAllowed;
+        }
+
         if (!_hasAccess)
         {
             _isLoading = false;

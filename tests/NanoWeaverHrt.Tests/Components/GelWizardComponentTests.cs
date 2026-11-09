@@ -8,6 +8,7 @@ using NanoWeaverHrt.Configuration;
 using NanoWeaverHrt.Endocrine;
 using NanoWeaverHrt.Genomics;
 using NanoWeaverHrt.Pipelines;
+using NanoWeaverHrt.Simulations;
 using NanoWeaverHrt.Storage;
 using Moq;
 using Xunit;
@@ -83,6 +84,7 @@ public class GelWizardComponentTests : TestContext
         Services.AddSingleton<DcdPipeReader>();
         Services.AddSingleton<LammpsCustomPipeReader>();
         Services.AddSingleton<IParquetTrajectoryWriter>(new Mock<IParquetTrajectoryWriter>().Object);
+        Services.AddSingleton<ISimulationCampaignService, SimulationCampaignService>();
         Services.AddSingleton<IOpentronsProtocolGenerator, OpentronsProtocolGenerator>();
 
         var cut = RenderComponent<WorkflowWizard>();
@@ -144,6 +146,7 @@ public class GelWizardComponentTests : TestContext
         Services.AddSingleton<DcdPipeReader>();
         Services.AddSingleton<LammpsCustomPipeReader>();
         Services.AddSingleton<IParquetTrajectoryWriter>(new Mock<IParquetTrajectoryWriter>().Object);
+        Services.AddSingleton<ISimulationCampaignService, SimulationCampaignService>();
         Services.AddSingleton<IOpentronsProtocolGenerator, OpentronsProtocolGenerator>();
 
         var cut = RenderComponent<WorkflowWizard>();

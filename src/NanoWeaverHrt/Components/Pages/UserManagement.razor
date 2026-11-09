@@ -120,7 +120,7 @@
 
 @if (_showCreateModal)
 {
-    <div class="modal-overlay">
+    <div class="modal-overlay" role="dialog" aria-modal="true">
         <div class="modal-card">
             <div class="modal-header">
                 <h3>Register Sovereign User</h3>
@@ -235,8 +235,8 @@
 
 @if (_showGrantsModal && _selectedResearcher != null)
 {
-    <div class="modal-overlay">
-        <div class="modal-card" style="max-width: 850px; width: 95%;">
+    <div class="modal-overlay" role="dialog" aria-modal="true">
+        <div class="modal-card modal-w-850">
             <div class="modal-header d-flex justify-between align-center">
                 <h3>🔑 Subject &amp; Cohort Access Grants: @_selectedResearcher.Username</h3>
                 <button class="btn-close" @onclick="CloseGrantsModal">&times;</button>
@@ -413,27 +413,83 @@
 <CohortManagementModal @bind-IsOpen="_showCohortModal" OnCohortChanged="OnCohortsUpdatedAsync" />
 
 @code {
+    /// <summary>
+    /// Collection of all active and registered user accounts in the system.
+    /// </summary>
     private IReadOnlyList<UserAccount> _users = [];
+
+    /// <summary>
+    /// User-facing status message displayed above the user accounts table.
+    /// </summary>
     private string? _statusMessage;
+
+    /// <summary>
+    /// Indicates whether the active status message represents an error.
+    /// </summary>
     private bool _isStatusError;
 
+    /// <summary>
+    /// Indicates whether the user creation modal is open.
+    /// </summary>
     private bool _showCreateModal;
+
+    /// <summary>
+    /// Username for newly registered identity.
+    /// </summary>
     private string _newUsername = string.Empty;
+
+    /// <summary>
+    /// Authorization role assigned to the new account.
+    /// </summary>
     private UserRole _newRole = UserRole.Researcher;
+
+    /// <summary>
+    /// Network boundary interface policy for the new account.
+    /// </summary>
     private AccessGate _newGate = AccessGate.ApiWeb;
+
+    /// <summary>
+    /// Asymmetric cryptographic algorithm for the new identity.
+    /// </summary>
     private KeyAlgorithm _newAlgo = KeyAlgorithm.Ed25519;
+
+    /// <summary>
+    /// Key provision mode (true for in-browser derivation, false for custom public key text upload).
+    /// </summary>
     private bool _generateKeyMode = true;
+
+    /// <summary>
+    /// Optional password passphrase for encrypting the generated private key PKCS#8 envelope.
+    /// </summary>
     private string _newKeyPassword = string.Empty;
+
+    /// <summary>
+    /// Custom public key text provided via paste or upload.
+    /// </summary>
     private string _newCustomPubKey = string.Empty;
+
+    /// <summary>
+    /// Error message string displayed within the creation modal.
+    /// </summary>
     private string? _modalError;
+
+    /// <summary>
+    /// Client-side generated cryptographic key bundle for the new user account.
+    /// </summary>
     private GeneratedKeyBundle? _newGeneratedBundle;
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Initializes the component and loads registered user accounts from the authentication service.
+    /// </summary>
     protected override async Task OnInitializedAsync()
     {
         await LoadUsersAsync();
     }
 
+    /// <summary>
+    /// Fetches the current list of user accounts from the authentication service.
+    /// </summary>
+    /// <returns>A task tracking asynchronous user retrieval.</returns>
     private async Task LoadUsersAsync()
     {
         try
@@ -447,6 +503,9 @@
         }
     }
 
+    /// <summary>
+    /// Resets form state and opens the user creation modal.
+    /// </summary>
     private void OpenCreateModal()
     {
         _newUsername = string.Empty;
@@ -462,12 +521,19 @@
         _showCreateModal = true;
     }
 
+    /// <summary>
+    /// Closes the user creation modal and clears temporary key material.
+    /// </summary>
     private void CloseCreateModal()
     {
         _showCreateModal = false;
         _newGeneratedBundle = null;
     }
 
+    /// <summary>
+    /// Validates inputs and provisions a new cryptographic user identity.
+    /// </summary>
+    /// <returns>A task tracking asynchronous user creation.</returns>
     private async Task CreateUser()
     {
         _modalError = null;
@@ -528,8 +594,15 @@
         }
     }
 
+    /// <summary>
+    /// Status message displayed after initiating private key file download.
+    /// </summary>
     private string? _downloadStatus;
 
+    /// <summary>
+    /// Initiates browser download of the newly generated user's private key PEM artifact.
+    /// </summary>
+    /// <returns>A task tracking browser download initiation.</returns>
     private async Task DownloadNewPrivateKey()
     {
         if (_newGeneratedBundle == null) return;
@@ -552,6 +625,10 @@
         }
     }
 
+    /// <summary>
+    /// Copies the newly generated private key PEM to the system clipboard.
+    /// </summary>
+    /// <returns>A task tracking clipboard write completion.</returns>
     private async Task CopyNewPrivateKey()
     {
         if (_newGeneratedBundle == null) return;
@@ -566,6 +643,11 @@
         }
     }
 
+    /// <summary>
+    /// Permanently revokes the specified user account.
+    /// </summary>
+    /// <param name="user">The user account to revoke.</param>
+    /// <returns>A task tracking asynchronous account deletion.</returns>
     private async Task ConfirmDelete(UserAccount user)
     {
         try
@@ -590,12 +672,22 @@
         }
     }
 
+    /// <summary>
+    /// Formats a base-64 public key into a truncated human-readable fingerprint.
+    /// </summary>
+    /// <param name="pubKeyBase64">Raw public key base-64 string.</param>
+    /// <returns>Formatted fingerprint display string.</returns>
     private static string FormatFingerprint(string pubKeyBase64)
     {
         if (string.IsNullOrEmpty(pubKeyBase64)) return "N/A";
         return pubKeyBase64.Length > 20 ? pubKeyBase64[..8] + "..." + pubKeyBase64[^8..] : pubKeyBase64;
     }
 
+    /// <summary>
+    /// Strips RFC 7468 PEM boundary markers, line breaks, and whitespace from public key text.
+    /// </summary>
+    /// <param name="pemOrBase64">Raw public key PEM string or base-64 encoded string.</param>
+    /// <returns>Sanitized base-64 string containing raw public key DER bytes.</returns>
     private static string ExtractCleanPublicKeyBase64(string pemOrBase64)
     {
         string clean = pemOrBase64.Trim();

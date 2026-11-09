@@ -1,4 +1,5 @@
 using NanoWeaverHrt.Abstractions;
+using NanoWeaverHrt.Models;
 
 namespace NanoWeaverHrt.Storage;
 
@@ -43,5 +44,19 @@ public interface IParquetTrajectoryWriter
     /// <returns>The total row count of the Parquet file.</returns>
     Task<long> QueryRecordCountAsync(
         string parquetFilePath,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Writes a single frame or batch of atomic coordinates directly to an Apache Parquet file.
+    /// </summary>
+    /// <param name="destinationParquetPath">The target file path where the .parquet file will be created.</param>
+    /// <param name="frameIndex">The index or timestep of the coordinate frame.</param>
+    /// <param name="coordinates">The atomic coordinates to serialize.</param>
+    /// <param name="cancellationToken">A token to observe for cancellation requests.</param>
+    /// <returns>A task representing the asynchronous operation, returning the total number of atomic records serialized.</returns>
+    Task<long> WriteFrameBatchAsync(
+        string destinationParquetPath,
+        long frameIndex,
+        ReadOnlyMemory<AtomCoordinate> coordinates,
         CancellationToken cancellationToken = default);
 }

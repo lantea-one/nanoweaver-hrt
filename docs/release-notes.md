@@ -4,6 +4,39 @@
 
 ---
 
+## v2026.11.09.3 — Code-Complete Milestone: Sovereign Blazor UI Zero-Style Refactoring, Real Trajectory/Parquet Pipelines, bUnit Verification Suite & Regression Guards (2026-11-09)
+
+Code-complete milestone release resolving Work Packages `P151–P155` (Forgejo Issues `#154–#158`), eliminating all 128 inline `style="..."` attributes across Blazor components in favor of reusable semantic dark-mode CSS classes, wiring real simulation campaigns, zero-allocation trajectory streaming (`XyzPipeReader`, `DcdPipeReader`, `LammpsCustomPipeReader`), and Parquet batch exports with SHA-256 verification into `WorkflowWizard.razor`, aligning JavaScript chart interop properties to camelCase (`hour`, `estradiolPmolL`, `testosteroneNmolL`), eliminating duplicate DOM IDs, enforcing Administrator gating and removing share-key auto-seeding in `ConfigurationManagement.razor`, authorizing Researcher patient profile inspection via `ISubjectAccessService`, recording authenticated operator attribution on GDPR crypto-shred in `ComplianceSecurity.razor`, adding archive upload controls in `TrajectoryBrowser.razor`, adding 100% XML docblocks across all Razor `@code` blocks, and establishing comprehensive bUnit component tests and permanent regression guards in `WebUiAndConfigurationTests` and `LocalizationTests`.
+
+### Highlights
+* **`WorkflowWizard.razor` Real Campaign, Parser, and Parquet Wiring & Unique DOM IDs (Forgejo #154 / P151)**:
+  - Injected `ISimulationCampaignService` into `WorkflowWizard.razor` and wired Stage 3 `RunSimulationAsync` to execute real simulation logic (`SimulateSerumStability`), dynamically updating logs and progress bars.
+  - Wired Stage 4 `RunStreamParseAsync` to stream molecular coordinates through `XyzParser`, `DcdParser`, or `LammpsParser` according to the selected format, measuring throughput via `Stopwatch` without garbage allocation.
+  - Added `IParquetTrajectoryWriter.WriteFrameBatchAsync` and wired Stage 4 `RunParquetExportAsync` to write columnar Parquet archives and calculate SHA-256 digests via `SHA256.HashData`.
+  - Updated `OnAfterRenderAsync` kinetics projection payload to camelCase `{ hour, estradiolPmolL, testosteroneNmolL }`, matching `weaver-visualizer.js:244-273` for non-NaN curve rendering.
+  - Scoped Stage 5 HTML element IDs with `wizard-stage5-` and Stage 6 with `wizard-stage6-`, eliminating duplicate DOM IDs across steps.
+* **Sovereign Blazor Page Functional & Security Defect Fixes (Forgejo #155 / P152)**:
+  - Removed demo share-key auto-seeding in `ConfigurationManagement.razor` so revoking all keys leaves the table clean; enforced `Administrator` access checks before rendering settings or share keys.
+  - Injected `ISubjectAccessService AccessService` in `UserProfilePage.razor`, authorizing `Researcher` users holding `ReadAccess` or `FullReadAccess` to inspect patient profiles.
+  - Injected `UserSessionState SessionState` in `ComplianceSecurity.razor`, resolving the authenticated operator username and pseudonymized subject ID via `ComplianceService.PseudonymizeSubjectId` on `CryptoShredSubjectKey`.
+  - Added `.tar.gz` and `.manifest.json` `<InputFile>` controls with `VerifiedDatasetImporter.ImportAsync` in `TrajectoryBrowser.razor` to support peer dataset verification and extraction.
+* **Zero Inline Styles Refactoring, Razor XML Docblocks & ARIA Modal Accessibility (Forgejo #156 / P153)**:
+  - Replaced all 128 inline `style="..."` attributes across all 12 Blazor component files with semantic CSS classes in `src/NanoWeaverHrt/wwwroot/css/app.css` and `docs/assets/sovereign-theme.css`.
+  - Added 100% XML docblock coverage on all private and protected fields, properties, and methods in `SetupWizard.razor` and `UserManagement.razor`.
+  - Added `role="dialog"` and `aria-modal="true"` to modal overlay containers across `UserManagement.razor` and `DnaManagementPage.razor`.
+* **Comprehensive bUnit Component Test Suites & Runsettings Synchronization (Forgejo #157 / P154)**:
+  - Added `ComplianceSecurityComponentTests.cs` covering ledger verification, operator-attributed crypto-shred, Safe Harbor de-identification, and ML-KEM-768 UI flows.
+  - Added `UserProfilePageComponentTests.cs` covering Administrator supervision, self-access, Researcher `ReadAccess` evaluation, and cross-patient denial.
+  - Added `ConfigurationManagementComponentTests.cs` covering Administrator role gating, empty share-key validation, and database precedence overrides.
+  - Synchronized `ExcludeByFile` rules identically across `coverlet.runsettings` and `coverage-full.runsettings`.
+* **Permanent Web UI Regression Guards & Localization Verification Gate (Forgejo #158 / P155)**:
+  - Added `RazorComponents_MustNotContainInlineStyleAttributes` and `RazorComponents_MustNotContainDuplicateElementIds` to `WebUiAndConfigurationTests.cs`.
+  - Added `LocalizationTests.cs` verifying 100% key parity and non-whitespace translations across all 18 JSON resource catalogs and runtime language resolution in `WeaverLocalizer`.
+  - Verified `HttpOnly` cookie preservation in `weaver-session.test.mjs`, maintaining 100.00% JS line, branch, and function coverage via `npm test`.
+  - Maintained 100.00% line & branch coverage threshold across 1,810 deterministic unit tests with 0 compiler-generated state machine regressions.
+
+---
+
 ## v2026.11.09.2 — Code-Complete Milestone: Scientific Parser Fortran Bounds & SIMD Interleaving, DuckDB Analytics Sandbox, PBPK Kinetics Scaling & Client REST SDK Parity (2026-11-09)
 
 Code-complete milestone release resolving Work Packages `P146–P150` (Forgejo Issues `#149–#153`), hardening `DcdPipeReader` against fragmented multi-title CHARMM/NAMD DCD headers and corrupt Fortran markers, accelerating SOA-to-AOS coordinate interleaving with `SimdCoordinateParser.InterleaveCoordinatesSimd`, restricting DuckDB user queries against prohibited DDL/DML keywords (`CREATE`, `REPLACE`, `TRUNCATE`, `EXPORT`, `IMPORT`, `SET`, `RESET`, `CALL`) with `active_trajectory` view aliasing, driving PBPK simulation kinetics and supraphysiological surge detection by `DepotDoseMg`, subscribing `ValkeyEventBridge` to inbound cluster `TrajectoryFrameBatchEvent` messages, wiring live `IAcceleratorTelemetryProvider` metrics into `/api/system/telemetry`, achieving 100% Client REST SDK parity (`CreatePatientDnaAsync`, `GetHealthAsync`, `GetGranularSystemHealthAsync`, and query-filtered `GetPatientDnaRegimensAsync`), and establishing zeroizable session token caching and logout clearing across `WeaverNodeApiClient`.

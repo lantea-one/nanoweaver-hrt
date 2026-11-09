@@ -15,7 +15,7 @@
             <p class="panel-desc">Bistable molecular toggle state management, pharmacogenomic predisposition screening, and precision kinetics.</p>
         </div>
         <div class="d-flex align-items-center gap-2">
-            <a href="/simulations" class="btn btn-outline btn-sm" style="text-decoration: none;">
+            <a href="/simulations" class="btn btn-outline btn-sm text-no-underline">
                 🧪 In-Silico Studio
             </a>
             <div class="badge @(_activeProfile.Regimen == TherapeuticRegimen.MaleToFemale ? "badge-accent" : "badge-outline")">
@@ -90,7 +90,7 @@
 
         <!-- Presets Selection & Profile Metrics -->
         <div class="mt-3">
-            <span class="subtext font-mono" style="font-size: 0.8rem; text-transform: uppercase;">Load Patient Genomic Preset:</span>
+            <span class="subtext font-mono fs-08-upper">Load Patient Genomic Preset:</span>
             <div class="d-flex flex-wrap gap-2 mt-2">
                 @foreach (var preset in _availablePresets)
                 {
@@ -102,7 +102,7 @@
             </div>
 
             <!-- Genomic Risk Index Summary Bar -->
-            <div class="setpoints-display mt-3" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+            <div class="setpoints-display mt-3 grid-auto-180">
                 <div class="setpoint-item">
                     <span class="setpoint-label">THROMBOSIS RISK INDEX</span>
                     <span class="setpoint-val font-mono @(_genomicProfile.ThrombosisRiskIndex > 1.5 ? "text-danger" : "text-success")">
@@ -132,15 +132,15 @@
             </div>
 
             <!-- Individual Marker Toggles -->
-            <div class="mt-3 p-3" style="background: rgba(0, 0, 0, 0.2); border-radius: 6px; border: 1px solid var(--border-color);">
+            <div class="mt-3 p-3 bg-trans-dark-2">
                 <div class="d-flex justify-content-between align-items-center mb-2">
-                    <span class="subtext font-mono" style="font-size: 0.8rem; text-transform: uppercase;">Individual Genetic Marker Selectors:</span>
+                    <span class="subtext font-mono fs-08-upper">Individual Genetic Marker Selectors:</span>
                     <button class="btn btn-sm btn-outline" @onclick="ClearAllMarkers">Clear All</button>
                 </div>
                 <div class="d-flex flex-wrap gap-3">
                     @foreach (var marker in _availableMarkers)
                     {
-                        <label class="d-flex align-items-center gap-1 font-mono" style="font-size: 0.85rem; cursor: pointer;">
+                        <label class="d-flex align-items-center gap-1 font-mono fs-085-pointer">
                             <input type="checkbox"
                                    checked="@_selectedMarkerIds.Contains(marker.MarkerId)"
                                    @onchange="() => ToggleMarker(marker.MarkerId)" />
@@ -155,7 +155,7 @@
             <!-- Prominent Severity Call-Out Alert Banners -->
             <div class="mt-4">
                 <div class="d-flex justify-content-between align-items-center mb-2">
-                    <h4 style="margin: 0; color: #fff;">Active Clinical Call-Out Alerts (@_genomicProfile.Alerts.Count)</h4>
+                    <h4 class="m-0-white">Active Clinical Call-Out Alerts (@_genomicProfile.Alerts.Count)</h4>
                     <button class="btn btn-sm btn-primary" @onclick="ApplyGenomicAdjustments">
                         ⚡ Apply Genetic Kinetic Adjustments
                     </button>
@@ -166,21 +166,21 @@
                     <div class="genomic-alert-box @GetAlertBoxClass(alert.Severity)">
                         <div class="genomic-alert-header">
                             <div>
-                                <strong style="color: #ffffff; font-size: 1rem;">@alert.Title</strong>
-                                <span class="subtext d-block" style="font-size: 0.8rem;">@alert.Category</span>
+                                <strong class="text-white-1rem">@alert.Title</strong>
+                                <span class="subtext d-block fs-08">@alert.Category</span>
                             </div>
                             <span class="@GetBadgeClass(alert.Severity)">@alert.Severity.ToString().ToUpperInvariant() CALL-OUT</span>
                         </div>
-                        <p style="margin: 6px 0 10px 0; color: #f1f5f9; font-size: 0.92rem; line-height: 1.5;">@alert.CallOutMessage</p>
+                        <p class="endocrine-desc">@alert.CallOutMessage</p>
                         <div class="genomic-guidance-pill">
-                            <div><strong style="color: #38bdf8;">Clinical Directive:</strong> @alert.ClinicalGuidance</div>
+                            <div><strong class="text-sky">Clinical Directive:</strong> @alert.ClinicalGuidance</div>
                             @if (!string.IsNullOrEmpty(alert.KineticGuidance))
                             {
-                                <div><strong style="color: #f59e0b;">Kinetics Calibration:</strong> @alert.KineticGuidance</div>
+                                <div><strong class="text-amber">Kinetics Calibration:</strong> @alert.KineticGuidance</div>
                             }
                             @if (!string.IsNullOrEmpty(alert.ScaffoldGuidance))
                             {
-                                <div><strong style="color: #e040fb;">DNA Origami Modification:</strong> @alert.ScaffoldGuidance</div>
+                                <div><strong class="text-fuchsia">DNA Origami Modification:</strong> @alert.ScaffoldGuidance</div>
                             }
                         </div>
                     </div>
@@ -198,8 +198,8 @@
         <p class="subtext">Kinetics curve calculated over a 72-hour horizon as aptamer-mediated release reaches homeostatic equilibrium, factoring in patient-specific genetic clearance.</p>
 
         <!-- Dynamic Dual-Axis HTML5 Canvas Kinetics Visualization -->
-        <div class="canvas-box mt-3 mb-4" style="background: rgba(0,0,0,0.3); border-radius: 8px; padding: 1rem; border: 1px solid var(--border-color);">
-            <canvas id="canvas-endocrine-kinetics" style="width: 100%; height: 320px;"></canvas>
+        <div class="canvas-box mt-3 mb-4 canvas-panel-bg">
+            <canvas id="canvas-endocrine-kinetics" class="canvas-h-320"></canvas>
         </div>
 
         <div class="table-container mt-3">
@@ -237,8 +237,8 @@
             Biomedical anatomical feedback circuit demonstrating localized anterior pituitary gonadotrope delivery, negative feedback loop suppression, and systemic receptor distribution.
         </p>
 
-        <div class="canvas-box mt-3 mb-2" style="background: rgba(0,0,0,0.3); border-radius: 8px; padding: 1rem; border: 1px solid var(--border-color);">
-            <canvas id="canvas-anatomical-target" style="width: 100%; height: 340px;"></canvas>
+        <div class="canvas-box mt-3 mb-2 canvas-panel-bg">
+            <canvas id="canvas-anatomical-target" class="canvas-h-340"></canvas>
         </div>
     </div>
 
@@ -265,7 +265,7 @@
         @if (_closedLoopResult != null)
         {
             <!-- Dynamic Closed-Loop Metrics Bar -->
-            <div class="setpoints-display mt-3" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+            <div class="setpoints-display mt-3 grid-auto-180">
                 <div class="setpoint-item">
                     <span class="setpoint-label">FINAL 17β-ESTRADIOL</span>
                     <span class="setpoint-val font-mono">@_closedLoopResult.FinalEstradiolPmolL.ToString("F1") <small>pmol/L</small></span>

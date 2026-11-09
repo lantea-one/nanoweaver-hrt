@@ -1,6 +1,7 @@
 using Bunit;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NanoWeaverHrt.Abstractions;
 using NanoWeaverHrt.Analytics;
@@ -8,6 +9,9 @@ using NanoWeaverHrt.Components.Pages;
 using NanoWeaverHrt.Configuration;
 using NanoWeaverHrt.Models;
 using NanoWeaverHrt.Pipelines;
+using NanoWeaverHrt.Security.Cryptography;
+using NanoWeaverHrt.Security.Signing;
+using NanoWeaverHrt.Services;
 using NanoWeaverHrt.Storage;
 using Xunit;
 
@@ -81,6 +85,17 @@ public sealed class TrajectoryBrowserTests : TestContext
         var fedMock = new Mock<NanoWeaverHrt.Federation.ITrajectoryFederationService>();
         fedMock.Setup(f => f.DiscoverPeersAsync(default)).ReturnsAsync(new List<NanoWeaverHrt.Federation.FederationPeerNode>());
         Services.AddSingleton<NanoWeaverHrt.Federation.ITrajectoryFederationService>(fedMock.Object);
+        var peerKeysMock = new Mock<IPeerKeyRegistry>();
+        var localSignerMock = new Mock<INodeDatasetSigner>();
+        var sigVerifier = new DatasetManifestSignatureVerifier(new PostQuantumCryptoProvider());
+        var importer = new VerifiedDatasetImporter(
+            _datasetManagerMock.Object,
+            peerKeysMock.Object,
+            localSignerMock.Object,
+            sigVerifier,
+            _configRepoMock.Object,
+            NullLogger<VerifiedDatasetImporter>.Instance);
+        Services.AddSingleton(importer);
     }
 
     /// <summary>

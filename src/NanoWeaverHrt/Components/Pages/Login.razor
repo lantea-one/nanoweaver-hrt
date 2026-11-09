@@ -47,12 +47,12 @@
 
             <div class="form-group mt-3">
                 <div class="d-flex justify-between align-center mb-1">
-                    <label for="privKeyPem" class="form-label" style="margin-bottom:0;">Private Key (.pem / .key)</label>
+                    <label for="privKeyPem" class="form-label mb-0">Private Key (.pem / .key)</label>
                     <div class="d-flex gap-1">
-                        <label for="keyFileUpload" class="btn btn-sm btn-outline cursor-pointer" style="margin:0;">
+                        <label for="keyFileUpload" class="btn btn-sm btn-outline cursor-pointer m-0">
                             📁 Upload Key File
                         </label>
-                        <input id="keyFileUpload" type="file" accept=".pem,.key,.txt" style="display:none;" />
+                        <input id="keyFileUpload" type="file" accept=".pem,.key,.txt" class="d-none" />
                         <button type="button" class="btn btn-sm btn-secondary" @onclick="() => _showPrivateKey = !_showPrivateKey">
                             @(_showPrivateKey ? "🔒 Mask Key" : "👁 Show Key")
                         </button>

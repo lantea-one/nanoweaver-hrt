@@ -416,3 +416,21 @@ test('weaverUnregisterIdleWatcher detaches listeners, is idempotent, and never s
     WeaverSession.weaverRegisterIdleWatcher(null, 900);
     assert.equal((listeners.get('click') || []).length, 1);
 });
+
+test('weaver-session respects server-side HttpOnly cookie and does not overwrite it via document.cookie', () => {
+    resetDom();
+    // Simulate server-side POST /api/auth/web-token setting HttpOnly; SameSite=Strict cookie.
+    // In browser JavaScript, HttpOnly cookies are inaccessible to document.cookie.
+    assert.equal(cookieJar.has('weaver_session'), false);
+
+    // Blazor circuit or login flow stores the active bearer token in sessionStorage
+    globalThis.sessionStorage.setItem('weaver_session', 'authenticated.httponly.paired.token');
+
+    // weaverGetSessionToken retrieves token from sessionStorage cleanly
+    const token = WeaverSession.weaverGetSessionToken();
+    assert.equal(token, 'authenticated.httponly.paired.token');
+
+    // Ensure document.cookie was not mutated or overwritten with document.cookie writes
+    assert.equal(cookieJar.has('weaver_session'), false);
+    assert.equal(globalThis.document.lastCookieAttributes.length, 0);
+});

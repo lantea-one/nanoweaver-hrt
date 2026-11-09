@@ -63,7 +63,7 @@
                 <div class="d-flex align-center gap-3 flex-wrap">
                     <div class="d-flex align-center gap-2">
                         <label for="cohortFilter" class="form-label mb-0 font-bold">Cohort:</label>
-                        <select id="cohortFilter" class="form-control" style="max-width: 220px;" value="@_selectedCohortId" @onchange="OnCohortFilterChanged">
+                        <select id="cohortFilter" class="form-control max-w-220" value="@_selectedCohortId" @onchange="OnCohortFilterChanged">
                             <option value="">All Cohorts (@_patients.Count)</option>
                             @foreach (var cohort in _cohorts)
                             {
@@ -73,7 +73,7 @@
                     </div>
                     <div class="d-flex align-center gap-2">
                         <label for="patientSelector" class="form-label mb-0 font-bold">Selected Patient:</label>
-                        <select id="patientSelector" class="form-control" style="max-width: 280px;" value="@_effectiveUsername" @onchange="OnPatientChanged">
+                        <select id="patientSelector" class="form-control max-w-280" value="@_effectiveUsername" @onchange="OnPatientChanged">
                             @if (_filteredPatients.Count == 0)
                             {
                                 <option value="">No patients available</option>
@@ -284,7 +284,7 @@
                         <h3 class="mb-0">📊 Personalized Simulation &amp; Endocrine Results for @@@_effectiveUsername</h3>
                         <div class="d-flex align-center gap-2">
                             <label for="resultFilter" class="form-label mb-0">Filter:</label>
-                            <select id="resultFilter" class="form-control form-control-sm" style="max-width: 200px;" @bind="_resultFilter">
+                            <select id="resultFilter" class="form-control form-control-sm max-w-200" @bind="_resultFilter">
                                 <option value="">All Categories</option>
                                 <option value="EndocrineKinetics">Endocrine Kinetics</option>
                                 <option value="Pharmacogenomics">Pharmacogenomics</option>
@@ -333,7 +333,7 @@
                                                     @res.Status
                                                 </span>
                                             </td>
-                                            <td style="max-width: 380px;">@res.Summary</td>
+                                            <td class="max-w-380">@res.Summary</td>
                                             <td>@res.CreatedAtUtc.ToString("yyyy-MM-dd HH:mm")</td>
                                             <td>
                                                 <div class="d-flex gap-1">
@@ -359,8 +359,8 @@
 <!-- MODAL: Synthesize New DNA Origami Blueprint -->
 @if (_showSynthesizeModal)
 {
-    <div class="modal-backdrop">
-        <div class="modal-content" style="max-width: 680px;">
+    <div class="modal-backdrop" role="dialog" aria-modal="true">
+        <div class="modal-content modal-w-680">
             <div class="modal-header d-flex justify-between align-center">
                 <h3 class="mb-0">🧬 Synthesize Digital DNA Blueprint</h3>
                 <button class="btn btn-sm btn-outline" @onclick="() => _showSynthesizeModal = false">✕</button>
@@ -426,8 +426,8 @@
 <!-- MODAL: Import DNA Sequence Data -->
 @if (_showImportModal)
 {
-    <div class="modal-backdrop">
-        <div class="modal-content" style="max-width: 680px;">
+    <div class="modal-backdrop" role="dialog" aria-modal="true">
+        <div class="modal-content modal-w-680">
             <div class="modal-header d-flex justify-between align-center">
                 <h3 class="mb-0">📥 Import Patient DNA / Genomic Data</h3>
                 <button class="btn btn-sm btn-outline" @onclick="() => _showImportModal = false">✕</button>
@@ -480,8 +480,8 @@
 <!-- MODAL: Inspect DNA Blueprint -->
 @if (_selectedDna != null)
 {
-    <div class="modal-backdrop">
-        <div class="modal-content" style="max-width: 840px;">
+    <div class="modal-backdrop" role="dialog" aria-modal="true">
+        <div class="modal-content modal-w-840">
             <div class="modal-header d-flex justify-between align-center">
                 <h3 class="mb-0">🧬 Blueprint: @_selectedDna.Title</h3>
                 <button class="btn btn-sm btn-outline" @onclick="() => _selectedDna = null">✕</button>
@@ -516,7 +516,7 @@
 
                 <div class="mb-3">
                     <h4>Synthetic Staple Ensemble (@_selectedDna.Staples.Count Oligonucleotides)</h4>
-                    <div class="table-responsive" style="max-height: 180px; overflow-y: auto;">
+                    <div class="table-responsive max-h-180-overflow">
                         <table class="table table-hover table-sm">
                             <thead>
                                 <tr>
@@ -545,7 +545,7 @@
 
                 <div>
                     <h4>Thermal Annealing Schedule (@_selectedDna.AnnealingProtocol.Count Stages)</h4>
-                    <div class="table-responsive" style="max-height: 140px; overflow-y: auto;">
+                    <div class="table-responsive max-h-140-overflow">
                         <table class="table table-hover table-sm">
                             <thead>
                                 <tr>
@@ -583,8 +583,8 @@
 <!-- MODAL: Inspect Import Record -->
 @if (_selectedImport != null)
 {
-    <div class="modal-backdrop">
-        <div class="modal-content" style="max-width: 720px;">
+    <div class="modal-backdrop" role="dialog" aria-modal="true">
+        <div class="modal-content modal-w-720">
             <div class="modal-header d-flex justify-between align-center">
                 <h3 class="mb-0">📂 Import: @_selectedImport.FileName</h3>
                 <button class="btn btn-sm btn-outline" @onclick="() => _selectedImport = null">✕</button>
@@ -618,8 +618,8 @@
 <!-- MODAL: Inspect Result Record -->
 @if (_selectedResult != null)
 {
-    <div class="modal-backdrop">
-        <div class="modal-content" style="max-width: 680px;">
+    <div class="modal-backdrop" role="dialog" aria-modal="true">
+        <div class="modal-content modal-w-680">
             <div class="modal-header d-flex justify-between align-center">
                 <h3 class="mb-0">📊 Result: @_selectedResult.Title</h3>
                 <button class="btn btn-sm btn-outline" @onclick="() => _selectedResult = null">✕</button>

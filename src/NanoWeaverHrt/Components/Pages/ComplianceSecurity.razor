@@ -1,7 +1,9 @@
 @page "/compliance"
+@using NanoWeaverHrt.Security.Authentication
 @inject IComplianceAuditService ComplianceService
 @inject IKeyManagementService KeyManagementService
 @inject IEncryptedStorageService StorageService
+@inject UserSessionState SessionState
 
 <section class="card">
     <div class="card-header">
@@ -16,7 +18,7 @@
     </div>
 
     <!-- PQC Encryption at Rest Overview -->
-    <div class="telemetry-grid" style="margin-top: 1rem;">
+    <div class="telemetry-grid mt-1rem">
         <div class="card stat-card">
             <div class="stat-label">ENCRYPTION AT REST</div>
             <div class="stat-value font-mono text-accent">ACTIVE</div>
@@ -43,7 +45,7 @@
 </section>
 
 <!-- Regulatory Compliance Assessment Matrix -->
-<section class="card" style="margin-top: 1.5rem;">
+<section class="card mt-1-5rem">
     <div class="card-header">
         <h3>Regulatory Compliance Posture Assessment</h3>
         <button class="btn btn-primary btn-sm" @onclick="RefreshStatus">
@@ -51,7 +53,7 @@
         </button>
     </div>
 
-    <div style="overflow-x: auto; margin-top: 1rem;">
+    <div class="overflow-x-auto-mt-1">
         <table class="data-table">
             <thead>
                 <tr>
@@ -104,34 +106,34 @@
 </section>
 
 <!-- Interactive De-Identification & Crypto-Shredding Tool -->
-<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 1.5rem; margin-top: 1.5rem;">
+<div class="compliance-grid">
     <!-- HIPAA Safe Harbor Tool -->
     <section class="card">
         <div class="card-header">
             <h3>HIPAA Safe Harbor De-Identification</h3>
         </div>
-        <p class="text-muted" style="margin-bottom: 1rem;">
+        <p class="text-muted mb-1rem">
             Converts raw patient identities and FASTA headers into pseudonymized subject tokens (<code>sub_...</code>) compliant with HIPAA § 164.514.
         </p>
 
-        <div class="form-group" style="margin-bottom: 1rem;">
+        <div class="form-group mb-1rem">
             <label>Raw Patient Identifier / Name</label>
             <input type="text" class="input-text" @bind="_rawIdentifierInput" placeholder="e.g. Jane Doe (MRN-98432)" />
         </div>
 
-        <div class="form-group" style="margin-bottom: 1rem;">
+        <div class="form-group mb-1rem">
             <label>Raw FASTA Sequence Header / Data</label>
-            <textarea class="input-text" style="height: 90px; font-family: monospace;" @bind="_rawFastaInput" placeholder=">Patient: Jane Doe, MRN: 98432, Sequence&#10;ATGCGATCGATCGATC..."></textarea>
+            <textarea class="input-text fasta-input-area" @bind="_rawFastaInput" placeholder=">Patient: Jane Doe, MRN: 98432, Sequence&#10;ATGCGATCGATCGATC..."></textarea>
         </div>
 
-        <div style="display: flex; gap: 1rem; margin-bottom: 1rem;">
-            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+        <div class="compliance-checkbox-row">
+            <label class="cursor-pointer-flex">
                 <input type="checkbox" @bind="_consentGdpr" />
-                <span style="font-size: 0.85rem;">GDPR Art. 9 Consent Verified</span>
+                <span class="fs-085">GDPR Art. 9 Consent Verified</span>
             </label>
-            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+            <label class="cursor-pointer-flex">
                 <input type="checkbox" @bind="_consentGina" />
-                <span style="font-size: 0.85rem;">GINA Purpose Limitation Enforced</span>
+                <span class="fs-085">GINA Purpose Limitation Enforced</span>
             </label>
         </div>
 
@@ -141,7 +143,7 @@
 
         @if (_deIdResult != null)
         {
-            <div class="alert alert-success" style="margin-top: 1rem;">
+            <div class="alert alert-success mt-1rem">
                 <strong>De-Identification Success:</strong><br>
                 <span>Pseudonym: <code>@_deIdResult.PseudonymSubjectId</code></span><br>
                 <span>Stripped Direct Identifiers: @_deIdResult.StrippedIdentifiers.Count</span>
@@ -154,26 +156,26 @@
         <div class="card-header">
             <h3>GDPR Article 17 Crypto-Shredding</h3>
         </div>
-        <p class="text-muted" style="margin-bottom: 1rem;">
+        <p class="text-muted mb-1rem">
             Executes permanent, irreversible cryptographic key destruction. Zeroing the subject's private ML-KEM key renders all at-rest records mathematically unreadable.
         </p>
 
-        <div class="form-group" style="margin-bottom: 1rem;">
+        <div class="form-group mb-1rem">
             <label>Target Pseudonymized Subject ID</label>
             <input type="text" class="input-text" @bind="_targetShredSubjectId" placeholder="e.g. sub_3f8a9c1b4d2e" />
         </div>
 
-        <div class="alert alert-warning" style="margin-bottom: 1rem;">
+        <div class="alert alert-warning mb-1rem">
             <strong>Warning:</strong> Crypto-shredding is irreversible. Once destroyed, all historical simulation frames, genomic screening profiles, and endocrine setpoints for this subject cannot be decrypted by any party.
         </div>
 
-        <button class="btn btn-secondary" style="border-color: #ef4444; color: #ef4444;" @onclick="ExecuteCryptoShred">
+        <button class="btn btn-secondary btn-danger-outline" @onclick="ExecuteCryptoShred">
             <span>🗑️</span> Permanently Crypto-Shred Keys
         </button>
 
         @if (!string.IsNullOrEmpty(_shredStatusMessage))
         {
-            <div class="alert @(_shredSuccess ? "alert-success" : "alert-warning")" style="margin-top: 1rem;">
+            <div class="alert @(_shredSuccess ? "alert-success" : "alert-warning") mt-1rem">
                 @_shredStatusMessage
             </div>
         }
@@ -181,7 +183,7 @@
 </div>
 
 <!-- FDA 21 CFR Part 11 Audit Trail Viewer -->
-<section class="card" style="margin-top: 1.5rem;">
+<section class="card mt-1-5rem">
     <div class="card-header">
         <div>
             <h3>FDA 21 CFR Part 11 Cryptographic Audit Ledger</h3>
@@ -194,12 +196,12 @@
 
     @if (_verificationResult != null)
     {
-        <div class="alert @(_verificationResult.IsValid ? "alert-success" : "alert-warning")" style="margin-top: 1rem;">
+        <div class="alert @(_verificationResult.IsValid ? "alert-success" : "alert-warning") mt-1rem">
             <strong>Audit Verification Result:</strong> @_verificationResult.Message
         </div>
     }
 
-    <div style="overflow-x: auto; margin-top: 1rem;">
+    <div class="overflow-x-auto-mt-1">
         <table class="data-table">
             <thead>
                 <tr>
@@ -365,10 +367,13 @@
         SubjectErasureOutcome outcome = await KeyManagementService.CryptoShredSubjectKeyAsync(_targetShredSubjectId);
         if (outcome == SubjectErasureOutcome.Erased)
         {
+            string operatorUsername = SessionState.CurrentUser?.Username ?? "USER_CONSOLE";
+            string pseudoSubjectId = ComplianceService.PseudonymizeSubjectId(_targetShredSubjectId);
+
             ComplianceService.LogAction(
-                "USER_CONSOLE",
+                operatorUsername,
                 "CryptoShredSubjectKey",
-                _targetShredSubjectId,
+                pseudoSubjectId,
                 $"{{\"status\":\"destroyed\",\"standard\":\"GDPR_Article_17\"}}");
 
             _shredStatusMessage = Program.ShredOkMessage;

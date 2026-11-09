@@ -1,7 +1,11 @@
 @page "/trajectories"
+@using System.Text.Json
 @using NanoWeaverHrt.Analytics
 @using NanoWeaverHrt.Federation
+@using NanoWeaverHrt.Models
+@using NanoWeaverHrt.Services
 @inject IDatasetManager DatasetManager
+@inject VerifiedDatasetImporter DatasetImporter
 @inject XyzPipeReader XyzParser
 @inject DcdPipeReader DcdParser
 @inject LammpsCustomPipeReader LammpsParser
@@ -124,7 +128,7 @@
                 <div class="mt-3 flex-between">
                     <div class="subtext">
                         <span>Max Rows: </span>
-                        <input id="max-rows-input" type="number" class="input-number" style="width: 80px;" @bind="_queryMaxRows" min="1" max="10000" />
+                        <input id="max-rows-input" type="number" class="input-number w-80px" @bind="_queryMaxRows" min="1" max="10000" />
                     </div>
                     <div class="btn-group">
                         <button class="btn btn-outline btn-sm" @onclick="ClearQueryResults">
@@ -138,8 +142,8 @@
 
                 @if (!string.IsNullOrEmpty(_queryError))
                 {
-                    <div class="callout-box mt-3" style="border-left-color: var(--accent-rose, #e06c75);">
-                        <div class="callout-title" style="color: var(--accent-rose, #e06c75);">⚠️ Query Execution Error</div>
+                    <div class="callout-box mt-3 border-rose">
+                        <div class="callout-title text-rose">⚠️ Query Execution Error</div>
                         <div class="font-mono subtext" id="query-error-message">@_queryError</div>
                     </div>
                 }
@@ -230,7 +234,25 @@
                 <div>Any tampered, corrupted, or altered byte in the archive will cause the SHA-256 validation to fail, preventing untrusted coordinate execution.</div>
             </div>
             <div class="mt-3">
-                <span class="subtext">Use the REST API endpoint <code>POST /api/datasets/import</code> for multipart upload and cryptographic verification.</span>
+                <div class="form-group mb-2">
+                    <label class="form-label" for="import-archive-file"><strong>Archive File (.tar.gz):</strong></label>
+                    <InputFile id="import-archive-file" class="input-text font-mono" OnChange="OnArchiveFileSelected" accept=".tar.gz,.gz" />
+                </div>
+                <div class="form-group mb-2">
+                    <label class="form-label" for="import-manifest-file"><strong>Manifest File (.manifest.json):</strong></label>
+                    <InputFile id="import-manifest-file" class="input-text font-mono" OnChange="OnManifestFileSelected" accept=".json,.manifest.json" />
+                </div>
+                <div class="mt-3 text-right">
+                    <button class="btn btn-primary" id="btn-import-dataset" disabled="@(_isImporting || _archiveFile == null || _manifestFile == null)" @onclick="ImportDatasetAsync">
+                        @(_isImporting ? "Verifying & Extracting..." : "Verify & Import Dataset")
+                    </button>
+                </div>
+                @if (!string.IsNullOrEmpty(_importStatusMessage))
+                {
+                    <div class="alert @(_importSuccess ? "alert-success" : "alert-danger") mt-3">
+                        @_importStatusMessage
+                    </div>
+                }
             </div>
         </div>
     </div>
@@ -805,6 +827,118 @@
         finally
         {
             _isQueryExecuting = false;
+        }
+    }
+
+    /// <summary>
+    /// Holds the selected dataset archive file reference from the file input.
+    /// </summary>
+    private IBrowserFile? _archiveFile;
+
+    /// <summary>
+    /// Holds the selected dataset manifest file reference from the file input.
+    /// </summary>
+    private IBrowserFile? _manifestFile;
+
+    /// <summary>
+    /// Indicates whether a dataset import and verification operation is currently in progress.
+    /// </summary>
+    private bool _isImporting;
+
+    /// <summary>
+    /// Indicates whether the last dataset import succeeded.
+    /// </summary>
+    private bool _importSuccess;
+
+    /// <summary>
+    /// Status or error message displayed following a dataset import attempt.
+    /// </summary>
+    private string? _importStatusMessage;
+
+    /// <summary>
+    /// Handles file selection for the dataset archive (.tar.gz).
+    /// </summary>
+    /// <param name="e">Input file change event arguments.</param>
+    private void OnArchiveFileSelected(InputFileChangeEventArgs e)
+    {
+        _archiveFile = e.File;
+        _importStatusMessage = null;
+    }
+
+    /// <summary>
+    /// Handles file selection for the dataset manifest (.manifest.json).
+    /// </summary>
+    /// <param name="e">Input file change event arguments.</param>
+    private void OnManifestFileSelected(InputFileChangeEventArgs e)
+    {
+        _manifestFile = e.File;
+        _importStatusMessage = null;
+    }
+
+    /// <summary>
+    /// Reads the uploaded archive and manifest files, verifies cryptographic provenance and SHA-256 integrity, and extracts coordinates.
+    /// </summary>
+    /// <returns>A task representing the asynchronous import operation.</returns>
+    private async Task ImportDatasetAsync()
+    {
+        // WHAT: Verifies and imports peer dataset archive and manifest.
+        // WHY:  Ensures untrusted or tampered coordinates are rejected before volume extraction.
+        // HOW:  Reads streams, deserializes manifest, invokes VerifiedDatasetImporter.ImportAsync, and updates UI status.
+        if (_archiveFile == null || _manifestFile == null)
+        {
+            _importStatusMessage = "Please select both a .tar.gz archive and a .manifest.json file.";
+            _importSuccess = false;
+            return;
+        }
+
+        _isImporting = true;
+        _importStatusMessage = null;
+
+        try
+        {
+            using MemoryStream manifestStream = new();
+            await using (Stream ms = _manifestFile.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024))
+            {
+                await ms.CopyToAsync(manifestStream);
+            }
+            manifestStream.Position = 0;
+
+            DatasetManifest? manifest = await JsonSerializer.DeserializeAsync<DatasetManifest>(
+                manifestStream,
+                new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true });
+
+            if (manifest == null)
+            {
+                _importStatusMessage = "Failed to deserialize dataset manifest: invalid JSON format.";
+                _importSuccess = false;
+                return;
+            }
+
+            await using Stream archiveStream = _archiveFile.OpenReadStream(maxAllowedSize: 500 * 1024 * 1024);
+            DatasetImportResult result = await DatasetImporter.ImportAsync(archiveStream, manifest);
+
+            if (result.Outcome == DatasetImportOutcome.ImportedSigned || result.Outcome == DatasetImportOutcome.ImportedUnsigned)
+            {
+                _importSuccess = true;
+                _importStatusMessage = $"Dataset '{manifest.DatasetName}' successfully verified and imported ({result.Outcome}).";
+                await LoadTrajectoriesAsync();
+                await LoadExportsAsync();
+            }
+            else
+            {
+                _importSuccess = false;
+                (_, string detail) = VerifiedDatasetImporter.DescribeRejection(result.Outcome);
+                _importStatusMessage = detail;
+            }
+        }
+        catch (Exception ex)
+        {
+            _importSuccess = false;
+            _importStatusMessage = $"Import error: {ex.Message}";
+        }
+        finally
+        {
+            _isImporting = false;
         }
     }
 }

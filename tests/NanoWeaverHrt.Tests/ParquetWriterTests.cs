@@ -1,4 +1,5 @@
 using System.Text;
+using NanoWeaverHrt.Models;
 using NanoWeaverHrt.Pipelines;
 using NanoWeaverHrt.Storage;
 using Xunit;
@@ -99,5 +100,72 @@ public sealed class ParquetWriterTests
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
             writer.QueryParquetAsync("../test.parquet"));
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="DuckDbParquetWriter.WriteFrameBatchAsync"/> serializes coordinate batches to Parquet,
+    /// overwrites existing files, and supports empty coordinate slices.
+    /// </summary>
+    [Fact]
+    public async Task WriteFrameBatchAsync_SerializesBatchAndHandlesEmptyFrame()
+    {
+        // WHAT: Tests single-frame/batch Parquet writing via DuckDbParquetWriter.
+        // WHY:  Validates zero-allocation batch exports with SIMD distance calculation.
+        // HOW:  Invokes WriteFrameBatchAsync with 5 coordinates, queries count, then tests with empty slice and overwriting.
+        string tempDir = Path.Combine(Path.GetTempPath(), $"weaver_test_batch_{Guid.NewGuid():N}");
+        string destParquet = Path.Combine(tempDir, "nested", "batch_output.parquet");
+
+        try
+        {
+            DuckDbParquetWriter writer = new();
+            AtomCoordinate[] coords =
+            [
+                new(0.0f, 10.0f, 0.0f),
+                new(1.5f, 10.2f, 0.5f),
+                new(2.2f, 11.0f, 1.2f),
+                new(3.1f, 10.8f, 2.0f),
+                new(4.0f, 12.0f, 3.0f)
+            ];
+
+            long records = await writer.WriteFrameBatchAsync(destParquet, 0, coords);
+            Assert.Equal(5, records);
+            Assert.True(File.Exists(destParquet));
+
+            long queried = await writer.QueryRecordCountAsync(destParquet);
+            Assert.Equal(5, queried);
+
+            // Test overwriting existing file with empty coordinates slice
+            long emptyRecords = await writer.WriteFrameBatchAsync(destParquet, 1, ReadOnlyMemory<AtomCoordinate>.Empty);
+            Assert.Equal(0, emptyRecords);
+            long queriedEmpty = await writer.QueryRecordCountAsync(destParquet);
+            Assert.Equal(0, queriedEmpty);
+
+            // Test writing with bare filename (no directory segment)
+            string bareFileName = $"weaver_bare_{Guid.NewGuid():N}.parquet";
+            try
+            {
+                long bareRecords = await writer.WriteFrameBatchAsync(bareFileName, 0, coords);
+                Assert.Equal(5, bareRecords);
+            }
+            finally
+            {
+                if (File.Exists(bareFileName))
+                {
+                    File.Delete(bareFileName);
+                }
+            }
+
+            // Test validation branches
+            await Assert.ThrowsAsync<ArgumentNullException>(() => writer.WriteFrameBatchAsync(null!, 0, coords));
+            await Assert.ThrowsAsync<ArgumentException>(() => writer.WriteFrameBatchAsync("   ", 0, coords));
+            await Assert.ThrowsAsync<ArgumentException>(() => writer.WriteFrameBatchAsync("../traversal.parquet", 0, coords));
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+        }
     }
 }

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text;
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -893,6 +894,89 @@ public sealed class WebUiAndConfigurationTests : IClassFixture<WebApplicationFac
         IConfiguration emptyConfig = new ConfigurationBuilder().Build();
         using SystemConfigurationStore store = new(WeaverTestDb.CreateFactory(emptyConfig));
         Assert.NotNull(store);
+    }
+
+    /// <summary>
+    /// Verifies that all Blazor Razor components adhere to sovereign dark mode CSS styling by prohibiting inline style attributes.
+    /// </summary>
+    [Fact]
+    public void RazorComponents_MustNotContainInlineStyleAttributes()
+    {
+        // WHAT: Scans all .razor files in src/NanoWeaverHrt/Components/ for inline style attributes.
+        // WHY:  Enforces strict dark-mode compliance and eliminates ad-hoc styling overrides across all sovereign Razor views.
+        // HOW:  Enumerates .razor files, checks for style="..." attribute occurrences, and asserts zero occurrences.
+        string componentsDir = FindRepoDirectory("src/NanoWeaverHrt/Components");
+        string[] razorFiles = Directory.GetFiles(componentsDir, "*.razor", SearchOption.AllDirectories);
+        Assert.NotEmpty(razorFiles);
+
+        List<string> violations = new();
+        foreach (string file in razorFiles)
+        {
+            string content = File.ReadAllText(file);
+            if (content.Contains("style=\"", StringComparison.OrdinalIgnoreCase))
+            {
+                violations.Add(Path.GetRelativePath(componentsDir, file));
+            }
+        }
+
+        Assert.Empty(violations);
+    }
+
+    /// <summary>
+    /// Verifies that within each individual Blazor Razor component, static HTML element identifier attributes are unique.
+    /// </summary>
+    [Fact]
+    public void RazorComponents_MustNotContainDuplicateElementIds()
+    {
+        // WHAT: Scans each .razor file in src/NanoWeaverHrt/Components/ for duplicate static HTML id attributes.
+        // WHY:  Duplicate DOM element IDs break accessibility, ARIA relationships, and automated browser query selectors.
+        // HOW:  Extracts id="..." regex matches per file, tracks duplicates in a set, and asserts no duplicates exist in any file.
+        string componentsDir = FindRepoDirectory("src/NanoWeaverHrt/Components");
+        string[] razorFiles = Directory.GetFiles(componentsDir, "*.razor", SearchOption.AllDirectories);
+        Assert.NotEmpty(razorFiles);
+
+        Regex idRegex = new(@"\bid=""([a-zA-Z0-9_\-]+)""", RegexOptions.Compiled);
+        List<string> duplicatesReport = new();
+
+        foreach (string file in razorFiles)
+        {
+            string content = File.ReadAllText(file);
+            MatchCollection matches = idRegex.Matches(content);
+            HashSet<string> seenIds = new(StringComparer.Ordinal);
+            HashSet<string> fileDups = new(StringComparer.Ordinal);
+
+            foreach (Match match in matches)
+            {
+                string idValue = match.Groups[1].Value;
+                if (!seenIds.Add(idValue))
+                {
+                    fileDups.Add(idValue);
+                }
+            }
+
+            if (fileDups.Count > 0)
+            {
+                duplicatesReport.Add($"{Path.GetRelativePath(componentsDir, file)}: {string.Join(", ", fileDups)}");
+            }
+        }
+
+        Assert.Empty(duplicatesReport);
+    }
+
+    /// <summary>
+    /// Locates a directory relative to the repository root by walking upward from <see cref="AppContext.BaseDirectory"/>.
+    /// </summary>
+    /// <param name="relativePath">Repository-relative path.</param>
+    /// <returns>The resolved absolute directory path.</returns>
+    private static string FindRepoDirectory(string relativePath)
+    {
+        DirectoryInfo? dir = new(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "NanoWeaverHrt.slnx")))
+        {
+            dir = dir.Parent;
+        }
+
+        return Path.Combine(dir!.FullName, relativePath);
     }
 }
 

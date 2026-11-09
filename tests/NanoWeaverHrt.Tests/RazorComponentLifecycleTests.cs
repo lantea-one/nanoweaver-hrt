@@ -31,6 +31,7 @@ using NanoWeaverHrt.Security.Authentication;
 using NanoWeaverHrt.Security.Cryptography;
 using NanoWeaverHrt.Security.KeyManagement;
 using NanoWeaverHrt.Security.Secrets;
+using NanoWeaverHrt.Security.Signing;
 using NanoWeaverHrt.Services;
 using NanoWeaverHrt.Services.Stack;
 using NanoWeaverHrt.Simulations;
@@ -113,6 +114,10 @@ public sealed class RazorComponentLifecycleTests : IDisposable
         // directory from the TRAJECTORY_INCOMING_DIR above, which keeps the generated files in this test
         // instance's temporary directory.
         sc.AddSingleton<INodeSecretStore, NodeSecretStore>();
+        sc.AddSingleton<INodeDatasetSigner, NodeDatasetSigner>();
+        sc.AddSingleton<DatasetManifestSignatureVerifier>();
+        sc.AddSingleton<IPeerKeyRegistry, PeerKeyRepository>();
+        sc.AddSingleton<VerifiedDatasetImporter>();
         sc.AddSingleton<ProfileDataProtector>();
         sc.AddSingleton<ISubjectKeyRepository, SubjectKeyRepository>();
         sc.AddSingleton<SubjectErasureJournal>();
@@ -123,6 +128,7 @@ public sealed class RazorComponentLifecycleTests : IDisposable
         sc.AddSingleton<DatabaseMigrationRunner>();
         sc.AddSingleton<IWeaverDbConnectionFactory, WeaverDbConnectionFactory>();
         sc.AddSingleton<IUserRepository, UserRepository>();
+        sc.AddSingleton<IUserProfileRepository, UserProfileRepository>();
         sc.AddSingleton<ISubjectAccessRepository, SubjectAccessRepository>();
         sc.AddSingleton<ISubjectAccessService, SubjectAccessService>();
         sc.AddSingleton<IUserAuthenticationService, UserAuthenticationService>();
@@ -414,6 +420,15 @@ public sealed class RazorComponentLifecycleTests : IDisposable
         // WHAT: Tests the Authoritative Configuration & Peer Collaboration Blazor component.
         // WHY:  Ensures UI controls correctly invoke database override persistence, revert, and token lifecycles.
         // HOW:  Instantiates ConfigurationManagement, saves an override, reverts it, creates a key, and revokes it.
+        UserSessionState session = _services.GetRequiredService<UserSessionState>();
+        session.SetUser(new UserAccount
+        {
+            Username = "admin",
+            Role = UserRole.Administrator,
+            AccessGate = AccessGate.Web,
+            PublicKeyBase64 = "AAAA"
+        });
+
         ConfigurationManagement configPage = new();
         await InitializeAndRenderAsync(configPage);
 
@@ -614,6 +629,10 @@ public sealed class RazorComponentLifecycleTests : IDisposable
         // 4. Export dataset
         await InvokeAsyncMethod(browser, "ExportDatasetAsync");
         RenderComponent(browser);
+
+        // 5. Import dataset validation
+        await InvokeAsyncMethod(browser, "ImportDatasetAsync");
+        RenderComponent(browser);
     }
 
     /// <summary>
@@ -813,6 +832,219 @@ public sealed class RazorComponentLifecycleTests : IDisposable
         Assert.NotNull(copyMethod);
         Task copyTask = (Task)copyMethod.Invoke(wizard, null)!;
         Assert.True(copyTask.IsCompleted);
+    }
+
+    /// <summary>
+    /// Verifies that non-admin sessions are denied access to system configuration, and that deleting all share keys leaves the table empty without reviving demo keys.
+    /// </summary>
+    [Fact]
+    public async Task ConfigurationManagement_NonAdmin_DeniesAccess_AndDeletingAllKeysLeavesListEmpty()
+    {
+        // WHAT: Tests authorization gating and empty share key list persistence in ConfigurationManagement.
+        // WHY:  Addresses Issue #155 (P152): prevents unprivileged access and stops auto-seeding resurrected share keys.
+        // HOW:  Attempts access with null and Researcher sessions, then as Admin deletes all keys and confirms _shareKeys remains empty.
+        UserSessionState session = _services.GetRequiredService<UserSessionState>();
+
+        // 1. Unauthenticated session: does not load settings
+        session.SignOut();
+        ConfigurationManagement unauthPage = new();
+        await InitializeAndRenderAsync(unauthPage);
+        FieldInfo? configField = typeof(ConfigurationManagement).GetField("_configurations", BindingFlags.Instance | BindingFlags.NonPublic);
+        var unauthConfigs = (IReadOnlyList<ConfigurationItem>)configField!.GetValue(unauthPage)!;
+        Assert.Empty(unauthConfigs);
+
+        // 2. Researcher session: access denied
+        session.SetUser(new UserAccount
+        {
+            Username = "researcher_user",
+            Role = UserRole.Researcher,
+            AccessGate = AccessGate.Web,
+            PublicKeyBase64 = "AAAA"
+        });
+        ConfigurationManagement researcherPage = new();
+        await InitializeAndRenderAsync(researcherPage);
+        var resConfigs = (IReadOnlyList<ConfigurationItem>)configField.GetValue(researcherPage)!;
+        Assert.Empty(resConfigs);
+
+        // 3. Administrator session: loads settings
+        session.SetUser(new UserAccount
+        {
+            Username = "admin_master",
+            Role = UserRole.Administrator,
+            AccessGate = AccessGate.Web,
+            PublicKeyBase64 = "AAAA"
+        });
+        ConfigurationManagement adminPage = new();
+        await InitializeAndRenderAsync(adminPage);
+
+        // 4. Revoke/delete all share keys in the repository
+        IConfigurationRepository repo = _services.GetRequiredService<IConfigurationRepository>();
+        var existingKeys = await repo.ListShareKeysAsync();
+        foreach (var k in existingKeys)
+        {
+            await repo.RevokeShareKeyAsync(k.TokenId);
+        }
+
+        // Re-load keys on the page and verify list is empty (no auto-seeding occurred)
+        await InvokeAsyncMethod(adminPage, "LoadShareKeysAsync");
+        FieldInfo? shareKeysField = typeof(ConfigurationManagement).GetField("_shareKeys", BindingFlags.Instance | BindingFlags.NonPublic);
+        var shareKeys = (IReadOnlyList<ShareKeyRecord>)shareKeysField!.GetValue(adminPage)!;
+        Assert.True(shareKeys.All(k => !k.IsActive) || shareKeys.Count == 0);
+    }
+
+    /// <summary>
+    /// Verifies that a researcher granted ReadAccess or FullReadAccess to a patient is authorized to view their profile in <see cref="UserProfilePage"/>.
+    /// </summary>
+    [Fact]
+    public async Task UserProfilePage_ResearcherWithReadAccess_PermitsProfileAccess()
+    {
+        // WHAT: Tests cross-subject profile authorization for researchers with tiered access grants.
+        // WHY:  Validates Issue #155 (P152) requirement allowing authorized researchers to load patient profile data.
+        // HOW:  Registers patient and researcher, creates a ReadAccess grant, mounts UserProfilePage as researcher, and asserts access granted.
+        IUserRepository userRepo = _services.GetRequiredService<IUserRepository>();
+        IUserProfileRepository profileRepo = _services.GetRequiredService<IUserProfileRepository>();
+        ISubjectAccessRepository accessRepo = _services.GetRequiredService<ISubjectAccessRepository>();
+        UserSessionState session = _services.GetRequiredService<UserSessionState>();
+
+        string patientName = $"patient_{Guid.NewGuid():N}"[..12];
+        string researcherName = $"researcher_{Guid.NewGuid():N}"[..14];
+
+        // Register patient user and profile
+        await userRepo.CreateUserAsync(new UserAccount
+        {
+            Username = patientName,
+            Role = UserRole.Patient,
+            AccessGate = AccessGate.Web,
+            PublicKeyBase64 = "BBBB"
+        });
+        await profileRepo.UpsertProfileAsync(new UserProfile
+        {
+            Username = patientName,
+            FirstName = "Alice",
+            LastName = "Patient",
+            Pronouns = ["they", "them"]
+        });
+
+        // Register researcher user
+        await userRepo.CreateUserAsync(new UserAccount
+        {
+            Username = researcherName,
+            Role = UserRole.Researcher,
+            AccessGate = AccessGate.Web,
+            PublicKeyBase64 = "CCCC"
+        });
+
+        // Grant ReadAccess over patient to researcher
+        await accessRepo.SaveSubjectGrantAsync(new SubjectGrant
+        {
+            Id = Guid.NewGuid().ToString(),
+            ResearcherUsername = researcherName,
+            SubjectUsername = patientName,
+            AccessLevel = SubjectAccessLevel.ReadAccess,
+            GrantedBy = "admin"
+        });
+
+        // Set active session to researcher
+        session.SetUser(new UserAccount
+        {
+            Username = researcherName,
+            Role = UserRole.Researcher,
+            AccessGate = AccessGate.Web,
+            PublicKeyBase64 = "CCCC"
+        });
+
+        // Load profile for target patient
+        UserProfilePage page = new();
+        typeof(UserProfilePage).GetProperty("TargetUsername")?.SetValue(page, patientName);
+        await InitializeAndRenderAsync(page);
+
+        FieldInfo? accessField = typeof(UserProfilePage).GetField("_hasAccess", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(accessField);
+        bool hasAccess = (bool)accessField.GetValue(page)!;
+        Assert.True(hasAccess);
+
+        FieldInfo? accountField = typeof(UserProfilePage).GetField("_targetAccount", BindingFlags.Instance | BindingFlags.NonPublic);
+        var targetAccount = (UserAccount?)accountField?.GetValue(page);
+        Assert.NotNull(targetAccount);
+        Assert.Equal(patientName, targetAccount.Username);
+
+        // Test that researcher is denied access to an unauthorized patient
+        string unauthorizedPatient = $"unauth_{Guid.NewGuid():N}"[..12];
+        UserProfilePage unauthPage = new();
+        typeof(UserProfilePage).GetProperty("TargetUsername")?.SetValue(unauthPage, unauthorizedPatient);
+        await InitializeAndRenderAsync(unauthPage);
+        bool unauthAccess = (bool)accessField.GetValue(unauthPage)!;
+        Assert.False(unauthAccess);
+    }
+
+    /// <summary>
+    /// Verifies that executing GDPR Article 17 crypto-shredding in <see cref="ComplianceSecurity"/> records the authenticated operator's username and pseudonymized subject ID.
+    /// </summary>
+    [Fact]
+    public async Task ComplianceSecurity_CryptoShred_RecordsAuthenticatedOperatorAndPseudonym()
+    {
+        // WHAT: Tests audit attribution and pseudonymization on crypto-shred actions in ComplianceSecurity.
+        // WHY:  Issue #155 (P152) requirement: replace hardcoded "USER_CONSOLE" with session operator username and pseudonymized ID.
+        // HOW:  Signs in as operator, registers a subject key, invokes ExecuteCryptoShred, and verifies audit ledger entry.
+        UserSessionState session = _services.GetRequiredService<UserSessionState>();
+        IKeyManagementService keyService = _services.GetRequiredService<IKeyManagementService>();
+        IComplianceAuditService auditService = _services.GetRequiredService<IComplianceAuditService>();
+
+        string operatorUser = "admin_crypto_auditor";
+        session.SetUser(new UserAccount
+        {
+            Username = operatorUser,
+            Role = UserRole.Administrator,
+            AccessGate = AccessGate.Web,
+            PublicKeyBase64 = "DDDD"
+        });
+
+        string subjectId = $"subj_{Guid.NewGuid():N}"[..10];
+        await keyService.GetOrCreateSubjectKeyAsync(subjectId);
+
+        ComplianceSecurity page = new();
+        await InitializeAndRenderAsync(page);
+
+        FieldInfo? subjectIdField = typeof(ComplianceSecurity).GetField("_targetShredSubjectId", BindingFlags.Instance | BindingFlags.NonPublic);
+        subjectIdField?.SetValue(page, subjectId);
+
+        await InvokeAsyncMethod(page, "ExecuteCryptoShred");
+
+        FieldInfo? successField = typeof(ComplianceSecurity).GetField("_shredSuccess", BindingFlags.Instance | BindingFlags.NonPublic);
+        bool success = (bool)successField!.GetValue(page)!;
+        Assert.True(success);
+
+        // Verify audit log has the authenticated operator and pseudonym
+        string expectedPseudonym = auditService.PseudonymizeSubjectId(subjectId);
+        var auditRecords = auditService.GetAuditRecords(100);
+        Assert.Contains(auditRecords, r =>
+            r.OperatorId == operatorUser &&
+            r.Action == "CryptoShredSubjectKey" &&
+            r.Resource == expectedPseudonym);
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="TrajectoryBrowser"/> provides file upload handlers and validates files before importing.
+    /// </summary>
+    [Fact]
+    public async Task TrajectoryBrowser_ImportDataset_FileSelectionAndValidation()
+    {
+        // WHAT: Tests file upload selection and validation logic in TrajectoryBrowser.
+        // WHY:  Issue #155 (P152): ensures peer dataset upload requires both archive and manifest files.
+        // HOW:  Invokes ImportDatasetAsync with no files, asserting validation failure message.
+        TrajectoryBrowser browser = new();
+        await InitializeAndRenderAsync(browser);
+
+        FieldInfo? statusField = typeof(TrajectoryBrowser).GetField("_importStatusMessage", BindingFlags.Instance | BindingFlags.NonPublic);
+        FieldInfo? successField = typeof(TrajectoryBrowser).GetField("_importSuccess", BindingFlags.Instance | BindingFlags.NonPublic);
+
+        await InvokeAsyncMethod(browser, "ImportDatasetAsync");
+
+        string? status = (string?)statusField!.GetValue(browser);
+        bool success = (bool)successField!.GetValue(browser)!;
+
+        Assert.False(success);
+        Assert.Contains("Please select both", status);
     }
 
     /// <summary>

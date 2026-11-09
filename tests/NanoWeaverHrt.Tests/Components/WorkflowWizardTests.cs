@@ -16,7 +16,9 @@ using NanoWeaverHrt.Fabrication;
 using NanoWeaverHrt.Fabrication.Gel;
 using NanoWeaverHrt.Fabrication.Opentrons;
 using NanoWeaverHrt.Genomics;
+using NanoWeaverHrt.Models;
 using NanoWeaverHrt.Pipelines;
+using NanoWeaverHrt.Simulations;
 using NanoWeaverHrt.Storage;
 using Xunit;
 
@@ -50,7 +52,7 @@ public sealed class WorkflowWizardTests : TestContext
         JSInterop.Mode = JSRuntimeMode.Loose;
 
         _configRepoMock
-            .Setup(c => c.GetValueAsync(It.IsAny<string>(), It.IsAny<string>()))
+            .Setup(c => c.GetValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("./simulations/exports");
 
         Services.AddSingleton<IFabricationService, FabricationService>();
@@ -60,7 +62,11 @@ public sealed class WorkflowWizardTests : TestContext
         Services.AddSingleton<XyzPipeReader>();
         Services.AddSingleton<DcdPipeReader>();
         Services.AddSingleton<LammpsCustomPipeReader>();
+        _parquetWriterMock
+            .Setup(p => p.WriteFrameBatchAsync(It.IsAny<string>(), It.IsAny<long>(), It.IsAny<ReadOnlyMemory<AtomCoordinate>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(16L);
         Services.AddSingleton<IParquetTrajectoryWriter>(_parquetWriterMock.Object);
+        Services.AddSingleton<ISimulationCampaignService, SimulationCampaignService>();
         Services.AddSingleton<IOpentronsProtocolGenerator, OpentronsProtocolGenerator>();
         Services.AddSingleton(typeof(ILogger<>), typeof(NullLogger<>));
         Services.AddSingleton<IGelAnalysisService, GelAnalysisService>();
@@ -80,16 +86,16 @@ public sealed class WorkflowWizardTests : TestContext
 
         await cut.InvokeAsync(() => cut.Instance.SetStep(5));
         Assert.NotEmpty(cut.FindAll(".opentrons-section"));
-        Assert.NotNull(cut.Find("#opentrons-robot-select"));
-        Assert.NotNull(cut.Find("#opentrons-pipette-select"));
-        Assert.NotNull(cut.Find("#opentrons-plate-select"));
-        Assert.NotNull(cut.Find("#opentrons-temp-module"));
-        Assert.NotNull(cut.Find("#opentrons-thermocycler-module"));
+        Assert.NotNull(cut.Find("#wizard-stage5-opentrons-robot-select"));
+        Assert.NotNull(cut.Find("#wizard-stage5-opentrons-pipette-select"));
+        Assert.NotNull(cut.Find("#wizard-stage5-opentrons-plate-select"));
+        Assert.NotNull(cut.Find("#wizard-stage5-opentrons-temp-module"));
+        Assert.NotNull(cut.Find("#wizard-stage5-opentrons-thermocycler-module"));
 
         await cut.InvokeAsync(() => cut.Instance.SetStep(6));
         Assert.NotEmpty(cut.FindAll(".opentrons-section"));
-        Assert.NotNull(cut.Find("#opentrons-robot-select"));
-        Assert.NotNull(cut.Find("#opentrons-pipette-select"));
+        Assert.NotNull(cut.Find("#wizard-stage6-opentrons-robot-select"));
+        Assert.NotNull(cut.Find("#wizard-stage6-opentrons-pipette-select"));
     }
 
     /// <summary>
@@ -110,7 +116,7 @@ public sealed class WorkflowWizardTests : TestContext
         Assert.Contains("11 Slots", deckSlotsInitial.TextContent);
 
         // Switch to Flex platform
-        var robotSelect = cut.Find("#opentrons-robot-select");
+        var robotSelect = cut.Find("#wizard-stage5-opentrons-robot-select");
         robotSelect.Change(OpentronsRobotModel.Flex.ToString());
 
         var deckSlotsFlex = cut.Find(".deck-slots-value");
@@ -118,12 +124,12 @@ public sealed class WorkflowWizardTests : TestContext
         Assert.Equal(OpentronsRobotModel.Flex, cut.Instance.ActiveOpentronsOptions.RobotModel);
 
         // Switch source plate to 384-well format
-        var plateSelect = cut.Find("#opentrons-plate-select");
+        var plateSelect = cut.Find("#wizard-stage5-opentrons-plate-select");
         plateSelect.Change(OpentronsPlateType.Nest384WellPcr.ToString());
         Assert.Equal(OpentronsPlateType.Nest384WellPcr, cut.Instance.ActiveOpentronsOptions.SourcePlateType);
 
         // Toggle on-deck thermocycler module
-        var tcCheckbox = cut.Find("#opentrons-thermocycler-module");
+        var tcCheckbox = cut.Find("#wizard-stage5-opentrons-thermocycler-module");
         tcCheckbox.Change(true);
         Assert.True(cut.Instance.ActiveOpentronsOptions.UseThermocyclerModule);
 
@@ -152,7 +158,7 @@ public sealed class WorkflowWizardTests : TestContext
         Assert.Empty(cut.FindAll(".modal-overlay"));
 
         // Click generate button
-        var generateBtn = cut.Find("#btn-generate-opentrons");
+        var generateBtn = cut.Find("#wizard-stage6-btn-generate-opentrons");
         generateBtn.Click();
 
         // Modal should now be open with populated Python script
@@ -185,7 +191,7 @@ public sealed class WorkflowWizardTests : TestContext
         IRenderedComponent<WorkflowWizard> cut = RenderComponent<WorkflowWizard>();
         await cut.InvokeAsync(() => cut.Instance.SetStep(5));
 
-        cut.Find("#btn-generate-opentrons").Click();
+        cut.Find("#wizard-stage5-btn-generate-opentrons").Click();
         Assert.True(cut.Instance.IsOpentronsModalOpen);
 
         var modalOverlay = cut.Find(".modal-overlay");
@@ -208,7 +214,7 @@ public sealed class WorkflowWizardTests : TestContext
         IRenderedComponent<WorkflowWizard> cut = RenderComponent<WorkflowWizard>();
         await cut.InvokeAsync(() => cut.Instance.SetStep(6));
 
-        cut.Find("#btn-generate-opentrons").Click();
+        cut.Find("#wizard-stage6-btn-generate-opentrons").Click();
 
         // Click download button
         var downloadBtn = cut.Find("#btn-download-opentrons-script");
@@ -299,5 +305,41 @@ public sealed class WorkflowWizardTests : TestContext
         Assert.NotEmpty(cut.FindAll(".gel-lane-count"));
         Assert.NotEmpty(cut.FindAll(".gel-staple-smear"));
         Assert.NotEmpty(cut.FindAll(".gel-verdict"));
+    }
+
+    /// <summary>
+    /// Verifies that Stages 3, 4, and 5 execute simulation campaigns, stream trajectory parsing, Parquet export, and kinetics chart rendering.
+    /// </summary>
+    /// <returns>A task representing the asynchronous test execution.</returns>
+    [Fact]
+    public async Task Stages345_Simulation_StreamParse_AndParquetExport_ExecuteCleanly()
+    {
+        // WHAT: Tests end-to-end execution of Stages 3, 4, and 5 in WorkflowWizard.
+        // WHY:  Ensures real domain campaign service, trajectory stream parser, and Parquet writer execute deterministically.
+        // HOW:  Transitions through stages 3, 4, 5, clicks action buttons, and verifies console output and JS interop invocations.
+        IRenderedComponent<WorkflowWizard> cut = RenderComponent<WorkflowWizard>();
+
+        // Step 3: Simulation execution
+        await cut.InvokeAsync(() => cut.Instance.SetStep(3));
+        var runSimBtn = cut.Find("button.btn-accent");
+        await cut.InvokeAsync(() => runSimBtn.Click());
+        var consoleBody = cut.Find(".console-body");
+        Assert.Contains("Launching oxDNA engine", consoleBody.TextContent);
+        Assert.Contains("RMSD Convergence", consoleBody.TextContent);
+
+        // Step 4: Stream parse & Parquet export
+        await cut.InvokeAsync(() => cut.Instance.SetStep(4));
+        var parseBtn = cut.Find("button.btn-primary.w-100");
+        await cut.InvokeAsync(() => parseBtn.Click());
+        var parserLog = cut.Find(".console-box .console-body");
+        Assert.Contains("Trajectory parsed via System.IO.Pipelines", parserLog.TextContent);
+
+        var parquetBtn = cut.Find("button.btn-outline.w-100");
+        await cut.InvokeAsync(() => parquetBtn.Click());
+        cut.WaitForAssertion(() => Assert.Contains("Created dna_nanotube_sample.parquet", cut.Find(".console-box .console-body").TextContent));
+
+        // Step 5: Kinetics chart rendering
+        await cut.InvokeAsync(() => cut.Instance.SetStep(5));
+        JSInterop.VerifyInvoke("WeaverVisualizer.renderKineticsChart");
     }
 }

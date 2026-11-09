@@ -308,4 +308,99 @@ public sealed class DuckDbParquetWriter : IParquetTrajectoryWriter
 
         return QueryRecordCountAsync(parquetFilePath, cancellationToken);
     }
+
+    /// <inheritdoc/>
+    public async Task<long> WriteFrameBatchAsync(
+        string destinationParquetPath,
+        long frameIndex,
+        ReadOnlyMemory<AtomCoordinate> coordinates,
+        CancellationToken cancellationToken = default)
+    {
+        // WHAT: Serializes a single frame or batch of atomic coordinates directly to Apache Parquet via in-memory DuckDB.
+        // WHY:  Enables zero-allocation batch exports without streaming full trajectory files through the pipeline.
+        // HOW:  Populates an in-memory DuckDB table with coordinates, applies SIMD distance metrics, and copies to Parquet with ZSTD.
+        ArgumentException.ThrowIfNullOrWhiteSpace(destinationParquetPath);
+
+        if (destinationParquetPath.Contains(".."))
+        {
+            throw new ArgumentException("Path traversal segments ('..') are prohibited in Parquet output path.", nameof(destinationParquetPath));
+        }
+
+        string? destinationDir = Path.GetDirectoryName(destinationParquetPath);
+        if (!string.IsNullOrEmpty(destinationDir) && !Directory.Exists(destinationDir))
+        {
+            Directory.CreateDirectory(destinationDir);
+        }
+
+        if (File.Exists(destinationParquetPath))
+        {
+            File.Delete(destinationParquetPath);
+        }
+
+        long totalRecordsSerialized = 0;
+        using DuckDBConnection connection = new("DataSource=:memory:");
+        await connection.OpenAsync(cancellationToken);
+
+        using (DuckDBCommand createTableCmd = connection.CreateCommand())
+        {
+            createTableCmd.CommandText = @"
+                CREATE TABLE staging_trajectory (
+                    frame_index BIGINT,
+                    atom_index INTEGER,
+                    x FLOAT,
+                    y FLOAT,
+                    z FLOAT,
+                    distance_from_center FLOAT,
+                    target_region VARCHAR
+                );";
+            await createTableCmd.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        int atomCount = coordinates.Length;
+        if (atomCount > 0)
+        {
+            using DuckDBAppender appender = connection.CreateAppender("staging_trajectory");
+            float[] rentedDistances = ArrayPool<float>.Shared.Rent(atomCount);
+            try
+            {
+                AtomCoordinate centroid = CalculateCentroid(coordinates.Span);
+                SimdCoordinateParser.ComputeDistancesFromCentroidSimd(
+                    coordinates.Span,
+                    centroid,
+                    rentedDistances.AsSpan(0, atomCount));
+
+                for (int i = 0; i < atomCount; i++)
+                {
+                    AtomCoordinate coord = coordinates.Span[i];
+                    float dist = rentedDistances[i];
+                    string region = ClassifyAtomRegion(i, atomCount);
+
+                    IDuckDBAppenderRow row = appender.CreateRow();
+                    row.AppendValue(frameIndex);
+                    row.AppendValue(i);
+                    row.AppendValue(coord.X);
+                    row.AppendValue(coord.Y);
+                    row.AppendValue(coord.Z);
+                    row.AppendValue(dist);
+                    row.AppendValue(region);
+                    row.EndRow();
+
+                    totalRecordsSerialized++;
+                }
+            }
+            finally
+            {
+                ArrayPool<float>.Shared.Return(rentedDistances);
+            }
+        }
+
+        using (DuckDBCommand copyCommand = connection.CreateCommand())
+        {
+            string normalizedPath = destinationParquetPath.Replace('\\', '/').Replace("'", "''");
+            copyCommand.CommandText = $"COPY staging_trajectory TO '{normalizedPath}' (FORMAT PARQUET, COMPRESSION ZSTD);";
+            await copyCommand.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        return totalRecordsSerialized;
+    }
 }

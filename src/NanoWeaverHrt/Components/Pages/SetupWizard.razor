@@ -133,12 +133,12 @@
                     {
                         <div class="form-group mt-3">
                             <div class="d-flex justify-between align-center mb-1">
-                                <label for="customPubKey" class="form-label" style="margin-bottom:0;">Public Key (Base64 DER or PEM string)</label>
+                                <label for="customPubKey" class="form-label mb-0">Public Key (Base64 DER or PEM string)</label>
                                 <div>
-                                    <label for="pubKeyUpload" class="btn btn-sm btn-outline cursor-pointer" style="margin:0;">
+                                    <label for="pubKeyUpload" class="btn btn-sm btn-outline cursor-pointer m-0">
                                         📁 Upload Public Key (.pub / .pem)
                                     </label>
-                                    <InputFile id="pubKeyUpload" OnChange="HandleCustomPubKeyUpload" accept=".pub,.pem,.txt,.crt" style="display:none;" />
+                                    <InputFile id="pubKeyUpload" OnChange="HandleCustomPubKeyUpload" accept=".pub,.pem,.txt,.crt" class="d-none" />
                                 </div>
                             </div>
                             <textarea id="customPubKey" class="form-control font-mono code-box" rows="5" placeholder="-----BEGIN PUBLIC KEY----- ... or raw Base64" @bind="_customPublicKeyText"></textarea>
@@ -192,25 +192,77 @@
 </div>
 
 @code {
+    /// <summary>
+    /// Indicates whether master Administrator setup has already been completed.
+    /// </summary>
     private bool _isAlreadySetup;
+
+    /// <summary>
+    /// Current step in the setup wizard progression (1, 2, or 3).
+    /// </summary>
     private int _step = 1;
+
+    /// <summary>
+    /// Desired username for the root Administrator identity.
+    /// </summary>
     private string _adminUsername = "administrator";
+
+    /// <summary>
+    /// Network and interface access boundary policy for the Administrator account.
+    /// </summary>
     private AccessGate _accessGate = AccessGate.ApiWeb;
+
+    /// <summary>
+    /// Asymmetric cryptographic algorithm for identity verification and signatures.
+    /// </summary>
     private KeyAlgorithm _selectedAlgorithm = KeyAlgorithm.Ed25519;
-    private int _keyOption = 0; // 0: Generate, 1: Custom
+
+    /// <summary>
+    /// Key generation option selector (0 for in-browser client derivation, 1 for custom public key upload).
+    /// </summary>
+    private int _keyOption = 0;
+
+    /// <summary>
+    /// Optional password passphrase for encrypting the exported private key PKCS#8 envelope.
+    /// </summary>
     private string _keyPassword = string.Empty;
+
+    /// <summary>
+    /// Custom public key text supplied via paste or file upload.
+    /// </summary>
     private string _customPublicKeyText = string.Empty;
+
+    /// <summary>
+    /// Client-side derived cryptographic keypair bundle.
+    /// </summary>
     private GeneratedKeyBundle? _generatedBundle;
+
+    /// <summary>
+    /// Checkbox confirmation that the operator has safely archived their private key.
+    /// </summary>
     private bool _backedUpConfirmed;
+
+    /// <summary>
+    /// Error message string displayed on setup failure.
+    /// </summary>
     private string? _errorMessage;
+
+    /// <summary>
+    /// Status message string displayed following private key download or clipboard copy.
+    /// </summary>
     private string? _downloadStatus;
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Initializes the component and checks whether master Administrator setup is needed.
+    /// </summary>
     protected override async Task OnInitializedAsync()
     {
         _isAlreadySetup = !await AuthService.IsSetupRequiredAsync();
     }
 
+    /// <summary>
+    /// Validates Administrator username and advances the wizard to key generation (Step 2).
+    /// </summary>
     private void ProceedToStep2()
     {
         _errorMessage = null;
@@ -222,6 +274,10 @@
         _step = 2;
     }
 
+    /// <summary>
+    /// Derives an asymmetric cryptographic keypair client-side in browser memory via WebCrypto/Noble.
+    /// </summary>
+    /// <returns>A task tracking asynchronous key generation completion.</returns>
     private async Task GenerateKeys()
     {
         _errorMessage = null;
@@ -245,6 +301,10 @@
         }
     }
 
+    /// <summary>
+    /// Triggers client-side browser download of the private key PEM artifact.
+    /// </summary>
+    /// <returns>A task tracking download initiation.</returns>
     private async Task DownloadPrivateKey()
     {
         if (_generatedBundle == null) return;
@@ -269,6 +329,10 @@
         }
     }
 
+    /// <summary>
+    /// Copies the generated private key PEM content to the system clipboard.
+    /// </summary>
+    /// <returns>A task tracking clipboard write completion.</returns>
     private async Task CopyPrivateKey()
     {
         if (_generatedBundle == null) return;
@@ -284,6 +348,11 @@
         }
     }
 
+    /// <summary>
+    /// Reads and assigns custom public key content from an uploaded file stream.
+    /// </summary>
+    /// <param name="e">Event arguments containing the uploaded file descriptor.</param>
+    /// <returns>A task tracking file read completion.</returns>
     private async Task HandleCustomPubKeyUpload(InputFileChangeEventArgs e)
     {
         _errorMessage = null;
@@ -302,6 +371,9 @@
         }
     }
 
+    /// <summary>
+    /// Validates key configuration, backup confirmation, and advances wizard to review (Step 3).
+    /// </summary>
     private void ProceedToStep3()
     {
         _errorMessage = null;
@@ -330,6 +402,10 @@
         _step = 3;
     }
 
+    /// <summary>
+    /// Computes a truncated human-readable fingerprint of the active public key.
+    /// </summary>
+    /// <returns>Truncated public key fingerprint representation.</returns>
     private string GetFingerprint()
     {
         string raw = _keyOption == 0
@@ -340,6 +416,10 @@
         return raw.Length > 24 ? raw[..12] + "..." + raw[^12..] : raw;
     }
 
+    /// <summary>
+    /// Registers the initial Administrator identity with the node and transitions to authenticated state.
+    /// </summary>
+    /// <returns>A task tracking platform initialization and setup lock-out.</returns>
     private async Task FinalizeSetup()
     {
         _errorMessage = null;
@@ -393,6 +473,11 @@
         }
     }
 
+    /// <summary>
+    /// Strips RFC 7468 PEM boundary markers, line breaks, and whitespace from public key text.
+    /// </summary>
+    /// <param name="pemOrBase64">Raw public key PEM string or base-64 encoded string.</param>
+    /// <returns>Sanitized base-64 string containing raw public key DER bytes.</returns>
     private static string ExtractCleanPublicKeyBase64(string pemOrBase64)
     {
         string clean = pemOrBase64.Trim();

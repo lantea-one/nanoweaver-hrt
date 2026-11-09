@@ -1,5 +1,7 @@
 @page "/configuration"
+@using NanoWeaverHrt.Security.Authentication
 @inject IConfigurationRepository ConfigRepo
+@inject UserSessionState SessionState
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
@@ -12,92 +14,106 @@
         <div class="badge badge-accent">BACKEND: @ConfigRepo.ActiveBackendName</div>
     </div>
 
-    <!-- Precedence Callout Rule -->
-    <div class="callout-box mt-3">
-        <div class="callout-title">⚖️ Sovereign Architectural Rule: Database Precedence ("Database Wins")</div>
-        <div class="callout-item"><strong>WHAT:</strong> System settings stored in the persistent database supersede all other sources.</div>
-        <div class="callout-item"><strong>WHY:</strong> Stack environment variables do nothing if configuration exists in the database. This allows runtime reconfiguration for collaborative computing without taking down containers or modifying docker-compose files.</div>
-        <div class="callout-item"><strong>HOW:</strong> When you save a setting below, it is written to the database with an authoritative timestamp. Clicking 'Revert' purges the database override, restoring environment or default fallbacks.</div>
-    </div>
-
-    <!-- Active Configurations Table by Category -->
-    @foreach (string category in _categories)
+    @if (!SessionState.IsAuthenticated)
     {
-        <div class="card panel mt-4">
-            <div class="panel-header">
-                <h3>@category</h3>
-                <span class="badge badge-outline">@_configurations.Count(c => c.Category == category) Parameters</span>
-            </div>
+        <div class="alert alert-warning mt-3">
+            <strong>Authentication Required:</strong> Please <a href="/login">sign in</a> with your private key to view and manage system configuration.
+        </div>
+    }
+    else if (!SessionState.IsAdmin)
+    {
+        <div class="alert alert-danger mt-3">
+            <strong>Access Denied:</strong> Only accounts with the <span class="badge badge-accent">Administrator</span> role can access system configuration.
+        </div>
+    }
+    else
+    {
+        <!-- Precedence Callout Rule -->
+        <div class="callout-box mt-3">
+            <div class="callout-title">⚖️ Sovereign Architectural Rule: Database Precedence ("Database Wins")</div>
+            <div class="callout-item"><strong>WHAT:</strong> System settings stored in the persistent database supersede all other sources.</div>
+            <div class="callout-item"><strong>WHY:</strong> Stack environment variables do nothing if configuration exists in the database. This allows runtime reconfiguration for collaborative computing without taking down containers or modifying docker-compose files.</div>
+            <div class="callout-item"><strong>HOW:</strong> When you save a setting below, it is written to the database with an authoritative timestamp. Clicking 'Revert' purges the database override, restoring environment or default fallbacks.</div>
+        </div>
 
-            <div class="table-container mt-2">
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th style="width: 25%;">Setting Key</th>
-                            <th style="width: 35%;">Active Value &amp; Source</th>
-                            <th style="width: 25%;">Description</th>
-                            <th style="width: 15%; text-align: right;">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (ConfigurationItem item in _configurations.Where(c => c.Category == category))
-                        {
+        <!-- Active Configurations Table by Category -->
+        @foreach (string category in _categories)
+        {
+            <div class="card panel mt-4">
+                <div class="panel-header">
+                    <h3>@category</h3>
+                    <span class="badge badge-outline">@_configurations.Count(c => c.Category == category) Parameters</span>
+                </div>
+
+                <div class="table-container mt-2">
+                    <table class="data-table">
+                        <thead>
                             <tr>
-                                <td>
-                                    <div class="font-mono text-accent">@item.Key</div>
-                                    @if (item.IsSecret)
-                                    {
-                                        <div class="subtext">Default: <code>[REDACTED]</code></div>
-                                    }
-                                    else
-                                    {
-                                        <div class="subtext">Default: <code>@item.DefaultValue</code></div>
-                                    }
-                                </td>
-                                <td>
-                                    <div class="config-input-group">
+                                <th class="col-w-25">Setting Key</th>
+                                <th class="col-w-35">Active Value &amp; Source</th>
+                                <th class="col-w-25">Description</th>
+                                <th class="col-w-15-right">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (ConfigurationItem item in _configurations.Where(c => c.Category == category))
+                            {
+                                <tr>
+                                    <td>
+                                        <div class="font-mono text-accent">@item.Key</div>
                                         @if (item.IsSecret)
                                         {
-                                            <input type="password" class="input-text font-mono" autocomplete="new-password" placeholder="Stored credential is never displayed — type a new value to replace it" @bind="_editValues[item.Key]" />
+                                            <div class="subtext">Default: <code>[REDACTED]</code></div>
                                         }
                                         else
                                         {
-                                            <input type="text" class="input-text font-mono" @bind="_editValues[item.Key]" />
+                                            <div class="subtext">Default: <code>@item.DefaultValue</code></div>
                                         }
-                                        <span class="badge @GetSourceBadgeClass(item.Source)">
-                                            @GetSourceBadgeLabel(item.Source)
-                                        </span>
-                                    </div>
-                                    @if (item.IsSecret)
-                                    {
-                                        <div class="subtext">Credential setting: the active value is never rendered. Leave blank to keep the stored value.</div>
-                                    }
-                                    @if (item.LastUpdatedUtc.HasValue)
-                                    {
-                                        <div class="subtext">Overridden at @item.LastUpdatedUtc.Value.ToString("u")</div>
-                                    }
-                                </td>
-                                <td class="subtext">@item.Description</td>
-                                <td class="text-right">
-                                    <div class="btn-group">
-                                        <button class="btn btn-sm btn-primary" @onclick="() => SaveOverrideAsync(item.Key)">
-                                            Save DB
-                                        </button>
-                                        @if (item.Source == ConfigurationSource.DatabaseOverride)
+                                    </td>
+                                    <td>
+                                        <div class="config-input-group">
+                                            @if (item.IsSecret)
+                                            {
+                                                <input type="password" class="input-text font-mono" autocomplete="new-password" placeholder="Stored credential is never displayed — type a new value to replace it" @bind="_editValues[item.Key]" />
+                                            }
+                                            else
+                                            {
+                                                <input type="text" class="input-text font-mono" @bind="_editValues[item.Key]" />
+                                            }
+                                            <span class="badge @GetSourceBadgeClass(item.Source)">
+                                                @GetSourceBadgeLabel(item.Source)
+                                            </span>
+                                        </div>
+                                        @if (item.IsSecret)
                                         {
-                                            <button class="btn btn-sm btn-outline" @onclick="() => RevertDefaultAsync(item.Key)">
-                                                Revert
-                                            </button>
+                                            <div class="subtext">Credential setting: the active value is never rendered. Leave blank to keep the stored value.</div>
                                         }
-                                    </div>
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
+                                        @if (item.LastUpdatedUtc.HasValue)
+                                        {
+                                            <div class="subtext">Overridden at @item.LastUpdatedUtc.Value.ToString("u")</div>
+                                        }
+                                    </td>
+                                    <td class="subtext">@item.Description</td>
+                                    <td class="text-right">
+                                        <div class="btn-group">
+                                            <button class="btn btn-sm btn-primary" @onclick="() => SaveOverrideAsync(item.Key)">
+                                                Save DB
+                                            </button>
+                                            @if (item.Source == ConfigurationSource.DatabaseOverride)
+                                            {
+                                                <button class="btn btn-sm btn-outline" @onclick="() => RevertDefaultAsync(item.Key)">
+                                                    Revert
+                                                </button>
+                                            }
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
             </div>
-        </div>
-    }
+        }
 
     <!-- ================================================================= -->
     <!-- SECTION 2: Single-Use Share Keys & Peer Federation               -->
@@ -238,6 +254,7 @@
             </div>
         </div>
     </div>
+    }
 </div>
 
 @code {
@@ -287,10 +304,18 @@
     private string? _generatedShareUrl;
 
     /// <summary>
-    /// Loads configuration settings and active share keys from the database.
+    /// Loads configuration settings and active share keys from the database if authorized as Administrator.
     /// </summary>
     protected override async Task OnInitializedAsync()
     {
+        // WHAT: Enforces Administrator role check before hydrating system configuration or share keys.
+        // WHY:  Non-administrative sessions must never receive cluster configuration state or share link controls.
+        // HOW:  Validates SessionState.IsAuthenticated and SessionState.IsAdmin; exits early if unprivileged.
+        if (!SessionState.IsAuthenticated || !SessionState.IsAdmin)
+        {
+            return;
+        }
+
         await LoadConfigurationsAsync();
         await LoadShareKeysAsync();
     }
@@ -310,16 +335,14 @@
     }
 
     /// <summary>
-    /// Loads share key records from the database, seeding an initial demonstration key if none exist.
+    /// Loads share key records from the database.
     /// </summary>
     private async Task LoadShareKeysAsync()
     {
+        // WHAT: Retrieves persistent single-use peer share keys without auto-seeding.
+        // WHY:  Deleting the final share key must leave the list empty rather than resurrecting demo keys.
+        // HOW:  Calls ConfigRepo.ListShareKeysAsync directly without checking for empty collections.
         _shareKeys = await ConfigRepo.ListShareKeysAsync();
-        if (_shareKeys.Count == 0)
-        {
-            await ConfigRepo.CreateShareKeyAsync("Collaborative Peer Node (Cluster Alpha)", TimeSpan.FromDays(30), "FullCollaborator");
-            _shareKeys = await ConfigRepo.ListShareKeysAsync();
-        }
     }
 
     /// <summary>
