@@ -674,6 +674,11 @@ public sealed class ApiRoleGatingAndDisclosureTests : IClassFixture<WebApplicati
     [InlineData("GET", "/api/datasets/exports", Program.RouteRoleRequirement.AdministratorOrResearcher)]
     [InlineData("POST", "/api/system/benchmark/run", Program.RouteRoleRequirement.AdministratorOrResearcher)]
     [InlineData("GET", "/api/system/benchmark/latest", Program.RouteRoleRequirement.AdministratorOrResearcher)]
+    [InlineData("GET", "/api/genomics/variants", Program.RouteRoleRequirement.AdministratorOrResearcher)]
+    [InlineData("POST", "/api/precision/genomics/analyze", Program.RouteRoleRequirement.AdministratorOrResearcher)]
+    [InlineData("POST", "/api/trajectories/analytics/query", Program.RouteRoleRequirement.AdministratorOrResearcher)]
+    [InlineData("POST", "/api/endocrine/closed-loop/simulate", Program.RouteRoleRequirement.AdministratorOrResearcher)]
+    [InlineData("POST", "/api/fabrication/gel/analyze", Program.RouteRoleRequirement.AdministratorOrResearcher)]
     [InlineData("GET", "/api/datasets", Program.RouteRoleRequirement.None)]
     [InlineData("POST", "/api/auth/logout", Program.RouteRoleRequirement.None)]
     [InlineData("GET", "/api/configurations-report", Program.RouteRoleRequirement.None)]
@@ -1290,7 +1295,9 @@ public sealed class ApiRoleGatingAndDisclosureTests : IClassFixture<WebApplicati
         Directory.CreateDirectory(sharedDataDir);
         string tempFileName = "test_fed_temp.xyz";
         string tempFilePath = Path.Combine(sharedDataDir, tempFileName);
-        await File.WriteAllTextAsync(tempFilePath, "ATOM 1\nATOM 2\n");
+        byte[] testTrajectoryBytes = new byte[1048576 + 100];
+        System.Security.Cryptography.RandomNumberGenerator.Fill(testTrajectoryBytes);
+        await File.WriteAllBytesAsync(tempFilePath, testTrajectoryBytes);
 
         try
         {
@@ -1336,9 +1343,19 @@ public sealed class ApiRoleGatingAndDisclosureTests : IClassFixture<WebApplicati
             var negativeIndexChunkRes = await client.GetAsync($"/api/federation/chunks/{tempFileName}?index=-1");
             Assert.Equal(HttpStatusCode.BadRequest, negativeIndexChunkRes.StatusCode);
 
-            // 4c. Get valid chunk -> 200 OK (covering line 4270)
+            // 4c. Get valid chunk 0 -> 200 OK
             var validChunkRes = await client.GetAsync($"/api/federation/chunks/{tempFileName}?index=0");
             Assert.Equal(HttpStatusCode.OK, validChunkRes.StatusCode);
+            byte[] chunk0Bytes = await validChunkRes.Content.ReadAsByteArrayAsync();
+            Assert.Equal(1048576, chunk0Bytes.Length);
+            Assert.Equal(testTrajectoryBytes.AsSpan(0, 1048576).ToArray(), chunk0Bytes);
+
+            // 4d. Get valid chunk 1 -> 200 OK at byte offset 1048576
+            var validChunk1Res = await client.GetAsync($"/api/federation/chunks/{tempFileName}?index=1");
+            Assert.Equal(HttpStatusCode.OK, validChunk1Res.StatusCode);
+            byte[] chunk1Bytes = await validChunk1Res.Content.ReadAsByteArrayAsync();
+            Assert.Equal(100, chunk1Bytes.Length);
+            Assert.Equal(testTrajectoryBytes.AsSpan(1048576, 100).ToArray(), chunk1Bytes);
         }
         finally
         {

@@ -51,6 +51,42 @@ CREATE TABLE IF NOT EXISTS weaver_peer_keys (
 );";
         }
 
+        if (dialect.StartsWith("duckdb", StringComparison.OrdinalIgnoreCase))
+        {
+            return @"
+CREATE TABLE IF NOT EXISTS weaver_peer_keys (
+    key_id            VARCHAR(64)  PRIMARY KEY,
+    label             VARCHAR(128) NOT NULL,
+    key_algorithm     VARCHAR(16)  NOT NULL,
+    public_key        TEXT         NOT NULL,
+    registered_by     VARCHAR(128) NOT NULL,
+    registered_at_utc TIMESTAMP    NOT NULL,
+    revoked_by        VARCHAR(128),
+    revoked_at_utc    TIMESTAMP,
+    CONSTRAINT ck_weaver_peer_keys_key_id_length CHECK (length(key_id) = 64),
+    CONSTRAINT ck_weaver_peer_keys_algorithm CHECK (key_algorithm IN ('Ed25519', 'MlDsa65')),
+    CONSTRAINT ck_weaver_peer_keys_revocation_pair CHECK ((revoked_by IS NULL) = (revoked_at_utc IS NULL))
+);";
+        }
+
+        if (dialect.StartsWith("mysql", StringComparison.OrdinalIgnoreCase) || dialect.StartsWith("mariadb", StringComparison.OrdinalIgnoreCase))
+        {
+            return @"
+CREATE TABLE IF NOT EXISTS weaver_peer_keys (
+    key_id            VARCHAR(64)  PRIMARY KEY,
+    label             VARCHAR(128) NOT NULL,
+    key_algorithm     VARCHAR(16)  NOT NULL,
+    public_key        TEXT         NOT NULL,
+    registered_by     VARCHAR(128) NOT NULL,
+    registered_at_utc DATETIME(6)  NOT NULL,
+    revoked_by        VARCHAR(128),
+    revoked_at_utc    DATETIME(6),
+    CONSTRAINT ck_weaver_peer_keys_key_id_length CHECK (CHAR_LENGTH(key_id) = 64),
+    CONSTRAINT ck_weaver_peer_keys_algorithm CHECK (key_algorithm IN ('Ed25519', 'MlDsa65')),
+    CONSTRAINT ck_weaver_peer_keys_revocation_pair CHECK ((revoked_by IS NULL) = (revoked_at_utc IS NULL))
+);";
+        }
+
         return @"
 CREATE TABLE IF NOT EXISTS weaver_peer_keys (
     key_id            TEXT PRIMARY KEY,

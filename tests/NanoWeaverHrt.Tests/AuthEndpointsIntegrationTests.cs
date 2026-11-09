@@ -13,7 +13,10 @@ using NanoWeaverHrt.Security.Cryptography;
 using NanoWeaverHrt.Security.Models;
 using NanoWeaverHrt.Compliance;
 using NanoWeaverHrt.Configuration;
+using NanoWeaverHrt.Security.Storage;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Moq;
 using Xunit;
 
 namespace NanoWeaverHrt.Tests;
@@ -22,6 +25,7 @@ namespace NanoWeaverHrt.Tests;
 /// Integration test suite validating the complete public API authentication, authorization,
 /// access gating boundaries, first-launch setup wizard lockout, and user management endpoints.
 /// </summary>
+[Collection("AcceleratorTelemetryEnvironmentTests")]
 public sealed class AuthEndpointsIntegrationTests : IClassFixture<WebApplicationFactory<Program>>, IDisposable
 {
     /// <summary>
@@ -764,5 +768,259 @@ public sealed class AuthEndpointsIntegrationTests : IClassFixture<WebApplication
 
         HttpResponseMessage response = await _client.SendAsync(request);
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    /// <summary>
+    /// Ensures the test node has completed first-launch administrator setup.
+    /// </summary>
+    private async Task EnsureInitializedAsync()
+    {
+        UserAuthenticationService authService = _factory.Services.GetRequiredService<UserAuthenticationService>();
+        if (await authService.IsSetupRequiredAsync())
+        {
+            GeneratedKeyBundle adminBundle = TestChallengeHelper.CreateTestKeyBundle("test_master_admin", UserRole.Administrator, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
+            await authService.CompleteInitialSetupAsync("test_master_admin", adminBundle.PublicKeyBase64, KeyAlgorithm.Ed25519, AccessGate.ApiWeb);
+        }
+    }
+
+    /// <summary>
+    /// Verifies that POST /api/auth/logout with a Bearer token revokes the session in the server-side activity tracker.
+    /// </summary>
+    [Fact]
+    public async Task Logout_WithBearerToken_RevokesSessionInActivityTracker()
+    {
+        // WHAT: Invokes POST /api/auth/logout presenting a valid Bearer token.
+        // WHY:  Ensures that server-side session activity is immediately invalidated upon sign-out.
+        // HOW:  Registers session in tracker, issues POST /api/auth/logout with Bearer header, and asserts tracker reports session inactive.
+        await EnsureInitializedAsync();
+        UserAuthenticationService authService = _factory.Services.GetRequiredService<UserAuthenticationService>();
+        IUserRepository userRepo = _factory.Services.GetRequiredService<IUserRepository>();
+        IServerSessionActivityTracker sessionTracker = _factory.Services.GetRequiredService<IServerSessionActivityTracker>();
+
+        GeneratedKeyBundle bundle = TestChallengeHelper.CreateTestKeyBundle("logout_bearer_user", UserRole.Researcher, AccessGate.Api, KeyAlgorithm.Ed25519);
+        UserAccount user = new()
+        {
+            Username = "logout_bearer_user",
+            PublicKeyBase64 = bundle.PublicKeyBase64,
+            Role = UserRole.Researcher,
+            AccessGate = AccessGate.Api,
+            Algorithm = KeyAlgorithm.Ed25519,
+            CreatedAtUtc = DateTimeOffset.UtcNow
+        };
+        await userRepo.CreateUserAsync(user);
+        string token = authService.GenerateBearerToken(user);
+
+        sessionTracker.RecordActivity(token);
+        Assert.True(sessionTracker.IsSessionActive(token));
+
+        using HttpRequestMessage req = new(HttpMethod.Post, "/api/auth/logout");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        HttpResponseMessage res = await _client.SendAsync(req);
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+
+        Assert.False(sessionTracker.IsSessionActive(token));
+    }
+
+    /// <summary>
+    /// Verifies that POST /api/auth/logout with a session cookie revokes the session in the server-side activity tracker.
+    /// </summary>
+    [Fact]
+    public async Task Logout_WithSessionCookie_RevokesSessionInActivityTracker()
+    {
+        // WHAT: Invokes POST /api/auth/logout presenting a weaver_session cookie.
+        // WHY:  Ensures browser sessions are invalidated on server-side tracking when signing out via cookie.
+        // HOW:  Registers session in tracker, issues POST /api/auth/logout with Cookie header, and asserts tracker reports session inactive.
+        await EnsureInitializedAsync();
+        UserAuthenticationService authService = _factory.Services.GetRequiredService<UserAuthenticationService>();
+        IUserRepository userRepo = _factory.Services.GetRequiredService<IUserRepository>();
+        IServerSessionActivityTracker sessionTracker = _factory.Services.GetRequiredService<IServerSessionActivityTracker>();
+
+        GeneratedKeyBundle bundle = TestChallengeHelper.CreateTestKeyBundle("logout_cookie_user", UserRole.Researcher, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
+        UserAccount user = new()
+        {
+            Username = "logout_cookie_user",
+            PublicKeyBase64 = bundle.PublicKeyBase64,
+            Role = UserRole.Researcher,
+            AccessGate = AccessGate.ApiWeb,
+            Algorithm = KeyAlgorithm.Ed25519,
+            CreatedAtUtc = DateTimeOffset.UtcNow
+        };
+        await userRepo.CreateUserAsync(user);
+        string token = authService.GenerateBearerToken(user);
+
+        sessionTracker.RecordActivity(token);
+        Assert.True(sessionTracker.IsSessionActive(token));
+
+        using HttpRequestMessage req = new(HttpMethod.Post, "/api/auth/logout");
+        req.Headers.Add("Cookie", $"weaver_session={token}");
+        HttpResponseMessage res = await _client.SendAsync(req);
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+
+        Assert.False(sessionTracker.IsSessionActive(token));
+    }
+
+    /// <summary>
+    /// Verifies that users with AccessGate.Web can successfully call POST /api/auth/logout while remaining restricted from other REST APIs.
+    /// </summary>
+    [Fact]
+    public async Task Logout_WebGatedUser_SucceedsWithout403Forbidden()
+    {
+        // WHAT: Calls POST /api/auth/logout with a Web-gated user session cookie.
+        // WHY:  Browser-only users must be allowed to sign out without hitting the REST API transport gate.
+        // HOW:  Issues POST /api/auth/logout (asserts 200 OK), then issues GET /api/auth/me (asserts 403 Forbidden).
+        await EnsureInitializedAsync();
+        UserAuthenticationService authService = _factory.Services.GetRequiredService<UserAuthenticationService>();
+        IUserRepository userRepo = _factory.Services.GetRequiredService<IUserRepository>();
+
+        GeneratedKeyBundle bundle = TestChallengeHelper.CreateTestKeyBundle("web_gated_logout_user", UserRole.Patient, AccessGate.Web, KeyAlgorithm.Ed25519);
+        UserAccount user = new()
+        {
+            Username = "web_gated_logout_user",
+            PublicKeyBase64 = bundle.PublicKeyBase64,
+            Role = UserRole.Patient,
+            AccessGate = AccessGate.Web,
+            Algorithm = KeyAlgorithm.Ed25519,
+            CreatedAtUtc = DateTimeOffset.UtcNow
+        };
+        await userRepo.CreateUserAsync(user);
+        string token = authService.GenerateBearerToken(user);
+
+        // 1. Other REST API endpoint is blocked with 403 Forbidden because user is AccessGate.Web
+        using HttpRequestMessage apiReq = new(HttpMethod.Get, "/api/auth/me");
+        apiReq.Headers.Add("Cookie", $"weaver_session={token}");
+        HttpResponseMessage apiRes = await _client.SendAsync(apiReq);
+        Assert.Equal(HttpStatusCode.Forbidden, apiRes.StatusCode);
+
+        // 2. Logout succeeds with 200 OK (permitted for AccessGate.Web)
+        using HttpRequestMessage logoutReq = new(HttpMethod.Post, "/api/auth/logout");
+        logoutReq.Headers.Add("Cookie", $"weaver_session={token}");
+        HttpResponseMessage logoutRes = await _client.SendAsync(logoutReq);
+        Assert.Equal(HttpStatusCode.OK, logoutRes.StatusCode);
+    }
+
+    /// <summary>
+    /// Verifies that POST /api/share-keys/redeem is publicly accessible without an existing Bearer token.
+    /// </summary>
+    [Fact]
+    public async Task ShareKeyRedeem_WithoutAuthentication_SucceedsWithValidKey()
+    {
+        // WHAT: Calls POST /api/share-keys/redeem with an unauthenticated client.
+        // WHY:  External nodes redeeming single-use bootstrap share keys do not have a pre-existing token.
+        // HOW:  Creates a share key as administrator, redeems it without authorization headers, and asserts HTTP 200 OK.
+        await EnsureInitializedAsync();
+        UserAuthenticationService authService = _factory.Services.GetRequiredService<UserAuthenticationService>();
+        IUserRepository userRepo = _factory.Services.GetRequiredService<IUserRepository>();
+
+        UserAccount admin = (await userRepo.GetUserAsync("test_master_admin"))!;
+        string adminToken = authService.GenerateBearerToken(admin);
+
+        // Create share key as administrator
+        using HttpRequestMessage createReq = new(HttpMethod.Post, "/api/share-keys/create");
+        createReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
+        createReq.Content = JsonContent.Create(new { Label = "Worker Node Bootstrap", Role = "Researcher" });
+        HttpResponseMessage createRes = await _client.SendAsync(createReq);
+        Assert.Equal(HttpStatusCode.OK, createRes.StatusCode);
+        using JsonDocument createDoc = JsonDocument.Parse(await createRes.Content.ReadAsStringAsync());
+        string token = createDoc.RootElement.GetProperty("keyToken").GetString()!;
+
+        // Redeem share key without authentication header
+        using HttpRequestMessage redeemReq = new(HttpMethod.Post, "/api/share-keys/redeem");
+        redeemReq.Content = JsonContent.Create(new { Token = token });
+        HttpResponseMessage redeemRes = await _client.SendAsync(redeemReq);
+        Assert.Equal(HttpStatusCode.OK, redeemRes.StatusCode);
+    }
+
+    /// <summary>
+    /// Verifies that Patient role accounts receive HTTP 403 Forbidden on research analytics and fabrication endpoints.
+    /// </summary>
+    [Fact]
+    public async Task PatientRole_ForbiddenOnResearchEndpoints()
+    {
+        // WHAT: Invokes newly protected research routes with a Patient role bearer token.
+        // WHY:  Prime Directive 12 role gating restricts computational genomics, trajectory analytics, and fabrication to Researcher/Administrator.
+        // HOW:  Issues requests to 5 research endpoints and asserts HTTP 403 Forbidden on each.
+        await EnsureInitializedAsync();
+        UserAuthenticationService authService = _factory.Services.GetRequiredService<UserAuthenticationService>();
+        IUserRepository userRepo = _factory.Services.GetRequiredService<IUserRepository>();
+
+        GeneratedKeyBundle patientBundle = TestChallengeHelper.CreateTestKeyBundle("research_gate_patient", UserRole.Patient, AccessGate.ApiWeb, KeyAlgorithm.Ed25519);
+        UserAccount patient = new()
+        {
+            Username = "research_gate_patient",
+            PublicKeyBase64 = patientBundle.PublicKeyBase64,
+            Role = UserRole.Patient,
+            AccessGate = AccessGate.ApiWeb,
+            Algorithm = KeyAlgorithm.Ed25519,
+            CreatedAtUtc = DateTimeOffset.UtcNow
+        };
+        await userRepo.CreateUserAsync(patient);
+        string patientToken = authService.GenerateBearerToken(patient);
+
+        string[] researchPaths =
+        [
+            "/api/genomics/variants",
+            "/api/precision/genomics/analyze",
+            "/api/trajectories/analytics/query",
+            "/api/endocrine/closed-loop/simulate",
+            "/api/fabrication/gel/analyze"
+        ];
+
+        foreach (string path in researchPaths)
+        {
+            using HttpRequestMessage req = new(HttpMethod.Post, path);
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", patientToken);
+            req.Content = JsonContent.Create(new { });
+            HttpResponseMessage res = await _client.SendAsync(req);
+            Assert.Equal(HttpStatusCode.Forbidden, res.StatusCode);
+        }
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="EncryptedStorageService.ExportEncryptedDatasetBundleAsync"/> rejects directory traversal characters in subjectId.
+    /// </summary>
+    /// <param name="maliciousSubjectId">The invalid subject identifier containing directory traversal characters.</param>
+    [Theory]
+    [InlineData("../traversal")]
+    [InlineData("sub/traversal")]
+    [InlineData("sub\\traversal")]
+    public async Task EncryptedStorageService_ExportEncryptedDatasetBundleAsync_RejectsPathTraversal(string maliciousSubjectId)
+    {
+        // WHAT: Calls ExportEncryptedDatasetBundleAsync with invalid subjectId containing traversal segments.
+        // WHY:  Guarantees subjectId cannot escape the designated exports directory.
+        // HOW:  Asserts ArgumentException is thrown with expected parameter name.
+        IEncryptedStorageService storage = _factory.Services.GetRequiredService<IEncryptedStorageService>();
+        await Assert.ThrowsAsync<ArgumentException>("subjectId", () =>
+            storage.ExportEncryptedDatasetBundleAsync("sample.xyz", maliciousSubjectId, _tempDataDir));
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="Program.RevokeActiveRequestSession"/> correctly extracts and revokes Bearer tokens, cookies, and handles empty requests.
+    /// </summary>
+    [Fact]
+    public void Program_RevokeActiveRequestSession_CoversAllBranches()
+    {
+        // WHAT: Directly exercises RevokeActiveRequestSession across Bearer header, cookie, and empty branches.
+        // WHY:  Ensures 100% line and branch coverage of the logout session invalidation helper.
+        // HOW:  Invokes helper with DefaultHttpContext configured for each path and verifies Moq interactions.
+        Mock<IServerSessionActivityTracker> mockTracker = new();
+
+        // 1. Bearer header branch
+        DefaultHttpContext bearerContext = new();
+        bearerContext.Request.Headers.Authorization = "Bearer test_bearer_token";
+        Program.RevokeActiveRequestSession(bearerContext, mockTracker.Object);
+        mockTracker.Verify(t => t.Revoke("test_bearer_token"), Times.Once);
+
+        // 2. Cookie branch
+        mockTracker.Reset();
+        DefaultHttpContext cookieContext = new();
+        cookieContext.Request.Headers.Append("Cookie", "weaver_session=test_cookie_token");
+        Program.RevokeActiveRequestSession(cookieContext, mockTracker.Object);
+        mockTracker.Verify(t => t.Revoke("test_cookie_token"), Times.Once);
+
+        // 3. Empty branch
+        mockTracker.Reset();
+        DefaultHttpContext emptyContext = new();
+        Program.RevokeActiveRequestSession(emptyContext, mockTracker.Object);
+        mockTracker.Verify(t => t.Revoke(It.IsAny<string>()), Times.Never);
     }
 }

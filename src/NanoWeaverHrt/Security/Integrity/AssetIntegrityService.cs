@@ -84,11 +84,19 @@ public sealed class AssetIntegrityService : IAssetIntegrityService
     /// </summary>
     /// <param name="rawPath">The unnormalized asset path.</param>
     /// <returns>A normalized, forward-slash relative path.</returns>
+    /// <exception cref="ArgumentException"><paramref name="rawPath"/> contains parent directory traversal segments or drive-letter colons.</exception>
     private static string NormalizePath(string rawPath)
     {
-        // WHAT: Converts diverse path representations (e.g., "~/js/app.js", "/js/app.js", "js\\app.js") to a canonical key.
-        // WHY:  Ensures deterministic cache hits regardless of leading delimiter styling in Razor templates.
-        // HOW:  Trims whitespace, replaces '\\' with '/', and removes leading '~' and '/' characters.
+        // WHAT: Converts diverse path representations (e.g., "~/js/app.js", "/js/app.js", "js\\app.js") to a canonical key and rejects traversal attacks.
+        // WHY:  Ensures deterministic cache hits and prevents directory traversal attacks outside the web root.
+        // HOW:  Validates that rawPath contains neither ".." nor ':', trims whitespace, replaces '\\' with '/', and removes leading '~' and '/'.
+        ArgumentException.ThrowIfNullOrWhiteSpace(rawPath);
+
+        if (rawPath.Contains("..", StringComparison.Ordinal) || rawPath.Contains(':'))
+        {
+            throw new ArgumentException("Asset path must not contain parent directory traversal segments.", nameof(rawPath));
+        }
+
         string cleaned = rawPath.Trim().Replace('\\', '/');
         while (cleaned.StartsWith("~/", StringComparison.Ordinal) || cleaned.StartsWith("/", StringComparison.Ordinal))
         {

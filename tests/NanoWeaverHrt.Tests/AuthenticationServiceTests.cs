@@ -751,7 +751,7 @@ public sealed class AuthenticationServiceTests : IDisposable
 
         // Tamper with payload
         string[] parts = validToken.Split('.');
-        string tamperedToken = parts[0] + "EXTRA." + parts[1];
+        string tamperedToken = parts[0] + "AAAA." + parts[1];
         var (tamperValid, _, tamperReason) = await _authService.ValidateTokenAsync(tamperedToken);
         Assert.False(tamperValid);
         Assert.Contains("signature", tamperReason?.ToLowerInvariant() ?? "");

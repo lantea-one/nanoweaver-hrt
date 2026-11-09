@@ -170,6 +170,16 @@ public sealed class EncryptedStorageService : IEncryptedStorageService
         ArgumentException.ThrowIfNullOrWhiteSpace(subjectId);
         ArgumentException.ThrowIfNullOrWhiteSpace(exportDirectory);
 
+        // WHAT: Validate subjectId to prevent path traversal.
+        // WHY:  Ensures that callers cannot manipulate directory paths via malicious subject identifiers.
+        // HOW:  Checks for directory traversal segments and path separators.
+        if (subjectId.Contains("..", StringComparison.Ordinal) ||
+            subjectId.Contains('/', StringComparison.Ordinal) ||
+            subjectId.Contains('\\', StringComparison.Ordinal))
+        {
+            throw new ArgumentException("Subject identifier must not contain directory traversal characters.", nameof(subjectId));
+        }
+
         SubjectKeyProfile profile = await _keyManagement.GetOrCreateSubjectKeyAsync(subjectId, cancellationToken).ConfigureAwait(false);
 
         // WHAT: Sanitize trajectory file name to prevent directory traversal.
@@ -217,13 +227,13 @@ public sealed class EncryptedStorageService : IEncryptedStorageService
             Encoding.UTF8.GetBytes(envelopeHashHex));
 
         string timestamp = DateTimeOffset.UtcNow.ToString("yyyyMMdd_HHmmss");
-        string bundleFileName = $"{Path.GetFileNameWithoutExtension(trajectoryFileName)}_{subjectId}_{timestamp}.enc.tar.gz";
+        string bundleFileName = $"{Path.GetFileNameWithoutExtension(safeFileName)}_{subjectId}_{timestamp}.enc.tar.gz";
         string bundlePath = Path.Combine(exportDirectory, bundleFileName);
 
         await File.WriteAllBytesAsync(bundlePath, envelopeBytes, cancellationToken).ConfigureAwait(false);
 
         // Write PQC-signed provenance manifest
-        string manifestFileName = $"{Path.GetFileNameWithoutExtension(trajectoryFileName)}_{subjectId}_{timestamp}.manifest.pqc.json";
+        string manifestFileName = $"{Path.GetFileNameWithoutExtension(safeFileName)}_{subjectId}_{timestamp}.manifest.pqc.json";
         string manifestPath = Path.Combine(exportDirectory, manifestFileName);
 
         var manifestObj = new

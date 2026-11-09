@@ -55,6 +55,48 @@ CREATE TABLE IF NOT EXISTS weaver_subject_keys (
 );";
         }
 
+        if (dialect.StartsWith("duckdb", StringComparison.OrdinalIgnoreCase))
+        {
+            return @"
+CREATE TABLE IF NOT EXISTS weaver_subject_keys (
+    subject_key VARCHAR(128) PRIMARY KEY,
+    subject_id VARCHAR(128) NOT NULL,
+    key_id VARCHAR(128) NULL,
+    algorithm VARCHAR(64) NOT NULL,
+    public_key_base64 TEXT NULL,
+    sealed_private_key TEXT NULL,
+    is_shredded BOOLEAN NOT NULL,
+    created_at_utc TIMESTAMP NOT NULL,
+    shredded_at_utc TIMESTAMP NULL,
+    CONSTRAINT ck_weaver_subject_keys_state CHECK (
+        (is_shredded = FALSE AND key_id IS NOT NULL AND public_key_base64 IS NOT NULL
+             AND sealed_private_key IS NOT NULL AND shredded_at_utc IS NULL)
+        OR (is_shredded = TRUE AND public_key_base64 IS NULL
+             AND sealed_private_key IS NULL AND shredded_at_utc IS NOT NULL))
+);";
+        }
+
+        if (dialect.StartsWith("mysql", StringComparison.OrdinalIgnoreCase) || dialect.StartsWith("mariadb", StringComparison.OrdinalIgnoreCase))
+        {
+            return @"
+CREATE TABLE IF NOT EXISTS weaver_subject_keys (
+    subject_key VARCHAR(128) PRIMARY KEY,
+    subject_id VARCHAR(128) NOT NULL,
+    key_id VARCHAR(128) NULL,
+    algorithm VARCHAR(64) NOT NULL,
+    public_key_base64 TEXT NULL,
+    sealed_private_key TEXT NULL,
+    is_shredded BOOLEAN NOT NULL,
+    created_at_utc DATETIME(6) NOT NULL,
+    shredded_at_utc DATETIME(6) NULL,
+    CONSTRAINT ck_weaver_subject_keys_state CHECK (
+        (is_shredded = FALSE AND key_id IS NOT NULL AND public_key_base64 IS NOT NULL
+             AND sealed_private_key IS NOT NULL AND shredded_at_utc IS NULL)
+        OR (is_shredded = TRUE AND public_key_base64 IS NULL
+             AND sealed_private_key IS NULL AND shredded_at_utc IS NOT NULL))
+);";
+        }
+
         return @"
 CREATE TABLE IF NOT EXISTS weaver_subject_keys (
     subject_key TEXT PRIMARY KEY,

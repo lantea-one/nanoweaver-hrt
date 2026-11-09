@@ -42,4 +42,11 @@ public sealed record AuthTokenClaims
     [Description("UTC expiration timestamp in Unix epoch seconds.")]
     [JsonPropertyName("exp")]
     public long ExpiresAtUnixSeconds { get; init; }
+
+    /// <summary>
+    /// Gets the unique cryptographic token nonce (JTI).
+    /// </summary>
+    [Description("Unique cryptographic token nonce (JTI).")]
+    [JsonPropertyName("jti")]
+    public string? Jti { get; init; }
 }

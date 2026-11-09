@@ -258,22 +258,23 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
         try
         {
             // WHAT: Upserts one configuration row.
-            // WHY:  The two engines accept the same ON CONFLICT upsert, so one SQL text serves both.
-            // HOW:  The dialect only converts the timestamp parameter (UTC DateTime vs round-trip string).
-            await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
-            await using DbCommand cmd = session.CreateCommand(@"
-                INSERT INTO weaver_configuration (key, value, description, updated_at_utc)
-                VALUES (@key, @value, @desc, @updated)
-                ON CONFLICT (key) DO UPDATE
-                SET value = EXCLUDED.value,
-                    description = EXCLUDED.description,
-                    updated_at_utc = EXCLUDED.updated_at_utc;
-            ");
-            WeaverDbParameters.Add(cmd, "@key", key);
-            WeaverDbParameters.Add(cmd, "@value", value);
-            WeaverDbParameters.Add(cmd, "@desc", description);
-            WeaverDbParameters.Add(cmd, "@updated", session.Dialect.TimestampValue(DateTimeOffset.UtcNow));
-            await cmd.ExecuteNonQueryAsync(ct);
+            // WHY:  The database dialect generates engine-specific upsert syntax across SQLite, PostgreSQL, DuckDB, and MySQL.
+            // HOW:  Uses BuildUpsertSql and binds parameters with dialect-converted timestamps.
+            {
+                await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+                string sql = session.Dialect.BuildUpsertSql(
+                    "weaver_configuration",
+                    ["key", "value", "description", "updated_at_utc"],
+                    ["key"],
+                    ["value", "description", "updated_at_utc"],
+                    ["key", "value", "desc", "updated"]);
+                await using DbCommand cmd = session.CreateCommand(sql);
+                WeaverDbParameters.Add(cmd, "key", key);
+                WeaverDbParameters.Add(cmd, "value", value);
+                WeaverDbParameters.Add(cmd, "desc", description);
+                WeaverDbParameters.Add(cmd, "updated", session.Dialect.TimestampValue(DateTimeOffset.UtcNow));
+                await cmd.ExecuteNonQueryAsync(ct);
+            }
         }
         finally
         {
@@ -294,10 +295,12 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
 
         try
         {
-            await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
-            await using DbCommand cmd = session.CreateCommand("DELETE FROM weaver_configuration WHERE key = @key");
-            WeaverDbParameters.Add(cmd, "@key", key);
-            await cmd.ExecuteNonQueryAsync(ct);
+            {
+                await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+                await using DbCommand cmd = session.CreateCommand($"DELETE FROM weaver_configuration WHERE key = {session.Dialect.Parameter("key")}");
+                WeaverDbParameters.Add(cmd, "key", key);
+                await cmd.ExecuteNonQueryAsync(ct);
+            }
         }
         finally
         {
@@ -347,18 +350,20 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
             // WHAT: Inserts the new, unconsumed key.
             // WHY:  One INSERT text serves both engines; only the false literal and timestamp encoding differ.
             // HOW:  FalseLiteral is spliced from the dialect (a constant, never user input); values are parameters.
-            await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
-            await using DbCommand cmd = session.CreateCommand($@"
-                INSERT INTO weaver_share_keys (token_id, key_token, label, created_at_utc, expires_at_utc, is_consumed, permissions)
-                VALUES (@id, @tok, @lbl, @created, @expires, {session.Dialect.FalseLiteral}, @perm);
-            ");
-            WeaverDbParameters.Add(cmd, "@id", record.TokenId);
-            WeaverDbParameters.Add(cmd, "@tok", record.KeyToken);
-            WeaverDbParameters.Add(cmd, "@lbl", record.Label);
-            WeaverDbParameters.Add(cmd, "@created", session.Dialect.TimestampValue(ToUtcOffset(record.CreatedAtUtc)));
-            WeaverDbParameters.Add(cmd, "@expires", session.Dialect.TimestampValue(ToUtcOffset(record.ExpiresAtUtc)));
-            WeaverDbParameters.Add(cmd, "@perm", record.Permissions);
-            await cmd.ExecuteNonQueryAsync(ct);
+            {
+                await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+                await using DbCommand cmd = session.CreateCommand($@"
+                    INSERT INTO weaver_share_keys (token_id, key_token, label, created_at_utc, expires_at_utc, is_consumed, permissions)
+                    VALUES ({session.Dialect.Parameter("id")}, {session.Dialect.Parameter("tok")}, {session.Dialect.Parameter("lbl")}, {session.Dialect.Parameter("created")}, {session.Dialect.Parameter("expires")}, {session.Dialect.FalseLiteral}, {session.Dialect.Parameter("perm")});
+                ");
+                WeaverDbParameters.Add(cmd, "id", record.TokenId);
+                WeaverDbParameters.Add(cmd, "tok", record.KeyToken);
+                WeaverDbParameters.Add(cmd, "lbl", record.Label);
+                WeaverDbParameters.Add(cmd, "created", session.Dialect.TimestampValue(ToUtcOffset(record.CreatedAtUtc)));
+                WeaverDbParameters.Add(cmd, "expires", session.Dialect.TimestampValue(ToUtcOffset(record.ExpiresAtUtc)));
+                WeaverDbParameters.Add(cmd, "perm", record.Permissions);
+                await cmd.ExecuteNonQueryAsync(ct);
+            }
         }
         finally
         {
@@ -438,18 +443,18 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
         string sessionToken = "peer_sess_" + Guid.NewGuid().ToString("N");
         int rows;
 
-        await using (WeaverDbSession session = await _connectionFactory.OpenAsync(ct))
         {
+            await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
             await using DbCommand cmd = session.CreateCommand($@"
                 UPDATE weaver_share_keys
                 SET is_consumed = {session.Dialect.TrueLiteral},
-                    consumed_at_utc = @now,
-                    remote_peer_info = @peer
-                WHERE token_id = @id AND is_consumed = {session.Dialect.FalseLiteral};
+                    consumed_at_utc = {session.Dialect.Parameter("now")},
+                    remote_peer_info = {session.Dialect.Parameter("peer")}
+                WHERE token_id = {session.Dialect.Parameter("id")} AND is_consumed = {session.Dialect.FalseLiteral};
             ");
-            WeaverDbParameters.Add(cmd, "@now", session.Dialect.TimestampValue(ToUtcOffset(now)));
-            WeaverDbParameters.Add(cmd, "@peer", remotePeerInfo);
-            WeaverDbParameters.Add(cmd, "@id", existing.TokenId);
+            WeaverDbParameters.Add(cmd, "now", session.Dialect.TimestampValue(ToUtcOffset(now)));
+            WeaverDbParameters.Add(cmd, "peer", remotePeerInfo);
+            WeaverDbParameters.Add(cmd, "id", existing.TokenId);
             rows = await cmd.ExecuteNonQueryAsync(ct);
         }
 
@@ -483,12 +488,14 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
         await InitializeAsync(ct);
         List<ShareKeyRecord> records = [];
 
-        await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
-        await using DbCommand cmd = session.CreateCommand($"SELECT {ShareKeyColumns} FROM weaver_share_keys ORDER BY created_at_utc DESC;");
-        await using DbDataReader rdr = await cmd.ExecuteReaderAsync(ct);
-        while (await rdr.ReadAsync(ct))
         {
-            records.Add(MapShareKey(rdr));
+            await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+            await using DbCommand cmd = session.CreateCommand($"SELECT {ShareKeyColumns} FROM weaver_share_keys ORDER BY created_at_utc DESC;");
+            await using DbDataReader rdr = await cmd.ExecuteReaderAsync(ct);
+            while (await rdr.ReadAsync(ct))
+            {
+                records.Add(MapShareKey(rdr));
+            }
         }
 
         return records;
@@ -508,12 +515,14 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
         bool revoked;
         try
         {
-            await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
-            await using DbCommand cmd = session.CreateCommand(
-                $"UPDATE weaver_share_keys SET is_consumed = {session.Dialect.TrueLiteral}, remote_peer_info = 'REVOKED_MANUALLY' WHERE token_id = @id;");
-            WeaverDbParameters.Add(cmd, "@id", tokenId);
-            int rows = await cmd.ExecuteNonQueryAsync(ct);
-            revoked = rows > 0;
+            {
+                await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+                await using DbCommand cmd = session.CreateCommand(
+                    $"UPDATE weaver_share_keys SET is_consumed = {session.Dialect.TrueLiteral}, remote_peer_info = 'REVOKED_MANUALLY' WHERE token_id = {session.Dialect.Parameter("id")};");
+                WeaverDbParameters.Add(cmd, "id", tokenId);
+                int rows = await cmd.ExecuteNonQueryAsync(ct);
+                revoked = rows > 0;
+            }
         }
         finally
         {
@@ -532,15 +541,17 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
     {
         Dictionary<string, (string Value, DateTime? UpdatedAt)> map = new(StringComparer.OrdinalIgnoreCase);
 
-        await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
-        await using DbCommand cmd = session.CreateCommand("SELECT key, value, updated_at_utc FROM weaver_configuration;");
-        await using DbDataReader rdr = await cmd.ExecuteReaderAsync(ct);
-        while (await rdr.ReadAsync(ct))
         {
-            // WHAT: Converts the engine-specific timestamp column to the DateTime the public item exposes.
-            // WHY:  PostgreSQL returns a DateTime and SQLite returns text; callers must not care which.
-            // HOW:  WeaverDbValues.ReadNullableTimestamp handles both, then the boundary conversion drops the offset.
-            map[rdr.GetString(0)] = (rdr.GetString(1), WeaverDbValues.ReadNullableTimestamp(rdr, 2)?.UtcDateTime);
+            await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+            await using DbCommand cmd = session.CreateCommand("SELECT key, value, updated_at_utc FROM weaver_configuration;");
+            await using DbDataReader rdr = await cmd.ExecuteReaderAsync(ct);
+            while (await rdr.ReadAsync(ct))
+            {
+                // WHAT: Converts the engine-specific timestamp column to the DateTime the public item exposes.
+                // WHY:  PostgreSQL returns a DateTime and SQLite returns text; callers must not care which.
+                // HOW:  WeaverDbValues.ReadNullableTimestamp handles both, then the boundary conversion drops the offset.
+                map[rdr.GetString(0)] = (rdr.GetString(1), WeaverDbValues.ReadNullableTimestamp(rdr, 2)?.UtcDateTime);
+            }
         }
 
         return map;
@@ -554,11 +565,16 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
     /// <returns>The stored override value, or null when the database holds no row for the key.</returns>
     private async Task<string?> ReadSingleDbOverrideAsync(string key, CancellationToken ct)
     {
-        await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
-        await using DbCommand cmd = session.CreateCommand("SELECT value FROM weaver_configuration WHERE key = @key;");
-        WeaverDbParameters.Add(cmd, "@key", key);
-        object? val = await cmd.ExecuteScalarAsync(ct);
-        return val?.ToString();
+        string? result;
+        {
+            await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+            await using DbCommand cmd = session.CreateCommand($"SELECT value FROM weaver_configuration WHERE key = {session.Dialect.Parameter("key")};");
+            WeaverDbParameters.Add(cmd, "key", key);
+            object? val = await cmd.ExecuteScalarAsync(ct);
+            result = val?.ToString();
+        }
+
+        return result;
     }
 
     /// <summary>
@@ -569,11 +585,16 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
     /// <returns>The matching share key record, or null when no key carries that token.</returns>
     private async Task<ShareKeyRecord?> FindKeyByTokenAsync(string token, CancellationToken ct)
     {
-        await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
-        await using DbCommand cmd = session.CreateCommand($"SELECT {ShareKeyColumns} FROM weaver_share_keys WHERE key_token = @tok LIMIT 1;");
-        WeaverDbParameters.Add(cmd, "@tok", token);
-        await using DbDataReader rdr = await cmd.ExecuteReaderAsync(ct);
-        return await rdr.ReadAsync(ct) ? MapShareKey(rdr) : null;
+        ShareKeyRecord? result;
+        {
+            await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+            await using DbCommand cmd = session.CreateCommand($"SELECT {ShareKeyColumns} FROM weaver_share_keys WHERE key_token = {session.Dialect.Parameter("tok")} LIMIT 1;");
+            WeaverDbParameters.Add(cmd, "tok", token);
+            await using DbDataReader rdr = await cmd.ExecuteReaderAsync(ct);
+            result = await rdr.ReadAsync(ct) ? MapShareKey(rdr) : null;
+        }
+
+        return result;
     }
 
     /// <summary>
@@ -581,18 +602,24 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
     /// </summary>
     /// <param name="rdr">A reader positioned on a row selected with <c>ShareKeyColumns</c>.</param>
     /// <returns>The record, with timestamps expressed as UTC <see cref="DateTime"/> values.</returns>
-    private static ShareKeyRecord MapShareKey(DbDataReader rdr) => new()
+    private static ShareKeyRecord MapShareKey(DbDataReader rdr)
     {
-        TokenId = rdr.GetString(0),
-        KeyToken = rdr.GetString(1),
-        Label = rdr.GetString(2),
-        CreatedAtUtc = WeaverDbValues.ReadTimestamp(rdr, 3).UtcDateTime,
-        ExpiresAtUtc = WeaverDbValues.ReadTimestamp(rdr, 4).UtcDateTime,
-        IsConsumed = WeaverDbValues.ReadBoolean(rdr, 5),
-        ConsumedAtUtc = WeaverDbValues.ReadNullableTimestamp(rdr, 6)?.UtcDateTime,
-        RemotePeerInfo = rdr.IsDBNull(7) ? null : rdr.GetString(7),
-        Permissions = rdr.GetString(8)
-    };
+        // WHAT: Reads all 9 share-key columns from an open DbDataReader row.
+        // WHY:  Maps stored relational tokens into ShareKeyRecord domain records.
+        // HOW:  Reads string tokens, converts timestamps to UTC DateTime, and reads booleans with WeaverDbValues.
+        return new ShareKeyRecord
+        {
+            TokenId = rdr.GetString(0),
+            KeyToken = rdr.GetString(1),
+            Label = rdr.GetString(2),
+            CreatedAtUtc = WeaverDbValues.ReadTimestamp(rdr, 3).UtcDateTime,
+            ExpiresAtUtc = WeaverDbValues.ReadTimestamp(rdr, 4).UtcDateTime,
+            IsConsumed = WeaverDbValues.ReadBoolean(rdr, 5),
+            ConsumedAtUtc = WeaverDbValues.ReadNullableTimestamp(rdr, 6)?.UtcDateTime,
+            RemotePeerInfo = rdr.IsDBNull(7) ? null : rdr.GetString(7),
+            Permissions = rdr.GetString(8)
+        };
+    }
 
     /// <summary>
     /// Anchors a UTC <see cref="DateTime"/> as a <see cref="DateTimeOffset"/> without applying a local-time shift.

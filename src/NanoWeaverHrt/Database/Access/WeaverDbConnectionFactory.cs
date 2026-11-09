@@ -104,7 +104,7 @@ public sealed class WeaverDbConnectionFactory : IWeaverDbConnectionFactory
         IConfiguration configuration,
         DatabaseMigrationRunner migrationRunner,
         ILogger<WeaverDbConnectionFactory> logger)
-        : this(configuration, migrationRunner, logger, mySqlConnectionFactory: null)
+        : this(configuration, migrationRunner, logger, mySqlConnectionFactory: static cs => new MySqlConnector.MySqlConnection(cs))
     {
     }
 
@@ -330,6 +330,18 @@ public sealed class WeaverDbConnectionFactory : IWeaverDbConnectionFactory
         try
         {
             await connection.OpenAsync(ct);
+            if (backend == WeaverDatabaseBackend.DuckDb)
+            {
+                // WHAT: Disables arbitrary external filesystem and HTTP access from DuckDB queries.
+                // WHY:  Hardens in-process analytical engine against unauthorized path traversal or remote query execution.
+                // HOW:  Executes SET enable_external_access = false; inside an explicit async using scope immediately after connection open.
+                {
+                    await using DbCommand hardenCmd = connection.CreateCommand();
+                    hardenCmd.CommandText = "SET enable_external_access = false;";
+                    await hardenCmd.ExecuteNonQueryAsync(ct);
+                }
+            }
+
             await _migrationRunner.ApplyPendingMigrationsAsync(connection, dialect.Name, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -450,5 +462,14 @@ public sealed class WeaverDbConnectionFactory : IWeaverDbConnectionFactory
         }
 
         return System.Diagnostics.Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
+    }
+
+    /// <inheritdoc/>
+    public WeaverDbSession Open()
+    {
+        // WHAT: Synchronously opens a session to the active database backend.
+        // WHY:  Allows synchronous consumers (e.g. AuditLedgerRepository) to run ADO.NET operations without async deadlocks.
+        // HOW:  Awaits OpenAsync synchronously via GetAwaiter().GetResult().
+        return OpenAsync().GetAwaiter().GetResult();
     }
 }

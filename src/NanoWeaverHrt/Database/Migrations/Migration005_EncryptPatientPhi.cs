@@ -90,21 +90,35 @@ public sealed class Migration005_EncryptPatientPhi : DatabaseMigrationBase
         //       data step uses so the two can never disagree. Widening an already-TEXT column is a no-op.
         ArgumentNullException.ThrowIfNull(dialect);
 
-        if (!dialect.StartsWith("postgres", StringComparison.OrdinalIgnoreCase))
+        if (dialect.StartsWith("postgres", StringComparison.OrdinalIgnoreCase))
         {
-            return string.Empty;
-        }
-
-        List<string> statements = [];
-        foreach (ProtectedTable table in Tables)
-        {
-            foreach (string column in table.Columns)
+            List<string> statements = [];
+            foreach (ProtectedTable table in Tables)
             {
-                statements.Add($"ALTER TABLE {table.Table} ALTER COLUMN {column} TYPE TEXT");
+                foreach (string column in table.Columns)
+                {
+                    statements.Add($"ALTER TABLE {table.Table} ALTER COLUMN {column} TYPE TEXT");
+                }
             }
+
+            return string.Join(";\n", statements) + ";";
         }
 
-        return string.Join(";\n", statements) + ";";
+        if (dialect.StartsWith("mysql", StringComparison.OrdinalIgnoreCase) || dialect.StartsWith("mariadb", StringComparison.OrdinalIgnoreCase))
+        {
+            List<string> statements = [];
+            foreach (ProtectedTable table in Tables)
+            {
+                foreach (string column in table.Columns)
+                {
+                    statements.Add($"ALTER TABLE {table.Table} MODIFY COLUMN {column} TEXT");
+                }
+            }
+
+            return string.Join(";\n", statements) + ";";
+        }
+
+        return string.Empty;
     }
 
     /// <inheritdoc/>
@@ -117,7 +131,7 @@ public sealed class Migration005_EncryptPatientPhi : DatabaseMigrationBase
 
         foreach (ProtectedTable table in Tables)
         {
-            await EncryptTableAsync(connection, transaction, table, ct);
+            await EncryptTableAsync(connection, transaction, table, dialect, ct);
         }
     }
 
@@ -127,68 +141,77 @@ public sealed class Migration005_EncryptPatientPhi : DatabaseMigrationBase
     /// <param name="connection">Open connection.</param>
     /// <param name="transaction">Active migration transaction, if any.</param>
     /// <param name="table">The table and columns to protect.</param>
+    /// <param name="dialect">Database engine dialect.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>A task that completes when every row has been rewritten.</returns>
     /// <exception cref="InvalidOperationException">A value needs encrypting but no protector was supplied.</exception>
-    private async Task EncryptTableAsync(DbConnection connection, DbTransaction? transaction, ProtectedTable table, CancellationToken ct)
+    private async Task EncryptTableAsync(DbConnection connection, DbTransaction? transaction, ProtectedTable table, string dialect, CancellationToken ct)
     {
         // WHAT: Finds rows holding plaintext and rewrites only those.
         // WHY:  Rows already encrypted must not be touched (idempotence), and the rows are read fully before
         //       any update because SQLite cannot update through a connection with an open reader.
         // HOW:  Selects key plus columns, collects the pending updates, closes the reader, then issues one
-        //       parameterized UPDATE per changed row.
+        //       parameterized UPDATE per changed row with dialect-aware parameter syntax.
         List<(string Key, string?[] Values)> pending = [];
 
         await using (DbCommand select = connection.CreateCommand())
         {
             select.Transaction = transaction;
             select.CommandText = $"SELECT {table.KeyColumn}, {string.Join(", ", table.Columns)} FROM {table.Table}";
-            await using DbDataReader reader = await select.ExecuteReaderAsync(ct);
-            while (await reader.ReadAsync(ct))
             {
-                string key = reader.GetString(0);
-                string?[] values = new string?[table.Columns.Length];
-                bool changed = false;
-                for (int i = 0; i < table.Columns.Length; i++)
+                await using DbDataReader reader = await select.ExecuteReaderAsync(ct);
+                while (await reader.ReadAsync(ct))
                 {
-                    string? current = reader.IsDBNull(i + 1) ? null : reader.GetString(i + 1);
-                    if (string.IsNullOrEmpty(current) || ProfileDataProtector.IsEncrypted(current))
+                    string key = reader.GetString(0);
+                    string?[] values = new string?[table.Columns.Length];
+                    bool changed = false;
+                    for (int i = 0; i < table.Columns.Length; i++)
                     {
-                        values[i] = current;
-                        continue;
+                        string? current = reader.IsDBNull(i + 1) ? null : reader.GetString(i + 1);
+                        if (string.IsNullOrEmpty(current) || ProfileDataProtector.IsEncrypted(current))
+                        {
+                            values[i] = current;
+                            continue;
+                        }
+
+                        if (_protector is null)
+                        {
+                            throw new InvalidOperationException(
+                                "Migration 005 cannot encrypt existing patient data because no PHI encryption key is available. Refusing to record the migration as applied.");
+                        }
+
+                        values[i] = _protector.EncryptField(current);
+                        changed = true;
                     }
 
-                    if (_protector is null)
+                    if (changed)
                     {
-                        throw new InvalidOperationException(
-                            "Migration 005 cannot encrypt existing patient data because no PHI encryption key is available. Refusing to record the migration as applied.");
+                        pending.Add((key, values));
                     }
-
-                    values[i] = _protector.EncryptField(current);
-                    changed = true;
-                }
-
-                if (changed)
-                {
-                    pending.Add((key, values));
                 }
             }
         }
 
+        bool isDuckDb = dialect.StartsWith("duckdb", StringComparison.OrdinalIgnoreCase);
+        string sqlPrefix = isDuckDb ? "$" : "@";
+        string paramPrefix = isDuckDb ? string.Empty : "@";
+
         foreach ((string key, string?[] values) in pending)
         {
-            await using DbCommand update = connection.CreateCommand();
-            update.Transaction = transaction;
-            update.CommandText = $"UPDATE {table.Table} SET "
-                + string.Join(", ", table.Columns.Select((column, i) => $"{column} = @v{i}"))
-                + $" WHERE {table.KeyColumn} = @key";
-            for (int i = 0; i < values.Length; i++)
             {
-                WeaverDbParameters.AddNullable(update, $"@v{i}", values[i]);
-            }
+                await using DbCommand update = connection.CreateCommand();
+                update.Transaction = transaction;
+                update.CommandText = $"UPDATE {table.Table} SET "
+                    + string.Join(", ", table.Columns.Select((column, i) => $"{column} = {sqlPrefix}v{i}"))
+                    + $" WHERE {table.KeyColumn} = {sqlPrefix}key";
+                for (int i = 0; i < values.Length; i++)
+                {
+                    WeaverDbParameters.AddNullable(update, $"{paramPrefix}v{i}", values[i]);
+                }
 
-            WeaverDbParameters.Add(update, "@key", key);
-            await update.ExecuteNonQueryAsync(ct);
+                WeaverDbParameters.Add(update, $"{paramPrefix}key", key);
+                await update.ExecuteNonQueryAsync(ct);
+            }
         }
     }
 }

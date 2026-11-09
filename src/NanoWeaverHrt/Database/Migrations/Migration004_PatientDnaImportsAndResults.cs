@@ -81,6 +81,133 @@ public sealed class Migration004_PatientDnaImportsAndResults : DatabaseMigration
             ";
         }
 
+        if (dialect.StartsWith("duckdb", StringComparison.OrdinalIgnoreCase))
+        {
+            return @"
+                CREATE TABLE IF NOT EXISTS weaver_patient_dna_records (
+                    id VARCHAR(64) PRIMARY KEY,
+                    username VARCHAR(128) NOT NULL REFERENCES weaver_users(username),
+                    title VARCHAR(256) NOT NULL,
+                    regimen TEXT NOT NULL,
+                    target_tissue VARCHAR(256) NOT NULL,
+                    active_ligand VARCHAR(128) NOT NULL,
+                    nanocarrier_geometry VARCHAR(128) NOT NULL,
+                    target_aptamer_kd_nm DOUBLE PRECISION NOT NULL DEFAULT 3.5,
+                    scaffold_fasta TEXT NOT NULL,
+                    gc_percentage DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+                    estimated_mw_kda DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+                    staples_json TEXT NOT NULL DEFAULT '[]',
+                    annealing_protocol_json TEXT NOT NULL DEFAULT '[]',
+                    provenance_sha256 VARCHAR(64) NOT NULL,
+                    created_at_utc TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    notes TEXT
+                );
+
+                CREATE TABLE IF NOT EXISTS weaver_patient_dna_imports (
+                    id VARCHAR(64) PRIMARY KEY,
+                    username VARCHAR(128) NOT NULL REFERENCES weaver_users(username),
+                    file_name VARCHAR(256) NOT NULL,
+                    import_type VARCHAR(64) NOT NULL,
+                    sequence_or_data TEXT NOT NULL,
+                    size_bytes BIGINT NOT NULL DEFAULT 0,
+                    sha256_checksum VARCHAR(64) NOT NULL,
+                    imported_by VARCHAR(128) NOT NULL,
+                    status VARCHAR(64) NOT NULL DEFAULT 'Processed',
+                    metadata_json TEXT NOT NULL DEFAULT '{}',
+                    imported_at_utc TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS weaver_patient_results (
+                    id VARCHAR(64) PRIMARY KEY,
+                    username VARCHAR(128) NOT NULL REFERENCES weaver_users(username),
+                    dna_record_id VARCHAR(64) REFERENCES weaver_patient_dna_records(id),
+                    import_id VARCHAR(64) REFERENCES weaver_patient_dna_imports(id),
+                    result_type VARCHAR(64) NOT NULL,
+                    title VARCHAR(256) NOT NULL,
+                    status VARCHAR(64) NOT NULL DEFAULT 'Complete',
+                    metrics_json TEXT NOT NULL DEFAULT '{}',
+                    summary TEXT NOT NULL,
+                    created_at_utc TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE INDEX IF NOT EXISTS ix_weaver_patient_dna_records_username ON weaver_patient_dna_records(username);
+                CREATE INDEX IF NOT EXISTS ix_weaver_patient_dna_records_created ON weaver_patient_dna_records(created_at_utc);
+
+                CREATE INDEX IF NOT EXISTS ix_weaver_patient_dna_imports_username ON weaver_patient_dna_imports(username);
+                CREATE INDEX IF NOT EXISTS ix_weaver_patient_dna_imports_imported ON weaver_patient_dna_imports(imported_at_utc);
+
+                CREATE INDEX IF NOT EXISTS ix_weaver_patient_results_username ON weaver_patient_results(username);
+                CREATE INDEX IF NOT EXISTS ix_weaver_patient_results_dna_record_id ON weaver_patient_results(dna_record_id);
+                CREATE INDEX IF NOT EXISTS ix_weaver_patient_results_created ON weaver_patient_results(created_at_utc);
+            ";
+        }
+
+        if (dialect.StartsWith("mysql", StringComparison.OrdinalIgnoreCase) || dialect.StartsWith("mariadb", StringComparison.OrdinalIgnoreCase))
+        {
+            return @"
+                CREATE TABLE IF NOT EXISTS weaver_patient_dna_records (
+                    id VARCHAR(64) PRIMARY KEY,
+                    username VARCHAR(128) NOT NULL,
+                    title VARCHAR(255) NOT NULL,
+                    regimen VARCHAR(64) NOT NULL,
+                    target_tissue VARCHAR(255) NOT NULL,
+                    active_ligand VARCHAR(128) NOT NULL,
+                    nanocarrier_geometry VARCHAR(128) NOT NULL,
+                    target_aptamer_kd_nm DOUBLE NOT NULL DEFAULT 3.5,
+                    scaffold_fasta TEXT NOT NULL,
+                    gc_percentage DOUBLE NOT NULL DEFAULT 0.0,
+                    estimated_mw_kda DOUBLE NOT NULL DEFAULT 0.0,
+                    staples_json TEXT NOT NULL,
+                    annealing_protocol_json TEXT NOT NULL,
+                    provenance_sha256 VARCHAR(64) NOT NULL,
+                    created_at_utc DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+                    notes TEXT,
+                    FOREIGN KEY (username) REFERENCES weaver_users(username) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS weaver_patient_dna_imports (
+                    id VARCHAR(64) PRIMARY KEY,
+                    username VARCHAR(128) NOT NULL,
+                    file_name VARCHAR(255) NOT NULL,
+                    import_type VARCHAR(64) NOT NULL,
+                    sequence_or_data TEXT NOT NULL,
+                    size_bytes BIGINT NOT NULL DEFAULT 0,
+                    sha256_checksum VARCHAR(64) NOT NULL,
+                    imported_by VARCHAR(128) NOT NULL,
+                    status VARCHAR(64) NOT NULL DEFAULT 'Processed',
+                    metadata_json TEXT NOT NULL,
+                    imported_at_utc DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+                    FOREIGN KEY (username) REFERENCES weaver_users(username) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS weaver_patient_results (
+                    id VARCHAR(64) PRIMARY KEY,
+                    username VARCHAR(128) NOT NULL,
+                    dna_record_id VARCHAR(64),
+                    import_id VARCHAR(64),
+                    result_type VARCHAR(64) NOT NULL,
+                    title VARCHAR(255) NOT NULL,
+                    status VARCHAR(64) NOT NULL DEFAULT 'Complete',
+                    metrics_json TEXT NOT NULL,
+                    summary TEXT NOT NULL,
+                    created_at_utc DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+                    FOREIGN KEY (username) REFERENCES weaver_users(username) ON DELETE CASCADE,
+                    FOREIGN KEY (dna_record_id) REFERENCES weaver_patient_dna_records(id) ON DELETE SET NULL,
+                    FOREIGN KEY (import_id) REFERENCES weaver_patient_dna_imports(id) ON DELETE SET NULL
+                );
+
+                CREATE INDEX ix_weaver_patient_dna_records_username ON weaver_patient_dna_records(username);
+                CREATE INDEX ix_weaver_patient_dna_records_created ON weaver_patient_dna_records(created_at_utc);
+
+                CREATE INDEX ix_weaver_patient_dna_imports_username ON weaver_patient_dna_imports(username);
+                CREATE INDEX ix_weaver_patient_dna_imports_imported ON weaver_patient_dna_imports(imported_at_utc);
+
+                CREATE INDEX ix_weaver_patient_results_username ON weaver_patient_results(username);
+                CREATE INDEX ix_weaver_patient_results_dna_record_id ON weaver_patient_results(dna_record_id);
+                CREATE INDEX ix_weaver_patient_results_created ON weaver_patient_results(created_at_utc);
+            ";
+        }
+
         return @"
             CREATE TABLE IF NOT EXISTS weaver_patient_dna_records (
                 id TEXT PRIMARY KEY,

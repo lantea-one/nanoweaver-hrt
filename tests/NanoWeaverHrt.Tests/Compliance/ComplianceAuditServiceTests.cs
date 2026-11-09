@@ -184,4 +184,80 @@ public sealed class ComplianceAuditServiceTests : IDisposable
 
         Assert.NotEqual(hash1, hash2);
     }
+
+    /// <summary>
+    /// Verifies that two <see cref="ComplianceAuditService"/> instances sharing the same <see cref="NodeSecretStore"/>
+    /// produce identical pseudonym values across simulated restarts when <c>Security:PseudonymizationSecret</c> is unconfigured.
+    /// </summary>
+    [Fact]
+    public void PseudonymizeSubjectId_PersistedNodeSecretStore_ProducesDeterministicPseudonymsAcrossInstances()
+    {
+        string secretDir = Path.Combine(_tempDir, "shared-secrets");
+        IConfiguration config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                [NodeSecretStore.NodeKeysDirectoryConfigKey] = secretDir
+            })
+            .Build();
+
+        NodeSecretStore store1 = new(config);
+        ComplianceAuditService audit1 = new(_testHost.KeyManagement, _cryptoProvider, secretStore: store1);
+
+        NodeSecretStore store2 = new(config);
+        ComplianceAuditService audit2 = new(_testHost.KeyManagement, _cryptoProvider, secretStore: store2);
+
+        string p1 = audit1.PseudonymizeSubjectId("patient-01");
+        string p2 = audit2.PseudonymizeSubjectId("patient-01");
+
+        Assert.NotNull(p1);
+        Assert.StartsWith("sub_", p1);
+        Assert.Equal(p1, p2);
+
+        // Different subject gives different pseudonym
+        string pOther = audit1.PseudonymizeSubjectId("patient-02");
+        Assert.NotEqual(p1, pOther);
+
+        // Different secret store gives different pseudonym
+        string otherSecretDir = Path.Combine(_tempDir, "other-secrets");
+        IConfiguration otherConfig = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                [NodeSecretStore.NodeKeysDirectoryConfigKey] = otherSecretDir
+            })
+            .Build();
+        NodeSecretStore otherStore = new(otherConfig);
+        ComplianceAuditService auditOther = new(_testHost.KeyManagement, _cryptoProvider, secretStore: otherStore);
+        string pDifferentStore = auditOther.PseudonymizeSubjectId("patient-01");
+        Assert.NotEqual(p1, pDifferentStore);
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="ComplianceAuditService.PseudonymizeSubjectId"/> validates arguments.
+    /// </summary>
+    [Fact]
+    public void PseudonymizeSubjectId_ArgumentValidation_ThrowsExpectedException()
+    {
+        ComplianceAuditService audit = new(_testHost.KeyManagement, _cryptoProvider);
+
+        Assert.Throws<ArgumentNullException>(() => audit.PseudonymizeSubjectId(null!));
+        Assert.Throws<ArgumentException>(() => audit.PseudonymizeSubjectId("   "));
+    }
+
+    /// <summary>
+    /// Verifies that when <see cref="INodeSecretStore.GetOrCreateSecret"/> returns a key of invalid length,
+    /// <see cref="ComplianceAuditService"/> gracefully falls back to a CSPRNG key.
+    /// </summary>
+    [Fact]
+    public void ResolvePseudonymizationKey_SecretStoreKeyInvalidLength_FallsBackToCsprng()
+    {
+        Moq.Mock<INodeSecretStore> mockStore = new();
+        mockStore.Setup(s => s.GetOrCreateSecret(Moq.It.IsAny<string>(), Moq.It.IsAny<int>()))
+            .Returns(new byte[16]); // wrong length (not 32)
+
+        ComplianceAuditService audit = new(_testHost.KeyManagement, _cryptoProvider, secretStore: mockStore.Object);
+        string pseudonym = audit.PseudonymizeSubjectId("patient-fallback");
+
+        Assert.NotNull(pseudonym);
+        Assert.StartsWith("sub_", pseudonym);
+    }
 }

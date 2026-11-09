@@ -89,6 +89,125 @@ CREATE INDEX IF NOT EXISTS ix_weaver_subject_group_grants_group ON weaver_subjec
 ";
         }
 
+        if (dialect.StartsWith("duckdb", StringComparison.OrdinalIgnoreCase))
+        {
+            return @"
+CREATE TABLE IF NOT EXISTS weaver_subject_grants (
+    id                  VARCHAR(64)  PRIMARY KEY,
+    researcher_username VARCHAR(128) NOT NULL REFERENCES weaver_users(username),
+    subject_username    VARCHAR(128) NOT NULL REFERENCES weaver_users(username),
+    access_level        INTEGER      NOT NULL DEFAULT 2,
+    granted_by          VARCHAR(128) NOT NULL REFERENCES weaver_users(username),
+    granted_at_utc      TIMESTAMP    NOT NULL,
+    notes               TEXT,
+    CONSTRAINT uq_subject_grant UNIQUE (researcher_username, subject_username),
+    CONSTRAINT ck_weaver_subject_grants_level CHECK (access_level IN (1, 2, 3))
+);
+
+CREATE INDEX IF NOT EXISTS ix_weaver_subject_grants_researcher ON weaver_subject_grants(researcher_username);
+CREATE INDEX IF NOT EXISTS ix_weaver_subject_grants_subject ON weaver_subject_grants(subject_username);
+
+CREATE TABLE IF NOT EXISTS weaver_subject_groups (
+    id             VARCHAR(64)  PRIMARY KEY,
+    name           VARCHAR(128) NOT NULL,
+    description    TEXT,
+    created_by     VARCHAR(128) NOT NULL REFERENCES weaver_users(username),
+    created_at_utc TIMESTAMP    NOT NULL,
+    updated_at_utc TIMESTAMP    NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS ix_weaver_subject_groups_created_by ON weaver_subject_groups(created_by);
+
+CREATE TABLE IF NOT EXISTS weaver_subject_group_members (
+    group_id         VARCHAR(64)  NOT NULL REFERENCES weaver_subject_groups(id),
+    subject_username VARCHAR(128) NOT NULL REFERENCES weaver_users(username),
+    added_at_utc     TIMESTAMP    NOT NULL,
+    PRIMARY KEY (group_id, subject_username)
+);
+
+CREATE INDEX IF NOT EXISTS ix_weaver_subject_group_members_subject ON weaver_subject_group_members(subject_username);
+
+CREATE TABLE IF NOT EXISTS weaver_subject_group_grants (
+    id                  VARCHAR(64)  PRIMARY KEY,
+    group_id            VARCHAR(64)  NOT NULL REFERENCES weaver_subject_groups(id),
+    researcher_username VARCHAR(128) NOT NULL REFERENCES weaver_users(username),
+    access_level        INTEGER      NOT NULL DEFAULT 2,
+    granted_by          VARCHAR(128) NOT NULL REFERENCES weaver_users(username),
+    granted_at_utc      TIMESTAMP    NOT NULL,
+    notes               TEXT,
+    CONSTRAINT uq_group_grant UNIQUE (group_id, researcher_username),
+    CONSTRAINT ck_weaver_subject_group_grants_level CHECK (access_level IN (1, 2, 3))
+);
+
+CREATE INDEX IF NOT EXISTS ix_weaver_subject_group_grants_researcher ON weaver_subject_group_grants(researcher_username);
+CREATE INDEX IF NOT EXISTS ix_weaver_subject_group_grants_group ON weaver_subject_group_grants(group_id);
+";
+        }
+
+        if (dialect.StartsWith("mysql", StringComparison.OrdinalIgnoreCase) || dialect.StartsWith("mariadb", StringComparison.OrdinalIgnoreCase))
+        {
+            return @"
+CREATE TABLE IF NOT EXISTS weaver_subject_grants (
+    id                  VARCHAR(64)  PRIMARY KEY,
+    researcher_username VARCHAR(128) NOT NULL,
+    subject_username    VARCHAR(128) NOT NULL,
+    access_level        INTEGER      NOT NULL DEFAULT 2,
+    granted_by          VARCHAR(128) NOT NULL,
+    granted_at_utc      DATETIME(6)  NOT NULL,
+    notes               TEXT,
+    CONSTRAINT uq_subject_grant UNIQUE (researcher_username, subject_username),
+    CONSTRAINT ck_weaver_subject_grants_level CHECK (access_level IN (1, 2, 3)),
+    FOREIGN KEY (researcher_username) REFERENCES weaver_users(username) ON DELETE CASCADE,
+    FOREIGN KEY (subject_username) REFERENCES weaver_users(username) ON DELETE CASCADE,
+    FOREIGN KEY (granted_by) REFERENCES weaver_users(username)
+);
+
+CREATE INDEX ix_weaver_subject_grants_researcher ON weaver_subject_grants(researcher_username);
+CREATE INDEX ix_weaver_subject_grants_subject ON weaver_subject_grants(subject_username);
+
+CREATE TABLE IF NOT EXISTS weaver_subject_groups (
+    id             VARCHAR(64)  PRIMARY KEY,
+    name           VARCHAR(128) NOT NULL,
+    description    TEXT,
+    created_by     VARCHAR(128) NOT NULL,
+    created_at_utc DATETIME(6)  NOT NULL,
+    updated_at_utc DATETIME(6)  NOT NULL,
+    FOREIGN KEY (created_by) REFERENCES weaver_users(username) ON DELETE CASCADE
+);
+
+CREATE INDEX ix_weaver_subject_groups_created_by ON weaver_subject_groups(created_by);
+
+CREATE TABLE IF NOT EXISTS weaver_subject_group_members (
+    group_id         VARCHAR(64)  NOT NULL,
+    subject_username VARCHAR(128) NOT NULL,
+    added_at_utc     DATETIME(6)  NOT NULL,
+    PRIMARY KEY (group_id, subject_username),
+    FOREIGN KEY (group_id) REFERENCES weaver_subject_groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (subject_username) REFERENCES weaver_users(username) ON DELETE CASCADE
+);
+
+CREATE INDEX ix_weaver_subject_group_members_subject ON weaver_subject_group_members(subject_username);
+
+CREATE TABLE IF NOT EXISTS weaver_subject_group_grants (
+    id                  VARCHAR(64)  PRIMARY KEY,
+    group_id            VARCHAR(64)  NOT NULL,
+    researcher_username VARCHAR(128) NOT NULL,
+    access_level        INTEGER      NOT NULL DEFAULT 2,
+    granted_by          VARCHAR(128) NOT NULL,
+    granted_at_utc      DATETIME(6)  NOT NULL,
+    notes               TEXT,
+    CONSTRAINT uq_group_grant UNIQUE (group_id, researcher_username),
+    CONSTRAINT ck_weaver_subject_group_grants_level CHECK (access_level IN (1, 2, 3)),
+    FOREIGN KEY (group_id) REFERENCES weaver_subject_groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (researcher_username) REFERENCES weaver_users(username) ON DELETE CASCADE,
+    FOREIGN KEY (granted_by) REFERENCES weaver_users(username)
+);
+
+CREATE INDEX ix_weaver_subject_group_grants_researcher ON weaver_subject_group_grants(researcher_username);
+CREATE INDEX ix_weaver_subject_group_grants_group ON weaver_subject_group_grants(group_id);
+";
+        }
+
         return @"
 CREATE TABLE IF NOT EXISTS weaver_subject_grants (
     id                  TEXT PRIMARY KEY,

@@ -9,6 +9,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.OpenApi.Models;
 using Swashbuckle.AspNetCore.Annotations;
 using NanoWeaverHrt.Abstractions;
@@ -335,6 +336,14 @@ public class Program
                 subjectKeyReport.RebuiltTombstoneCount);
         }
 
+        // WHAT: Processes reverse-proxy forwarded headers (X-Forwarded-For, X-Forwarded-Proto).
+        // WHY:  Ensures remote IP addresses and HTTPS scheme are preserved when running behind reverse proxies (Caddy, Nginx).
+        // HOW:  Applies UseForwardedHeaders with XForwardedFor and XForwardedProto flags.
+        app.UseForwardedHeaders(new ForwardedHeadersOptions
+        {
+            ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+        });
+
         // WHAT: Enables content negotiation and multi-format transcoding (JSON, XML, YAML).
         // WHY:  Allows callers to request or submit XML or YAML payloads transparently.
         // HOW:  FormatNegotiationMiddleware inspects Accept and Content-Type headers before routing.
@@ -467,7 +476,8 @@ public class Program
             // 4. Public authentication endpoints (do not require an existing token)
             if (path.Equals("/api/auth/challenge", StringComparison.OrdinalIgnoreCase) ||
                 path.Equals("/api/auth/token", StringComparison.OrdinalIgnoreCase) ||
-                path.Equals("/api/auth/web-token", StringComparison.OrdinalIgnoreCase))
+                path.Equals("/api/auth/web-token", StringComparison.OrdinalIgnoreCase) ||
+                path.Equals("/api/share-keys/redeem", StringComparison.OrdinalIgnoreCase))
             {
                 await next();
                 return;
@@ -505,8 +515,8 @@ public class Program
                 return;
             }
 
-            // 7. Access Gating: Web-only users cannot access REST API endpoints
-            if (user.AccessGate == AccessGate.Web)
+            // 7. Access Gating: Web-only users cannot access REST API endpoints, except /api/auth/logout to end their session.
+            if (user.AccessGate == AccessGate.Web && !path.Equals("/api/auth/logout", StringComparison.OrdinalIgnoreCase))
             {
                 await WriteSecureProblemAsync(context, StatusCodes.Status403Forbidden, "Access Denied: This user account is gated to Web interface access only.");
                 return;
@@ -737,14 +747,14 @@ public class Program
         // ---------------------------------------------------------------------
         // REST API: Dataset Import & Cryptographic Verification
         // ---------------------------------------------------------------------
-        app.MapPost("/api/datasets/import", async (IFormFile archive, IFormFile manifest, VerifiedDatasetImporter importer, HttpContext context, CancellationToken ct) =>
+        app.MapPost("/api/datasets/import", async (IFormFile? archive, IFormFile? manifest, VerifiedDatasetImporter importer, HttpContext context, CancellationToken ct) =>
         {
             // WHAT: Authenticates dataset provenance and verifies archive integrity before extracting into active storage.
             // WHY:  Enforces peer key trust, signature verification, strict-mode policy, and SHA-256/size integrity.
             // HOW:  Parses the manifest JSON, delegates provenance and integrity checks to VerifiedDatasetImporter, and returns RFC 7807 on rejection.
             if (archive == null || manifest == null)
             {
-                return Results.BadRequest(new { error = "Both archive (.tar.gz) and manifest (.json) files are required." });
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Both archive (.tar.gz) and manifest (.json) files are required.");
             }
 
             DatasetManifest? parsedManifest;
@@ -760,7 +770,7 @@ public class Program
 
             if (parsedManifest == null)
             {
-                return Results.BadRequest(new { error = "Failed to parse the uploaded manifest JSON." });
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Failed to parse the uploaded manifest JSON.");
             }
 
             DatasetImportResult result;
@@ -1543,28 +1553,30 @@ public class Program
         .WithName("DeIdentifySubject")
         .WithSummary("Applies HIPAA Safe Harbor de-identification and GINA/GDPR Article 9 consent validation.");
 
-        app.MapPost("/api/compliance/crypto-shred", async (CryptoShredRequest req, IKeyManagementService keyMgmt, IComplianceAuditService compliance, CancellationToken ct) =>
+        app.MapPost("/api/compliance/crypto-shred", async (CryptoShredRequest req, IKeyManagementService keyMgmt, IComplianceAuditService compliance, HttpContext context, CancellationToken ct) =>
         {
             if (string.IsNullOrWhiteSpace(req.SubjectId))
             {
-                return Results.BadRequest(new { error = "SubjectId cannot be empty." });
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "SubjectId cannot be empty.");
             }
 
             SubjectErasureOutcome outcome = await keyMgmt.CryptoShredSubjectKeyAsync(req.SubjectId, ct);
             if (outcome != SubjectErasureOutcome.Erased)
             {
-                return Results.NotFound(new
-                {
-                    error = outcome == SubjectErasureOutcome.AlreadyErased
+                return SecureProblemResult(
+                    context,
+                    StatusCodes.Status404NotFound,
+                    outcome == SubjectErasureOutcome.AlreadyErased
                         ? ShredAlreadyMessage(req.SubjectId)
-                        : ShredUnknownMessage(req.SubjectId)
-                });
+                        : ShredUnknownMessage(req.SubjectId));
             }
 
+            // Authentication middleware guarantees CurrentUser is populated before reaching this handler.
+            string callerUsername = ((UserAccount)context.Items["CurrentUser"]!).Username;
             compliance.LogAction(
-                "API_CALLER",
+                callerUsername,
                 "CryptoShredSubjectKey",
-                req.SubjectId,
+                compliance.PseudonymizeSubjectId(req.SubjectId),
                 $"{{\"status\":\"destroyed\",\"standard\":\"GDPR_Article_17\"}}");
 
             return Results.Ok(new
@@ -1678,7 +1690,7 @@ public class Program
                 string bundlePath = await storage.ExportEncryptedDatasetBundleAsync(req.TrajectoryFileName, subjectId, exportDir, ct);
                 return Results.Ok(new
                 {
-                    bundle_path = bundlePath,
+                    bundle_path = Path.GetFileName(bundlePath),
                     algorithm = "ML-KEM-768+AES-256-GCM",
                     subject_id = subjectId,
                     message = "Encrypted dataset bundle packaged and signed with ML-DSA-65."
@@ -1742,35 +1754,21 @@ public class Program
                 return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Administrator username and public key are required.");
             }
 
-            try
-            {
-                UserAccount admin = await auth.CompleteInitialSetupAsync(
-                    request.AdminUsername,
-                    request.PublicKeyBase64,
-                    request.Algorithm,
-                    request.AccessGate,
-                    ct);
+            UserAccount admin = await auth.CompleteInitialSetupAsync(
+                request.AdminUsername,
+                request.PublicKeyBase64,
+                request.Algorithm,
+                request.AccessGate,
+                ct);
 
-                string token = auth.GenerateBearerToken(admin);
-                return Results.Ok(new AuthTokenResponse
-                {
-                    Token = token,
-                    TokenType = "Bearer",
-                    ExpiresInSeconds = 28800,
-                    User = admin
-                });
-            }
-            catch (InvalidOperationException ex)
+            string token = auth.GenerateBearerToken(admin);
+            return Results.Ok(new AuthTokenResponse
             {
-                // WHAT: Converts a setup conflict into sanitized RFC 7807 problem details.
-                // WHY:  Directive 14 requires the single SecureProblemDetails schema for API rejections and
-                //       forbids exception text reaching clients with paths, credentials or SQL still in it.
-                // HOW:  Routes the conflict sentence through SecureExceptionSanitizer before publishing it.
-                return SecureProblemResult(
-                    context,
-                    StatusCodes.Status400BadRequest,
-                    SecureExceptionSanitizer.SanitizeDetail(ex.Message, StatusCodes.Status400BadRequest, context.TraceIdentifier));
-            }
+                Token = token,
+                TokenType = "Bearer",
+                ExpiresInSeconds = 28800,
+                User = admin
+            });
         })
         .WithName("InitializeSetup")
         .WithTags("Authentication & Setup")
@@ -1865,11 +1863,9 @@ public class Program
             // WHAT: Returns identity metadata and claims for the authenticated user.
             // WHY:  Allows clients to inspect current role, access gating, and username.
             // HOW:  Retrieves UserAccount attached to HttpContext.Items by the authentication middleware.
-            if (context.Items.TryGetValue("CurrentUser", out object? userObj) && userObj is UserAccount user)
-            {
-                return Results.Ok(user);
-            }
-            return Results.Unauthorized();
+            // Authentication middleware guarantees CurrentUser is populated before reaching this handler.
+            UserAccount user = (UserAccount)context.Items["CurrentUser"]!;
+            return Results.Ok(user);
         })
         .WithName("GetCurrentUser")
         .WithTags("Authentication & Setup")
@@ -1881,11 +1877,12 @@ public class Program
         // ---------------------------------------------------------------------
         // REST API: Sign Out / Session Clear
         // ---------------------------------------------------------------------
-        app.MapPost("/api/auth/logout", (HttpContext context) =>
+        app.MapPost("/api/auth/logout", (HttpContext context, IServerSessionActivityTracker sessionTracker) =>
         {
-            // WHAT: Terminates the interactive session.
-            // WHY:  Ensures session cookies are cleared upon user request.
-            // HOW:  Deletes the weaver_session cookie.
+            // WHAT: Terminates the interactive session and revokes server-side session activity.
+            // WHY:  Ensures both server-side session tracking and client-side session cookies are invalidated.
+            // HOW:  Delegates to RevokeActiveRequestSession and deletes the weaver_session cookie.
+            RevokeActiveRequestSession(context, sessionTracker);
             context.Response.Cookies.Delete("weaver_session");
             return Results.Ok(new { message = "Successfully signed out." });
         })
@@ -2029,12 +2026,6 @@ public class Program
             // WHAT: Retrieves demographic, clinical, and pronoun profile data for a specific user.
             // WHY:  Allows users to inspect their profile and administrators to view patient demographic information.
             // HOW:  Validates caller authorization, checks account existence, and queries IUserProfileRepository.
-            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (!HasProfileSubjectAccess(currentUser, username, context))
-            {
-                return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: You may only view or manage your own profile, addresses, and contacts.");
-            }
-
             UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
             if (targetAccount == null)
             {
@@ -2069,12 +2060,6 @@ public class Program
             // WHAT: Inserts or updates demographic, clinical, and pronoun profile data for a specific user.
             // WHY:  Allows patients and users to keep their profiles up-to-date with encrypted storage of sensitive assets.
             // HOW:  Validates caller authorization, verifies account existence, binds the username, and upserts into repository.
-            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
-            {
-                return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: You may only view or manage your own profile, addresses, and contacts.");
-            }
-
             UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
             if (targetAccount == null)
             {
@@ -2113,12 +2098,6 @@ public class Program
             // WHAT: Retrieves all structured addresses registered for a patient or user.
             // WHY:  Provides delivery, residential, or clinic address lookup for patient logistics.
             // HOW:  Validates caller permissions, checks target existence, and fetches address records.
-            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (!HasFullReadSubjectAccess(currentUser, username, context))
-            {
-                return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: You may only view or manage your own profile, addresses, and contacts.");
-            }
-
             UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
             if (targetAccount == null)
             {
@@ -2148,12 +2127,6 @@ public class Program
             // WHAT: Adds or updates a structured address record for a specified patient or user.
             // WHY:  Enables maintenance of clinic, home, or nanocarrier delivery addresses.
             // HOW:  Validates required fields, sets ownership username and GUID identifier, and persists via repository.
-            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
-            {
-                return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: You may only view or manage your own profile, addresses, and contacts.");
-            }
-
             UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
             if (targetAccount == null)
             {
@@ -2196,12 +2169,6 @@ public class Program
             // WHAT: Removes an existing address record for a specified patient or user.
             // WHY:  Allows pruning outdated or erroneous postal/clinic addresses.
             // HOW:  Validates permissions, verifies target account, and deletes entry via repository.
-            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
-            {
-                return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: You may only view or manage your own profile, addresses, and contacts.");
-            }
-
             UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
             if (targetAccount == null)
             {
@@ -2238,12 +2205,6 @@ public class Program
             // WHAT: Retrieves the trusted contact lookup table for a specified patient or user.
             // WHY:  Identifies outreach individuals, caregivers, and emergency contacts if patient cannot be reached.
             // HOW:  Validates permissions, checks account existence, and queries contacts ordered by priority.
-            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (!HasFullReadSubjectAccess(currentUser, username, context))
-            {
-                return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: You may only view or manage your own profile, addresses, and contacts.");
-            }
-
             UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
             if (targetAccount == null)
             {
@@ -2273,12 +2234,6 @@ public class Program
             // WHAT: Adds or updates a trusted outreach/emergency contact entry for a patient.
             // WHY:  Maintains critical contact relationships for safety and clinical follow-up.
             // HOW:  Validates required contact name and phone number, binds username, and persists via repository.
-            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
-            {
-                return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: You may only view or manage your own profile, addresses, and contacts.");
-            }
-
             UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
             if (targetAccount == null)
             {
@@ -2321,12 +2276,6 @@ public class Program
             // WHAT: Removes an emergency contact from a patient's contact lookup table.
             // WHY:  Allows patients to revoke or modify authorized outreach individuals.
             // HOW:  Validates caller permissions, checks target existence, and deletes entry via repository.
-            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (currentUser == null || (currentUser.Role != UserRole.Administrator && !string.Equals(currentUser.Username, username, StringComparison.OrdinalIgnoreCase)))
-            {
-                return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: You may only view or manage your own profile, addresses, and contacts.");
-            }
-
             UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
             if (targetAccount == null)
             {
@@ -2455,12 +2404,6 @@ public class Program
             // WHAT: Retrieves all persistent digitized DNA blueprint records for a patient.
             // WHY:  Allows patients, clinicians, and researchers to review nanocarrier architectures and sequences.
             // HOW:  Validates permissions, verifies patient existence, and queries the repository.
-            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (!HasGenomicSubjectAccess(currentUser, username, context))
-            {
-                return SecureProblemResult(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
-            }
-
             UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
             if (targetAccount == null)
             {
@@ -2490,12 +2433,6 @@ public class Program
             // WHAT: Retrieves a specific digitized DNA blueprint by id.
             // WHY:  Supplies detailed staple routings, annealing schedule, and provenance for inspection or download.
             // HOW:  Validates authorization, checks record existence, and verifies patient ownership.
-            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (!HasGenomicSubjectAccess(currentUser, username, context))
-            {
-                return SecureProblemResult(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
-            }
-
             UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
             if (targetAccount == null)
             {
@@ -2532,12 +2469,6 @@ public class Program
             // WHAT: Synthesizes and registers a new digitized DNA blueprint for a patient.
             // WHY:  Allows clinicians and researchers to design and assign custom nanocarrier configurations.
             // HOW:  Synthesizes origami components via IFabricationService, computes composition, and saves blueprint and kinetics result.
-            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (!HasGenomicSubjectAccess(currentUser, username, context))
-            {
-                return SecureProblemResult(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
-            }
-
             UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
             if (targetAccount == null)
             {
@@ -2607,12 +2538,6 @@ public class Program
             // WHAT: Removes a digitized DNA blueprint record by id.
             // WHY:  Allows researchers and patients to retire superseded blueprints.
             // HOW:  Validates permissions, verifies ownership, and deletes record via repository.
-            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (!HasGenomicSubjectAccess(currentUser, username, context))
-            {
-                return SecureProblemResult(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
-            }
-
             UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
             if (targetAccount == null)
             {
@@ -2650,12 +2575,6 @@ public class Program
             // WHAT: Retrieves all imported sequence files and datasets for a patient.
             // WHY:  Supplies imported file assets to the DNA management interface.
             // HOW:  Validates authorization, checks user existence, and queries repository.
-            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (!HasGenomicSubjectAccess(currentUser, username, context))
-            {
-                return SecureProblemResult(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
-            }
-
             UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
             if (targetAccount == null)
             {
@@ -2685,12 +2604,6 @@ public class Program
             // WHAT: Retrieves an imported sequence or dataset record by ID.
             // WHY:  Allows reviewing the raw sequence text, checksums, and metadata of an import.
             // HOW:  Validates caller permissions and queries import by ID.
-            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (!HasGenomicSubjectAccess(currentUser, username, context))
-            {
-                return SecureProblemResult(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
-            }
-
             UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
             if (targetAccount == null)
             {
@@ -2727,11 +2640,7 @@ public class Program
             // WHAT: Imports raw DNA sequence data, variant panels, or trajectory archives for a patient.
             // WHY:  Integrates external patient genetic sequences into the decentralized sovereign platform.
             // HOW:  Calculates SHA-256 checksum, persists import record, and optionally triggers automated pharmacogenomics analysis.
-            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (!HasGenomicSubjectAccess(currentUser, username, context))
-            {
-                return SecureProblemResult(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
-            }
+            UserAccount currentUser = (UserAccount)context.Items["CurrentUser"]!;
 
             if (string.IsNullOrWhiteSpace(request.FileName))
             {
@@ -2805,12 +2714,6 @@ public class Program
             // WHAT: Deletes an imported sequence or dataset record by ID.
             // WHY:  Allows cleaning up superseded or corrupted import files.
             // HOW:  Validates caller permissions and deletes entry from repository.
-            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (!HasGenomicSubjectAccess(currentUser, username, context))
-            {
-                return SecureProblemResult(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
-            }
-
             UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
             if (targetAccount == null)
             {
@@ -2849,12 +2752,6 @@ public class Program
             // WHAT: Retrieves all clinical, simulation, and pharmacogenomic results for a patient.
             // WHY:  Allows patients and clinicians to review physiological responses and nanocarrier metrics.
             // HOW:  Validates permissions, queries results, and applies optional resultType filtering.
-            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (!HasGenomicSubjectAccess(currentUser, username, context))
-            {
-                return SecureProblemResult(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
-            }
-
             UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
             if (targetAccount == null)
             {
@@ -2889,12 +2786,6 @@ public class Program
             // WHAT: Retrieves a specific simulation or clinical result record by ID.
             // WHY:  Provides fine-grained access to individual metric reports and findings.
             // HOW:  Validates caller permissions and queries result by ID.
-            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (!HasGenomicSubjectAccess(currentUser, username, context))
-            {
-                return SecureProblemResult(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
-            }
-
             UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
             if (targetAccount == null)
             {
@@ -2929,12 +2820,6 @@ public class Program
             // WHAT: Manually creates or registers a simulation/clinical result record for a patient.
             // WHY:  Allows laboratory tools and simulation runners to record outcomes against the patient.
             // HOW:  Validates input fields, verifies target patient existence, and persists result record.
-            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (!HasGenomicSubjectAccess(currentUser, username, context))
-            {
-                return SecureProblemResult(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
-            }
-
             if (string.IsNullOrWhiteSpace(request.Title) || string.IsNullOrWhiteSpace(request.ResultType) || string.IsNullOrWhiteSpace(request.Summary))
             {
                 return Results.BadRequest(new { error = "Title, ResultType, and Summary are required fields." });
@@ -2985,12 +2870,6 @@ public class Program
             // WHAT: Deletes a simulation or clinical result record by ID.
             // WHY:  Allows cleaning up test or superseded result snapshots.
             // HOW:  Validates caller permissions and deletes entry from repository.
-            UserAccount? currentUser = context.Items["CurrentUser"] as UserAccount;
-            if (!HasGenomicSubjectAccess(currentUser, username, context))
-            {
-                return SecureProblemResult(context, StatusCodes.Status404NotFound, SubjectRecordNotFoundDetail);
-            }
-
             UserAccount? targetAccount = await userRepo.GetUserAsync(username, ct);
             if (targetAccount == null)
             {
@@ -3921,11 +3800,11 @@ public class Program
             }
             catch (FileNotFoundException fnfEx)
             {
-                return SecureProblemResult(httpContext, StatusCodes.Status404NotFound, fnfEx.Message);
+                return SecureProblemResult(httpContext, StatusCodes.Status404NotFound, SecureExceptionSanitizer.SanitizeDetail(fnfEx.Message, StatusCodes.Status404NotFound, httpContext.TraceIdentifier));
             }
             catch (InvalidOperationException invEx)
             {
-                return SecureProblemResult(httpContext, StatusCodes.Status400BadRequest, invEx.Message);
+                return SecureProblemResult(httpContext, StatusCodes.Status400BadRequest, SecureExceptionSanitizer.SanitizeDetail(invEx.Message, StatusCodes.Status400BadRequest, httpContext.TraceIdentifier));
             }
         })
         .WithName("QueryTrajectoryAnalytics")
@@ -4228,11 +4107,11 @@ public class Program
             }
             catch (FileNotFoundException ex)
             {
-                return SecureProblemResult(context, 404, ex.Message);
+                return SecureProblemResult(context, 404, SecureExceptionSanitizer.SanitizeDetail(ex.Message, 404, context.TraceIdentifier));
             }
             catch (Exception ex) when (ex is ArgumentException or UnauthorizedAccessException or InvalidOperationException)
             {
-                return SecureProblemResult(context, 400, ex.Message);
+                return SecureProblemResult(context, 400, SecureExceptionSanitizer.SanitizeDetail(ex.Message, 400, context.TraceIdentifier));
             }
         })
         .WithName("BuildFederationManifest")
@@ -4266,16 +4145,17 @@ public class Program
             byte[] buffer = ArrayPool<byte>.Shared.Rent(chunkSizeBytes);
             try
             {
-                int bytesRead = await federationService.ReadChunkIntoAsync(fileName, index ?? 0, buffer.AsMemory(0, chunkSizeBytes), ct);
+                long offsetBytes = (long)(index ?? 0) * chunkSizeBytes;
+                int bytesRead = await federationService.ReadChunkIntoAsync(fileName, offsetBytes, buffer.AsMemory(0, chunkSizeBytes), ct);
                 return Results.Bytes(buffer.AsSpan(0, bytesRead).ToArray(), "application/octet-stream");
             }
             catch (FileNotFoundException ex)
             {
-                return SecureProblemResult(context, 404, ex.Message);
+                return SecureProblemResult(context, 404, SecureExceptionSanitizer.SanitizeDetail(ex.Message, 404, context.TraceIdentifier));
             }
             catch (Exception ex) when (ex is ArgumentException or ArgumentOutOfRangeException or UnauthorizedAccessException)
             {
-                return SecureProblemResult(context, 400, ex.Message);
+                return SecureProblemResult(context, 400, SecureExceptionSanitizer.SanitizeDetail(ex.Message, 400, context.TraceIdentifier));
             }
             finally
             {
@@ -4535,7 +4415,12 @@ public class Program
         new("/api/subject-groups", MatchDescendants: true),
         new("/api/fabrication/opentrons", MatchDescendants: true),
         new("/api/system/benchmark", MatchDescendants: true),
-        new("/api/federation", MatchDescendants: true)
+        new("/api/federation", MatchDescendants: true),
+        new("/api/genomics", MatchDescendants: true),
+        new("/api/precision/genomics", MatchDescendants: true),
+        new("/api/trajectories/analytics/query", MatchDescendants: false),
+        new("/api/endocrine/closed-loop/simulate", MatchDescendants: false),
+        new("/api/fabrication/gel/analyze", MatchDescendants: false)
     ];
 
     /// <summary>
@@ -5377,6 +5262,34 @@ public class Program
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Extracts the active Bearer or cookie session token from the current HTTP request context
+    /// and invalidates it in the server-side session activity tracker.
+    /// </summary>
+    /// <param name="context">The active HTTP context.</param>
+    /// <param name="sessionTracker">The server-side session activity tracker.</param>
+    internal static void RevokeActiveRequestSession(HttpContext context, IServerSessionActivityTracker sessionTracker)
+    {
+        // WHAT: Extracts active token from Authorization header or weaver_session cookie and revokes it.
+        // WHY:  Ensures tokens are immediately unusable after logout even prior to cryptographic expiration.
+        // HOW:  Checks Bearer prefix, falls back to cookie, and invokes sessionTracker.Revoke.
+        string? token = null;
+        string? authHeader = context.Request.Headers.Authorization;
+        if (!string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+        {
+            token = authHeader["Bearer ".Length..].Trim();
+        }
+        else if (context.Request.Cookies.TryGetValue("weaver_session", out string? cookieToken) && !string.IsNullOrWhiteSpace(cookieToken))
+        {
+            token = cookieToken.Trim();
+        }
+
+        if (!string.IsNullOrEmpty(token))
+        {
+            sessionTracker.Revoke(token);
+        }
     }
 }
 

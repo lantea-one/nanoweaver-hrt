@@ -8,6 +8,78 @@ namespace NanoWeaverHrt.Security.Access;
 /// </summary>
 public sealed class SubjectAccessRepository : ISubjectAccessRepository
 {
+    private static readonly string[] SubjectGrantColumns =
+    [
+        "id", "researcher_username", "subject_username", "access_level", "granted_by", "granted_at_utc", "notes"
+    ];
+
+    private static readonly string[] SubjectGrantConflictColumns =
+    [
+        "researcher_username", "subject_username"
+    ];
+
+    private static readonly string[] SubjectGrantUpdateColumns =
+    [
+        "access_level", "granted_by", "granted_at_utc", "notes"
+    ];
+
+    private static readonly string[] SubjectGrantParameterNames =
+    [
+        "id", "res", "subj", "level", "by", "at", "notes"
+    ];
+
+    private static readonly string[] GroupColumns =
+    [
+        "id", "name", "description", "created_by", "created_at_utc", "updated_at_utc"
+    ];
+
+    private static readonly string[] GroupConflictColumns = ["id"];
+
+    private static readonly string[] GroupUpdateColumns =
+    [
+        "name", "description", "updated_at_utc"
+    ];
+
+    private static readonly string[] GroupParameterNames =
+    [
+        "id", "name", "desc", "by", "created", "updated"
+    ];
+
+    private static readonly string[] GroupMemberColumns =
+    [
+        "group_id", "subject_username", "added_at_utc"
+    ];
+
+    private static readonly string[] GroupMemberConflictColumns =
+    [
+        "group_id", "subject_username"
+    ];
+
+    private static readonly string[] GroupMemberParameterNames =
+    [
+        "gid", "subj", "added"
+    ];
+
+    private static readonly string[] GroupGrantColumns =
+    [
+        "id", "group_id", "researcher_username", "access_level", "granted_by", "granted_at_utc", "notes"
+    ];
+
+    private static readonly string[] GroupGrantConflictColumns =
+    [
+        "group_id", "researcher_username"
+    ];
+
+    private static readonly string[] GroupGrantUpdateColumns =
+    [
+        "access_level", "granted_by", "granted_at_utc", "notes"
+    ];
+
+    private static readonly string[] GroupGrantParameterNames =
+    [
+        "id", "gid", "res", "level", "by", "at", "notes"
+    ];
+
     /// <summary>
     /// Database connection factory supplying open sessions and dialect primitives.
     /// </summary>
@@ -35,22 +107,22 @@ public sealed class SubjectAccessRepository : ISubjectAccessRepository
             string sql = "SELECT id, researcher_username, subject_username, access_level, granted_by, granted_at_utc, notes FROM weaver_subject_grants WHERE 1=1";
             if (!string.IsNullOrWhiteSpace(researcherUsername))
             {
-                sql += " AND researcher_username = @res";
+                sql += $" AND researcher_username = {session.Dialect.Parameter("res")}";
             }
             if (!string.IsNullOrWhiteSpace(subjectUsername))
             {
-                sql += " AND subject_username = @subj";
+                sql += $" AND subject_username = {session.Dialect.Parameter("subj")}";
             }
             sql += " ORDER BY granted_at_utc DESC";
 
             await using DbCommand cmd = session.CreateCommand(sql);
             if (!string.IsNullOrWhiteSpace(researcherUsername))
             {
-                WeaverDbParameters.Add(cmd, "@res", researcherUsername.Trim().ToLowerInvariant());
+                WeaverDbParameters.Add(cmd, "res", researcherUsername.Trim().ToLowerInvariant());
             }
             if (!string.IsNullOrWhiteSpace(subjectUsername))
             {
-                WeaverDbParameters.Add(cmd, "@subj", subjectUsername.Trim().ToLowerInvariant());
+                WeaverDbParameters.Add(cmd, "subj", subjectUsername.Trim().ToLowerInvariant());
             }
 
             await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
@@ -75,9 +147,9 @@ public sealed class SubjectAccessRepository : ISubjectAccessRepository
         {
             await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct).ConfigureAwait(false);
             await using DbCommand cmd = session.CreateCommand(
-                "SELECT id, researcher_username, subject_username, access_level, granted_by, granted_at_utc, notes FROM weaver_subject_grants WHERE researcher_username = @res AND subject_username = @subj");
-            WeaverDbParameters.Add(cmd, "@res", researcherUsername.Trim().ToLowerInvariant());
-            WeaverDbParameters.Add(cmd, "@subj", subjectUsername.Trim().ToLowerInvariant());
+                $"SELECT id, researcher_username, subject_username, access_level, granted_by, granted_at_utc, notes FROM weaver_subject_grants WHERE researcher_username = {session.Dialect.Parameter("res")} AND subject_username = {session.Dialect.Parameter("subj")}");
+            WeaverDbParameters.Add(cmd, "res", researcherUsername.Trim().ToLowerInvariant());
+            WeaverDbParameters.Add(cmd, "subj", subjectUsername.Trim().ToLowerInvariant());
 
             await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
             if (await reader.ReadAsync(ct).ConfigureAwait(false))
@@ -92,29 +164,29 @@ public sealed class SubjectAccessRepository : ISubjectAccessRepository
     public async Task<bool> SaveSubjectGrantAsync(SubjectGrant grant, CancellationToken ct = default)
     {
         // WHAT: Upserts a direct subject access grant record.
-        // WHY:  Creates or updates researcher permissions with idempotent ON CONFLICT DO UPDATE.
+        // WHY:  Creates or updates researcher permissions with dialect-compliant upsert.
         // HOW:  Binds columns and executes non-query command.
         ArgumentNullException.ThrowIfNull(grant);
 
         int affected;
         {
             await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct).ConfigureAwait(false);
-            await using DbCommand cmd = session.CreateCommand(@"
-INSERT INTO weaver_subject_grants (id, researcher_username, subject_username, access_level, granted_by, granted_at_utc, notes)
-VALUES (@id, @res, @subj, @level, @by, @at, @notes)
-ON CONFLICT (researcher_username, subject_username) DO UPDATE SET
-    access_level = excluded.access_level,
-    granted_by = excluded.granted_by,
-    granted_at_utc = excluded.granted_at_utc,
-    notes = excluded.notes");
+            string sql = session.Dialect.BuildUpsertSql(
+                "weaver_subject_grants",
+                SubjectGrantColumns,
+                SubjectGrantConflictColumns,
+                SubjectGrantUpdateColumns,
+                SubjectGrantParameterNames);
 
-            WeaverDbParameters.Add(cmd, "@id", grant.Id);
-            WeaverDbParameters.Add(cmd, "@res", grant.ResearcherUsername.Trim().ToLowerInvariant());
-            WeaverDbParameters.Add(cmd, "@subj", grant.SubjectUsername.Trim().ToLowerInvariant());
-            WeaverDbParameters.Add(cmd, "@level", (int)grant.AccessLevel);
-            WeaverDbParameters.Add(cmd, "@by", grant.GrantedBy.Trim().ToLowerInvariant());
-            WeaverDbParameters.Add(cmd, "@at", session.Dialect.TimestampValue(grant.GrantedAtUtc));
-            WeaverDbParameters.Add(cmd, "@notes", (object?)grant.Notes ?? DBNull.Value);
+            await using DbCommand cmd = session.CreateCommand(sql);
+
+            WeaverDbParameters.Add(cmd, "id", grant.Id);
+            WeaverDbParameters.Add(cmd, "res", grant.ResearcherUsername.Trim().ToLowerInvariant());
+            WeaverDbParameters.Add(cmd, "subj", grant.SubjectUsername.Trim().ToLowerInvariant());
+            WeaverDbParameters.Add(cmd, "level", (int)grant.AccessLevel);
+            WeaverDbParameters.Add(cmd, "by", grant.GrantedBy.Trim().ToLowerInvariant());
+            WeaverDbParameters.Add(cmd, "at", session.Dialect.TimestampValue(grant.GrantedAtUtc));
+            WeaverDbParameters.AddNullable(cmd, "notes", grant.Notes);
 
             affected = await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
@@ -134,9 +206,9 @@ ON CONFLICT (researcher_username, subject_username) DO UPDATE SET
         {
             await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct).ConfigureAwait(false);
             await using DbCommand cmd = session.CreateCommand(
-                "DELETE FROM weaver_subject_grants WHERE researcher_username = @res AND subject_username = @subj");
-            WeaverDbParameters.Add(cmd, "@res", researcherUsername.Trim().ToLowerInvariant());
-            WeaverDbParameters.Add(cmd, "@subj", subjectUsername.Trim().ToLowerInvariant());
+                $"DELETE FROM weaver_subject_grants WHERE researcher_username = {session.Dialect.Parameter("res")} AND subject_username = {session.Dialect.Parameter("subj")}");
+            WeaverDbParameters.Add(cmd, "res", researcherUsername.Trim().ToLowerInvariant());
+            WeaverDbParameters.Add(cmd, "subj", subjectUsername.Trim().ToLowerInvariant());
 
             affected = await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
@@ -159,14 +231,14 @@ FROM weaver_subject_groups g WHERE 1=1";
 
             if (!string.IsNullOrWhiteSpace(createdBy))
             {
-                sql += " AND g.created_by = @by";
+                sql += $" AND g.created_by = {session.Dialect.Parameter("by")}";
             }
             sql += " ORDER BY g.created_at_utc DESC";
 
             await using DbCommand cmd = session.CreateCommand(sql);
             if (!string.IsNullOrWhiteSpace(createdBy))
             {
-                WeaverDbParameters.Add(cmd, "@by", createdBy.Trim().ToLowerInvariant());
+                WeaverDbParameters.Add(cmd, "by", createdBy.Trim().ToLowerInvariant());
             }
 
             await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
@@ -189,11 +261,11 @@ FROM weaver_subject_groups g WHERE 1=1";
         SubjectGroup? group = null;
         {
             await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct).ConfigureAwait(false);
-            await using DbCommand cmd = session.CreateCommand(@"
+            await using DbCommand cmd = session.CreateCommand($@"
 SELECT g.id, g.name, g.description, g.created_by, g.created_at_utc, g.updated_at_utc,
        (SELECT COUNT(*) FROM weaver_subject_group_members m WHERE m.group_id = g.id) AS member_count
-FROM weaver_subject_groups g WHERE g.id = @id");
-            WeaverDbParameters.Add(cmd, "@id", groupId.Trim());
+FROM weaver_subject_groups g WHERE g.id = {session.Dialect.Parameter("id")}");
+            WeaverDbParameters.Add(cmd, "id", groupId.Trim());
 
             await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
             if (await reader.ReadAsync(ct).ConfigureAwait(false))
@@ -209,26 +281,27 @@ FROM weaver_subject_groups g WHERE g.id = @id");
     {
         // WHAT: Upserts a cohort group header record.
         // WHY:  Creates or updates cohort metadata in weaver_subject_groups.
-        // HOW:  Executes INSERT ON CONFLICT (id) DO UPDATE.
+        // HOW:  Executes dialect-compliant upsert statement.
         ArgumentNullException.ThrowIfNull(group);
 
         int affected;
         {
             await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct).ConfigureAwait(false);
-            await using DbCommand cmd = session.CreateCommand(@"
-INSERT INTO weaver_subject_groups (id, name, description, created_by, created_at_utc, updated_at_utc)
-VALUES (@id, @name, @desc, @by, @created, @updated)
-ON CONFLICT (id) DO UPDATE SET
-    name = excluded.name,
-    description = excluded.description,
-    updated_at_utc = excluded.updated_at_utc");
+            string sql = session.Dialect.BuildUpsertSql(
+                "weaver_subject_groups",
+                GroupColumns,
+                GroupConflictColumns,
+                GroupUpdateColumns,
+                GroupParameterNames);
 
-            WeaverDbParameters.Add(cmd, "@id", group.Id.Trim());
-            WeaverDbParameters.Add(cmd, "@name", group.Name.Trim());
-            WeaverDbParameters.Add(cmd, "@desc", (object?)group.Description ?? DBNull.Value);
-            WeaverDbParameters.Add(cmd, "@by", group.CreatedBy.Trim().ToLowerInvariant());
-            WeaverDbParameters.Add(cmd, "@created", session.Dialect.TimestampValue(group.CreatedAtUtc));
-            WeaverDbParameters.Add(cmd, "@updated", session.Dialect.TimestampValue(group.UpdatedAtUtc));
+            await using DbCommand cmd = session.CreateCommand(sql);
+
+            WeaverDbParameters.Add(cmd, "id", group.Id.Trim());
+            WeaverDbParameters.Add(cmd, "name", group.Name.Trim());
+            WeaverDbParameters.AddNullable(cmd, "desc", group.Description);
+            WeaverDbParameters.Add(cmd, "by", group.CreatedBy.Trim().ToLowerInvariant());
+            WeaverDbParameters.Add(cmd, "created", session.Dialect.TimestampValue(group.CreatedAtUtc));
+            WeaverDbParameters.Add(cmd, "updated", session.Dialect.TimestampValue(group.UpdatedAtUtc));
 
             affected = await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
@@ -246,8 +319,8 @@ ON CONFLICT (id) DO UPDATE SET
         int affected;
         {
             await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct).ConfigureAwait(false);
-            await using DbCommand cmd = session.CreateCommand("DELETE FROM weaver_subject_groups WHERE id = @id");
-            WeaverDbParameters.Add(cmd, "@id", groupId.Trim());
+            await using DbCommand cmd = session.CreateCommand($"DELETE FROM weaver_subject_groups WHERE id = {session.Dialect.Parameter("id")}");
+            WeaverDbParameters.Add(cmd, "id", groupId.Trim());
 
             affected = await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
@@ -266,8 +339,8 @@ ON CONFLICT (id) DO UPDATE SET
         {
             await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct).ConfigureAwait(false);
             await using DbCommand cmd = session.CreateCommand(
-                "SELECT subject_username FROM weaver_subject_group_members WHERE group_id = @gid ORDER BY added_at_utc ASC");
-            WeaverDbParameters.Add(cmd, "@gid", groupId.Trim());
+                $"SELECT subject_username FROM weaver_subject_group_members WHERE group_id = {session.Dialect.Parameter("gid")} ORDER BY added_at_utc ASC");
+            WeaverDbParameters.Add(cmd, "gid", groupId.Trim());
 
             await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
             while (await reader.ReadAsync(ct).ConfigureAwait(false))
@@ -283,27 +356,32 @@ ON CONFLICT (id) DO UPDATE SET
     {
         // WHAT: Adds a subject to a cohort group if not already present.
         // WHY:  Enrolls patient into the study cohort group.
-        // HOW:  Executes INSERT ON CONFLICT DO NOTHING and updates group updated_at_utc.
+        // HOW:  Executes dialect-compliant insert-ignore and updates group updated_at_utc.
         ArgumentNullException.ThrowIfNull(groupId);
         ArgumentNullException.ThrowIfNull(subjectUsername);
 
         int affected;
         {
             await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct).ConfigureAwait(false);
-            await using DbCommand cmd = session.CreateCommand(
-                "INSERT INTO weaver_subject_group_members (group_id, subject_username, added_at_utc) VALUES (@gid, @subj, @added) ON CONFLICT (group_id, subject_username) DO NOTHING");
-            WeaverDbParameters.Add(cmd, "@gid", groupId.Trim());
-            WeaverDbParameters.Add(cmd, "@subj", subjectUsername.Trim().ToLowerInvariant());
-            WeaverDbParameters.Add(cmd, "@added", session.Dialect.TimestampValue(addedAtUtc));
+            string sql = session.Dialect.BuildInsertIgnoreSql(
+                "weaver_subject_group_members",
+                GroupMemberColumns,
+                GroupMemberConflictColumns,
+                GroupMemberParameterNames);
+
+            await using DbCommand cmd = session.CreateCommand(sql);
+            WeaverDbParameters.Add(cmd, "gid", groupId.Trim());
+            WeaverDbParameters.Add(cmd, "subj", subjectUsername.Trim().ToLowerInvariant());
+            WeaverDbParameters.Add(cmd, "added", session.Dialect.TimestampValue(addedAtUtc));
 
             affected = await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
 
             if (affected >= 1)
             {
                 await using DbCommand updateCmd = session.CreateCommand(
-                    "UPDATE weaver_subject_groups SET updated_at_utc = @updated WHERE id = @gid");
-                WeaverDbParameters.Add(updateCmd, "@updated", session.Dialect.TimestampValue(addedAtUtc));
-                WeaverDbParameters.Add(updateCmd, "@gid", groupId.Trim());
+                    $"UPDATE weaver_subject_groups SET updated_at_utc = {session.Dialect.Parameter("updated")} WHERE id = {session.Dialect.Parameter("gid")}");
+                WeaverDbParameters.Add(updateCmd, "updated", session.Dialect.TimestampValue(addedAtUtc));
+                WeaverDbParameters.Add(updateCmd, "gid", groupId.Trim());
                 await updateCmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
             }
         }
@@ -323,9 +401,9 @@ ON CONFLICT (id) DO UPDATE SET
         {
             await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct).ConfigureAwait(false);
             await using DbCommand cmd = session.CreateCommand(
-                "DELETE FROM weaver_subject_group_members WHERE group_id = @gid AND subject_username = @subj");
-            WeaverDbParameters.Add(cmd, "@gid", groupId.Trim());
-            WeaverDbParameters.Add(cmd, "@subj", subjectUsername.Trim().ToLowerInvariant());
+                $"DELETE FROM weaver_subject_group_members WHERE group_id = {session.Dialect.Parameter("gid")} AND subject_username = {session.Dialect.Parameter("subj")}");
+            WeaverDbParameters.Add(cmd, "gid", groupId.Trim());
+            WeaverDbParameters.Add(cmd, "subj", subjectUsername.Trim().ToLowerInvariant());
 
             affected = await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
@@ -344,22 +422,22 @@ ON CONFLICT (id) DO UPDATE SET
             string sql = "SELECT id, group_id, researcher_username, access_level, granted_by, granted_at_utc, notes FROM weaver_subject_group_grants WHERE 1=1";
             if (!string.IsNullOrWhiteSpace(researcherUsername))
             {
-                sql += " AND researcher_username = @res";
+                sql += $" AND researcher_username = {session.Dialect.Parameter("res")}";
             }
             if (!string.IsNullOrWhiteSpace(groupId))
             {
-                sql += " AND group_id = @gid";
+                sql += $" AND group_id = {session.Dialect.Parameter("gid")}";
             }
             sql += " ORDER BY granted_at_utc DESC";
 
             await using DbCommand cmd = session.CreateCommand(sql);
             if (!string.IsNullOrWhiteSpace(researcherUsername))
             {
-                WeaverDbParameters.Add(cmd, "@res", researcherUsername.Trim().ToLowerInvariant());
+                WeaverDbParameters.Add(cmd, "res", researcherUsername.Trim().ToLowerInvariant());
             }
             if (!string.IsNullOrWhiteSpace(groupId))
             {
-                WeaverDbParameters.Add(cmd, "@gid", groupId.Trim());
+                WeaverDbParameters.Add(cmd, "gid", groupId.Trim());
             }
 
             await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
@@ -384,9 +462,9 @@ ON CONFLICT (id) DO UPDATE SET
         {
             await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct).ConfigureAwait(false);
             await using DbCommand cmd = session.CreateCommand(
-                "SELECT id, group_id, researcher_username, access_level, granted_by, granted_at_utc, notes FROM weaver_subject_group_grants WHERE group_id = @gid AND researcher_username = @res");
-            WeaverDbParameters.Add(cmd, "@gid", groupId.Trim());
-            WeaverDbParameters.Add(cmd, "@res", researcherUsername.Trim().ToLowerInvariant());
+                $"SELECT id, group_id, researcher_username, access_level, granted_by, granted_at_utc, notes FROM weaver_subject_group_grants WHERE group_id = {session.Dialect.Parameter("gid")} AND researcher_username = {session.Dialect.Parameter("res")}");
+            WeaverDbParameters.Add(cmd, "gid", groupId.Trim());
+            WeaverDbParameters.Add(cmd, "res", researcherUsername.Trim().ToLowerInvariant());
 
             await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
             if (await reader.ReadAsync(ct).ConfigureAwait(false))
@@ -402,28 +480,28 @@ ON CONFLICT (id) DO UPDATE SET
     {
         // WHAT: Upserts a cohort group access grant.
         // WHY:  Grants researcher access to all members of a cohort group.
-        // HOW:  Executes INSERT ON CONFLICT DO UPDATE.
+        // HOW:  Executes dialect-compliant upsert statement.
         ArgumentNullException.ThrowIfNull(grant);
 
         int affected;
         {
             await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct).ConfigureAwait(false);
-            await using DbCommand cmd = session.CreateCommand(@"
-INSERT INTO weaver_subject_group_grants (id, group_id, researcher_username, access_level, granted_by, granted_at_utc, notes)
-VALUES (@id, @gid, @res, @level, @by, @at, @notes)
-ON CONFLICT (group_id, researcher_username) DO UPDATE SET
-    access_level = excluded.access_level,
-    granted_by = excluded.granted_by,
-    granted_at_utc = excluded.granted_at_utc,
-    notes = excluded.notes");
+            string sql = session.Dialect.BuildUpsertSql(
+                "weaver_subject_group_grants",
+                GroupGrantColumns,
+                GroupGrantConflictColumns,
+                GroupGrantUpdateColumns,
+                GroupGrantParameterNames);
 
-            WeaverDbParameters.Add(cmd, "@id", grant.Id);
-            WeaverDbParameters.Add(cmd, "@gid", grant.GroupId.Trim());
-            WeaverDbParameters.Add(cmd, "@res", grant.ResearcherUsername.Trim().ToLowerInvariant());
-            WeaverDbParameters.Add(cmd, "@level", (int)grant.AccessLevel);
-            WeaverDbParameters.Add(cmd, "@by", grant.GrantedBy.Trim().ToLowerInvariant());
-            WeaverDbParameters.Add(cmd, "@at", session.Dialect.TimestampValue(grant.GrantedAtUtc));
-            WeaverDbParameters.Add(cmd, "@notes", (object?)grant.Notes ?? DBNull.Value);
+            await using DbCommand cmd = session.CreateCommand(sql);
+
+            WeaverDbParameters.Add(cmd, "id", grant.Id);
+            WeaverDbParameters.Add(cmd, "gid", grant.GroupId.Trim());
+            WeaverDbParameters.Add(cmd, "res", grant.ResearcherUsername.Trim().ToLowerInvariant());
+            WeaverDbParameters.Add(cmd, "level", (int)grant.AccessLevel);
+            WeaverDbParameters.Add(cmd, "by", grant.GrantedBy.Trim().ToLowerInvariant());
+            WeaverDbParameters.Add(cmd, "at", session.Dialect.TimestampValue(grant.GrantedAtUtc));
+            WeaverDbParameters.AddNullable(cmd, "notes", grant.Notes);
 
             affected = await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
@@ -443,9 +521,9 @@ ON CONFLICT (group_id, researcher_username) DO UPDATE SET
         {
             await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct).ConfigureAwait(false);
             await using DbCommand cmd = session.CreateCommand(
-                "DELETE FROM weaver_subject_group_grants WHERE group_id = @gid AND researcher_username = @res");
-            WeaverDbParameters.Add(cmd, "@gid", groupId.Trim());
-            WeaverDbParameters.Add(cmd, "@res", researcherUsername.Trim().ToLowerInvariant());
+                $"DELETE FROM weaver_subject_group_grants WHERE group_id = {session.Dialect.Parameter("gid")} AND researcher_username = {session.Dialect.Parameter("res")}");
+            WeaverDbParameters.Add(cmd, "gid", groupId.Trim());
+            WeaverDbParameters.Add(cmd, "res", researcherUsername.Trim().ToLowerInvariant());
 
             affected = await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
@@ -464,8 +542,8 @@ ON CONFLICT (group_id, researcher_username) DO UPDATE SET
         {
             await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct).ConfigureAwait(false);
             await using DbCommand cmd = session.CreateCommand(
-                "SELECT group_id FROM weaver_subject_group_members WHERE subject_username = @subj ORDER BY added_at_utc ASC");
-            WeaverDbParameters.Add(cmd, "@subj", subjectUsername.Trim().ToLowerInvariant());
+                $"SELECT group_id FROM weaver_subject_group_members WHERE subject_username = {session.Dialect.Parameter("subj")} ORDER BY added_at_utc ASC");
+            WeaverDbParameters.Add(cmd, "subj", subjectUsername.Trim().ToLowerInvariant());
 
             await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
             while (await reader.ReadAsync(ct).ConfigureAwait(false))
@@ -481,46 +559,64 @@ ON CONFLICT (group_id, researcher_username) DO UPDATE SET
     /// </summary>
     /// <param name="reader">The active data reader.</param>
     /// <returns>Hydrated <see cref="SubjectGrant"/> record.</returns>
-    private static SubjectGrant MapSubjectGrant(DbDataReader reader) => new()
+    private static SubjectGrant MapSubjectGrant(DbDataReader reader)
     {
-        Id = reader.GetString(0),
-        ResearcherUsername = reader.GetString(1),
-        SubjectUsername = reader.GetString(2),
-        AccessLevel = (SubjectAccessLevel)reader.GetInt32(3),
-        GrantedBy = reader.GetString(4),
-        GrantedAtUtc = WeaverDbValues.ReadTimestamp(reader, 5),
-        Notes = reader.IsDBNull(6) ? null : reader.GetString(6)
-    };
+        // WHAT: Reads all 7 subject grant columns from an open DbDataReader row.
+        // WHY:  Translates relational grant tuple into domain SubjectGrant record.
+        // HOW:  Reads grant ID, researcher/subject usernames, integer access level, granter, and timestamps.
+        return new SubjectGrant
+        {
+            Id = reader.GetString(0),
+            ResearcherUsername = reader.GetString(1),
+            SubjectUsername = reader.GetString(2),
+            AccessLevel = (SubjectAccessLevel)reader.GetInt32(3),
+            GrantedBy = reader.GetString(4),
+            GrantedAtUtc = WeaverDbValues.ReadTimestamp(reader, 5),
+            Notes = reader.IsDBNull(6) ? null : reader.GetString(6)
+        };
+    }
 
     /// <summary>
     /// Maps a database reader row to a <see cref="SubjectGroup"/> record.
     /// </summary>
     /// <param name="reader">The active data reader.</param>
     /// <returns>Hydrated <see cref="SubjectGroup"/> record.</returns>
-    private static SubjectGroup MapSubjectGroup(DbDataReader reader) => new()
+    private static SubjectGroup MapSubjectGroup(DbDataReader reader)
     {
-        Id = reader.GetString(0),
-        Name = reader.GetString(1),
-        Description = reader.IsDBNull(2) ? null : reader.GetString(2),
-        CreatedBy = reader.GetString(3),
-        CreatedAtUtc = WeaverDbValues.ReadTimestamp(reader, 4),
-        UpdatedAtUtc = WeaverDbValues.ReadTimestamp(reader, 5),
-        MemberCount = Convert.ToInt32(reader.GetValue(6))
-    };
+        // WHAT: Reads all 7 group metadata columns and correlated member count from an open DbDataReader row.
+        // WHY:  Hydrates SubjectGroup entity for cohort oversight and grant evaluations.
+        // HOW:  Reads group ID, name, optional description, creator username, timestamps, and count integer.
+        return new SubjectGroup
+        {
+            Id = reader.GetString(0),
+            Name = reader.GetString(1),
+            Description = reader.IsDBNull(2) ? null : reader.GetString(2),
+            CreatedBy = reader.GetString(3),
+            CreatedAtUtc = WeaverDbValues.ReadTimestamp(reader, 4),
+            UpdatedAtUtc = WeaverDbValues.ReadTimestamp(reader, 5),
+            MemberCount = Convert.ToInt32(reader.GetValue(6))
+        };
+    }
 
     /// <summary>
     /// Maps a database reader row to a <see cref="SubjectGroupGrant"/> record.
     /// </summary>
     /// <param name="reader">The active data reader.</param>
     /// <returns>Hydrated <see cref="SubjectGroupGrant"/> record.</returns>
-    private static SubjectGroupGrant MapGroupGrant(DbDataReader reader) => new()
+    private static SubjectGroupGrant MapGroupGrant(DbDataReader reader)
     {
-        Id = reader.GetString(0),
-        GroupId = reader.GetString(1),
-        ResearcherUsername = reader.GetString(2),
-        AccessLevel = (SubjectAccessLevel)reader.GetInt32(3),
-        GrantedBy = reader.GetString(4),
-        GrantedAtUtc = WeaverDbValues.ReadTimestamp(reader, 5),
-        Notes = reader.IsDBNull(6) ? null : reader.GetString(6)
-    };
+        // WHAT: Reads all 7 group-level grant columns from an open DbDataReader row.
+        // WHY:  Hydrates SubjectGroupGrant record representing cohort-wide researcher permissions.
+        // HOW:  Reads grant ID, group ID, researcher username, access level enum, granter, and timestamps.
+        return new SubjectGroupGrant
+        {
+            Id = reader.GetString(0),
+            GroupId = reader.GetString(1),
+            ResearcherUsername = reader.GetString(2),
+            AccessLevel = (SubjectAccessLevel)reader.GetInt32(3),
+            GrantedBy = reader.GetString(4),
+            GrantedAtUtc = WeaverDbValues.ReadTimestamp(reader, 5),
+            Notes = reader.IsDBNull(6) ? null : reader.GetString(6)
+        };
+    }
 }

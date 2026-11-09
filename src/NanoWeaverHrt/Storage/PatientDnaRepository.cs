@@ -20,6 +20,75 @@ namespace NanoWeaverHrt.Storage;
 /// </remarks>
 public sealed class PatientDnaRepository : IPatientDnaRepository, IDisposable
 {
+    private static readonly string[] DnaColumns =
+    [
+        "id", "username", "title", "regimen", "target_tissue", "active_ligand",
+        "nanocarrier_geometry", "target_aptamer_kd_nm", "scaffold_fasta",
+        "gc_percentage", "estimated_mw_kda", "staples_json", "annealing_protocol_json",
+        "provenance_sha256", "created_at_utc", "notes"
+    ];
+
+    private static readonly string[] DnaConflictColumns = ["id"];
+
+    private static readonly string[] DnaUpdateColumns =
+    [
+        "username", "title", "regimen", "target_tissue", "active_ligand",
+        "nanocarrier_geometry", "target_aptamer_kd_nm", "scaffold_fasta",
+        "gc_percentage", "estimated_mw_kda", "staples_json", "annealing_protocol_json",
+        "provenance_sha256", "notes"
+    ];
+
+    private static readonly string[] DnaParameterNames =
+    [
+        "id", "u", "tit", "reg", "tt", "al",
+        "ng", "kd", "fa",
+        "gc", "mw", "stap", "ann",
+        "sha", "cat", "not"
+    ];
+
+    private static readonly string[] ImportColumns =
+    [
+        "id", "username", "file_name", "import_type", "sequence_or_data",
+        "size_bytes", "sha256_checksum", "imported_by", "status",
+        "metadata_json", "imported_at_utc"
+    ];
+
+    private static readonly string[] ImportConflictColumns = ["id"];
+
+    private static readonly string[] ImportUpdateColumns =
+    [
+        "username", "file_name", "import_type", "sequence_or_data",
+        "size_bytes", "sha256_checksum", "imported_by", "status",
+        "metadata_json", "imported_at_utc"
+    ];
+
+    private static readonly string[] ImportParameterNames =
+    [
+        "id", "u", "fn", "it", "sod",
+        "sb", "sha", "ib", "st",
+        "mj", "iat"
+    ];
+
+    private static readonly string[] ResultColumns =
+    [
+        "id", "username", "dna_record_id", "import_id", "result_type",
+        "title", "status", "metrics_json", "summary", "created_at_utc"
+    ];
+
+    private static readonly string[] ResultConflictColumns = ["id"];
+
+    private static readonly string[] ResultUpdateColumns =
+    [
+        "username", "dna_record_id", "import_id", "result_type",
+        "title", "status", "metrics_json", "summary", "created_at_utc"
+    ];
+
+    private static readonly string[] ResultParameterNames =
+    [
+        "id", "u", "dna", "imp", "rt",
+        "tit", "st", "mj", "sum", "cat"
+    ];
+
     /// <summary>
     /// Thread synchronization lock for coordinating database mutations and connection acquisitions.
     /// </summary>
@@ -58,27 +127,28 @@ public sealed class PatientDnaRepository : IPatientDnaRepository, IDisposable
         IReadOnlyList<PatientDigitalDnaRecord> result = [];
         try
         {
-            await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
-            await using DbCommand cmd = session.Connection.CreateCommand();
-            cmd.CommandText = @"
-                SELECT id, username, title, regimen, target_tissue, active_ligand,
-                       nanocarrier_geometry, target_aptamer_kd_nm, scaffold_fasta,
-                       gc_percentage, estimated_mw_kda, staples_json, annealing_protocol_json,
-                       provenance_sha256, created_at_utc, notes
-                FROM weaver_patient_dna_records
-                WHERE username = @u
-                ORDER BY created_at_utc DESC;";
-
-            WeaverDbParameters.Add(cmd, "@u", username);
-
-            List<PatientDigitalDnaRecord> list = [];
-            await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct);
-            while (await reader.ReadAsync(ct))
             {
-                list.Add(MapDnaRecordFromReader(reader));
-            }
+                await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+                await using DbCommand cmd = session.CreateCommand($@"
+                    SELECT id, username, title, regimen, target_tissue, active_ligand,
+                           nanocarrier_geometry, target_aptamer_kd_nm, scaffold_fasta,
+                           gc_percentage, estimated_mw_kda, staples_json, annealing_protocol_json,
+                           provenance_sha256, created_at_utc, notes
+                    FROM weaver_patient_dna_records
+                    WHERE username = {session.Dialect.Parameter("u")}
+                    ORDER BY created_at_utc DESC;");
 
-            result = list;
+                WeaverDbParameters.Add(cmd, "u", username);
+
+                List<PatientDigitalDnaRecord> list = [];
+                await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct);
+                while (await reader.ReadAsync(ct))
+                {
+                    list.Add(MapDnaRecordFromReader(reader));
+                }
+
+                result = list;
+            }
         }
         finally
         {
@@ -100,22 +170,23 @@ public sealed class PatientDnaRepository : IPatientDnaRepository, IDisposable
         PatientDigitalDnaRecord? result = null;
         try
         {
-            await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
-            await using DbCommand cmd = session.Connection.CreateCommand();
-            cmd.CommandText = @"
-                SELECT id, username, title, regimen, target_tissue, active_ligand,
-                       nanocarrier_geometry, target_aptamer_kd_nm, scaffold_fasta,
-                       gc_percentage, estimated_mw_kda, staples_json, annealing_protocol_json,
-                       provenance_sha256, created_at_utc, notes
-                FROM weaver_patient_dna_records
-                WHERE id = @id;";
-
-            WeaverDbParameters.Add(cmd, "@id", id);
-
-            await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct);
-            if (await reader.ReadAsync(ct))
             {
-                result = MapDnaRecordFromReader(reader);
+                await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+                await using DbCommand cmd = session.CreateCommand($@"
+                    SELECT id, username, title, regimen, target_tissue, active_ligand,
+                           nanocarrier_geometry, target_aptamer_kd_nm, scaffold_fasta,
+                           gc_percentage, estimated_mw_kda, staples_json, annealing_protocol_json,
+                           provenance_sha256, created_at_utc, notes
+                    FROM weaver_patient_dna_records
+                    WHERE id = {session.Dialect.Parameter("id")};");
+
+                WeaverDbParameters.Add(cmd, "id", id);
+
+                await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct);
+                if (await reader.ReadAsync(ct))
+                {
+                    result = MapDnaRecordFromReader(reader);
+                }
             }
         }
         finally
@@ -131,7 +202,7 @@ public sealed class PatientDnaRepository : IPatientDnaRepository, IDisposable
     {
         // WHAT: Inserts or updates a digitized DNA blueprint record for a patient.
         // WHY:  Persists nanocarrier designs, staple routings, and annealing schedules.
-        // HOW:  Serializes staples and protocols to JSON and executes an idempotent upsert statement.
+        // HOW:  Serializes staples and protocols to JSON and executes dialect-compliant upsert statement.
         ArgumentNullException.ThrowIfNull(record);
         ArgumentException.ThrowIfNullOrWhiteSpace(record.Id);
         ArgumentException.ThrowIfNullOrWhiteSpace(record.Username);
@@ -139,61 +210,43 @@ public sealed class PatientDnaRepository : IPatientDnaRepository, IDisposable
         await _lock.WaitAsync(ct);
         try
         {
-            await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
-            string staplesJson = JsonSerializer.Serialize(record.Staples ?? []);
-            string annealingJson = JsonSerializer.Serialize(record.AnnealingProtocol ?? []);
+            {
+                await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+                string staplesJson = JsonSerializer.Serialize(record.Staples ?? []);
+                string annealingJson = JsonSerializer.Serialize(record.AnnealingProtocol ?? []);
 
-            // WHY !: record.Regimen.ToString() is a non-null enum string, so EncryptField returns a non-null envelope string.
-            string encryptedRegimen = _protector.EncryptField(record.Regimen.ToString())!;
-            string? encryptedNotes = string.IsNullOrEmpty(record.Notes) ? record.Notes : _protector.EncryptField(record.Notes);
+                // WHY !: record.Regimen.ToString() is a non-null enum string, so EncryptField returns a non-null envelope string.
+                string encryptedRegimen = _protector.EncryptField(record.Regimen.ToString())!;
+                string? encryptedNotes = string.IsNullOrEmpty(record.Notes) ? record.Notes : _protector.EncryptField(record.Notes);
 
-            await using DbCommand cmd = session.Connection.CreateCommand();
-            cmd.CommandText = @"
-                INSERT INTO weaver_patient_dna_records (
-                    id, username, title, regimen, target_tissue, active_ligand,
-                    nanocarrier_geometry, target_aptamer_kd_nm, scaffold_fasta,
-                    gc_percentage, estimated_mw_kda, staples_json, annealing_protocol_json,
-                    provenance_sha256, created_at_utc, notes
-                ) VALUES (
-                    @id, @u, @tit, @reg, @tt, @al,
-                    @ng, @kd, @fa,
-                    @gc, @mw, @stap, @ann,
-                    @sha, @cat, @not
-                )
-                ON CONFLICT(id) DO UPDATE SET
-                    username = @u,
-                    title = @tit,
-                    regimen = @reg,
-                    target_tissue = @tt,
-                    active_ligand = @al,
-                    nanocarrier_geometry = @ng,
-                    target_aptamer_kd_nm = @kd,
-                    scaffold_fasta = @fa,
-                    gc_percentage = @gc,
-                    estimated_mw_kda = @mw,
-                    staples_json = @stap,
-                    annealing_protocol_json = @ann,
-                    provenance_sha256 = @sha,
-                    notes = @not;";
+                string sql = session.Dialect.BuildUpsertSql(
+                    "weaver_patient_dna_records",
+                    DnaColumns,
+                    DnaConflictColumns,
+                    DnaUpdateColumns,
+                    DnaParameterNames);
 
-            WeaverDbParameters.Add(cmd, "@id", record.Id);
-            WeaverDbParameters.Add(cmd, "@u", record.Username);
-            WeaverDbParameters.Add(cmd, "@tit", record.Title);
-            WeaverDbParameters.Add(cmd, "@reg", encryptedRegimen);
-            WeaverDbParameters.Add(cmd, "@tt", record.TargetTissue);
-            WeaverDbParameters.Add(cmd, "@al", record.ActiveLigand);
-            WeaverDbParameters.Add(cmd, "@ng", record.NanocarrierGeometry);
-            WeaverDbParameters.Add(cmd, "@kd", record.TargetAptamerKdNm);
-            WeaverDbParameters.Add(cmd, "@fa", record.ScaffoldFasta);
-            WeaverDbParameters.Add(cmd, "@gc", record.GcPercentage);
-            WeaverDbParameters.Add(cmd, "@mw", record.EstimatedMwKDa);
-            WeaverDbParameters.Add(cmd, "@stap", staplesJson);
-            WeaverDbParameters.Add(cmd, "@ann", annealingJson);
-            WeaverDbParameters.Add(cmd, "@sha", record.ProvenanceSha256);
-            WeaverDbParameters.Add(cmd, "@cat", session.Dialect.TimestampValue(record.CreatedAtUtc));
-            WeaverDbParameters.AddNullable(cmd, "@not", encryptedNotes);
+                await using DbCommand cmd = session.CreateCommand(sql);
 
-            await cmd.ExecuteNonQueryAsync(ct);
+                WeaverDbParameters.Add(cmd, "id", record.Id);
+                WeaverDbParameters.Add(cmd, "u", record.Username);
+                WeaverDbParameters.Add(cmd, "tit", record.Title);
+                WeaverDbParameters.Add(cmd, "reg", encryptedRegimen);
+                WeaverDbParameters.Add(cmd, "tt", record.TargetTissue);
+                WeaverDbParameters.Add(cmd, "al", record.ActiveLigand);
+                WeaverDbParameters.Add(cmd, "ng", record.NanocarrierGeometry);
+                WeaverDbParameters.Add(cmd, "kd", record.TargetAptamerKdNm);
+                WeaverDbParameters.Add(cmd, "fa", record.ScaffoldFasta);
+                WeaverDbParameters.Add(cmd, "gc", record.GcPercentage);
+                WeaverDbParameters.Add(cmd, "mw", record.EstimatedMwKDa);
+                WeaverDbParameters.Add(cmd, "stap", staplesJson);
+                WeaverDbParameters.Add(cmd, "ann", annealingJson);
+                WeaverDbParameters.Add(cmd, "sha", record.ProvenanceSha256);
+                WeaverDbParameters.Add(cmd, "cat", session.Dialect.TimestampValue(record.CreatedAtUtc));
+                WeaverDbParameters.AddNullable(cmd, "not", encryptedNotes);
+
+                await cmd.ExecuteNonQueryAsync(ct);
+            }
         }
         finally
         {
@@ -213,12 +266,13 @@ public sealed class PatientDnaRepository : IPatientDnaRepository, IDisposable
         bool result = false;
         try
         {
-            await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
-            await using DbCommand cmd = session.Connection.CreateCommand();
-            cmd.CommandText = "DELETE FROM weaver_patient_dna_records WHERE id = @id;";
-            WeaverDbParameters.Add(cmd, "@id", id);
-            int rows = await cmd.ExecuteNonQueryAsync(ct);
-            result = rows > 0;
+            {
+                await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+                await using DbCommand cmd = session.CreateCommand($"DELETE FROM weaver_patient_dna_records WHERE id = {session.Dialect.Parameter("id")};");
+                WeaverDbParameters.Add(cmd, "id", id);
+                int rows = await cmd.ExecuteNonQueryAsync(ct);
+                result = rows > 0;
+            }
         }
         finally
         {
@@ -240,26 +294,27 @@ public sealed class PatientDnaRepository : IPatientDnaRepository, IDisposable
         IReadOnlyList<PatientDnaImportRecord> result = [];
         try
         {
-            await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
-            await using DbCommand cmd = session.Connection.CreateCommand();
-            cmd.CommandText = @"
-                SELECT id, username, file_name, import_type, sequence_or_data,
-                       size_bytes, sha256_checksum, imported_by, status,
-                       metadata_json, imported_at_utc
-                FROM weaver_patient_dna_imports
-                WHERE username = @u
-                ORDER BY imported_at_utc DESC;";
-
-            WeaverDbParameters.Add(cmd, "@u", username);
-
-            List<PatientDnaImportRecord> list = [];
-            await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct);
-            while (await reader.ReadAsync(ct))
             {
-                list.Add(MapImportRecordFromReader(reader));
-            }
+                await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+                await using DbCommand cmd = session.CreateCommand($@"
+                    SELECT id, username, file_name, import_type, sequence_or_data,
+                           size_bytes, sha256_checksum, imported_by, status,
+                           metadata_json, imported_at_utc
+                    FROM weaver_patient_dna_imports
+                    WHERE username = {session.Dialect.Parameter("u")}
+                    ORDER BY imported_at_utc DESC;");
 
-            result = list;
+                WeaverDbParameters.Add(cmd, "u", username);
+
+                List<PatientDnaImportRecord> list = [];
+                await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct);
+                while (await reader.ReadAsync(ct))
+                {
+                    list.Add(MapImportRecordFromReader(reader));
+                }
+
+                result = list;
+            }
         }
         finally
         {
@@ -281,21 +336,22 @@ public sealed class PatientDnaRepository : IPatientDnaRepository, IDisposable
         PatientDnaImportRecord? result = null;
         try
         {
-            await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
-            await using DbCommand cmd = session.Connection.CreateCommand();
-            cmd.CommandText = @"
-                SELECT id, username, file_name, import_type, sequence_or_data,
-                       size_bytes, sha256_checksum, imported_by, status,
-                       metadata_json, imported_at_utc
-                FROM weaver_patient_dna_imports
-                WHERE id = @id;";
-
-            WeaverDbParameters.Add(cmd, "@id", id);
-
-            await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct);
-            if (await reader.ReadAsync(ct))
             {
-                result = MapImportRecordFromReader(reader);
+                await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+                await using DbCommand cmd = session.CreateCommand($@"
+                    SELECT id, username, file_name, import_type, sequence_or_data,
+                           size_bytes, sha256_checksum, imported_by, status,
+                           metadata_json, imported_at_utc
+                    FROM weaver_patient_dna_imports
+                    WHERE id = {session.Dialect.Parameter("id")};");
+
+                WeaverDbParameters.Add(cmd, "id", id);
+
+                await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct);
+                if (await reader.ReadAsync(ct))
+                {
+                    result = MapImportRecordFromReader(reader);
+                }
             }
         }
         finally
@@ -311,7 +367,7 @@ public sealed class PatientDnaRepository : IPatientDnaRepository, IDisposable
     {
         // WHAT: Inserts or updates an imported sequence or dataset record for a patient.
         // WHY:  Maintains traceability of imported external genetic and molecular files.
-        // HOW:  Executes an idempotent upsert statement mapping metadata and SHA-256 checksums.
+        // HOW:  Executes an idempotent dialect-compliant upsert statement mapping metadata and SHA-256 checksums.
         ArgumentNullException.ThrowIfNull(importRecord);
         ArgumentException.ThrowIfNullOrWhiteSpace(importRecord.Id);
         ArgumentException.ThrowIfNullOrWhiteSpace(importRecord.Username);
@@ -319,43 +375,31 @@ public sealed class PatientDnaRepository : IPatientDnaRepository, IDisposable
         await _lock.WaitAsync(ct);
         try
         {
-            await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
-            await using DbCommand cmd = session.Connection.CreateCommand();
-            cmd.CommandText = @"
-                INSERT INTO weaver_patient_dna_imports (
-                    id, username, file_name, import_type, sequence_or_data,
-                    size_bytes, sha256_checksum, imported_by, status,
-                    metadata_json, imported_at_utc
-                ) VALUES (
-                    @id, @u, @fn, @it, @sod,
-                    @sb, @sha, @ib, @st,
-                    @mj, @iat
-                )
-                ON CONFLICT(id) DO UPDATE SET
-                    username = @u,
-                    file_name = @fn,
-                    import_type = @it,
-                    sequence_or_data = @sod,
-                    size_bytes = @sb,
-                    sha256_checksum = @sha,
-                    imported_by = @ib,
-                    status = @st,
-                    metadata_json = @mj,
-                    imported_at_utc = @iat;";
+            {
+                await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+                string sql = session.Dialect.BuildUpsertSql(
+                    "weaver_patient_dna_imports",
+                    ImportColumns,
+                    ImportConflictColumns,
+                    ImportUpdateColumns,
+                    ImportParameterNames);
 
-            WeaverDbParameters.Add(cmd, "@id", importRecord.Id);
-            WeaverDbParameters.Add(cmd, "@u", importRecord.Username);
-            WeaverDbParameters.Add(cmd, "@fn", importRecord.FileName);
-            WeaverDbParameters.Add(cmd, "@it", importRecord.ImportType);
-            WeaverDbParameters.Add(cmd, "@sod", importRecord.SequenceOrData);
-            WeaverDbParameters.Add(cmd, "@sb", importRecord.SizeBytes);
-            WeaverDbParameters.Add(cmd, "@sha", importRecord.Sha256Checksum);
-            WeaverDbParameters.Add(cmd, "@ib", importRecord.ImportedBy);
-            WeaverDbParameters.Add(cmd, "@st", importRecord.Status);
-            WeaverDbParameters.Add(cmd, "@mj", importRecord.MetadataJson ?? "{}");
-            WeaverDbParameters.Add(cmd, "@iat", session.Dialect.TimestampValue(importRecord.ImportedAtUtc));
+                await using DbCommand cmd = session.CreateCommand(sql);
 
-            await cmd.ExecuteNonQueryAsync(ct);
+                WeaverDbParameters.Add(cmd, "id", importRecord.Id);
+                WeaverDbParameters.Add(cmd, "u", importRecord.Username);
+                WeaverDbParameters.Add(cmd, "fn", importRecord.FileName);
+                WeaverDbParameters.Add(cmd, "it", importRecord.ImportType);
+                WeaverDbParameters.Add(cmd, "sod", importRecord.SequenceOrData);
+                WeaverDbParameters.Add(cmd, "sb", importRecord.SizeBytes);
+                WeaverDbParameters.Add(cmd, "sha", importRecord.Sha256Checksum);
+                WeaverDbParameters.Add(cmd, "ib", importRecord.ImportedBy);
+                WeaverDbParameters.Add(cmd, "st", importRecord.Status);
+                WeaverDbParameters.Add(cmd, "mj", importRecord.MetadataJson ?? "{}");
+                WeaverDbParameters.Add(cmd, "iat", session.Dialect.TimestampValue(importRecord.ImportedAtUtc));
+
+                await cmd.ExecuteNonQueryAsync(ct);
+            }
         }
         finally
         {
@@ -375,12 +419,13 @@ public sealed class PatientDnaRepository : IPatientDnaRepository, IDisposable
         bool result = false;
         try
         {
-            await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
-            await using DbCommand cmd = session.Connection.CreateCommand();
-            cmd.CommandText = "DELETE FROM weaver_patient_dna_imports WHERE id = @id;";
-            WeaverDbParameters.Add(cmd, "@id", id);
-            int rows = await cmd.ExecuteNonQueryAsync(ct);
-            result = rows > 0;
+            {
+                await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+                await using DbCommand cmd = session.CreateCommand($"DELETE FROM weaver_patient_dna_imports WHERE id = {session.Dialect.Parameter("id")};");
+                WeaverDbParameters.Add(cmd, "id", id);
+                int rows = await cmd.ExecuteNonQueryAsync(ct);
+                result = rows > 0;
+            }
         }
         finally
         {
@@ -402,25 +447,26 @@ public sealed class PatientDnaRepository : IPatientDnaRepository, IDisposable
         IReadOnlyList<PatientResultRecord> result = [];
         try
         {
-            await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
-            await using DbCommand cmd = session.Connection.CreateCommand();
-            cmd.CommandText = @"
-                SELECT id, username, dna_record_id, import_id, result_type,
-                       title, status, metrics_json, summary, created_at_utc
-                FROM weaver_patient_results
-                WHERE username = @u
-                ORDER BY created_at_utc DESC;";
-
-            WeaverDbParameters.Add(cmd, "@u", username);
-
-            List<PatientResultRecord> list = [];
-            await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct);
-            while (await reader.ReadAsync(ct))
             {
-                list.Add(MapResultRecordFromReader(reader));
-            }
+                await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+                await using DbCommand cmd = session.CreateCommand($@"
+                    SELECT id, username, dna_record_id, import_id, result_type,
+                           title, status, metrics_json, summary, created_at_utc
+                    FROM weaver_patient_results
+                    WHERE username = {session.Dialect.Parameter("u")}
+                    ORDER BY created_at_utc DESC;");
 
-            result = list;
+                WeaverDbParameters.Add(cmd, "u", username);
+
+                List<PatientResultRecord> list = [];
+                await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct);
+                while (await reader.ReadAsync(ct))
+                {
+                    list.Add(MapResultRecordFromReader(reader));
+                }
+
+                result = list;
+            }
         }
         finally
         {
@@ -442,20 +488,21 @@ public sealed class PatientDnaRepository : IPatientDnaRepository, IDisposable
         PatientResultRecord? result = null;
         try
         {
-            await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
-            await using DbCommand cmd = session.Connection.CreateCommand();
-            cmd.CommandText = @"
-                SELECT id, username, dna_record_id, import_id, result_type,
-                       title, status, metrics_json, summary, created_at_utc
-                FROM weaver_patient_results
-                WHERE id = @id;";
-
-            WeaverDbParameters.Add(cmd, "@id", id);
-
-            await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct);
-            if (await reader.ReadAsync(ct))
             {
-                result = MapResultRecordFromReader(reader);
+                await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+                await using DbCommand cmd = session.CreateCommand($@"
+                    SELECT id, username, dna_record_id, import_id, result_type,
+                           title, status, metrics_json, summary, created_at_utc
+                    FROM weaver_patient_results
+                    WHERE id = {session.Dialect.Parameter("id")};");
+
+                WeaverDbParameters.Add(cmd, "id", id);
+
+                await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct);
+                if (await reader.ReadAsync(ct))
+                {
+                    result = MapResultRecordFromReader(reader);
+                }
             }
         }
         finally
@@ -471,7 +518,7 @@ public sealed class PatientDnaRepository : IPatientDnaRepository, IDisposable
     {
         // WHAT: Inserts or updates a simulation or clinical result record for a patient.
         // WHY:  Persists computed affinities, risks, kinetic models, and simulation yields.
-        // HOW:  Executes an idempotent upsert statement mapping foreign references and metrics JSON.
+        // HOW:  Executes an idempotent dialect-compliant upsert statement mapping foreign references and metrics JSON.
         ArgumentNullException.ThrowIfNull(result);
         ArgumentException.ThrowIfNullOrWhiteSpace(result.Id);
         ArgumentException.ThrowIfNullOrWhiteSpace(result.Username);
@@ -479,39 +526,30 @@ public sealed class PatientDnaRepository : IPatientDnaRepository, IDisposable
         await _lock.WaitAsync(ct);
         try
         {
-            await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
-            await using DbCommand cmd = session.Connection.CreateCommand();
-            cmd.CommandText = @"
-                INSERT INTO weaver_patient_results (
-                    id, username, dna_record_id, import_id, result_type,
-                    title, status, metrics_json, summary, created_at_utc
-                ) VALUES (
-                    @id, @u, @dna, @imp, @rt,
-                    @tit, @st, @mj, @sum, @cat
-                )
-                ON CONFLICT(id) DO UPDATE SET
-                    username = @u,
-                    dna_record_id = @dna,
-                    import_id = @imp,
-                    result_type = @rt,
-                    title = @tit,
-                    status = @st,
-                    metrics_json = @mj,
-                    summary = @sum,
-                    created_at_utc = @cat;";
+            {
+                await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+                string sql = session.Dialect.BuildUpsertSql(
+                    "weaver_patient_results",
+                    ResultColumns,
+                    ResultConflictColumns,
+                    ResultUpdateColumns,
+                    ResultParameterNames);
 
-            WeaverDbParameters.Add(cmd, "@id", result.Id);
-            WeaverDbParameters.Add(cmd, "@u", result.Username);
-            WeaverDbParameters.AddNullable(cmd, "@dna", result.DnaRecordId);
-            WeaverDbParameters.AddNullable(cmd, "@imp", result.ImportId);
-            WeaverDbParameters.Add(cmd, "@rt", result.ResultType);
-            WeaverDbParameters.Add(cmd, "@tit", result.Title);
-            WeaverDbParameters.Add(cmd, "@st", result.Status);
-            WeaverDbParameters.Add(cmd, "@mj", result.MetricsJson ?? "{}");
-            WeaverDbParameters.Add(cmd, "@sum", result.Summary);
-            WeaverDbParameters.Add(cmd, "@cat", session.Dialect.TimestampValue(result.CreatedAtUtc));
+                await using DbCommand cmd = session.CreateCommand(sql);
 
-            await cmd.ExecuteNonQueryAsync(ct);
+                WeaverDbParameters.Add(cmd, "id", result.Id);
+                WeaverDbParameters.Add(cmd, "u", result.Username);
+                WeaverDbParameters.AddNullable(cmd, "dna", result.DnaRecordId);
+                WeaverDbParameters.AddNullable(cmd, "imp", result.ImportId);
+                WeaverDbParameters.Add(cmd, "rt", result.ResultType);
+                WeaverDbParameters.Add(cmd, "tit", result.Title);
+                WeaverDbParameters.Add(cmd, "st", result.Status);
+                WeaverDbParameters.Add(cmd, "mj", result.MetricsJson ?? "{}");
+                WeaverDbParameters.Add(cmd, "sum", result.Summary);
+                WeaverDbParameters.Add(cmd, "cat", session.Dialect.TimestampValue(result.CreatedAtUtc));
+
+                await cmd.ExecuteNonQueryAsync(ct);
+            }
         }
         finally
         {
@@ -531,12 +569,13 @@ public sealed class PatientDnaRepository : IPatientDnaRepository, IDisposable
         bool result = false;
         try
         {
-            await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
-            await using DbCommand cmd = session.Connection.CreateCommand();
-            cmd.CommandText = "DELETE FROM weaver_patient_results WHERE id = @id;";
-            WeaverDbParameters.Add(cmd, "@id", id);
-            int rows = await cmd.ExecuteNonQueryAsync(ct);
-            result = rows > 0;
+            {
+                await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+                await using DbCommand cmd = session.CreateCommand($"DELETE FROM weaver_patient_results WHERE id = {session.Dialect.Parameter("id")};");
+                WeaverDbParameters.Add(cmd, "id", id);
+                int rows = await cmd.ExecuteNonQueryAsync(ct);
+                result = rows > 0;
+            }
         }
         finally
         {
@@ -553,6 +592,9 @@ public sealed class PatientDnaRepository : IPatientDnaRepository, IDisposable
     /// <returns>The stored nanocarrier design described by the current row.</returns>
     private PatientDigitalDnaRecord MapDnaRecordFromReader(DbDataReader reader)
     {
+        // WHAT: Reads all 16 digital DNA columns, decrypts sensitive clinical regimen, and deserializes protocol JSON.
+        // WHY:  Extracts structured origami sequences and annealing parameters from stored tabular format.
+        // HOW:  Unseals regimen via protector, parses numeric properties, and deserializes JSON staple sequences.
         string id = reader.GetString(0);
         string username = reader.GetString(1);
         string title = reader.GetString(2);
@@ -620,6 +662,9 @@ public sealed class PatientDnaRepository : IPatientDnaRepository, IDisposable
     /// <returns>The record of an uploaded sequence or dataset described by the current row.</returns>
     internal static PatientDnaImportRecord MapImportRecordFromReader(DbDataReader reader)
     {
+        // WHAT: Reads all 11 import file metadata columns from an open DbDataReader row.
+        // WHY:  Hydrates the PatientDnaImportRecord entity representing uploaded FASTA or dataset payloads.
+        // HOW:  Extracts string, integer, and timestamp fields using WeaverDbValues.
         string id = reader.GetString(0);
         string username = reader.GetString(1);
         string fileName = reader.GetString(2);
@@ -655,6 +700,9 @@ public sealed class PatientDnaRepository : IPatientDnaRepository, IDisposable
     /// <returns>The simulation or analysis result described by the current row.</returns>
     internal static PatientResultRecord MapResultRecordFromReader(DbDataReader reader)
     {
+        // WHAT: Reads all 10 simulation and endocrine result columns from an open DbDataReader row.
+        // WHY:  Hydrates the PatientResultRecord entity holding analysis metrics and summary text.
+        // HOW:  Reads nullable foreign key strings, type, status, JSON metrics, and timestamps.
         string id = reader.GetString(0);
         string username = reader.GetString(1);
         string? dnaRecordId = reader.IsDBNull(2) ? null : reader.GetString(2);

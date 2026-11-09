@@ -53,6 +53,13 @@ public interface IComplianceAuditService
     DeIdentificationResult DeIdentifySubject(string rawSubjectIdentifier, string rawGenomicData, bool gdprConsentConfirmed, bool ginaPurposeLimited);
 
     /// <summary>
+    /// Computes a deterministic, collision-resistant HIPAA Safe Harbor pseudonym for a raw patient identifier.
+    /// </summary>
+    /// <param name="rawSubjectIdentifier">The raw patient identifier or name to be pseudonymized.</param>
+    /// <returns>A pseudonym formatted as <c>sub_&lt;16-hex&gt;</c>.</returns>
+    string PseudonymizeSubjectId(string rawSubjectIdentifier);
+
+    /// <summary>
     /// Evaluates the end-to-end security and compliance posture of the platform.
     /// </summary>
     /// <returns>A comprehensive <see cref="ComplianceStatusReport"/>.</returns>

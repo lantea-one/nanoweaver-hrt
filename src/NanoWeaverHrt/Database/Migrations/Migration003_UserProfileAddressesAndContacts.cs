@@ -76,6 +76,121 @@ public sealed class Migration003_UserProfileAddressesAndContacts : DatabaseMigra
             ";
         }
 
+        if (dialect.StartsWith("duckdb", StringComparison.OrdinalIgnoreCase))
+        {
+            return @"
+                CREATE TABLE IF NOT EXISTS weaver_user_profiles (
+                    username VARCHAR(128) PRIMARY KEY REFERENCES weaver_users(username),
+                    first_name TEXT NOT NULL DEFAULT '',
+                    last_name TEXT NOT NULL DEFAULT '',
+                    preferred_name TEXT,
+                    email_address TEXT,
+                    phone_number TEXT,
+                    date_of_birth TEXT,
+                    picture TEXT,
+                    regimen TEXT,
+                    gender_assigned_at_birth TEXT,
+                    pronouns_json TEXT,
+                    emergency_medical_notes TEXT,
+                    bio TEXT,
+                    language_preference VARCHAR(32) NOT NULL DEFAULT 'en-US',
+                    created_at_utc TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at_utc TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS weaver_patient_addresses (
+                    id VARCHAR(64) PRIMARY KEY,
+                    username VARCHAR(128) NOT NULL REFERENCES weaver_users(username),
+                    address_type VARCHAR(32) NOT NULL DEFAULT 'Primary',
+                    address_line1 TEXT NOT NULL,
+                    address_line2 TEXT,
+                    city TEXT NOT NULL,
+                    state_or_province TEXT NOT NULL,
+                    postal_code TEXT NOT NULL,
+                    country VARCHAR(64) NOT NULL DEFAULT 'United States',
+                    is_primary BOOLEAN NOT NULL DEFAULT TRUE,
+                    created_at_utc TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at_utc TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS weaver_patient_contacts (
+                    id VARCHAR(64) PRIMARY KEY,
+                    username VARCHAR(128) NOT NULL REFERENCES weaver_users(username),
+                    contact_name TEXT NOT NULL,
+                    relationship TEXT NOT NULL,
+                    phone_number TEXT NOT NULL,
+                    email_address TEXT,
+                    priority_order INTEGER NOT NULL DEFAULT 1,
+                    can_discuss_medical_info BOOLEAN NOT NULL DEFAULT FALSE,
+                    notes TEXT,
+                    created_at_utc TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at_utc TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_weaver_addresses_user ON weaver_patient_addresses (username);
+                CREATE INDEX IF NOT EXISTS idx_weaver_contacts_user ON weaver_patient_contacts (username, priority_order);
+            ";
+        }
+
+        if (dialect.StartsWith("mysql", StringComparison.OrdinalIgnoreCase) || dialect.StartsWith("mariadb", StringComparison.OrdinalIgnoreCase))
+        {
+            return @"
+                CREATE TABLE IF NOT EXISTS weaver_user_profiles (
+                    username VARCHAR(128) PRIMARY KEY,
+                    first_name VARCHAR(100) NOT NULL DEFAULT '',
+                    last_name VARCHAR(100) NOT NULL DEFAULT '',
+                    preferred_name VARCHAR(100),
+                    email_address VARCHAR(255),
+                    phone_number VARCHAR(50),
+                    date_of_birth VARCHAR(32),
+                    picture TEXT,
+                    regimen VARCHAR(64),
+                    gender_assigned_at_birth VARCHAR(32) NOT NULL DEFAULT 'Female',
+                    pronouns_json TEXT NOT NULL,
+                    emergency_medical_notes TEXT,
+                    bio TEXT,
+                    language_preference VARCHAR(32) NOT NULL DEFAULT 'en-US',
+                    created_at_utc DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+                    updated_at_utc DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+                    FOREIGN KEY (username) REFERENCES weaver_users(username) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS weaver_patient_addresses (
+                    id VARCHAR(64) PRIMARY KEY,
+                    username VARCHAR(128) NOT NULL,
+                    address_type VARCHAR(32) NOT NULL DEFAULT 'Primary',
+                    address_line1 VARCHAR(255) NOT NULL,
+                    address_line2 VARCHAR(255),
+                    city VARCHAR(128) NOT NULL,
+                    state_or_province VARCHAR(128) NOT NULL,
+                    postal_code VARCHAR(32) NOT NULL,
+                    country VARCHAR(64) NOT NULL DEFAULT 'United States',
+                    is_primary BOOLEAN NOT NULL DEFAULT TRUE,
+                    created_at_utc DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+                    updated_at_utc DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+                    FOREIGN KEY (username) REFERENCES weaver_users(username) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS weaver_patient_contacts (
+                    id VARCHAR(64) PRIMARY KEY,
+                    username VARCHAR(128) NOT NULL,
+                    contact_name VARCHAR(128) NOT NULL,
+                    relationship VARCHAR(64) NOT NULL,
+                    phone_number VARCHAR(50) NOT NULL,
+                    email_address VARCHAR(255),
+                    priority_order INTEGER NOT NULL DEFAULT 1,
+                    can_discuss_medical_info BOOLEAN NOT NULL DEFAULT FALSE,
+                    notes TEXT,
+                    created_at_utc DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+                    updated_at_utc DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+                    FOREIGN KEY (username) REFERENCES weaver_users(username) ON DELETE CASCADE
+                );
+
+                CREATE INDEX idx_weaver_addresses_user ON weaver_patient_addresses (username);
+                CREATE INDEX idx_weaver_contacts_user ON weaver_patient_contacts (username, priority_order);
+            ";
+        }
+
         return @"
             CREATE TABLE IF NOT EXISTS weaver_user_profiles (
                 username TEXT PRIMARY KEY REFERENCES weaver_users(username) ON DELETE CASCADE,

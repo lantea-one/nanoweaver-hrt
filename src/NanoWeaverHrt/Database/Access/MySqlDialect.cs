@@ -49,4 +49,59 @@ public sealed class MySqlDialect : ISqlDialect
         // HOW:  Checks HasValue and coerces via TimestampValue or returns DBNull.Value.
         return value.HasValue ? TimestampValue(value.Value) : DBNull.Value;
     }
+
+    /// <inheritdoc/>
+    public string Parameter(string name)
+    {
+        // WHAT: Normalizes parameter identifier to @name for MySQL queries.
+        // WHY:  MySqlConnector parameters are prefixed with '@'.
+        // HOW:  Trims leading '@' and '$' then prepends '@'.
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        return $"@{name.TrimStart('@', '$')}";
+    }
+
+    /// <inheritdoc/>
+    public string BuildUpsertSql(
+        string tableName,
+        IReadOnlyList<string> columns,
+        IReadOnlyList<string> conflictColumns,
+        IReadOnlyList<string> updateColumns,
+        IReadOnlyList<string>? parameterNames = null)
+    {
+        // WHAT: Builds MySQL ON DUPLICATE KEY UPDATE upsert statement.
+        // WHY:  MySQL does not support standard SQL ON CONFLICT syntax.
+        // HOW:  Formats column, value, and ON DUPLICATE KEY UPDATE column = VALUES(column) clauses.
+        ArgumentException.ThrowIfNullOrWhiteSpace(tableName);
+        ArgumentNullException.ThrowIfNull(columns);
+        ArgumentNullException.ThrowIfNull(conflictColumns);
+        ArgumentNullException.ThrowIfNull(updateColumns);
+
+        IReadOnlyList<string> valueParams = parameterNames ?? columns;
+        string cols = string.Join(", ", columns);
+        string vals = string.Join(", ", valueParams.Select(Parameter));
+        string updates = string.Join(", ", updateColumns.Select(c => $"{c} = VALUES({c})"));
+
+        return $"INSERT INTO {tableName} ({cols}) VALUES ({vals}) ON DUPLICATE KEY UPDATE {updates}";
+    }
+
+    /// <inheritdoc/>
+    public string BuildInsertIgnoreSql(
+        string tableName,
+        IReadOnlyList<string> columns,
+        IReadOnlyList<string> conflictColumns,
+        IReadOnlyList<string>? parameterNames = null)
+    {
+        // WHAT: Builds MySQL INSERT IGNORE statement.
+        // WHY:  MySQL uses INSERT IGNORE rather than ON CONFLICT DO NOTHING.
+        // HOW:  Formats column and value placeholders prefixed with INSERT IGNORE INTO.
+        ArgumentException.ThrowIfNullOrWhiteSpace(tableName);
+        ArgumentNullException.ThrowIfNull(columns);
+        ArgumentNullException.ThrowIfNull(conflictColumns);
+
+        IReadOnlyList<string> valueParams = parameterNames ?? columns;
+        string cols = string.Join(", ", columns);
+        string vals = string.Join(", ", valueParams.Select(Parameter));
+
+        return $"INSERT IGNORE INTO {tableName} ({cols}) VALUES ({vals})";
+    }
 }

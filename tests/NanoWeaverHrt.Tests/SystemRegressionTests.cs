@@ -20,6 +20,7 @@ namespace NanoWeaverHrt.Tests;
 /// zero-allocation parsing memory invariants, database-first precedence, migration idempotency,
 /// endocrine setpoint stability, and multi-format content negotiation preservation.
 /// </summary>
+[Collection("AcceleratorTelemetryEnvironmentTests")]
 public sealed class SystemRegressionTests : IClassFixture<WebApplicationFactory<Program>>, IDisposable
 {
     /// <summary>

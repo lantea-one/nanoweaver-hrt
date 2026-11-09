@@ -205,7 +205,7 @@ public sealed class WeaverDbConnectionFactoryTests : IDisposable
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["TRAJECTORY_INCOMING_DIR"] = _tempDir,
-                ["MYSQL_CONNECTION_STRING"] = "Server=127.0.0.1;Port=3306;Database=weaver;Uid=root;"
+                ["MYSQL_CONNECTION_STRING"] = "Server=127.0.0.1;Port=54397;Database=weaver;Uid=root;ConnectionTimeout=1;"
             })
             .Build();
 
@@ -219,6 +219,33 @@ public sealed class WeaverDbConnectionFactoryTests : IDisposable
         // Subsequent call throws cached exception immediately
         var cachedEx = await Assert.ThrowsAsync<WeaverDatabaseUnavailableException>(() => factory.EnsureBackendResolvedAsync());
         Assert.Equal(WeaverDatabaseBackend.MySql, cachedEx.Backend);
+    }
+
+    /// <summary>
+    /// Verifies that MySQL backend without any provider delegate throws InvalidOperationException and fails loudly.
+    /// </summary>
+    [Fact]
+    public async Task MySql_NullConnectionFactory_ThrowsInvalidOperationExceptionAndFailsLoudly()
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["TRAJECTORY_INCOMING_DIR"] = _tempDir,
+                ["MYSQL_CONNECTION_STRING"] = "Server=127.0.0.1;Port=3306;Database=weaver;Uid=root;"
+            })
+            .Build();
+
+        var migrationRunner = new DatabaseMigrationRunner(Array.Empty<IDatabaseMigration>());
+        var factory = new WeaverDbConnectionFactory(
+            config,
+            migrationRunner,
+            NullLogger<WeaverDbConnectionFactory>.Instance,
+            mySqlConnectionFactory: null);
+
+        var ex = await Assert.ThrowsAsync<WeaverDatabaseUnavailableException>(() => factory.EnsureBackendResolvedAsync());
+        Assert.Equal(WeaverDatabaseBackend.MySql, ex.Backend);
+        Assert.Equal("MySQL / MariaDB (Unreachable)", factory.ActiveBackendDisplayName);
+        Assert.IsType<InvalidOperationException>(ex.InnerException);
     }
 
     /// <summary>
@@ -432,7 +459,7 @@ public sealed class WeaverDbConnectionFactoryTests : IDisposable
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["TRAJECTORY_INCOMING_DIR"] = _tempDir,
-                ["MYSQL_CONNECTION_STRING"] = "Server=localhost;"
+                ["MYSQL_CONNECTION_STRING"] = "Server=127.0.0.1;Port=54397;ConnectionTimeout=1;"
             })
             .Build();
         var fMySql = new WeaverDbConnectionFactory(configMySql, new DatabaseMigrationRunner(Array.Empty<IDatabaseMigration>()), NullLogger<WeaverDbConnectionFactory>.Instance, _ => new MockTestDbConnection());
@@ -556,6 +583,34 @@ public sealed class WeaverDbConnectionFactoryTests : IDisposable
         object? scalar = await cmd.ExecuteScalarAsync();
         Assert.NotNull(scalar);
         Assert.Equal(42, Convert.ToInt32(scalar));
+    }
+
+    /// <summary>
+    /// Verifies that opening a DuckDB session executes SET enable_external_access = false to harden query execution.
+    /// </summary>
+    [Fact]
+    public async Task DuckDb_EnableExternalAccess_IsDisabledOnOpen()
+    {
+        string dbFile = Path.Combine(_tempDir, "harden_test.duckdb");
+        await SeedDuckDbMigrationsAsync(dbFile);
+
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["TRAJECTORY_INCOMING_DIR"] = _tempDir,
+                ["DUCKDB_CONNECTION_STRING"] = $"Data Source={dbFile}"
+            })
+            .Build();
+
+        var migrationRunner = new DatabaseMigrationRunner();
+        var factory = new WeaverDbConnectionFactory(config, migrationRunner, NullLogger<WeaverDbConnectionFactory>.Instance);
+
+        await using WeaverDbSession session = await factory.OpenAsync();
+        await using DbCommand cmd = session.Connection.CreateCommand();
+        cmd.CommandText = "SELECT current_setting('enable_external_access');";
+        object? scalar = await cmd.ExecuteScalarAsync();
+        Assert.NotNull(scalar);
+        Assert.False(Convert.ToBoolean(scalar));
     }
 
     /// <summary>

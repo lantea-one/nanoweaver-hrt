@@ -190,7 +190,7 @@ public sealed class NodeSecretStoreTests : IDisposable
             [NodeSecretStore.IncomingDirectoryConfigKey] = "  "
         }));
         Assert.Equal(
-            Path.Combine(Directory.GetCurrentDirectory(), "simulations", "shared-data", NodeSecretStore.NodeKeysDirectoryName),
+            Path.Combine(Directory.GetCurrentDirectory(), "simulations", NodeSecretStore.NodeKeysDirectoryName),
             defaultDir);
 
         string emptyConfigDir = NodeSecretStore.ResolveNodeKeysDirectory(new ConfigurationBuilder().Build());
@@ -496,5 +496,61 @@ public sealed class NodeSecretStoreTests : IDisposable
         InvalidOperationException cause = new("cause");
         NodeSecretProvisioningException wrapped = new("phi_master.key is unusable.", cause);
         Assert.Same(cause, wrapped.InnerException);
+    }
+
+    /// <summary>
+    /// Verifies that <c>Security:NodeKeysDirectory</c> is respected and takes precedence over fallback paths.
+    /// </summary>
+    [Fact]
+    public void ResolveNodeKeysDirectory_SecurityNodeKeysDirectory_TakesPrecedence()
+    {
+        string securityDir = Path.Combine(_tempDir, "custom-security-keys");
+        string resolved = NodeSecretStore.ResolveNodeKeysDirectory(BuildConfiguration(new Dictionary<string, string?>
+        {
+            [NodeSecretStore.SecurityNodeKeysDirectoryConfigKey] = securityDir,
+            [NodeSecretStore.NodeKeysDirectoryConfigKey] = Path.Combine(_tempDir, "ignored-keys"),
+            [NodeSecretStore.IncomingDirectoryConfigKey] = Path.Combine(_tempDir, "incoming")
+        }));
+
+        Assert.Equal(securityDir, resolved);
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="INodeSecretStore.GetOrCreateSecret"/> generates, persists, and reloads secret keys deterministically.
+    /// </summary>
+    [Fact]
+    public void GetOrCreateSecret_GeneratesAndPersistsSecret_ReloadsAcrossCalls()
+    {
+        NodeSecretStore store = new(BuildDirectoryConfiguration(new Dictionary<string, string?>()));
+
+        const string secretFileName = "pseudonymization-hmac.key";
+        byte[] secret1 = store.GetOrCreateSecret(secretFileName, 32);
+        Assert.NotNull(secret1);
+        Assert.Equal(32, secret1.Length);
+
+        string secretFilePath = Path.Combine(store.NodeKeysDirectory, secretFileName);
+        Assert.True(File.Exists(secretFilePath));
+
+        byte[] secret2 = store.GetOrCreateSecret(secretFileName, 32);
+        Assert.Equal(secret1, secret2);
+
+        // Also verify on fresh store instance pointing to same directory
+        NodeSecretStore store2 = new(BuildDirectoryConfiguration(new Dictionary<string, string?>()));
+        byte[] secret3 = store2.GetOrCreateSecret(secretFileName);
+        Assert.Equal(secret1, secret3);
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="INodeSecretStore.GetOrCreateSecret"/> rejects invalid arguments.
+    /// </summary>
+    [Fact]
+    public void GetOrCreateSecret_InvalidArguments_ThrowsExpectedExceptions()
+    {
+        NodeSecretStore store = new(BuildDirectoryConfiguration(new Dictionary<string, string?>()));
+
+        Assert.Throws<ArgumentNullException>(() => store.GetOrCreateSecret(null!));
+        Assert.Throws<ArgumentException>(() => store.GetOrCreateSecret("   "));
+        Assert.Throws<ArgumentOutOfRangeException>(() => store.GetOrCreateSecret("test.key", 16));
+        Assert.Throws<ArgumentOutOfRangeException>(() => store.GetOrCreateSecret("test.key", 64));
     }
 }

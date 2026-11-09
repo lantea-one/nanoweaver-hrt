@@ -536,10 +536,10 @@ public sealed class SubjectKeyPersistenceTests : IDisposable
             HttpResponseMessage unknownShredResp = await client2.PostAsJsonAsync("/api/compliance/crypto-shred", new CryptoShredRequest { SubjectId = unknownId });
             Assert.Equal(HttpStatusCode.NotFound, unknownShredResp.StatusCode);
             JsonElement unknownShredJson = await unknownShredResp.Content.ReadFromJsonAsync<JsonElement>();
-            Assert.Equal(Program.ShredUnknownMessage(unknownId), unknownShredJson.GetProperty("error").GetString());
+            Assert.Equal(Program.ShredUnknownMessage(unknownId), unknownShredJson.GetProperty("detail").GetString());
 
             // Verify exported bundle from Host 1 decrypts with reopened vault before shredding
-            byte[] bundleEnvelopeBytes = await File.ReadAllBytesAsync(bundlePathFromHost1!);
+            byte[] bundleEnvelopeBytes = await File.ReadAllBytesAsync(Path.Combine(exportDir, bundlePathFromHost1!));
             EncryptedEnvelope bundleEnvelope = JsonSerializer.Deserialize<EncryptedEnvelope>(bundleEnvelopeBytes, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
             IKeyManagementService kms2 = factory2.Services.GetRequiredService<IKeyManagementService>();
             IPostQuantumCryptoProvider pqc2 = factory2.Services.GetRequiredService<IPostQuantumCryptoProvider>();
@@ -561,7 +561,7 @@ public sealed class SubjectKeyPersistenceTests : IDisposable
             HttpResponseMessage shredRepeatResp = await client2.PostAsJsonAsync("/api/compliance/crypto-shred", new CryptoShredRequest { SubjectId = subjectId });
             Assert.Equal(HttpStatusCode.NotFound, shredRepeatResp.StatusCode);
             JsonElement shredRepeatJson = await shredRepeatResp.Content.ReadFromJsonAsync<JsonElement>();
-            Assert.Equal(Program.ShredAlreadyMessage(subjectId), shredRepeatJson.GetProperty("error").GetString());
+            Assert.Equal(Program.ShredAlreadyMessage(subjectId), shredRepeatJson.GetProperty("detail").GetString());
 
             // Decrypt after erasure returns 400 with ErasedMessage
             SubjectKeyProfile erasedProfile = kms2.GetSubjectKey(subjectId)!;

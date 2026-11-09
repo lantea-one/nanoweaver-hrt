@@ -44,6 +44,11 @@ public sealed class NodeSecretStore : INodeSecretStore
     public const int SecretLengthBytes = 32;
 
     /// <summary>
+    /// Configuration section key naming the directory that holds the key files.
+    /// </summary>
+    internal const string SecurityNodeKeysDirectoryConfigKey = "Security:NodeKeysDirectory";
+
+    /// <summary>
     /// Configuration key naming the directory that holds the key files.
     /// </summary>
     internal const string NodeKeysDirectoryConfigKey = "WEAVER_NODE_KEYS_DIR";
@@ -180,16 +185,14 @@ public sealed class NodeSecretStore : INodeSecretStore
     /// <param name="configuration">Host application configuration.</param>
     /// <returns>The directory path that will hold <c>token_signing.key</c> and <c>phi_master.key</c>.</returns>
     /// <remarks>
-    /// Resolution order: an explicit <c>WEAVER_NODE_KEYS_DIR</c>, else a <c>node-keys</c> subdirectory of
-    /// <c>TRAJECTORY_INCOMING_DIR</c> (which the container and every test host already point at a writable,
-    /// persistent, git-ignored location), else <c>./simulations/shared-data/node-keys</c> under the working
-    /// directory for a bare <c>dotnet run</c>. Using a subdirectory matters: the trajectory listing, export,
-    /// import and download routes all operate on the top level of that directory only, so key files placed one
-    /// level down are reachable by no HTTP route.
+    /// Resolution order: an explicit <c>Security:NodeKeysDirectory</c> or <c>WEAVER_NODE_KEYS_DIR</c>, else a <c>node-keys</c>
+    /// subdirectory of <c>TRAJECTORY_INCOMING_DIR</c> (which the container and every test host already point at a writable,
+    /// persistent, git-ignored location), else <c>./simulations/node-keys</c> under the working directory (sibling to
+    /// <c>shared-data</c>, never inside <c>simulations/shared-data</c>) for a bare <c>dotnet run</c>.
     /// </remarks>
     internal static string ResolveNodeKeysDirectory(IConfiguration configuration)
     {
-        string? configured = configuration[NodeKeysDirectoryConfigKey];
+        string? configured = configuration[SecurityNodeKeysDirectoryConfigKey] ?? configuration[NodeKeysDirectoryConfigKey];
         if (!string.IsNullOrWhiteSpace(configured))
         {
             return configured;
@@ -201,7 +204,7 @@ public sealed class NodeSecretStore : INodeSecretStore
             return Path.Combine(incomingDirectory, NodeKeysDirectoryName);
         }
 
-        return Path.Combine(Directory.GetCurrentDirectory(), "simulations", "shared-data", NodeKeysDirectoryName);
+        return Path.Combine(Directory.GetCurrentDirectory(), "simulations", NodeKeysDirectoryName);
     }
 
     /// <summary>
@@ -407,5 +410,18 @@ public sealed class NodeSecretStore : INodeSecretStore
             File.Delete(tempPath);
             return (ReadSecretFile(path), NodeSecretOrigin.ExistingFile);
         }
+    }
+
+    /// <inheritdoc/>
+    public byte[] GetOrCreateSecret(string fileName, int lengthBytes = SecretLengthBytes)
+    {
+        // WHAT: Retrieves an existing persisted secret key file or generates, persists, and returns a new random key.
+        // WHY:  Allows sovereign subsystem services (e.g., audit pseudonymization) to maintain deterministic persistent secrets without hardcoded credentials.
+        // HOW:  Validates file name and byte length parameters, delegating atomic file loading or generation to LoadOrCreateKeyFile.
+        ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
+        ArgumentOutOfRangeException.ThrowIfNotEqual(lengthBytes, SecretLengthBytes);
+
+        (byte[] key, _) = LoadOrCreateKeyFile(NodeKeysDirectory, fileName);
+        return key;
     }
 }

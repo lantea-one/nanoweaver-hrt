@@ -16,4 +16,19 @@ public interface IAuditLedgerRepository
     /// </summary>
     /// <param name="record">The signed audit record to persist.</param>
     void Append(AuditRecord record);
+
+    /// <summary>
+    /// Asynchronously loads all committed audit records ordered by ascending <see cref="AuditRecord.SequenceNumber"/>.
+    /// </summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task whose result is the ordered list of persisted <see cref="AuditRecord"/> entries.</returns>
+    Task<IReadOnlyList<AuditRecord>> LoadAllAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Asynchronously appends a single <see cref="AuditRecord"/> to the persistent store if its sequence number is not already present.
+    /// </summary>
+    /// <param name="record">The signed audit record to persist.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task representing the append operation.</returns>
+    Task AppendAsync(AuditRecord record, CancellationToken ct = default);
 }

@@ -5,7 +5,7 @@ namespace NanoWeaverHrt.Security.Authentication;
 
 /// <summary>
 /// Production repository persisting user accounts in whichever database engine the connection seam selected
-/// (PostgreSQL with pg-duckdb, or embedded SQLite). A failure of the selected engine is an error, never a quiet switch.
+/// (PostgreSQL with pg-duckdb, embedded SQLite, DuckDB, or MySQL). A failure of the selected engine is an error, never a quiet switch.
 /// </summary>
 /// <remarks>
 /// Methods that produce a value assign it to a local and return it after the try/finally instead of returning
@@ -18,6 +18,32 @@ public sealed class UserRepository : IUserRepository, IDisposable
     /// The column list shared by every user SELECT; its order is the contract with <see cref="MapUserFromReader"/>.
     /// </summary>
     private const string UserColumns = "username, role, access_gate, key_algorithm, public_key, created_at_utc, last_login_utc, is_active";
+
+    /// <summary>
+    /// Columns list for INSERT operations.
+    /// </summary>
+    private static readonly string[] InsertColumns =
+    [
+        "username", "role", "access_gate", "key_algorithm", "public_key", "created_at_utc", "last_login_utc", "is_active"
+    ];
+
+    /// <summary>
+    /// Conflict key columns for user identity.
+    /// </summary>
+    private static readonly string[] ConflictColumns = ["username"];
+
+    /// <summary>
+    /// Columns updated on username collision during upsert.
+    /// </summary>
+    private static readonly string[] UpdateColumns =
+    [
+        "role", "access_gate", "key_algorithm", "public_key", "is_active"
+    ];
+
+    /// <summary>
+    /// Parameter placeholders corresponding to <see cref="InsertColumns"/>.
+    /// </summary>
+    private static readonly string[] ParameterNames = ["u", "r", "g", "a", "p", "c", "l", "act"];
 
     /// <summary>
     /// Thread synchronization lock serializing account mutations and reads.
@@ -49,7 +75,9 @@ public sealed class UserRepository : IUserRepository, IDisposable
         await _lock.WaitAsync(ct);
         try
         {
-            await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+            {
+                await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+            }
         }
         finally
         {
@@ -64,11 +92,13 @@ public sealed class UserRepository : IUserRepository, IDisposable
         bool result = false;
         try
         {
-            await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
-            await using DbCommand cmd = session.CreateCommand(
-                $"SELECT COUNT(*) FROM weaver_users WHERE role = 'Administrator' AND is_active = {session.Dialect.TrueLiteral}");
-            object? res = await cmd.ExecuteScalarAsync(ct);
-            result = Convert.ToInt64(res) > 0;
+            {
+                await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+                await using DbCommand cmd = session.CreateCommand(
+                    $"SELECT COUNT(*) FROM weaver_users WHERE role = 'Administrator' AND is_active = {session.Dialect.TrueLiteral}");
+                object? res = await cmd.ExecuteScalarAsync(ct);
+                result = Convert.ToInt64(res) > 0;
+            }
         }
         finally
         {
@@ -86,11 +116,13 @@ public sealed class UserRepository : IUserRepository, IDisposable
         UserAccount? found = null;
         try
         {
-            await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
-            await using DbCommand cmd = session.CreateCommand($"SELECT {UserColumns} FROM weaver_users WHERE username = @u");
-            WeaverDbParameters.Add(cmd, "@u", NormalizeUsername(username));
-            await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct);
-            found = await reader.ReadAsync(ct) ? MapUserFromReader(reader) : null;
+            {
+                await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+                await using DbCommand cmd = session.CreateCommand($"SELECT {UserColumns} FROM weaver_users WHERE username = {session.Dialect.Parameter("u")}");
+                WeaverDbParameters.Add(cmd, "u", NormalizeUsername(username));
+                await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct);
+                found = await reader.ReadAsync(ct) ? MapUserFromReader(reader) : null;
+            }
         }
         finally
         {
@@ -108,12 +140,14 @@ public sealed class UserRepository : IUserRepository, IDisposable
         try
         {
             List<UserAccount> users = new();
-            await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
-            await using DbCommand cmd = session.CreateCommand($"SELECT {UserColumns} FROM weaver_users ORDER BY username ASC");
-            await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct);
-            while (await reader.ReadAsync(ct))
             {
-                users.Add(MapUserFromReader(reader));
+                await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+                await using DbCommand cmd = session.CreateCommand($"SELECT {UserColumns} FROM weaver_users ORDER BY username ASC");
+                await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct);
+                while (await reader.ReadAsync(ct))
+                {
+                    users.Add(MapUserFromReader(reader));
+                }
             }
 
             result = users;
@@ -136,18 +170,13 @@ public sealed class UserRepository : IUserRepository, IDisposable
         await _lock.WaitAsync(ct);
         try
         {
-            await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
-            await using DbCommand cmd = session.CreateCommand(@"
-                INSERT INTO weaver_users (username, role, access_gate, key_algorithm, public_key, created_at_utc, last_login_utc, is_active)
-                VALUES (@u, @r, @g, @a, @p, @c, @l, @act)
-                ON CONFLICT (username) DO UPDATE
-                SET role = EXCLUDED.role,
-                    access_gate = EXCLUDED.access_gate,
-                    key_algorithm = EXCLUDED.key_algorithm,
-                    public_key = EXCLUDED.public_key,
-                    is_active = EXCLUDED.is_active;");
-            BindUser(cmd, session.Dialect, user);
-            await cmd.ExecuteNonQueryAsync(ct);
+            {
+                await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+                string sql = session.Dialect.BuildUpsertSql("weaver_users", InsertColumns, ConflictColumns, UpdateColumns, ParameterNames);
+                await using DbCommand cmd = session.CreateCommand(sql);
+                BindUser(cmd, session.Dialect, user);
+                await cmd.ExecuteNonQueryAsync(ct);
+            }
         }
         finally
         {
@@ -166,17 +195,17 @@ public sealed class UserRepository : IUserRepository, IDisposable
 
         // WHAT: Insert-only account creation.
         // WHY:  A check-then-insert would let two concurrent callers both see "absent"; the unique key must decide.
-        // HOW:  ON CONFLICT DO NOTHING reports 0 affected rows when the username exists.
+        // HOW:  Engine-specific insert-ignore reports 0 affected rows when the username exists.
         bool result = false;
         try
         {
-            await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
-            await using DbCommand cmd = session.CreateCommand(@"
-                INSERT INTO weaver_users (username, role, access_gate, key_algorithm, public_key, created_at_utc, last_login_utc, is_active)
-                VALUES (@u, @r, @g, @a, @p, @c, @l, @act)
-                ON CONFLICT (username) DO NOTHING;");
-            BindUser(cmd, session.Dialect, user);
-            result = await cmd.ExecuteNonQueryAsync(ct) > 0;
+            {
+                await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+                string sql = session.Dialect.BuildInsertIgnoreSql("weaver_users", InsertColumns, ConflictColumns, ParameterNames);
+                await using DbCommand cmd = session.CreateCommand(sql);
+                BindUser(cmd, session.Dialect, user);
+                result = await cmd.ExecuteNonQueryAsync(ct) > 0;
+            }
         }
         finally
         {
@@ -193,11 +222,13 @@ public sealed class UserRepository : IUserRepository, IDisposable
         await _lock.WaitAsync(ct);
         try
         {
-            await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
-            await using DbCommand cmd = session.CreateCommand("UPDATE weaver_users SET last_login_utc = @l WHERE username = @u");
-            WeaverDbParameters.Add(cmd, "@l", session.Dialect.TimestampValue(loginTimeUtc));
-            WeaverDbParameters.Add(cmd, "@u", NormalizeUsername(username));
-            await cmd.ExecuteNonQueryAsync(ct);
+            {
+                await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+                await using DbCommand cmd = session.CreateCommand($"UPDATE weaver_users SET last_login_utc = {session.Dialect.Parameter("l")} WHERE username = {session.Dialect.Parameter("u")}");
+                WeaverDbParameters.Add(cmd, "l", session.Dialect.TimestampValue(loginTimeUtc));
+                WeaverDbParameters.Add(cmd, "u", NormalizeUsername(username));
+                await cmd.ExecuteNonQueryAsync(ct);
+            }
         }
         finally
         {
@@ -213,10 +244,12 @@ public sealed class UserRepository : IUserRepository, IDisposable
         bool result = false;
         try
         {
-            await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
-            await using DbCommand cmd = session.CreateCommand("DELETE FROM weaver_users WHERE username = @u");
-            WeaverDbParameters.Add(cmd, "@u", NormalizeUsername(username));
-            result = await cmd.ExecuteNonQueryAsync(ct) > 0;
+            {
+                await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+                await using DbCommand cmd = session.CreateCommand($"DELETE FROM weaver_users WHERE username = {session.Dialect.Parameter("u")}");
+                WeaverDbParameters.Add(cmd, "u", NormalizeUsername(username));
+                result = await cmd.ExecuteNonQueryAsync(ct) > 0;
+            }
         }
         finally
         {
@@ -237,14 +270,14 @@ public sealed class UserRepository : IUserRepository, IDisposable
         // WHAT: Attaches the user's columns as named parameters.
         // WHY:  Both INSERT statements take identical parameters; one binder keeps them from drifting apart.
         // HOW:  Text columns bind directly; the two timestamps and the active flag go through the dialect.
-        WeaverDbParameters.Add(cmd, "@u", NormalizeUsername(user.Username));
-        WeaverDbParameters.Add(cmd, "@r", user.Role.ToString());
-        WeaverDbParameters.Add(cmd, "@g", user.AccessGate.ToString());
-        WeaverDbParameters.Add(cmd, "@a", user.Algorithm.ToString());
-        WeaverDbParameters.Add(cmd, "@p", user.PublicKeyBase64);
-        WeaverDbParameters.Add(cmd, "@c", dialect.TimestampValue(user.CreatedAtUtc));
-        WeaverDbParameters.Add(cmd, "@l", dialect.TimestampValueOrNull(user.LastLoginUtc));
-        WeaverDbParameters.Add(cmd, "@act", dialect.BooleanValue(user.IsActive));
+        WeaverDbParameters.Add(cmd, "u", NormalizeUsername(user.Username));
+        WeaverDbParameters.Add(cmd, "r", user.Role.ToString());
+        WeaverDbParameters.Add(cmd, "g", user.AccessGate.ToString());
+        WeaverDbParameters.Add(cmd, "a", user.Algorithm.ToString());
+        WeaverDbParameters.Add(cmd, "p", user.PublicKeyBase64);
+        WeaverDbParameters.Add(cmd, "c", dialect.TimestampValue(user.CreatedAtUtc));
+        WeaverDbParameters.Add(cmd, "l", dialect.TimestampValueOrNull(user.LastLoginUtc));
+        WeaverDbParameters.Add(cmd, "act", dialect.BooleanValue(user.IsActive));
     }
 
     /// <summary>
@@ -254,6 +287,9 @@ public sealed class UserRepository : IUserRepository, IDisposable
     /// <returns>The user account described by the current row.</returns>
     internal static UserAccount MapUserFromReader(DbDataReader reader)
     {
+        // WHAT: Reads all 8 user projection columns from an open DbDataReader row.
+        // WHY:  Centralizes mapping between relational schema and UserAccount model.
+        // HOW:  Parses enum values and uses WeaverDbValues for dialect-portable timestamp and boolean extraction.
         string username = reader.GetString(0);
         string roleStr = reader.GetString(1);
         string gateStr = reader.GetString(2);

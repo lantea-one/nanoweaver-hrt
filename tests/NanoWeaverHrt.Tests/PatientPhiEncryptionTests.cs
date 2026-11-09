@@ -124,6 +124,9 @@ public sealed class PatientPhiEncryptionTests : IDisposable
 
         /// <inheritdoc/>
         public byte[] GetDatasetSigningKey() => new byte[32];
+
+        /// <inheritdoc/>
+        public byte[] GetOrCreateSecret(string fileName, int lengthBytes = 32) => new byte[lengthBytes];
     }
 
     /// <summary>

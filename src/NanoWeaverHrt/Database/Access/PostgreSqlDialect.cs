@@ -36,4 +36,61 @@ public sealed class PostgreSqlDialect : ISqlDialect
 
     /// <inheritdoc/>
     public object TimestampValueOrNull(DateTimeOffset? value) => value.HasValue ? TimestampValue(value.Value) : DBNull.Value;
+
+    /// <inheritdoc/>
+    public string Parameter(string name)
+    {
+        // WHAT: Normalizes parameter identifier to @name for PostgreSQL queries.
+        // WHY:  Npgsql standard parameters are prefixed with '@'.
+        // HOW:  Trims leading '@' and '$' then prepends '@'.
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        return $"@{name.TrimStart('@', '$')}";
+    }
+
+    /// <inheritdoc/>
+    public string BuildUpsertSql(
+        string tableName,
+        IReadOnlyList<string> columns,
+        IReadOnlyList<string> conflictColumns,
+        IReadOnlyList<string> updateColumns,
+        IReadOnlyList<string>? parameterNames = null)
+    {
+        // WHAT: Builds PostgreSQL ON CONFLICT DO UPDATE upsert statement.
+        // WHY:  Standardizes upsert statements without dialect divergence.
+        // HOW:  Formats column, value, conflict, and EXCLUDED assignment clauses.
+        ArgumentException.ThrowIfNullOrWhiteSpace(tableName);
+        ArgumentNullException.ThrowIfNull(columns);
+        ArgumentNullException.ThrowIfNull(conflictColumns);
+        ArgumentNullException.ThrowIfNull(updateColumns);
+
+        IReadOnlyList<string> valueParams = parameterNames ?? columns;
+        string cols = string.Join(", ", columns);
+        string vals = string.Join(", ", valueParams.Select(Parameter));
+        string conflicts = string.Join(", ", conflictColumns);
+        string updates = string.Join(", ", updateColumns.Select(c => $"{c} = EXCLUDED.{c}"));
+
+        return $"INSERT INTO {tableName} ({cols}) VALUES ({vals}) ON CONFLICT ({conflicts}) DO UPDATE SET {updates}";
+    }
+
+    /// <inheritdoc/>
+    public string BuildInsertIgnoreSql(
+        string tableName,
+        IReadOnlyList<string> columns,
+        IReadOnlyList<string> conflictColumns,
+        IReadOnlyList<string>? parameterNames = null)
+    {
+        // WHAT: Builds PostgreSQL ON CONFLICT DO NOTHING statement.
+        // WHY:  Ignores primary key / unique constraint collisions idempotently.
+        // HOW:  Formats column, value, and ON CONFLICT DO NOTHING clauses.
+        ArgumentException.ThrowIfNullOrWhiteSpace(tableName);
+        ArgumentNullException.ThrowIfNull(columns);
+        ArgumentNullException.ThrowIfNull(conflictColumns);
+
+        IReadOnlyList<string> valueParams = parameterNames ?? columns;
+        string cols = string.Join(", ", columns);
+        string vals = string.Join(", ", valueParams.Select(Parameter));
+        string conflicts = string.Join(", ", conflictColumns);
+
+        return $"INSERT INTO {tableName} ({cols}) VALUES ({vals}) ON CONFLICT ({conflicts}) DO NOTHING";
+    }
 }

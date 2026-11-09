@@ -52,6 +52,11 @@ public sealed class ProfileDataProtector
     private const string EncryptedPrefix = "data:application/encrypted;base64,";
 
     /// <summary>
+    /// Compact encrypted envelope prefix.
+    /// </summary>
+    private const string CompactEncryptedPrefix = "enc:v1:";
+
+    /// <summary>
     /// Error text used when an envelope claims to be protected but is structurally unusable.
     /// </summary>
     /// <remarks>
@@ -134,7 +139,7 @@ public sealed class ProfileDataProtector
             return string.Empty;
         }
 
-        if (plainDataUri.StartsWith(EncryptedPrefix, StringComparison.OrdinalIgnoreCase))
+        if (IsEncrypted(plainDataUri))
         {
             return plainDataUri;
         }
@@ -174,7 +179,16 @@ public sealed class ProfileDataProtector
             return string.Empty;
         }
 
-        if (!encryptedDataUri.StartsWith(EncryptedPrefix, StringComparison.OrdinalIgnoreCase))
+        int prefixLength;
+        if (encryptedDataUri.StartsWith(EncryptedPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            prefixLength = EncryptedPrefix.Length;
+        }
+        else if (encryptedDataUri.StartsWith(CompactEncryptedPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            prefixLength = CompactEncryptedPrefix.Length;
+        }
+        else
         {
             return encryptedDataUri;
         }
@@ -182,7 +196,7 @@ public sealed class ProfileDataProtector
         byte[] payload;
         try
         {
-            payload = Convert.FromBase64String(encryptedDataUri[EncryptedPrefix.Length..]);
+            payload = Convert.FromBase64String(encryptedDataUri[prefixLength..]);
         }
         catch (FormatException ex)
         {
@@ -351,10 +365,11 @@ public sealed class ProfileDataProtector
     /// Determines whether a stored value already carries the encrypted envelope prefix.
     /// </summary>
     /// <param name="value">The stored column value.</param>
-    /// <returns><c>true</c> when the value starts with the envelope prefix.</returns>
+    /// <returns><c>true</c> when the value starts with either recognized encrypted prefix (<c>data:application/encrypted;base64,</c> or <c>enc:v1:</c>).</returns>
     /// <remarks>The migration uses this to stay idempotent: an envelope is never encrypted a second time.</remarks>
     public static bool IsEncrypted(string? value) =>
-        value is not null && value.StartsWith(EncryptedPrefix, StringComparison.OrdinalIgnoreCase);
+        value is not null && (value.StartsWith(EncryptedPrefix, StringComparison.OrdinalIgnoreCase) ||
+                              value.StartsWith(CompactEncryptedPrefix, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// Error message used when a PHI column holds a non-empty value that is not an encrypted envelope.
@@ -416,7 +431,16 @@ public sealed class ProfileDataProtector
         // HOW:  Validates the envelope prefix and length, then runs AES-256-GCM decryption against _encryptionKey only.
         ArgumentNullException.ThrowIfNull(storedValue);
 
-        if (!storedValue.StartsWith(EncryptedPrefix, StringComparison.OrdinalIgnoreCase))
+        int prefixLength;
+        if (storedValue.StartsWith(EncryptedPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            prefixLength = EncryptedPrefix.Length;
+        }
+        else if (storedValue.StartsWith(CompactEncryptedPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            prefixLength = CompactEncryptedPrefix.Length;
+        }
+        else
         {
             throw new CryptographicException(UnprotectedFieldMessage);
         }
@@ -424,7 +448,7 @@ public sealed class ProfileDataProtector
         byte[] payload;
         try
         {
-            payload = Convert.FromBase64String(storedValue[EncryptedPrefix.Length..]);
+            payload = Convert.FromBase64String(storedValue[prefixLength..]);
         }
         catch (FormatException ex)
         {

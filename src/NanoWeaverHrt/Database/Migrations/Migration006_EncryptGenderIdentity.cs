@@ -93,23 +93,39 @@ public sealed class Migration006_EncryptGenderIdentity : DatabaseMigrationBase
         //       the two defaulted columns. Both statements are harmless to repeat.
         ArgumentNullException.ThrowIfNull(dialect);
 
-        if (!dialect.StartsWith("postgres", StringComparison.OrdinalIgnoreCase))
+        if (dialect.StartsWith("postgres", StringComparison.OrdinalIgnoreCase))
         {
-            return string.Empty;
+            List<string> statements = [];
+            foreach (string column in Columns)
+            {
+                statements.Add($"ALTER TABLE {Table} ALTER COLUMN {column} TYPE TEXT");
+            }
+
+            foreach (string column in DefaultedColumns)
+            {
+                statements.Add($"ALTER TABLE {Table} ALTER COLUMN {column} DROP DEFAULT");
+            }
+
+            return string.Join(";\n", statements) + ";";
         }
 
-        List<string> statements = [];
-        foreach (string column in Columns)
+        if (dialect.StartsWith("mysql", StringComparison.OrdinalIgnoreCase) || dialect.StartsWith("mariadb", StringComparison.OrdinalIgnoreCase))
         {
-            statements.Add($"ALTER TABLE {Table} ALTER COLUMN {column} TYPE TEXT");
+            List<string> statements = [];
+            foreach (string column in Columns)
+            {
+                statements.Add($"ALTER TABLE {Table} MODIFY COLUMN {column} TEXT");
+            }
+
+            foreach (string column in DefaultedColumns)
+            {
+                statements.Add($"ALTER TABLE {Table} ALTER COLUMN {column} DROP DEFAULT");
+            }
+
+            return string.Join(";\n", statements) + ";";
         }
 
-        foreach (string column in DefaultedColumns)
-        {
-            statements.Add($"ALTER TABLE {Table} ALTER COLUMN {column} DROP DEFAULT");
-        }
-
-        return string.Join(";\n", statements) + ";";
+        return string.Empty;
     }
 
     /// <inheritdoc/>
@@ -119,7 +135,7 @@ public sealed class Migration006_EncryptGenderIdentity : DatabaseMigrationBase
         // WHY:  Columns must be wide enough before ciphertext is written into them.
         // HOW:  Runs the DDL from the base class, then walks the profile table inside the same transaction.
         await base.UpAsync(connection, transaction, dialect, ct);
-        await EncryptRowsAsync(connection, transaction, ct);
+        await EncryptRowsAsync(connection, transaction, dialect, ct);
     }
 
     /// <summary>
@@ -127,68 +143,77 @@ public sealed class Migration006_EncryptGenderIdentity : DatabaseMigrationBase
     /// </summary>
     /// <param name="connection">Open connection.</param>
     /// <param name="transaction">Active migration transaction, if any.</param>
+    /// <param name="dialect">Database engine dialect.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>A task that completes when every row has been rewritten.</returns>
     /// <exception cref="InvalidOperationException">A value needs encrypting but no protector was supplied.</exception>
-    private async Task EncryptRowsAsync(DbConnection connection, DbTransaction? transaction, CancellationToken ct)
+    private async Task EncryptRowsAsync(DbConnection connection, DbTransaction? transaction, string dialect, CancellationToken ct)
     {
         // WHAT: Finds rows holding plaintext and rewrites only those.
         // WHY:  Rows already encrypted must not be touched (idempotence), and the rows are read fully before
         //       any update because SQLite cannot update through a connection with an open reader.
         // HOW:  Selects key plus columns, collects the pending updates, closes the reader, then issues one
-        //       parameterized UPDATE per changed row.
+        //       parameterized UPDATE per changed row with dialect-aware parameter syntax.
         List<(string Key, string?[] Values)> pending = [];
 
         await using (DbCommand select = connection.CreateCommand())
         {
             select.Transaction = transaction;
             select.CommandText = $"SELECT {KeyColumn}, {string.Join(", ", Columns)} FROM {Table}";
-            await using DbDataReader reader = await select.ExecuteReaderAsync(ct);
-            while (await reader.ReadAsync(ct))
             {
-                string key = reader.GetString(0);
-                string?[] values = new string?[Columns.Length];
-                bool changed = false;
-                for (int i = 0; i < Columns.Length; i++)
+                await using DbDataReader reader = await select.ExecuteReaderAsync(ct);
+                while (await reader.ReadAsync(ct))
                 {
-                    string? current = reader.IsDBNull(i + 1) ? null : reader.GetString(i + 1);
-                    if (string.IsNullOrEmpty(current) || ProfileDataProtector.IsEncrypted(current))
+                    string key = reader.GetString(0);
+                    string?[] values = new string?[Columns.Length];
+                    bool changed = false;
+                    for (int i = 0; i < Columns.Length; i++)
                     {
-                        values[i] = current;
-                        continue;
+                        string? current = reader.IsDBNull(i + 1) ? null : reader.GetString(i + 1);
+                        if (string.IsNullOrEmpty(current) || ProfileDataProtector.IsEncrypted(current))
+                        {
+                            values[i] = current;
+                            continue;
+                        }
+
+                        if (_protector is null)
+                        {
+                            throw new InvalidOperationException(
+                                "Migration 006 cannot encrypt existing gender-identity data because no PHI encryption key is available. Refusing to record the migration as applied.");
+                        }
+
+                        values[i] = _protector.EncryptField(current);
+                        changed = true;
                     }
 
-                    if (_protector is null)
+                    if (changed)
                     {
-                        throw new InvalidOperationException(
-                            "Migration 006 cannot encrypt existing gender-identity data because no PHI encryption key is available. Refusing to record the migration as applied.");
+                        pending.Add((key, values));
                     }
-
-                    values[i] = _protector.EncryptField(current);
-                    changed = true;
-                }
-
-                if (changed)
-                {
-                    pending.Add((key, values));
                 }
             }
         }
 
+        bool isDuckDb = dialect.StartsWith("duckdb", StringComparison.OrdinalIgnoreCase);
+        string sqlPrefix = isDuckDb ? "$" : "@";
+        string paramPrefix = isDuckDb ? string.Empty : "@";
+
         foreach ((string key, string?[] values) in pending)
         {
-            await using DbCommand update = connection.CreateCommand();
-            update.Transaction = transaction;
-            update.CommandText = $"UPDATE {Table} SET "
-                + string.Join(", ", Columns.Select((column, i) => $"{column} = @v{i}"))
-                + $" WHERE {KeyColumn} = @key";
-            for (int i = 0; i < values.Length; i++)
             {
-                WeaverDbParameters.AddNullable(update, $"@v{i}", values[i]);
-            }
+                await using DbCommand update = connection.CreateCommand();
+                update.Transaction = transaction;
+                update.CommandText = $"UPDATE {Table} SET "
+                    + string.Join(", ", Columns.Select((column, i) => $"{column} = {sqlPrefix}v{i}"))
+                    + $" WHERE {KeyColumn} = {sqlPrefix}key";
+                for (int i = 0; i < values.Length; i++)
+                {
+                    WeaverDbParameters.AddNullable(update, $"{paramPrefix}v{i}", values[i]);
+                }
 
-            WeaverDbParameters.Add(update, "@key", key);
-            await update.ExecuteNonQueryAsync(ct);
+                WeaverDbParameters.Add(update, $"{paramPrefix}key", key);
+                await update.ExecuteNonQueryAsync(ct);
+            }
         }
     }
 }

@@ -573,6 +573,9 @@ public sealed class SubjectAccessServiceTests : IDisposable
             new() { PseudonymSubjectId = rawSubjectIdentifier, SanitizedData = rawGenomicData };
 
         /// <inheritdoc/>
+        public string PseudonymizeSubjectId(string rawSubjectIdentifier) => "sub_" + rawSubjectIdentifier;
+
+        /// <inheritdoc/>
         public ComplianceStatusReport GetComplianceStatus() => new();
     }
 }

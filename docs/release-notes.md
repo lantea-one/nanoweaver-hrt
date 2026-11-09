@@ -4,6 +4,31 @@
 
 ---
 
+## v2026.11.09.1 — Code-Complete Milestone: Multi-Engine Persistence Parity, Cryptographic Audit Determinism, Minimal API Security Hardening & 100.00% Un-Excluded Coverage Ratchet (2026-11-09)
+
+Code-complete milestone release resolving Work Packages `P141–P145` (Forgejo Issues `#144–#148`), delivering 4-engine SQL DDL and DML parity across SQLite, PostgreSQL, DuckDB, and MySQL/MariaDB (`MySqlConnector`), isolated `0700` node secret storage with persistent HIPAA/GDPR pseudonymization key provisioning, microsecond-precision FDA 21 CFR Part 11 audit ledger hash chains, full-stream FASTA/VCF Safe Harbor de-identification, minimal API security gating and logout session revocation, and a downward ratchet to **0 uncovered compiler-generated state machine lines (`100.00%` un-excluded line coverage)** in `coverage-baseline.json`.
+
+### Highlights
+* **Node Secret Store Isolation, Persistent Pseudonymization Key & Multi-Engine Dialect DDL Parity (Forgejo #144 / P141)**:
+  - Hardened `NodeSecretStore` to place `weaver-keys/` as a sibling directory outside `TRAJECTORY_INCOMING_DIR` with `0700` directory and `0600` file permissions, provisioning a persistent 32-byte `node_pseudonym_secret.key` (`EnsurePseudonymizationSecretKey`).
+  - Added `MySqlConnector` (`2.4.0`) to `NanoWeaverHrt.csproj` and wired `DatabaseEngineProvider.MySql` and `DatabaseEngineProvider.DuckDb` in `WeaverDbConnectionFactory`.
+  - Extended `Migration001` through `Migration011` with full 4-engine DDL parity (`GetUpSql(DatabaseEngineProvider provider)`) supporting SQLite, PostgreSQL, DuckDB, and MySQL (`VARCHAR` key lengths for indexed columns and `INSERT IGNORE` seed semantics).
+* **Multi-Engine Repository Upsert/Parameter Dialect Parity & Async Audit Ledger Refactoring (Forgejo #145 / P142)**:
+  - Extended `ISqlDialect` (`SqliteDialect`, `PostgreSqlDialect`, `DuckDbDialect`, `MySqlDialect`) and `WeaverDbParameters` with dialect-aware upsert builders (`BuildUpsertSql`, `BuildInsertIgnoreSql`) and positional/named parameter formatting across all 8 repositories.
+  - Refactored `AuditLedgerRepository` to use asynchronous `ExecuteNonQueryAsync` and `ExecuteReaderAsync` operations (`AppendRecordAsync`, `GetLatestRecordsAsync`, `GetAllRecordsChronologicalAsync`).
+* **Cryptographic Audit Ledger Microsecond Determinism, Full-Stream De-Identification & Token Nonce Hardening (Forgejo #146 / P143)**:
+  - Upgraded `ComplianceAuditService` hash-chain canonicalization to microsecond precision (`yyyy-MM-ddTHH:mm:ss.ffffffZ`), serialized append-and-sign under a deterministic `SemaphoreSlim`, and replaced 64-bit truncated subject pseudonyms with 128-bit (32-hex-character) HMAC-SHA256 digests (`sub_<32hex>`).
+  - Updated `DeIdentifyGenomicData` to scrub Safe Harbor PII patterns across the entire payload including VCF `##SAMPLE=`/`#CHROM` headers and inline comments, and removed the hardcoded legacy fallback key from `ProfileDataProtector`.
+  - Added 128-bit cryptographic token ID (`jti`) claims to `AuthTokenClaims` and `UserAuthenticationService`, plus streaming SHA-256 hashing in `AssetIntegrityService`.
+* **Minimal API Security Gating, Session Revocation, Forwarded Headers & RFC 7807 Standardization (Forgejo #147 / P144)**:
+  - Enabled `UseForwardedHeaders` (`X-Forwarded-For`, `X-Forwarded-Proto`), added `/api/share-keys/redeem` to the unauthenticated bootstrap allowlist, and wired `IServerSessionActivityTracker.Revoke` into `POST /api/auth/logout` (including `AccessGate.Web` support).
+  - Added `/api/genomics`, `/api/precision/genomics`, `/api/trajectories/analytics/query`, `/api/endocrine/closed-loop/simulate`, and `/api/fabrication/gel/analyze` to `ResearchRoutes` (`AdministratorOrResearcher`).
+  - Fixed chunk byte-offset multiplication in `GET /api/federation/chunks/{fileName}`, prevented path traversal and host path disclosure on `POST /api/datasets/export-encrypted`, and standardized caller attribution and RFC 7807 `SecureProblemDetails` on `POST /api/compliance/crypto-shred`.
+* **Coverage Baseline Ratchet to 0 Uncovered Lines & Parallel Environment Variable Test Isolation (Forgejo #148 / P145)**:
+  - Isolated environment-mutating test suites under `[Collection("AcceleratorTelemetryEnvironmentTests")]` and eliminated all 27 remaining uncovered compiler-generated state machine lines in `Program.cs`, ratcheting `coverage-baseline.json` down to `0` uncovered lines (`100.00%` un-excluded line coverage).
+
+---
+
 ## v2026.11.04.10 — Code-Complete Milestone: Total 100% Client REST SDK Parity (Simulation Campaigns, Web Session Auth & Healthz Liveness Probe) (2026-11-04)
 
 Code-complete milestone release resolving Work Packages `P136–P140` (Forgejo Issues `#139–#143`), achieving total 100% route and endpoint parity across the client REST SDK (`INanoWeaverNodeClient`, `NanoWeaverNodeClient`, and `WeaverNodeApiClient`) by implementing typed simulation campaign executions (oxDNA serum stability, LAMMPS aptamer gating conformational thermodynamics, steroid cargo retention and micro-leakage dynamics, and multi-compartment PBPK endocrine pharmacokinetics), browser-signed challenge token exchange with HTTP-only session cookie issuance (`POST /api/auth/web-token`), and cluster container runtime operational health liveness probe (`GET /healthz`); and synchronizing CalVer release versioning across all 12 packaging manifests and platform targets.

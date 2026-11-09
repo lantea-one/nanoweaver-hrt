@@ -294,9 +294,16 @@ public sealed class UserAuthenticationService : IUserAuthenticationService, IDis
         string signatureBase64 = tokenSpan[(dotIndex + 1)..].ToString();
 
         // Verify HMAC-SHA256 signature
-        byte[] payloadBytes = Convert.FromBase64String(Base64UrlDecode(payloadBase64));
+        string payloadB64 = Base64UrlDecode(payloadBase64);
+        string sigB64 = Base64UrlDecode(signatureBase64);
+
+        if (!TryFromBase64String(payloadB64, out byte[] payloadBytes) ||
+            !TryFromBase64String(sigB64, out byte[] actualSig))
+        {
+            return (false, null, "Malformed bearer token encoding.");
+        }
+
         byte[] expectedSig = HMACSHA256.HashData(_tokenHmacKey.Span, payloadBytes);
-        byte[] actualSig = Convert.FromBase64String(Base64UrlDecode(signatureBase64));
 
         if (!CryptographicOperations.FixedTimeEquals(expectedSig, actualSig))
         {
@@ -498,13 +505,18 @@ public sealed class UserAuthenticationService : IUserAuthenticationService, IDis
     {
         ArgumentNullException.ThrowIfNull(user);
         DateTimeOffset now = DateTimeOffset.UtcNow;
+        byte[] jtiBytes = new byte[16];
+        RandomNumberGenerator.Fill(jtiBytes);
+        string jti = Convert.ToHexString(jtiBytes).ToLowerInvariant();
+
         AuthTokenClaims claims = new()
         {
             Username = user.Username,
             Role = user.Role,
             AccessGate = user.AccessGate,
             IssuedAtUnixSeconds = now.ToUnixTimeSeconds(),
-            ExpiresAtUnixSeconds = now.Add(TokenLifetime).ToUnixTimeSeconds()
+            ExpiresAtUnixSeconds = now.Add(TokenLifetime).ToUnixTimeSeconds(),
+            Jti = jti
         };
 
         byte[] payloadBytes = JsonSerializer.SerializeToUtf8Bytes(claims);
@@ -697,5 +709,33 @@ public sealed class UserAuthenticationService : IUserAuthenticationService, IDis
         {
             throw new ArgumentException($"Unsupported key algorithm: {algorithm}", nameof(algorithm));
         }
+    }
+
+    /// <summary>
+    /// Attempts to decode a Base64-encoded string safely into a byte array without throwing format exceptions.
+    /// </summary>
+    /// <param name="base64">The Base64 string to decode.</param>
+    /// <param name="bytes">When this method returns <c>true</c>, contains the decoded bytes; otherwise, an empty array.</param>
+    /// <returns><c>true</c> if decoding succeeded; otherwise, <c>false</c>.</returns>
+    private static bool TryFromBase64String(string base64, out byte[] bytes)
+    {
+        // WHAT: Decodes a standard Base64 string safely without throwing FormatException.
+        // WHY:  Malformed bearer tokens provided by untrusted HTTP clients must fail closed cleanly without throwing exceptions.
+        // HOW:  Validates length, allocates destination buffer, and executes Convert.TryFromBase64Chars on the character span.
+        if (string.IsNullOrEmpty(base64) || base64.Length % 4 != 0)
+        {
+            bytes = [];
+            return false;
+        }
+
+        Span<byte> buffer = base64.Length <= 1024 ? stackalloc byte[(base64.Length * 3) / 4] : new byte[(base64.Length * 3) / 4];
+        if (Convert.TryFromBase64Chars(base64.AsSpan(), buffer, out int bytesWritten))
+        {
+            bytes = buffer[..bytesWritten].ToArray();
+            return true;
+        }
+
+        bytes = [];
+        return false;
     }
 }

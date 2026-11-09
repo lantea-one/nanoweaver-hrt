@@ -52,6 +52,44 @@ CREATE TABLE IF NOT EXISTS weaver_audit_ledger (
 );";
         }
 
+        if (dialect.StartsWith("duckdb", StringComparison.OrdinalIgnoreCase))
+        {
+            return @"
+CREATE TABLE IF NOT EXISTS weaver_audit_ledger (
+    sequence_number     BIGINT      PRIMARY KEY,
+    timestamp_utc       TIMESTAMP   NOT NULL,
+    previous_hash       TEXT        NOT NULL,
+    current_hash        TEXT        NOT NULL,
+    operator_id         TEXT        NOT NULL,
+    action              TEXT        NOT NULL,
+    resource            TEXT        NOT NULL,
+    details_json        TEXT        NOT NULL,
+    signature_algorithm TEXT        NOT NULL,
+    signer_key_id       TEXT        NOT NULL,
+    signature_base64    TEXT        NOT NULL,
+    signed_at_utc       TIMESTAMP   NOT NULL
+);";
+        }
+
+        if (dialect.StartsWith("mysql", StringComparison.OrdinalIgnoreCase) || dialect.StartsWith("mariadb", StringComparison.OrdinalIgnoreCase))
+        {
+            return @"
+CREATE TABLE IF NOT EXISTS weaver_audit_ledger (
+    sequence_number     BIGINT      PRIMARY KEY,
+    timestamp_utc       DATETIME(6) NOT NULL,
+    previous_hash       TEXT        NOT NULL,
+    current_hash        TEXT        NOT NULL,
+    operator_id         TEXT        NOT NULL,
+    action              TEXT        NOT NULL,
+    resource            TEXT        NOT NULL,
+    details_json        TEXT        NOT NULL,
+    signature_algorithm TEXT        NOT NULL,
+    signer_key_id       TEXT        NOT NULL,
+    signature_base64    TEXT        NOT NULL,
+    signed_at_utc       DATETIME(6) NOT NULL
+);";
+        }
+
         return @"
 CREATE TABLE IF NOT EXISTS weaver_audit_ledger (
     sequence_number     BIGINT      PRIMARY KEY,

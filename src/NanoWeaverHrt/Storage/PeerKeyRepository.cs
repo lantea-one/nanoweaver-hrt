@@ -13,8 +13,8 @@ namespace NanoWeaverHrt.Storage;
 /// <strong>What is this:</strong> The persistence adapter for peer dataset-signing public keys and their revocation state.
 /// </para>
 /// <para>
-/// <strong>Why it exists:</strong> Provides engine-neutral SQL persistence across SQLite and PostgreSQL using
-/// <c>ON CONFLICT (key_id) DO NOTHING</c> so a revoked peer key can never be overwritten or reactivated.
+/// <strong>Why it exists:</strong> Provides engine-neutral SQL persistence across SQLite, PostgreSQL, DuckDB, and MySQL using
+/// dialect-compliant insert-ignore statements so a revoked peer key can never be overwritten or reactivated.
 /// </para>
 /// <para>
 /// <strong>How it works:</strong> Uses a single SQL statement per operation with dialect-bound timestamp parameters
@@ -28,6 +28,27 @@ public sealed class PeerKeyRepository : IPeerKeyRegistry
     /// </summary>
     private const string Columns =
         "key_id, label, key_algorithm, public_key, registered_by, registered_at_utc, revoked_by, revoked_at_utc";
+
+    /// <summary>
+    /// Columns array for dialect statements.
+    /// </summary>
+    private static readonly string[] ColumnsArray =
+    [
+        "key_id", "label", "key_algorithm", "public_key", "registered_by", "registered_at_utc", "revoked_by", "revoked_at_utc"
+    ];
+
+    /// <summary>
+    /// Conflict key columns.
+    /// </summary>
+    private static readonly string[] ConflictColumns = ["key_id"];
+
+    /// <summary>
+    /// Parameter names corresponding to <see cref="ColumnsArray"/>.
+    /// </summary>
+    private static readonly string[] ParameterNames =
+    [
+        "id", "label", "alg", "pub", "regBy", "regAt", "revBy", "revAt"
+    ];
 
     /// <summary>
     /// Database connection factory providing open sessions and dialect primitives.
@@ -49,21 +70,21 @@ public sealed class PeerKeyRepository : IPeerKeyRegistry
     public async Task<bool> TryRegisterAsync(PeerKeyRecord record, CancellationToken ct = default)
     {
         // WHAT: Inserts a new peer key row into weaver_peer_keys if key_id is not already present.
-        // WHY:  ON CONFLICT (key_id) DO NOTHING prevents duplicate registration and forbids resurrecting revoked keys.
+        // WHY:  Insert-ignore semantics prevent duplicate registration and forbid resurrecting revoked keys.
         // HOW:  Binds all columns through WeaverDbParameters and session.Dialect timestamp helpers and checks affected rows.
         int affected;
         {
             await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct).ConfigureAwait(false);
-            await using DbCommand cmd = session.CreateCommand(
-                $"INSERT INTO weaver_peer_keys ({Columns}) VALUES (@id, @label, @alg, @pub, @regBy, @regAt, @revBy, @revAt) ON CONFLICT (key_id) DO NOTHING");
-            WeaverDbParameters.Add(cmd, "@id", record.KeyId);
-            WeaverDbParameters.Add(cmd, "@label", record.Label);
-            WeaverDbParameters.Add(cmd, "@alg", record.Algorithm.ToString());
-            WeaverDbParameters.Add(cmd, "@pub", record.PublicKeyBase64);
-            WeaverDbParameters.Add(cmd, "@regBy", record.RegisteredBy);
-            WeaverDbParameters.Add(cmd, "@regAt", session.Dialect.TimestampValue(record.RegisteredAtUtc));
-            WeaverDbParameters.AddNullable(cmd, "@revBy", record.RevokedBy);
-            WeaverDbParameters.Add(cmd, "@revAt", session.Dialect.TimestampValueOrNull(record.RevokedAtUtc));
+            string sql = session.Dialect.BuildInsertIgnoreSql("weaver_peer_keys", ColumnsArray, ConflictColumns, ParameterNames);
+            await using DbCommand cmd = session.CreateCommand(sql);
+            WeaverDbParameters.Add(cmd, "id", record.KeyId);
+            WeaverDbParameters.Add(cmd, "label", record.Label);
+            WeaverDbParameters.Add(cmd, "alg", record.Algorithm.ToString());
+            WeaverDbParameters.Add(cmd, "pub", record.PublicKeyBase64);
+            WeaverDbParameters.Add(cmd, "regBy", record.RegisteredBy);
+            WeaverDbParameters.Add(cmd, "regAt", session.Dialect.TimestampValue(record.RegisteredAtUtc));
+            WeaverDbParameters.AddNullable(cmd, "revBy", record.RevokedBy);
+            WeaverDbParameters.Add(cmd, "revAt", session.Dialect.TimestampValueOrNull(record.RevokedAtUtc));
             affected = await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
 
@@ -80,8 +101,8 @@ public sealed class PeerKeyRepository : IPeerKeyRegistry
         {
             await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct).ConfigureAwait(false);
             await using DbCommand cmd = session.CreateCommand(
-                $"SELECT {Columns} FROM weaver_peer_keys WHERE key_id = @id AND revoked_at_utc IS NULL");
-            WeaverDbParameters.Add(cmd, "@id", keyId);
+                $"SELECT {Columns} FROM weaver_peer_keys WHERE key_id = {session.Dialect.Parameter("id")} AND revoked_at_utc IS NULL");
+            WeaverDbParameters.Add(cmd, "id", keyId);
             await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
             if (await reader.ReadAsync(ct).ConfigureAwait(false))
             {
@@ -123,20 +144,20 @@ public sealed class PeerKeyRepository : IPeerKeyRegistry
         {
             await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct).ConfigureAwait(false);
             int affected;
-            await using (DbCommand update = session.CreateCommand(
-                "UPDATE weaver_peer_keys SET revoked_by = @by, revoked_at_utc = @at WHERE key_id = @id AND revoked_at_utc IS NULL"))
             {
-                WeaverDbParameters.Add(update, "@by", revokedBy);
-                WeaverDbParameters.Add(update, "@at", session.Dialect.TimestampValue(revokedAtUtc));
-                WeaverDbParameters.Add(update, "@id", keyId);
+                await using DbCommand update = session.CreateCommand(
+                    $"UPDATE weaver_peer_keys SET revoked_by = {session.Dialect.Parameter("by")}, revoked_at_utc = {session.Dialect.Parameter("at")} WHERE key_id = {session.Dialect.Parameter("id")} AND revoked_at_utc IS NULL");
+                WeaverDbParameters.Add(update, "by", revokedBy);
+                WeaverDbParameters.Add(update, "at", session.Dialect.TimestampValue(revokedAtUtc));
+                WeaverDbParameters.Add(update, "id", keyId);
                 affected = await update.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
             }
 
             if (affected == 1)
             {
                 await using DbCommand select = session.CreateCommand(
-                    $"SELECT {Columns} FROM weaver_peer_keys WHERE key_id = @id");
-                WeaverDbParameters.Add(select, "@id", keyId);
+                    $"SELECT {Columns} FROM weaver_peer_keys WHERE key_id = {session.Dialect.Parameter("id")}");
+                WeaverDbParameters.Add(select, "id", keyId);
                 await using DbDataReader reader = await select.ExecuteReaderAsync(ct).ConfigureAwait(false);
                 await reader.ReadAsync(ct).ConfigureAwait(false);
                 revoked = MapPeerKey(reader);
@@ -151,8 +172,12 @@ public sealed class PeerKeyRepository : IPeerKeyRegistry
     /// </summary>
     /// <param name="reader">The active data reader positioned on a row.</param>
     /// <returns>The hydrated <see cref="PeerKeyRecord"/>.</returns>
-    internal static PeerKeyRecord MapPeerKey(DbDataReader reader) =>
-        new()
+    internal static PeerKeyRecord MapPeerKey(DbDataReader reader)
+    {
+        // WHAT: Reads all 8 peer key columns from an open DbDataReader row.
+        // WHY:  Centralizes mapping between relational schema and PeerKeyRecord.
+        // HOW:  Parses KeyAlgorithm enum, string identifiers, and dialect-safe timestamps.
+        return new PeerKeyRecord
         {
             KeyId = reader.GetString(0),
             Label = reader.GetString(1),
@@ -163,4 +188,5 @@ public sealed class PeerKeyRepository : IPeerKeyRegistry
             RevokedBy = reader.IsDBNull(6) ? null : reader.GetString(6),
             RevokedAtUtc = WeaverDbValues.ReadNullableTimestamp(reader, 7)
         };
+    }
 }

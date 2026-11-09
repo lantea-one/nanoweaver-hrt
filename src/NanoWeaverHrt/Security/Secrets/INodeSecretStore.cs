@@ -64,4 +64,12 @@ public interface INodeSecretStore
     /// </summary>
     /// <returns>A 32-byte private seed array for Ed25519 signing.</returns>
     byte[] GetDatasetSigningKey();
+
+    /// <summary>
+    /// Loads an existing secret key file from the node keys directory or generates and atomically persists a new random key.
+    /// </summary>
+    /// <param name="fileName">The key file name within the node keys directory.</param>
+    /// <param name="lengthBytes">The expected key length in bytes (defaults to 32 bytes / 256 bits).</param>
+    /// <returns>The persisted or newly generated secret key bytes.</returns>
+    byte[] GetOrCreateSecret(string fileName, int lengthBytes = 32);
 }

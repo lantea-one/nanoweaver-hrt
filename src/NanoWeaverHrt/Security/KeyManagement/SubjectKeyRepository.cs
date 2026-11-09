@@ -16,6 +16,29 @@ public sealed class SubjectKeyRepository : ISubjectKeyRepository
         "subject_key, subject_id, key_id, algorithm, public_key_base64, sealed_private_key, is_shredded, created_at_utc, shredded_at_utc";
 
     /// <summary>
+    /// Columns array for dialect statements.
+    /// </summary>
+    private static readonly string[] ColumnsArray =
+    [
+        "subject_key", "subject_id", "key_id", "algorithm", "public_key_base64",
+        "sealed_private_key", "is_shredded", "created_at_utc", "shredded_at_utc"
+    ];
+
+    /// <summary>
+    /// Conflict key columns.
+    /// </summary>
+    private static readonly string[] ConflictColumns = ["subject_key"];
+
+    /// <summary>
+    /// Parameter names corresponding to <see cref="ColumnsArray"/>.
+    /// </summary>
+    private static readonly string[] ParameterNames =
+    [
+        "k", "id", "kid", "alg", "pub",
+        "priv", "ishred", "c", "shred"
+    ];
+
+    /// <summary>
     /// Database connection factory providing open sessions and dialect primitives.
     /// </summary>
     private readonly IWeaverDbConnectionFactory _connectionFactory;
@@ -62,8 +85,8 @@ public sealed class SubjectKeyRepository : ISubjectKeyRepository
         {
             await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct).ConfigureAwait(false);
             await using DbCommand cmd = session.CreateCommand(
-                $"SELECT {Columns} FROM weaver_subject_keys WHERE subject_key = @k");
-            WeaverDbParameters.Add(cmd, "@k", subjectKey);
+                $"SELECT {Columns} FROM weaver_subject_keys WHERE subject_key = {session.Dialect.Parameter("k")}");
+            WeaverDbParameters.Add(cmd, "k", subjectKey);
             await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
             if (await reader.ReadAsync(ct).ConfigureAwait(false))
             {
@@ -83,7 +106,7 @@ public sealed class SubjectKeyRepository : ISubjectKeyRepository
     public async Task<bool> TryInsertActiveAsync(SubjectKeyRow row, CancellationToken ct = default)
     {
         // WHAT: Inserts a new active subject key row if no row exists for the same subject_key.
-        // WHY:  Uses ON CONFLICT DO NOTHING so an existing active key or erasure tombstone can never be overwritten.
+        // WHY:  Uses dialect-compliant insert-ignore so an existing active key or erasure tombstone can never be overwritten.
         // HOW:  Validates that active key columns are present, non-empty, and valid Base64, then executes parameterized INSERT.
         if (row.IsShredded || string.IsNullOrWhiteSpace(row.KeyId) || string.IsNullOrWhiteSpace(row.PublicKeyBase64) || string.IsNullOrWhiteSpace(row.SealedPrivateKey))
         {
@@ -118,15 +141,17 @@ public sealed class SubjectKeyRepository : ISubjectKeyRepository
         int affected;
         {
             await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct).ConfigureAwait(false);
-            await using DbCommand cmd = session.CreateCommand(
-                $"INSERT INTO weaver_subject_keys ({Columns}) VALUES (@k, @id, @kid, @alg, @pub, @priv, {session.Dialect.FalseLiteral}, @c, NULL) ON CONFLICT (subject_key) DO NOTHING");
-            WeaverDbParameters.Add(cmd, "@k", row.SubjectKey);
-            WeaverDbParameters.Add(cmd, "@id", row.SubjectId);
-            WeaverDbParameters.Add(cmd, "@kid", row.KeyId);
-            WeaverDbParameters.Add(cmd, "@alg", row.Algorithm);
-            WeaverDbParameters.Add(cmd, "@pub", pubKey);
-            WeaverDbParameters.Add(cmd, "@priv", sealedKey);
-            WeaverDbParameters.Add(cmd, "@c", session.Dialect.TimestampValue(row.CreatedAtUtc));
+            string sql = session.Dialect.BuildInsertIgnoreSql("weaver_subject_keys", ColumnsArray, ConflictColumns, ParameterNames);
+            await using DbCommand cmd = session.CreateCommand(sql);
+            WeaverDbParameters.Add(cmd, "k", row.SubjectKey);
+            WeaverDbParameters.Add(cmd, "id", row.SubjectId);
+            WeaverDbParameters.Add(cmd, "kid", row.KeyId);
+            WeaverDbParameters.Add(cmd, "alg", row.Algorithm);
+            WeaverDbParameters.Add(cmd, "pub", pubKey);
+            WeaverDbParameters.Add(cmd, "priv", sealedKey);
+            WeaverDbParameters.Add(cmd, "ishred", session.Dialect.BooleanValue(false));
+            WeaverDbParameters.Add(cmd, "c", session.Dialect.TimestampValue(row.CreatedAtUtc));
+            WeaverDbParameters.AddNullable(cmd, "shred", null);
             affected = await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
 
@@ -143,9 +168,9 @@ public sealed class SubjectKeyRepository : ISubjectKeyRepository
         {
             await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct).ConfigureAwait(false);
             await using DbCommand cmd = session.CreateCommand(
-                $"UPDATE weaver_subject_keys SET sealed_private_key = NULL, public_key_base64 = NULL, is_shredded = {session.Dialect.TrueLiteral}, shredded_at_utc = @t WHERE subject_key = @k AND is_shredded = {session.Dialect.FalseLiteral}");
-            WeaverDbParameters.Add(cmd, "@k", subjectKey);
-            WeaverDbParameters.Add(cmd, "@t", session.Dialect.TimestampValue(shreddedAtUtc));
+                $"UPDATE weaver_subject_keys SET sealed_private_key = NULL, public_key_base64 = NULL, is_shredded = {session.Dialect.TrueLiteral}, shredded_at_utc = {session.Dialect.Parameter("t")} WHERE subject_key = {session.Dialect.Parameter("k")} AND is_shredded = {session.Dialect.FalseLiteral}");
+            WeaverDbParameters.Add(cmd, "k", subjectKey);
+            WeaverDbParameters.Add(cmd, "t", session.Dialect.TimestampValue(shreddedAtUtc));
             affected = await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
 
@@ -156,12 +181,20 @@ public sealed class SubjectKeyRepository : ISubjectKeyRepository
     public async Task CompactStorageAsync(CancellationToken ct = default)
     {
         // WHAT: Compacts database storage after an erasure.
-        // WHY:  Rebuilds the SQLite database file from live rows so freed pages no longer retain sealed key bytes.
-        // HOW:  Executes the standard SQL maintenance command supported by both SQLite and PostgreSQL.
+        // WHY:  Rebuilds the SQLite/PostgreSQL database from live rows so freed pages no longer retain sealed key bytes.
+        // HOW:  Executes VACUUM on engines supporting it, or SELECT 1 on MySQL where VACUUM is unsupported.
         {
             await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct).ConfigureAwait(false);
-            await using DbCommand cmd = session.CreateCommand("VACUUM");
-            await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+            if (session.Dialect.Backend != WeaverDatabaseBackend.MySql)
+            {
+                await using DbCommand cmd = session.CreateCommand("VACUUM");
+                await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+            }
+            else
+            {
+                await using DbCommand cmd = session.CreateCommand("SELECT 1;");
+                await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false);
+            }
         }
     }
 
@@ -170,8 +203,12 @@ public sealed class SubjectKeyRepository : ISubjectKeyRepository
     /// </summary>
     /// <param name="reader">The active data reader positioned on a row.</param>
     /// <returns>The hydrated <see cref="SubjectKeyRow"/>.</returns>
-    private static SubjectKeyRow MapRow(DbDataReader reader) =>
-        new()
+    private static SubjectKeyRow MapRow(DbDataReader reader)
+    {
+        // WHAT: Reads all 9 subject key and shredding audit columns from an open DbDataReader row.
+        // WHY:  Centralizes subject key entity extraction with proper NULL handling.
+        // HOW:  Reads string identifiers, public/private keys, boolean shredded flags, and timestamps.
+        return new SubjectKeyRow
         {
             SubjectKey = reader.GetString(0),
             SubjectId = reader.GetString(1),
@@ -183,6 +220,7 @@ public sealed class SubjectKeyRepository : ISubjectKeyRepository
             CreatedAtUtc = WeaverDbValues.ReadTimestamp(reader, 7),
             ShreddedAtUtc = WeaverDbValues.ReadNullableTimestamp(reader, 8)
         };
+    }
 
     /// <inheritdoc/>
     public async Task<bool> TryInsertTombstoneAsync(
@@ -193,15 +231,21 @@ public sealed class SubjectKeyRepository : ISubjectKeyRepository
     {
         // WHAT: Inserts a key-free tombstone row for a journalled erasure missing from the database.
         // WHY:  Restoring a database backup taken before the subject existed must still block key issuance for that erased subject.
-        // HOW:  Executes INSERT ... ON CONFLICT (subject_key) DO NOTHING with NULL key columns and is_shredded = TRUE.
+        // HOW:  Executes dialect-compliant insert-ignore with NULL key columns and is_shredded = TRUE.
         int affected;
         {
             await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct).ConfigureAwait(false);
-            await using DbCommand cmd = session.CreateCommand(
-                $"INSERT INTO weaver_subject_keys ({Columns}) VALUES (@k, @id, NULL, 'ML-KEM-768', NULL, NULL, {session.Dialect.TrueLiteral}, @t, @t) ON CONFLICT (subject_key) DO NOTHING");
-            WeaverDbParameters.Add(cmd, "@k", subjectKey);
-            WeaverDbParameters.Add(cmd, "@id", subjectId);
-            WeaverDbParameters.Add(cmd, "@t", session.Dialect.TimestampValue(shreddedAtUtc));
+            string sql = session.Dialect.BuildInsertIgnoreSql("weaver_subject_keys", ColumnsArray, ConflictColumns, ParameterNames);
+            await using DbCommand cmd = session.CreateCommand(sql);
+            WeaverDbParameters.Add(cmd, "k", subjectKey);
+            WeaverDbParameters.Add(cmd, "id", subjectId);
+            WeaverDbParameters.AddNullable(cmd, "kid", null);
+            WeaverDbParameters.Add(cmd, "alg", "ML-KEM-768");
+            WeaverDbParameters.AddNullable(cmd, "pub", null);
+            WeaverDbParameters.AddNullable(cmd, "priv", null);
+            WeaverDbParameters.Add(cmd, "ishred", session.Dialect.BooleanValue(true));
+            WeaverDbParameters.Add(cmd, "c", session.Dialect.TimestampValue(shreddedAtUtc));
+            WeaverDbParameters.Add(cmd, "shred", session.Dialect.TimestampValue(shreddedAtUtc));
             affected = await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
 

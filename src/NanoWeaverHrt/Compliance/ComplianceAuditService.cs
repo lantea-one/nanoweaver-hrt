@@ -1,12 +1,12 @@
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.RegularExpressions;
 using Microsoft.Extensions.Configuration;
 using NanoWeaverHrt.Events;
 using NanoWeaverHrt.Events.Models;
 using NanoWeaverHrt.Security.Cryptography;
 using NanoWeaverHrt.Security.KeyManagement;
 using NanoWeaverHrt.Security.Models;
+using NanoWeaverHrt.Security.Secrets;
 
 namespace NanoWeaverHrt.Compliance;
 
@@ -68,11 +68,28 @@ public sealed class ComplianceAuditService : IComplianceAuditService
     private readonly List<AuditRecord> _records = new();
 
     /// <summary>
-    /// Regular expression detecting common direct HIPAA personal identifiers in metadata headers.
+    /// Canonical genesis previous hash digest consisting of 96 zero characters ('0') for SHA-384 hash chain genesis.
     /// </summary>
-    private static readonly Regex s_directIdentifierRegex = new(
-        @"(?:mrn|ssn|patient|name|dob|birth|phone|email|address|hospital|id):\s*([^\s,;]+)",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    public const string GenesisPreviousHash = "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+
+    /// <summary>
+    /// Case-insensitive clinical key-value tags recognized across FASTA headers and plain-text streams for HIPAA Safe Harbor de-identification.
+    /// </summary>
+    private static readonly string[] s_clinicalTags =
+    [
+        "mrn:",
+        "ssn:",
+        "patient:",
+        "subject:",
+        "name:",
+        "dob:",
+        "birth:",
+        "phone:",
+        "email:",
+        "address:",
+        "hospital:",
+        "id:"
+    ];
 
     /// <summary>
     /// Secret key bytes used for HMAC-SHA256 subject pseudonymization.
@@ -87,12 +104,14 @@ public sealed class ComplianceAuditService : IComplianceAuditService
     /// <param name="eventBus">Optional event bus instance for real-time compliance broadcasting.</param>
     /// <param name="repository">Optional persistent repository storing audit records across restarts.</param>
     /// <param name="configuration">Optional application configuration providing custom pseudonymization secrets.</param>
+    /// <param name="secretStore">Optional node secret store providing persistent key material across restarts.</param>
     public ComplianceAuditService(
         IKeyManagementService keyManagement,
         IPostQuantumCryptoProvider cryptoProvider,
         IInternalEventBus? eventBus = null,
         IAuditLedgerRepository? repository = null,
-        IConfiguration? configuration = null)
+        IConfiguration? configuration = null,
+        INodeSecretStore? secretStore = null)
     {
         ArgumentNullException.ThrowIfNull(keyManagement);
         ArgumentNullException.ThrowIfNull(cryptoProvider);
@@ -101,7 +120,7 @@ public sealed class ComplianceAuditService : IComplianceAuditService
         _cryptoProvider = cryptoProvider;
         _eventBus = eventBus;
         _repository = repository;
-        _pseudonymizationKey = ResolvePseudonymizationKey(configuration);
+        _pseudonymizationKey = ResolvePseudonymizationKey(configuration, secretStore);
 
         // WHAT: Initializes or restores the FDA 21 CFR Part 11 audit ledger.
         // WHY:  Provides a deterministic, cryptographic origin for the unbroken hash chain, restored across restarts.
@@ -118,8 +137,8 @@ public sealed class ComplianceAuditService : IComplianceAuditService
                 }
             }
 
-            DateTimeOffset genesisTime = DateTimeOffset.UtcNow;
-            string previousHash = new('0', 96);
+            DateTimeOffset genesisTime = TruncateToMicroseconds(DateTimeOffset.UtcNow);
+            string previousHash = GenesisPreviousHash;
             PqcKeyMaterial signingKey = _keyManagement.GetNodeSigningKey();
             string genesisDetailsJson = $"{{\"genesis\":true,\"signingKeyId\":\"{signingKey.KeyId}\",\"signingKeyOrigin\":\"{_keyManagement.NodeSigningKeyOrigin}\"}}";
             string currentHash = ComputeHash(0, genesisTime, previousHash, "SYSTEM", "GenesisAuditLedger", "NodeLedger", genesisDetailsJson);
@@ -167,7 +186,7 @@ public sealed class ComplianceAuditService : IComplianceAuditService
             // HOW:  Retrieves CurrentHash of the last record, calculates SHA-384 of new state, and signs with ML-DSA-65.
             AuditRecord lastRecord = _records[^1];
             long sequenceNumber = _records.Count;
-            DateTimeOffset timestamp = DateTimeOffset.UtcNow;
+            DateTimeOffset timestamp = TruncateToMicroseconds(DateTimeOffset.UtcNow);
             string previousHash = lastRecord.CurrentHash;
 
             string currentHash = ComputeHash(sequenceNumber, timestamp, previousHash, operatorId, action, resource, safeDetails);
@@ -236,7 +255,22 @@ public sealed class ComplianceAuditService : IComplianceAuditService
                 }
 
                 // 2. Verify hash chaining against previous record
-                if (i > 0)
+                if (i == 0)
+                {
+                    if (!string.Equals(record.PreviousHash, GenesisPreviousHash, StringComparison.Ordinal))
+                    {
+                        return new AuditLedgerVerificationResult
+                        {
+                            IsValid = false,
+                            TotalRecordsVerified = 0,
+                            FirstViolationSequence = record.SequenceNumber,
+                            Message = "Broken genesis hash link at sequence 0: PreviousHash does not match GenesisPreviousHash.",
+                            ViolationKind = AuditLedgerViolationKind.BrokenHashLink,
+                            SigningKeyId = signingKey.KeyId
+                        };
+                    }
+                }
+                else
                 {
                     AuditRecord previousRecord = _records[i - 1];
                     if (!string.Equals(record.PreviousHash, previousRecord.CurrentHash, StringComparison.Ordinal))
@@ -380,36 +414,28 @@ public sealed class ComplianceAuditService : IComplianceAuditService
 
         // WHAT: Derive an irreversible pseudonym for the subject.
         // WHY:  HIPAA Safe Harbor (§ 164.514(b)) requires stripping direct personal identifiers; HMAC-SHA256 with node-bound key prevents rainbow table reversal.
-        // HOW:  Computes HMAC-SHA256 digest of normalized identifier using _pseudonymizationKey and formats as "sub_<16-hex>".
-        byte[] rawBytes = Encoding.UTF8.GetBytes(rawSubjectIdentifier.Trim().ToLowerInvariant());
-        byte[] hash = HMACSHA256.HashData(_pseudonymizationKey, rawBytes);
-        string pseudonym = "sub_" + Convert.ToHexString(hash)[..16].ToLowerInvariant();
+        // HOW:  Delegates to PseudonymizeSubjectId.
+        string pseudonym = PseudonymizeSubjectId(rawSubjectIdentifier);
+        ReadOnlySpan<char> subjectSpan = rawSubjectIdentifier.AsSpan().Trim();
 
-        // WHAT: Scan and sanitize any direct identifiers found in FASTA headers or comment lines.
-        // WHY:  Fasta sequence headers frequently contain patient names, hospital codes, or MRNs.
-        // HOW:  Detects and replaces matching lines with clean pseudonym header.
+        // WHAT: Scan and sanitize direct identifiers found in FASTA headers and full text streams with zero regex/split allocations.
+        // WHY:  Complies with AGENTS.md Prime Directive 1 while purging clinical identifiers and subject occurrences across lines.
+        // HOW:  Enumerates lines with MemoryExtensions.EnumerateLines, detects headers vs text, and sanitizes into StringBuilder.
         List<string> strippedIdentifiers = new();
-        string[] lines = rawGenomicData.Split('\n');
         StringBuilder sanitized = new();
 
-        for (int i = 0; i < lines.Length; i++)
+        foreach (ReadOnlySpan<char> rawLine in rawGenomicData.AsSpan().EnumerateLines())
         {
-            string line = lines[i].TrimEnd('\r');
-            if (line.StartsWith('>'))
+            ReadOnlySpan<char> line = rawLine.TrimEnd('\r');
+            if (!line.IsEmpty && line[0] == '>')
             {
-                var matches = s_directIdentifierRegex.Matches(line);
-                foreach (Match m in matches)
-                {
-                    if (m.Groups.Count > 1)
-                    {
-                        strippedIdentifiers.Add(m.Groups[1].Value);
-                    }
-                }
-                sanitized.AppendLine($">{pseudonym} [HIPAA Safe Harbor De-Identified Scaffold]");
+                ScanAndExtractHeaderIdentifiers(line, subjectSpan, strippedIdentifiers);
+                sanitized.Append('>').Append(pseudonym).Append(" [HIPAA Safe Harbor De-Identified Scaffold]").AppendLine();
             }
             else
             {
-                sanitized.AppendLine(line);
+                SanitizeNonHeaderLine(line, subjectSpan, pseudonym, strippedIdentifiers, sanitized);
+                sanitized.AppendLine();
             }
         }
 
@@ -425,6 +451,18 @@ public sealed class ComplianceAuditService : IComplianceAuditService
             StrippedIdentifiers = strippedIdentifiers,
             DeIdentifiedAtUtc = DateTimeOffset.UtcNow
         };
+    }
+
+    /// <inheritdoc/>
+    public string PseudonymizeSubjectId(string rawSubjectIdentifier)
+    {
+        // WHAT: Derives an irreversible pseudonym for the subject.
+        // WHY:  HIPAA Safe Harbor (§ 164.514(b)) requires stripping direct personal identifiers; HMAC-SHA256 with node-bound key prevents rainbow table reversal.
+        // HOW:  Computes HMAC-SHA256 digest of normalized identifier using _pseudonymizationKey and formats as "sub_<16-hex>".
+        ArgumentException.ThrowIfNullOrWhiteSpace(rawSubjectIdentifier);
+        byte[] rawBytes = Encoding.UTF8.GetBytes(rawSubjectIdentifier.Trim().ToLowerInvariant());
+        byte[] hash = HMACSHA256.HashData(_pseudonymizationKey, rawBytes);
+        return "sub_" + Convert.ToHexString(hash)[..16].ToLowerInvariant();
     }
 
     /// <summary>
@@ -482,9 +520,10 @@ public sealed class ComplianceAuditService : IComplianceAuditService
     {
         // WHAT: Computes deterministic SHA-384 hash with length-prefixed canonical fields.
         // WHY:  Length prefixing prevents hash canonicalization collisions even if fields contain delimiter '|' characters.
-        // HOW:  Encodes each field as "{length}:{value}|" and computes SHA-384.
+        // HOW:  Normalizes timestamp to microsecond precision, encodes each field as "{length}:{value}|", and computes SHA-384.
+        DateTimeOffset normalizedTimestamp = TruncateToMicroseconds(timestamp);
         string seqStr = sequenceNumber.ToString();
-        string tsStr = timestamp.ToString("O");
+        string tsStr = normalizedTimestamp.ToString("O");
         string raw = $"{seqStr.Length}:{seqStr}|{tsStr.Length}:{tsStr}|{previousHash.Length}:{previousHash}|{operatorId.Length}:{operatorId}|{action.Length}:{action}|{resource.Length}:{resource}|{detailsJson.Length}:{detailsJson}";
         byte[] hash = SHA384.HashData(Encoding.UTF8.GetBytes(raw));
         return Convert.ToHexString(hash).ToLowerInvariant();
@@ -518,12 +557,13 @@ public sealed class ComplianceAuditService : IComplianceAuditService
     /// Resolves or generates the 32-byte secret key used for HMAC-SHA256 subject pseudonymization.
     /// </summary>
     /// <param name="configuration">Host application configuration.</param>
+    /// <param name="secretStore">Optional node secret store providing persistent key material.</param>
     /// <returns>A 32-byte secret key for HMAC pseudonymization.</returns>
-    private static byte[] ResolvePseudonymizationKey(IConfiguration? configuration)
+    private static byte[] ResolvePseudonymizationKey(IConfiguration? configuration, INodeSecretStore? secretStore = null)
     {
-        // WHAT: Resolves configured pseudonymization secret or generates a secure CSPRNG fallback key.
-        // WHY:  Keyed pseudonymization prevents rainbow table lookups while ensuring node consistency.
-        // HOW:  Attempts Base64, hex, or SHA-256 derivation of Security:PseudonymizationSecret, falling back to RandomNumberGenerator.
+        // WHAT: Resolves configured pseudonymization secret, persisted node secret store key, or generates a secure CSPRNG fallback key.
+        // WHY:  Keyed pseudonymization prevents rainbow table lookups while ensuring node consistency across restarts.
+        // HOW:  Attempts Base64, hex, or SHA-256 derivation of Security:PseudonymizationSecret, queries INodeSecretStore, falling back to RandomNumberGenerator.
         string? secret = configuration?["Security:PseudonymizationSecret"];
         if (!string.IsNullOrWhiteSpace(secret))
         {
@@ -556,8 +596,259 @@ public sealed class ComplianceAuditService : IComplianceAuditService
             return SHA256.HashData(Encoding.UTF8.GetBytes(secret.Trim()));
         }
 
+        if (secretStore is not null)
+        {
+            byte[]? persisted = secretStore.GetOrCreateSecret("pseudonymization-hmac.key", 32);
+            if (persisted is { Length: 32 })
+            {
+                return persisted;
+            }
+        }
+
         byte[] fallbackKey = new byte[32];
         RandomNumberGenerator.Fill(fallbackKey);
         return fallbackKey;
+    }
+
+    /// <summary>
+    /// Truncates a timestamp to microsecond precision by dropping sub-microsecond tick fractions.
+    /// </summary>
+    /// <param name="timestampUtc">The UTC timestamp to normalize.</param>
+    /// <returns>A <see cref="DateTimeOffset"/> truncated to microsecond precision.</returns>
+    internal static DateTimeOffset TruncateToMicroseconds(DateTimeOffset timestampUtc)
+    {
+        // WHAT: Drops sub-microsecond tick fractions (modulo 10) from the timestamp.
+        // WHY:  PostgreSQL TIMESTAMPTZ stores timestamps to microsecond precision; normalizing ensures SHA-384 verification determinism.
+        // HOW:  Subtracts timestampUtc.UtcDateTime.Ticks % 10L ticks from the DateTimeOffset value.
+        return new DateTimeOffset(timestampUtc.UtcDateTime.Ticks - (timestampUtc.UtcDateTime.Ticks % 10L), TimeSpan.Zero);
+    }
+
+    /// <summary>
+    /// Scans a FASTA header line starting with '&gt;' to extract direct HIPAA and clinical identifiers.
+    /// </summary>
+    /// <param name="headerLine">The FASTA header line span.</param>
+    /// <param name="subjectSpan">The trimmed raw subject identifier span to detect and record.</param>
+    /// <param name="strippedIdentifiers">Destination list accumulating extracted identifier strings.</param>
+    private static void ScanAndExtractHeaderIdentifiers(
+        ReadOnlySpan<char> headerLine,
+        ReadOnlySpan<char> subjectSpan,
+        List<string> strippedIdentifiers)
+    {
+        // WHAT: Scans FASTA header spans for clinical key-value tags and subject identifiers without Regex or allocations.
+        // WHY:  Complies with AGENTS.md Prime Directive 1 (zero-allocation parsing) while extracting HIPAA Safe Harbor PII.
+        // HOW:  Iterates over headerLine characters, matching clinical tags at delimiter boundaries and extracting values.
+        if (!subjectSpan.IsEmpty && headerLine.IndexOf(subjectSpan, StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            string subj = subjectSpan.ToString();
+            if (!strippedIdentifiers.Contains(subj, StringComparer.OrdinalIgnoreCase))
+            {
+                strippedIdentifiers.Add(subj);
+            }
+        }
+
+        int i = 0;
+        while (i < headerLine.Length)
+        {
+            bool isBoundary = (i == 0 || i == 1 && headerLine[0] == '>') ||
+                              char.IsWhiteSpace(headerLine[i - 1]) ||
+                              headerLine[i - 1] == ',' ||
+                              headerLine[i - 1] == ';' ||
+                              headerLine[i - 1] == '|';
+
+            if (isBoundary)
+            {
+                bool matchedTag = false;
+                for (int t = 0; t < s_clinicalTags.Length; t++)
+                {
+                    string tag = s_clinicalTags[t];
+                    if (headerLine[i..].StartsWith(tag.AsSpan(), StringComparison.OrdinalIgnoreCase))
+                    {
+                        matchedTag = true;
+                        int valStart = i + tag.Length;
+                        while (valStart < headerLine.Length && char.IsWhiteSpace(headerLine[valStart]))
+                        {
+                            valStart++;
+                        }
+
+                        int valEnd = FindTagValueEnd(headerLine, valStart, subjectSpan);
+                        if (valEnd > valStart)
+                        {
+                            ReadOnlySpan<char> valSpan = headerLine[valStart..valEnd].Trim();
+                            if (!valSpan.IsEmpty)
+                            {
+                                string val = valSpan.ToString();
+                                if (!strippedIdentifiers.Contains(val, StringComparer.OrdinalIgnoreCase))
+                                {
+                                    strippedIdentifiers.Add(val);
+                                }
+                            }
+                        }
+
+                        i = valEnd;
+                        break;
+                    }
+                }
+
+                if (matchedTag)
+                {
+                    continue;
+                }
+            }
+
+            i++;
+        }
+    }
+
+    /// <summary>
+    /// Scans a non-FASTA line to redact clinical identifiers and raw subject occurrences.
+    /// </summary>
+    /// <param name="line">The text line span.</param>
+    /// <param name="subjectSpan">The raw subject identifier to redact.</param>
+    /// <param name="pseudonym">The pseudonym replacement string.</param>
+    /// <param name="strippedIdentifiers">Destination list accumulating extracted identifier strings.</param>
+    /// <param name="sanitized">The destination StringBuilder receiving sanitized text.</param>
+    private static void SanitizeNonHeaderLine(
+        ReadOnlySpan<char> line,
+        ReadOnlySpan<char> subjectSpan,
+        string pseudonym,
+        List<string> strippedIdentifiers,
+        StringBuilder sanitized)
+    {
+        // WHAT: Scans and redacts clinical key-value tags and raw subject identifier occurrences in non-header lines.
+        // WHY:  Protects PHI across full text streams including CSV, JSON, clinical notes, and inline metadata without Regex.
+        // HOW:  Iterates line characters, matching subjectSpan and s_clinicalTags, appending redaction tokens to StringBuilder.
+        int i = 0;
+        while (i < line.Length)
+        {
+            if (!subjectSpan.IsEmpty && line[i..].StartsWith(subjectSpan, StringComparison.OrdinalIgnoreCase))
+            {
+                string subj = subjectSpan.ToString();
+                if (!strippedIdentifiers.Contains(subj, StringComparer.OrdinalIgnoreCase))
+                {
+                    strippedIdentifiers.Add(subj);
+                }
+
+                sanitized.Append(pseudonym);
+                i += subjectSpan.Length;
+                continue;
+            }
+
+            bool isBoundary = (i == 0 ||
+                              char.IsWhiteSpace(line[i - 1]) ||
+                              line[i - 1] == ',' ||
+                              line[i - 1] == ';' ||
+                              line[i - 1] == '|' ||
+                              line[i - 1] == '{' ||
+                              line[i - 1] == '"');
+
+            if (isBoundary)
+            {
+                bool matchedTag = false;
+                for (int t = 0; t < s_clinicalTags.Length; t++)
+                {
+                    string tag = s_clinicalTags[t];
+                    if (line[i..].StartsWith(tag.AsSpan(), StringComparison.OrdinalIgnoreCase))
+                    {
+                        matchedTag = true;
+                        sanitized.Append(line.Slice(i, tag.Length));
+                        int valStart = i + tag.Length;
+                        while (valStart < line.Length && char.IsWhiteSpace(line[valStart]))
+                        {
+                            sanitized.Append(line[valStart]);
+                            valStart++;
+                        }
+
+                        int valEnd = FindTagValueEnd(line, valStart, subjectSpan);
+                        if (valEnd > valStart)
+                        {
+                            ReadOnlySpan<char> valSpan = line[valStart..valEnd].Trim();
+                            if (!valSpan.IsEmpty)
+                            {
+                                string val = valSpan.ToString();
+                                if (!strippedIdentifiers.Contains(val, StringComparer.OrdinalIgnoreCase))
+                                {
+                                    strippedIdentifiers.Add(val);
+                                }
+                            }
+
+                            bool isSubjectTag = string.Equals(tag, "patient:", StringComparison.OrdinalIgnoreCase) ||
+                                                string.Equals(tag, "subject:", StringComparison.OrdinalIgnoreCase);
+
+                            sanitized.Append(isSubjectTag ? pseudonym : "[REDACTED]");
+                        }
+
+                        i = valEnd;
+                        break;
+                    }
+                }
+
+                if (matchedTag)
+                {
+                    continue;
+                }
+            }
+
+            sanitized.Append(line[i]);
+            i++;
+        }
+    }
+
+    /// <summary>
+    /// Finds the end of a clinical tag value in a character span by scanning for delimiters or subsequent clinical tags.
+    /// </summary>
+    /// <param name="span">The line span being scanned.</param>
+    /// <param name="valStart">The start index of the tag value.</param>
+    /// <param name="subjectSpan">The raw subject identifier to detect.</param>
+    /// <returns>The index where the tag value terminates.</returns>
+    private static int FindTagValueEnd(ReadOnlySpan<char> span, int valStart, ReadOnlySpan<char> subjectSpan)
+    {
+        // WHAT: Locates the end boundary of a clinical tag value.
+        // WHY:  Addresses multi-word values (e.g. "123 Main St", "Jane Doe") while stopping at delimiters or next tags.
+        // HOW:  If starts with subjectSpan, returns valStart + subjectSpan.Length; otherwise scans until delimiter or next tag.
+        if (!subjectSpan.IsEmpty && span[valStart..].StartsWith(subjectSpan, StringComparison.OrdinalIgnoreCase))
+        {
+            return valStart + subjectSpan.Length;
+        }
+
+        int idx = valStart;
+        while (idx < span.Length)
+        {
+            char c = span[idx];
+            if (c == ',' || c == ';' || c == '|' || c == '"' || c == '}' || c == '\r' || c == '\n')
+            {
+                break;
+            }
+
+            if (char.IsWhiteSpace(c))
+            {
+                int nextIdx = idx + 1;
+                while (nextIdx < span.Length && char.IsWhiteSpace(span[nextIdx]))
+                {
+                    nextIdx++;
+                }
+
+                if (nextIdx < span.Length)
+                {
+                    bool nextIsTag = false;
+                    for (int t = 0; t < s_clinicalTags.Length; t++)
+                    {
+                        if (span[nextIdx..].StartsWith(s_clinicalTags[t].AsSpan(), StringComparison.OrdinalIgnoreCase))
+                        {
+                            nextIsTag = true;
+                            break;
+                        }
+                    }
+
+                    if (nextIsTag)
+                    {
+                        break;
+                    }
+                }
+            }
+
+            idx++;
+        }
+
+        return idx;
     }
 }

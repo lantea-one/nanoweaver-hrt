@@ -18,6 +18,7 @@ namespace NanoWeaverHrt.Tests;
 /// ("Whatever is in the database wins, stack environment variables do nothing if configuration exists in the database"),
 /// single-use collaborative share key lifecycles, and DNA origami fabrication synthesis.
 /// </summary>
+[Collection("AcceleratorTelemetryEnvironmentTests")]
 public sealed class WebUiAndConfigurationTests : IClassFixture<WebApplicationFactory<Program>>, IDisposable
 {
     /// <summary>

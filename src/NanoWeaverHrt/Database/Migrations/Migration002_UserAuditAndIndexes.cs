@@ -16,7 +16,18 @@ public sealed class Migration002_UserAuditAndIndexes : DatabaseMigrationBase
     {
         // WHAT: Emits secondary index creation statements for user accounts and configuration tables.
         // WHY:  Accelerates role filtering (HasAnyAdministrator), access gating checks, and chronological telemetry audit queries.
-        // HOW:  Returns idempotent CREATE INDEX IF NOT EXISTS statements compatible with both engines.
+        // HOW:  Returns idempotent CREATE INDEX statements compatible with SQLite, PostgreSQL, DuckDB, and MySQL engines.
+        ArgumentNullException.ThrowIfNull(dialect);
+
+        if (dialect.StartsWith("mysql", StringComparison.OrdinalIgnoreCase) || dialect.StartsWith("mariadb", StringComparison.OrdinalIgnoreCase))
+        {
+            return @"
+                CREATE INDEX idx_weaver_users_role_active ON weaver_users (role, is_active);
+                CREATE INDEX idx_weaver_users_created ON weaver_users (created_at_utc);
+                CREATE INDEX idx_weaver_config_updated ON weaver_configuration (updated_at_utc);
+            ";
+        }
+
         return @"
             CREATE INDEX IF NOT EXISTS idx_weaver_users_role_active ON weaver_users (role, is_active);
             CREATE INDEX IF NOT EXISTS idx_weaver_users_created ON weaver_users (created_at_utc);
