@@ -3848,6 +3848,147 @@ public sealed class NanoWeaverNodeClientTests : IDisposable
     }
 
     /// <summary>
+    /// Verifies CreatePatientDnaAsync, GetHealthAsync, GetGranularSystemHealthAsync, and filtered GetPatientDnaRegimensAsync nominal and error paths.
+    /// </summary>
+    /// <returns>A task representing asynchronous test completion.</returns>
+    [Fact]
+    public async Task PatientDnaAndHealthEndpoints_NominalAndErrors_BehavesExpectedly()
+    {
+        // WHAT: Tests CreatePatientDnaAsync, GetHealthAsync, GetGranularSystemHealthAsync, and filtered GetPatientDnaRegimensAsync.
+        // WHY:  Issue #152 ([P149]): Guarantees 100% code coverage and fault resilience across patient DNA synthesis and health probes.
+        // HOW:  Mocks responses, exercises nominal serialization, validates HTTP errors, null payloads, and argument exceptions.
+
+        // 1. CreatePatientDnaAsync
+        PatientDigitalDnaRecord dnaRecord = new()
+        {
+            Id = "dna_test_01",
+            Username = "patient-01",
+            Title = "Hexagonal Nanotube (6HB)",
+            Regimen = TherapeuticRegimen.MaleToFemale,
+            TargetTissue = "Pituitary",
+            ActiveLigand = "GnRH",
+            NanocarrierGeometry = "Hexagonal Nanotube (6HB)",
+            TargetAptamerKdNm = 3.5,
+            ScaffoldFasta = "ACGTACGT",
+            GcPercentage = 50.0,
+            EstimatedMwKDa = 120.5,
+            Staples = [],
+            AnnealingProtocol = [],
+            ProvenanceSha256 = "sha256_mock_hash",
+            CreatedAtUtc = DateTimeOffset.UtcNow
+        };
+        _httpHandler.SetResponse("/api/patients/patient-01/dna", HttpStatusCode.Created, JsonSerializer.Serialize(dnaRecord));
+        CreatePatientDnaRequest createDnaReq = new()
+        {
+            Title = "Hexagonal Nanotube (6HB)",
+            Regimen = TherapeuticRegimen.MaleToFemale,
+            NanocarrierGeometry = "Hexagonal Nanotube (6HB)",
+            TargetAptamerKdNm = 3.5
+        };
+
+        PatientDigitalDnaRecord createdDnaRes = await _client.CreatePatientDnaAsync(_localProfile, "valid_token", "patient-01", createDnaReq);
+        Assert.NotNull(createdDnaRes);
+        Assert.Equal("dna_test_01", createdDnaRes.Id);
+        Assert.Equal("patient-01", createdDnaRes.Username);
+
+        _httpHandler.SetResponse("/api/patients/patient-01/dna", HttpStatusCode.BadRequest, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.CreatePatientDnaAsync(_localProfile, "valid_token", "patient-01", createDnaReq));
+        _httpHandler.SetResponse("/api/patients/patient-01/dna", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.CreatePatientDnaAsync(_localProfile, "valid_token", "patient-01", createDnaReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.CreatePatientDnaAsync(null!, "valid_token", "patient-01", createDnaReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.CreatePatientDnaAsync(_localProfile, "", "patient-01", createDnaReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.CreatePatientDnaAsync(_localProfile, "valid_token", "", createDnaReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.CreatePatientDnaAsync(_localProfile, "valid_token", "patient-01", null!));
+
+        // 2. GetHealthAsync
+        SystemHealthOverview healthOverview = new()
+        {
+            Status = "Healthy",
+            TimestampUtc = DateTimeOffset.UtcNow,
+            Version = "1.0.0",
+            Uptime = "1d 2h 3m 4s",
+            UptimeSeconds = 93784.0,
+            SetupRequired = false,
+            AuthenticatedSession = false,
+            Description = "Standard operational health overview."
+        };
+        _httpHandler.SetResponse("/health", HttpStatusCode.OK, JsonSerializer.Serialize(healthOverview));
+        SystemHealthOverview healthRes = await _client.GetHealthAsync(_localProfile);
+        Assert.NotNull(healthRes);
+        Assert.Equal("Healthy", healthRes.Status);
+
+        _httpHandler.SetResponse("/health", HttpStatusCode.ServiceUnavailable, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetHealthAsync(_localProfile));
+        _httpHandler.SetResponse("/health", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.GetHealthAsync(_localProfile));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetHealthAsync(null!));
+
+        // 3. GetGranularSystemHealthAsync
+        GranularSystemHealth granularExample = ((GranularSystemHealth)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(GranularSystemHealth))).GetExamples();
+        _httpHandler.SetResponse("/api/system/health", HttpStatusCode.OK, JsonSerializer.Serialize(granularExample));
+        GranularSystemHealth granularRes = await _client.GetGranularSystemHealthAsync(_localProfile, "valid_token");
+        Assert.NotNull(granularRes);
+        Assert.Equal(granularExample.Status, granularRes.Status);
+        Assert.Equal(granularExample.User.Username, granularRes.User.Username);
+
+        _httpHandler.SetResponse("/api/system/health", HttpStatusCode.Unauthorized, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetGranularSystemHealthAsync(_localProfile, "valid_token"));
+        _httpHandler.SetResponse("/api/system/health", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.GetGranularSystemHealthAsync(_localProfile, "valid_token"));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetGranularSystemHealthAsync(null!, "valid_token"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetGranularSystemHealthAsync(_localProfile, ""));
+
+        // 4. Filtered GetPatientDnaRegimensAsync
+        PatientDigitalDnaPackage dnaPkg = new()
+        {
+            PatientId = "patient-01",
+            Regimen = TherapeuticRegimen.FemaleToMale,
+            TargetTissue = "Testes",
+            ActiveLigand = "Testosterone",
+            NanocarrierGeometry = "6HB",
+            TargetAptamerKdNm = 2.5,
+            ScaffoldFasta = "GGCCAATT",
+            GcPercentage = 50.0,
+            EstimatedMwKDa = 80.0,
+            Staples = [],
+            AnnealingProtocol = [],
+            ProvenanceSha256 = "sha256_package_hash",
+            GeneratedAtUtc = DateTime.UtcNow
+        };
+        _httpHandler.SetResponse("/api/patient/dna", HttpStatusCode.OK, JsonSerializer.Serialize(dnaPkg));
+
+        // Nominal with full filters
+        PatientDigitalDnaPackage filteredPkg = await _client.GetPatientDnaRegimensAsync(
+            _localProfile,
+            "valid_token",
+            "patient-01",
+            TherapeuticRegimen.FemaleToMale,
+            "6HB",
+            2.5);
+        Assert.NotNull(filteredPkg);
+        Assert.Equal("patient-01", filteredPkg.PatientId);
+        Assert.Equal(TherapeuticRegimen.FemaleToMale, filteredPkg.Regimen);
+
+        // Nominal with null filters (empty query string path)
+        PatientDigitalDnaPackage emptyFilterPkg = await _client.GetPatientDnaRegimensAsync(
+            _localProfile,
+            "valid_token",
+            null,
+            null,
+            null,
+            null);
+        Assert.NotNull(emptyFilterPkg);
+        Assert.Equal("patient-01", emptyFilterPkg.PatientId);
+
+        _httpHandler.SetResponse("/api/patient/dna", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetPatientDnaRegimensAsync(_localProfile, "valid_token", "patient-01", TherapeuticRegimen.FemaleToMale, "6HB", 2.5));
+        _httpHandler.SetResponse("/api/patient/dna", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.GetPatientDnaRegimensAsync(_localProfile, "valid_token", "patient-01", TherapeuticRegimen.FemaleToMale, "6HB", 2.5));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetPatientDnaRegimensAsync(null!, "valid_token", "patient-01", TherapeuticRegimen.FemaleToMale, "6HB", 2.5));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetPatientDnaRegimensAsync(_localProfile, "", "patient-01", TherapeuticRegimen.FemaleToMale, "6HB", 2.5));
+    }
+
+    /// <summary>
     /// In-memory HTTP message handler stub for deterministic test execution.
     /// </summary>
     private sealed class StubHttpMessageHandler : HttpMessageHandler
@@ -3926,9 +4067,25 @@ public sealed class NanoWeaverNodeClientTests : IDisposable
 
             foreach (var kvp in _exceptions)
             {
+                if (path.Equals(kvp.Key, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw kvp.Value;
+                }
+            }
+
+            foreach (var kvp in _exceptions)
+            {
                 if (path.EndsWith(kvp.Key, StringComparison.OrdinalIgnoreCase))
                 {
                     throw kvp.Value;
+                }
+            }
+
+            foreach (var kvp in _routes)
+            {
+                if (path.Equals(kvp.Key, StringComparison.OrdinalIgnoreCase))
+                {
+                    return Task.FromResult(kvp.Value(request));
                 }
             }
 

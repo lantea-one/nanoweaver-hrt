@@ -142,6 +142,12 @@ public sealed record ShareKeyConsumeResult : IExamplesProvider<ShareKeyConsumeRe
     public string? PeerSessionToken { get; init; }
 
     /// <summary>
+    /// Gets the authenticated session token assigned to the remote peer (alias for <see cref="PeerSessionToken"/>).
+    /// </summary>
+    [JsonIgnore]
+    public string? SessionToken => PeerSessionToken;
+
+    /// <summary>
     /// Generates a representative example instance of <see cref="ShareKeyConsumeResult"/> for OpenAPI documentation.
     /// </summary>
     /// <returns>A populated share key consumption result example.</returns>

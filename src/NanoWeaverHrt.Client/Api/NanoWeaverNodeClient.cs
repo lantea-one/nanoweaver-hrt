@@ -3491,6 +3491,150 @@ public sealed class NanoWeaverNodeClient : INanoWeaverNodeClient
         return result ?? throw new InvalidOperationException("Endpoint returned empty or null healthz overview payload.");
     }
 
+    /// <inheritdoc/>
+    public async Task<PatientDigitalDnaRecord> CreatePatientDnaAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        CreatePatientDnaRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/patients/{username}/dna to synthesize and register a digitized DNA blueprint.
+        // WHY:  Allows clinicians and researchers to design and persist patient-specific DNA origami blueprints.
+        // HOW:  Validates inputs, posts serialized JSON payload with Bearer authentication, and deserializes created PatientDigitalDnaRecord.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/patients/{Uri.EscapeDataString(username)}/dna");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        PatientDigitalDnaRecord? rec = await resp.Content.ReadFromJsonAsync<PatientDigitalDnaRecord>(JsonOptions, ct);
+        return rec ?? throw new InvalidOperationException("Endpoint returned empty or null patient digital DNA record payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<SystemHealthOverview> GetHealthAsync(
+        InstanceProfile profile,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /health to query high-level operational health overview.
+        // WHY:  Provides external monitors and dashboards with quick system readiness state.
+        // HOW:  Validates inputs, executes unauthenticated GET /health, and deserializes SystemHealthOverview.
+        ArgumentNullException.ThrowIfNull(profile);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/health");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        SystemHealthOverview? result = await resp.Content.ReadFromJsonAsync<SystemHealthOverview>(JsonOptions, ct);
+        return result ?? throw new InvalidOperationException("Endpoint returned empty or null system health overview payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<GranularSystemHealth> GetGranularSystemHealthAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/system/health with Bearer auth to query comprehensive subsystem diagnostic health.
+        // WHY:  Allows administrators and diagnostics tools to inspect granular status of database, Valkey, event bus, etc.
+        // HOW:  Validates inputs, executes authenticated GET /api/system/health, and deserializes GranularSystemHealth.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/system/health");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        GranularSystemHealth? result = await resp.Content.ReadFromJsonAsync<GranularSystemHealth>(JsonOptions, ct);
+        return result ?? throw new InvalidOperationException("Endpoint returned empty or null granular system health payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<PatientDigitalDnaPackage> GetPatientDnaRegimensAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string? patientId,
+        TherapeuticRegimen? regimen,
+        string? geometry,
+        double? targetKd,
+        CancellationToken ct = default)
+    {
+        // WHAT: Fetches a patient-specific Digital DNA blueprint package via GET /api/patient/dna with optional filter parameters.
+        // WHY:  Retrieves synthesized staple routing, annealing ramps, and SHA-256 provenance tailored by regimen, geometry, or target Kd.
+        // HOW:  Constructs endpoint with query params, sends GET with Bearer token, and deserializes package.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        string queryString = string.Empty;
+        List<string> qParams = [];
+        if (!string.IsNullOrWhiteSpace(patientId))
+        {
+            qParams.Add($"patientId={Uri.EscapeDataString(patientId)}");
+        }
+        if (regimen.HasValue)
+        {
+            qParams.Add($"regimen={Uri.EscapeDataString(regimen.Value.ToString())}");
+        }
+        if (!string.IsNullOrWhiteSpace(geometry))
+        {
+            qParams.Add($"geometry={Uri.EscapeDataString(geometry)}");
+        }
+        if (targetKd.HasValue)
+        {
+            qParams.Add($"targetKd={targetKd.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+        }
+        if (qParams.Count > 0)
+        {
+            queryString = "?" + string.Join('&', qParams);
+        }
+
+        string relativePath = "/api/patient/dna" + queryString;
+        Uri endpointUri = new(baseUri, relativePath);
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        PatientDigitalDnaPackage? package = await resp.Content.ReadFromJsonAsync<PatientDigitalDnaPackage>(JsonOptions, ct);
+        return package ?? throw new InvalidOperationException("Endpoint returned empty or null patient DNA package payload.");
+    }
+
     /// <summary>
     /// Validates that an instance base URI is absolute and enforces HTTPS for remote non-loopback endpoints.
     /// </summary>

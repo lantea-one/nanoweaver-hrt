@@ -507,6 +507,7 @@ public sealed class ServiceStateMachineEdgeCaseTests : IDisposable
         Action<RedisChannel, RedisValue>? sessionCallback = null;
         Action<RedisChannel, RedisValue>? auditCallback = null;
         Action<RedisChannel, RedisValue>? telemetryCallback = null;
+        Action<RedisChannel, RedisValue>? trajectoryCallback = null;
 
         mockSubscriber.Setup(s => s.SubscribeAsync(
             RedisChannel.Literal("weaver:events:SimulationProgress"),
@@ -536,6 +537,13 @@ public sealed class ServiceStateMachineEdgeCaseTests : IDisposable
             .Callback<RedisChannel, Action<RedisChannel, RedisValue>, CommandFlags>((ch, cb, _) => telemetryCallback = cb)
             .Returns(Task.CompletedTask);
 
+        mockSubscriber.Setup(s => s.SubscribeAsync(
+            RedisChannel.Literal("weaver:events:TrajectoryFrameBatch"),
+            It.IsAny<Action<RedisChannel, RedisValue>>(),
+            It.IsAny<CommandFlags>()))
+            .Callback<RedisChannel, Action<RedisChannel, RedisValue>, CommandFlags>((ch, cb, _) => trajectoryCallback = cb)
+            .Returns(Task.CompletedTask);
+
         await using (ValkeyEventBridge activeBridge = new(bus, mockFactory.Object, NullLogger<ValkeyEventBridge>.Instance))
         {
             activeBridge.RegisterLocalOutboundForwarders();
@@ -545,6 +553,7 @@ public sealed class ServiceStateMachineEdgeCaseTests : IDisposable
             Assert.NotNull(sessionCallback);
             Assert.NotNull(auditCallback);
             Assert.NotNull(telemetryCallback);
+            Assert.NotNull(trajectoryCallback);
 
             // Invoke each callback with a valid serialized payload
             SimulationProgressEvent simEvt = new("sim-1", "oxDNA Nanocarrier", 50, 100, "Running", "Converging");
@@ -558,6 +567,9 @@ public sealed class ServiceStateMachineEdgeCaseTests : IDisposable
 
             SystemTelemetryUpdatedEvent telemetryEvt = new("node-primary", 5000, 1048576, true, "AVX-512");
             telemetryCallback(RedisChannel.Literal("weaver:events:SystemTelemetryUpdated"), JsonSerializer.Serialize(telemetryEvt));
+
+            TrajectoryFrameBatchEvent trajEvt = new("origami-traj", 42L, 1000, 15.5);
+            trajectoryCallback(RedisChannel.Literal("weaver:events:TrajectoryFrameBatch"), JsonSerializer.Serialize(trajEvt));
 
             // 3. Outbound publication success (lines 190-195) and failure catch (lines 196-199)
             mockSubscriber.Setup(s => s.PublishAsync(

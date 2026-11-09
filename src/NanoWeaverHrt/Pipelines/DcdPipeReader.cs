@@ -3,6 +3,7 @@ using System.Buffers.Binary;
 using System.IO.Pipelines;
 using NanoWeaverHrt.Abstractions;
 using NanoWeaverHrt.Models;
+using NanoWeaverHrt.Pipelines.Simd;
 
 namespace NanoWeaverHrt.Pipelines;
 
@@ -149,11 +150,14 @@ public sealed class DcdPipeReader : ITrajectoryParser
                         ReadCoordinateBlock(ref frameSeq, rentedY.AsSpan(0, numberOfAtoms)) &&
                         ReadCoordinateBlock(ref frameSeq, rentedZ.AsSpan(0, numberOfAtoms)))
                     {
-                        // Interleave X, Y, Z floats into AtomCoordinate structs without heap allocations
-                        for (int i = 0; i < numberOfAtoms; i++)
-                        {
-                            atomBuffer[i] = new AtomCoordinate(rentedX[i], rentedY[i], rentedZ[i]);
-                        }
+                        // WHAT: Interleaves planar coordinate arrays into contiguous AtomCoordinate records using SIMD.
+                        // WHY:  DCD stores coordinates grouped by dimension; downstream consumers require interleaved {x,y,z} points.
+                        // HOW:  Delegates to SimdCoordinateParser.InterleaveCoordinatesSimd to interleave vectorized spans without heap allocations.
+                        SimdCoordinateParser.InterleaveCoordinatesSimd(
+                            rentedX.AsSpan(0, numberOfAtoms),
+                            rentedY.AsSpan(0, numberOfAtoms),
+                            rentedZ.AsSpan(0, numberOfAtoms),
+                            atomBuffer.AsSpan(0, numberOfAtoms));
 
                         // Emit parsed frame to downstream pipeline
                         await onFrameAvailable(frameIndex++, atomBuffer.AsSpan(0, numberOfAtoms));
@@ -221,8 +225,26 @@ public sealed class DcdPipeReader : ITrajectoryParser
 
         // Title record
         if (!reader.TryReadLittleEndian(out int titleLength)) return false;
+
+        // WHAT: Validates title record length and ensures complete header data is buffered.
+        // WHY:  Prevents integer overflow, excessive advances, and partial reads on untrusted DCD files.
+        // HOW:  Validates titleLength bounds, checks Remaining before advancing, and validates markers.
+        if (titleLength < 0 || titleLength > 65536)
+        {
+            throw new InvalidDataException("Invalid DCD title block length.");
+        }
+
+        if (reader.Remaining < (long)titleLength + 16)
+        {
+            return false;
+        }
+
         reader.Advance(titleLength);
-        if (!reader.TryReadLittleEndian(out int _)) return false;
+
+        if (!reader.TryReadLittleEndian(out int trailingTitleMarker) || trailingTitleMarker != titleLength)
+        {
+            throw new InvalidDataException("Mismatched DCD title block trailing Fortran marker.");
+        }
 
         // WHAT: Reads the atom count record and rejects any count outside the plausible per-frame range.
         // WHY:  This integer is the only thing that sizes the four coordinate buffers, and it comes from an
@@ -231,7 +253,10 @@ public sealed class DcdPipeReader : ITrajectoryParser
         // HOW:  TrajectoryFrameBuffer.IsPlausibleAtomCount applies the documented MaxAtomsPerFrame ceiling.
         if (!reader.TryReadLittleEndian(out int natomRecordLength) || natomRecordLength != 4) return false;
         if (!reader.TryReadLittleEndian(out atomCount) || !TrajectoryFrameBuffer.IsPlausibleAtomCount(atomCount)) return false;
-        if (!reader.TryReadLittleEndian(out int _)) return false;
+        if (!reader.TryReadLittleEndian(out int trailingNatomMarker) || trailingNatomMarker != 4)
+        {
+            throw new InvalidDataException("Mismatched DCD atom-count block trailing Fortran marker.");
+        }
 
         return true;
     }

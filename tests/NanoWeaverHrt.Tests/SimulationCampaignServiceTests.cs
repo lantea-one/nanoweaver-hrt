@@ -300,6 +300,64 @@ public sealed class SimulationCampaignServiceTests
     }
 
     /// <summary>
+    /// Verifies that <see cref="SimulationCampaignService.SimulatePbpkEndocrine"/> caps estradiol to 500 pmol/L
+    /// when thrombosis risk index exceeds 1.5 without an explicit max estradiol cap.
+    /// </summary>
+    [Fact]
+    public void SimulatePbpkEndocrine_HighThrombosisRiskWithoutMaxCap_CapsEstradiolTo500()
+    {
+        // WHAT: Tests PBPK simulation with elevated thrombosis risk index (> 1.5) but without RecommendedMaxEstradiolPmolL.
+        // WHY:  Verifies automatic fallback capping to 500 pmol/L for high thrombosis risk profiles.
+        // HOW:  Mock PharmacogenomicsService to return profile with ThrombosisRiskIndex = 2.0 and RecommendedMaxEstradiolPmolL = null.
+        PatientGenomicProfile profile = new()
+        {
+            PatientId = "PATIENT-THROMBOSIS-NOCAP",
+            Regimen = TherapeuticRegimen.MaleToFemale,
+            ObservedMarkers = [],
+            Alerts = [],
+            OverallClearanceMultiplier = 1.0,
+            ThrombosisRiskIndex = 2.0,
+            CpGMethylationMandatory = false,
+            CalculatedAtUtc = "2026-11-03T00:00:00Z",
+            RecommendedMaxEstradiolPmolL = null,
+            RecommendedMinTestosteroneNmolL = null,
+            RecommendedMaxTestosteroneNmolL = null
+        };
+
+        _mockGenomics.Setup(g => g.AnalyzeProfile("PATIENT-THROMBOSIS-NOCAP", It.IsAny<IReadOnlyList<string>>(), TherapeuticRegimen.MaleToFemale))
+            .Returns(profile);
+
+        PbpkSimulationRequest request = new()
+        {
+            PatientId = "PATIENT-THROMBOSIS-NOCAP",
+            Regimen = TherapeuticRegimen.MaleToFemale,
+            GenomicMarkerIds = ["CUSTOM_THROMBOSIS"],
+            DepotDoseMg = 25.0,
+            DeliveryIntervalDays = 90,
+            SimulationDurationDays = 30
+        };
+
+        PbpkEndocrineSimulationResult result = _service.SimulatePbpkEndocrine(request);
+
+        Assert.True(result.AverageSteadyStateEstradiolPmolL <= 500.0);
+        Assert.All(result.DailyKinetics, pt => Assert.True(pt.EstradiolPmolL <= 500.0));
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="SimulationCampaignService.GetCampaignResults"/> returns the registered campaign catalog.
+    /// </summary>
+    [Fact]
+    public void GetCampaignResults_ReturnsCampaignCatalog()
+    {
+        // WHAT: Tests GetCampaignResults method on SimulationCampaignService.
+        // WHY:  Ensures campaign catalog and results query method parity.
+        // HOW:  Asserts that GetCampaignResults matches GetCampaignCatalog.
+        var results = _service.GetCampaignResults();
+        var catalog = _service.GetCampaignCatalog();
+        Assert.Equal(catalog.Count, results.Count);
+    }
+
+    /// <summary>
     /// Verifies that <see cref="SimulationCampaignService.SimulatePbpkEndocrine"/> models FtM testosterone dynamics.
     /// </summary>
     [Fact]

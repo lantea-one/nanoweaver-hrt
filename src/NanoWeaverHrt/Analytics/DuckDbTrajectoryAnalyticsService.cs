@@ -48,6 +48,9 @@ public sealed class DuckDbTrajectoryAnalyticsService : ITrajectoryAnalyticsServi
     /// </summary>
     private static readonly HashSet<string> ProhibitedKeywords = new(StringComparer.OrdinalIgnoreCase)
     {
+        "CREATE",
+        "REPLACE",
+        "TRUNCATE",
         "DROP",
         "DELETE",
         "INSERT",
@@ -55,6 +58,11 @@ public sealed class DuckDbTrajectoryAnalyticsService : ITrajectoryAnalyticsServi
         "ALTER",
         "ATTACH",
         "COPY",
+        "EXPORT",
+        "IMPORT",
+        "SET",
+        "RESET",
+        "CALL",
         "PRAGMA",
         "INSTALL",
         "LOAD",
@@ -365,6 +373,7 @@ public sealed class DuckDbTrajectoryAnalyticsService : ITrajectoryAnalyticsServi
                 (1, 1, 15.5, 25.5, 35.5, 0.1, 'scaffold'),
                 (1, 2, 18.5, 28.5, 38.5, 5.1, 'hormone_payload');
             CREATE OR REPLACE TEMPORARY VIEW trajectory AS SELECT * FROM sample_trajectory;
+            CREATE OR REPLACE TEMPORARY VIEW active_trajectory AS SELECT * FROM sample_trajectory;
             CREATE OR REPLACE TEMPORARY VIEW sample AS SELECT * FROM sample_trajectory;
             CREATE OR REPLACE TEMPORARY VIEW samples AS SELECT * FROM sample_trajectory;
             CREATE OR REPLACE TEMPORARY VIEW synthetic AS SELECT * FROM sample_trajectory;
@@ -399,6 +408,7 @@ public sealed class DuckDbTrajectoryAnalyticsService : ITrajectoryAnalyticsServi
             using DuckDBCommand viewCmd = _connection.CreateCommand();
             viewCmd.CommandText = $@"
                 CREATE OR REPLACE TEMPORARY VIEW trajectory AS SELECT * FROM read_parquet('{normalizedPath}');
+                CREATE OR REPLACE TEMPORARY VIEW active_trajectory AS SELECT * FROM read_parquet('{normalizedPath}');
                 CREATE OR REPLACE TEMPORARY VIEW ""{viewName}"" AS SELECT * FROM read_parquet('{normalizedPath}');
             ";
             await viewCmd.ExecuteNonQueryAsync(ct);

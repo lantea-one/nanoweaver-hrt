@@ -817,16 +817,22 @@ public sealed class WeaverNodeApiClient : INanoWeaverNodeClient, IDisposable
     }
 
     /// <inheritdoc/>
-    public Task<ShareKeyConsumeResult> RedeemShareKeyAsync(
+    public async Task<ShareKeyConsumeResult> RedeemShareKeyAsync(
         InstanceProfile profile,
         RedeemShareKeyRequest request,
         CancellationToken ct = default)
     {
         // WHAT: Dispatches POST /api/share-keys/redeem to consume a peering invitation key.
-        // WHY:  Allows remote instances to authenticate and redeem single-use invitation tokens.
-        // HOW:  Validates non-disposed state and delegates to _innerClient.RedeemShareKeyAsync.
+        // WHY:  Allows remote instances to authenticate, redeem single-use invitation tokens, and cache session.
+        // HOW:  Validates non-disposed state, delegates to _innerClient.RedeemShareKeyAsync, and caches token on success.
         ThrowIfDisposed();
-        return _innerClient.RedeemShareKeyAsync(profile, request, ct);
+        ShareKeyConsumeResult result = await _innerClient.RedeemShareKeyAsync(profile, request, ct).ConfigureAwait(false);
+        if (result.Success && !string.IsNullOrWhiteSpace(result.SessionToken))
+        {
+            SetSessionToken(result.SessionToken);
+        }
+
+        return result;
     }
 
     /// <inheritdoc/>
@@ -1332,17 +1338,24 @@ public sealed class WeaverNodeApiClient : INanoWeaverNodeClient, IDisposable
     }
 
     /// <inheritdoc/>
-    public Task LogoutAsync(
+    public async Task LogoutAsync(
         InstanceProfile profile,
         string bearerToken,
         CancellationToken ct = default)
     {
-        // WHAT: Dispatches POST /api/auth/logout using provided or cached session token.
-        // WHY:  Allows invalidating interactive session with managed token lifecycle.
-        // HOW:  Resolves effective token, delegates to _innerClient.LogoutAsync.
+        // WHAT: Dispatches POST /api/auth/logout using provided or cached session token and clears cached credentials.
+        // WHY:  Allows invalidating interactive session with managed token lifecycle and zeroizing cached session.
+        // HOW:  Resolves effective token, executes logout, and purges session token in a finally block.
         ThrowIfDisposed();
-        string effectiveToken = ResolveBearerToken(bearerToken);
-        return _innerClient.LogoutAsync(profile, effectiveToken, ct);
+        try
+        {
+            string effectiveToken = ResolveBearerToken(bearerToken);
+            await _innerClient.LogoutAsync(profile, effectiveToken, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            ClearSessionToken();
+        }
     }
 
     /// <inheritdoc/>
@@ -1510,16 +1523,22 @@ public sealed class WeaverNodeApiClient : INanoWeaverNodeClient, IDisposable
     }
 
     /// <inheritdoc/>
-    public Task<AuthTokenResponse> InitializeSetupAdminAsync(
+    public async Task<AuthTokenResponse> InitializeSetupAdminAsync(
         InstanceProfile profile,
         InitialSetupRequest request,
         CancellationToken ct = default)
     {
         // WHAT: Dispatches unauthenticated POST /api/setup/initialize to provision master Administrator.
-        // WHY:  Initial bootstrap operation executed before bearer tokens exist.
-        // HOW:  Validates non-disposed state, delegates directly to _innerClient.InitializeSetupAdminAsync.
+        // WHY:  Initial bootstrap operation executed before bearer tokens exist; caches session for immediate access.
+        // HOW:  Validates non-disposed state, delegates to _innerClient.InitializeSetupAdminAsync, and stores result token.
         ThrowIfDisposed();
-        return _innerClient.InitializeSetupAdminAsync(profile, request, ct);
+        AuthTokenResponse result = await _innerClient.InitializeSetupAdminAsync(profile, request, ct).ConfigureAwait(false);
+        if (!string.IsNullOrWhiteSpace(result.Token))
+        {
+            SetSessionToken(result.Token);
+        }
+
+        return result;
     }
 
     /// <inheritdoc/>
@@ -1731,16 +1750,22 @@ public sealed class WeaverNodeApiClient : INanoWeaverNodeClient, IDisposable
     }
 
     /// <inheritdoc/>
-    public Task<AuthTokenResponse> ExchangeWebTokenAsync(
+    public async Task<AuthTokenResponse> ExchangeWebTokenAsync(
         InstanceProfile profile,
         TokenExchangeRequest request,
         CancellationToken ct = default)
     {
         // WHAT: Dispatches POST /api/auth/web-token to authenticate and establish a browser session cookie.
-        // WHY:  Allows web challenge verification with session token emission.
-        // HOW:  Validates lifecycle, delegates to _innerClient.ExchangeWebTokenAsync.
+        // WHY:  Allows web challenge verification with session token emission and zeroizable caching.
+        // HOW:  Validates lifecycle, delegates to _innerClient.ExchangeWebTokenAsync, and stores result token.
         ThrowIfDisposed();
-        return _innerClient.ExchangeWebTokenAsync(profile, request, ct);
+        AuthTokenResponse result = await _innerClient.ExchangeWebTokenAsync(profile, request, ct).ConfigureAwait(false);
+        if (!string.IsNullOrWhiteSpace(result.Token))
+        {
+            SetSessionToken(result.Token);
+        }
+
+        return result;
     }
 
     /// <inheritdoc/>
@@ -1753,6 +1778,66 @@ public sealed class WeaverNodeApiClient : INanoWeaverNodeClient, IDisposable
         // HOW:  Validates lifecycle, delegates to _innerClient.GetHealthzAsync.
         ThrowIfDisposed();
         return _innerClient.GetHealthzAsync(profile, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<PatientDigitalDnaRecord> CreatePatientDnaAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        CreatePatientDnaRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/patients/{username}/dna using provided or cached token.
+        // WHY:  Synthesizes and registers a digitized DNA blueprint for a patient.
+        // HOW:  Resolves effective token, delegates to _innerClient.CreatePatientDnaAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.CreatePatientDnaAsync(profile, effectiveToken, username, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<SystemHealthOverview> GetHealthAsync(
+        InstanceProfile profile,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /health to evaluate system operational health.
+        // WHY:  Provides low-overhead container health reporting via the /health endpoint.
+        // HOW:  Validates lifecycle, delegates to _innerClient.GetHealthAsync.
+        ThrowIfDisposed();
+        return _innerClient.GetHealthAsync(profile, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<GranularSystemHealth> GetGranularSystemHealthAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/system/health to inspect detailed subsystem diagnostics using provided or cached token.
+        // WHY:  Enables diagnostic health inspection across internal services.
+        // HOW:  Resolves effective token, delegates to _innerClient.GetGranularSystemHealthAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GetGranularSystemHealthAsync(profile, effectiveToken, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<PatientDigitalDnaPackage> GetPatientDnaRegimensAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string? patientId,
+        TherapeuticRegimen? regimen,
+        string? geometry,
+        double? targetKd,
+        CancellationToken ct = default)
+    {
+        // WHAT: Downloads patient Digital DNA package with filter parameters using provided or cached session token.
+        // WHY:  Provides patient nanocarrier sequences and annealing schedules tailored by regimen or geometry.
+        // HOW:  Resolves effective token, delegates to _innerClient.GetPatientDnaRegimensAsync.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GetPatientDnaRegimensAsync(profile, effectiveToken, patientId, regimen, geometry, targetKd, ct);
     }
 
     /// <inheritdoc/>

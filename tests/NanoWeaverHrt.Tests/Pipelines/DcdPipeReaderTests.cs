@@ -154,18 +154,17 @@ public sealed class DcdPipeReaderTests
         });
         Assert.Empty(frames);
 
-        // Corrupt trailing title marker (offset: 84 bytes header + 8 bytes marker + 4 bytes title len + title payload)
+        // Corrupt trailing title marker (offset: 84 bytes header payload + 4 bytes leading marker + 4 bytes title len + 4 bytes title payload = offset 96)
         byte[] corruptTitleBytes = (byte[])dcdBytes.Clone();
-        // The title record starts after 84 + 8 = 92 bytes: marker (4), title (4), trailing marker (4)
-        corruptTitleBytes[92 + 4 + 4] = 0x7F; // Mismatch trailing title marker
+        corruptTitleBytes[96] = 0x7F; // Mismatch trailing title marker
         using MemoryStream msTitle = new(corruptTitleBytes);
         PipeReader readerTitle = PipeReader.Create(msTitle);
-        await parser.ParseAsync(readerTitle, (_, coords) =>
-        {
-            frames.Add(coords.ToArray());
-            return ValueTask.CompletedTask;
-        });
-        Assert.Empty(frames);
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            parser.ParseAsync(readerTitle, (_, coords) =>
+            {
+                frames.Add(coords.ToArray());
+                return ValueTask.CompletedTask;
+            }));
     }
 
     /// <summary>

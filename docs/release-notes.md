@@ -4,6 +4,37 @@
 
 ---
 
+## v2026.11.09.2 — Code-Complete Milestone: Scientific Parser Fortran Bounds & SIMD Interleaving, DuckDB Analytics Sandbox, PBPK Kinetics Scaling & Client REST SDK Parity (2026-11-09)
+
+Code-complete milestone release resolving Work Packages `P146–P150` (Forgejo Issues `#149–#153`), hardening `DcdPipeReader` against fragmented multi-title CHARMM/NAMD DCD headers and corrupt Fortran markers, accelerating SOA-to-AOS coordinate interleaving with `SimdCoordinateParser.InterleaveCoordinatesSimd`, restricting DuckDB user queries against prohibited DDL/DML keywords (`CREATE`, `REPLACE`, `TRUNCATE`, `EXPORT`, `IMPORT`, `SET`, `RESET`, `CALL`) with `active_trajectory` view aliasing, driving PBPK simulation kinetics and supraphysiological surge detection by `DepotDoseMg`, subscribing `ValkeyEventBridge` to inbound cluster `TrajectoryFrameBatchEvent` messages, wiring live `IAcceleratorTelemetryProvider` metrics into `/api/system/telemetry`, achieving 100% Client REST SDK parity (`CreatePatientDnaAsync`, `GetHealthAsync`, `GetGranularSystemHealthAsync`, and query-filtered `GetPatientDnaRegimensAsync`), and establishing zeroizable session token caching and logout clearing across `WeaverNodeApiClient`.
+
+### Highlights
+* **DCD Fortran Binary Header Bounds Hardening & SIMD Coordinate Interleaving (Forgejo #149 / P146)**:
+  - Enforced strict title length limits (`0 <= titleLength <= 65536`) throwing `InvalidDataException` on corrupt lengths.
+  - Added lookahead verification (`reader.Remaining < (long)titleLength + 16`) prior to buffer advancement, preventing buffer underflows on fragmented multi-title CHARMM/NAMD DCD headers.
+  - Verified title and atom count trailing/leading Fortran markers, throwing `InvalidDataException` on mismatch.
+  - Replaced scalar SOA-to-AOS coordinate conversion loops with vectorized `SimdCoordinateParser.InterleaveCoordinatesSimd`.
+* **DuckDB Read-Only Analytics Sandbox & `active_trajectory` View Aliasing (Forgejo #149 / P146)**:
+  - Expanded `ProhibitedKeywords` to reject `CREATE`, `REPLACE`, `TRUNCATE`, `EXPORT`, `IMPORT`, `SET`, `RESET`, and `CALL` statements.
+  - Automatically bound `active_trajectory` temporary views for both synthetic in-memory samples and validated on-disk Parquet datasets.
+* **Dose-Dependent PBPK Endocrine Kinetics, Valkey Inbound Frame Bridge & Live GPU Telemetry (Forgejo #150 / P147)**:
+  - Implemented dose-responsive PBPK endocrine kinetics scaling peak and steady-state serum estradiol by `DepotDoseMg / 25.0` (MtF) and testosterone by `sqrt(DepotDoseMg / 30.0)` (FtM).
+  - Evaluated supraphysiological surge threshold (`e2 > 800.0 pmol/L` triggers `SurgeDetected = true`) and physiological bounding (`[20.0, 2500.0] pmol/L`).
+  - Added inbound cluster subscription for `ChannelPrefix + "TrajectoryFrameBatch"` (`TrajectoryFrameBatchEvent`) in `ValkeyEventBridge`.
+  - Registered `IAcceleratorTelemetryProvider` singleton and wired live device name, temperature, power-derived utilization, and active simulation counts into `GET /api/system/telemetry`.
+* **Client REST SDK Missing Endpoints & Cohort Group Contract Alignment (Forgejo #151 / P148)**:
+  - Synchronized `PUT /api/subject-groups/{groupId}` to return the updated `SubjectGroup` entity.
+  - Added `CreatePatientDnaAsync` (`POST /api/patients/{username}/dna`), `GetHealthAsync` (`GET /health`), and `GetGranularSystemHealthAsync` (`GET /api/system/health`) to `INanoWeaverNodeClient`, `NanoWeaverNodeClient`, and `WeaverNodeApiClient`.
+  - Added query-filtered `GetPatientDnaRegimensAsync` overload supporting `regimen`, `geometry`, and `targetKd` filters.
+* **`WeaverNodeApiClient` Zeroizable Session Token Caching & Unified Lifecycle (Forgejo #152 / P149)**:
+  - Automatically cached issued Bearer tokens into pinned zeroizable memory upon `InitializeSetupAdminAsync`, `RedeemShareKeyAsync`, and `ExchangeWebTokenAsync`.
+  - Guaranteed cryptographic memory wiping (`ClearSessionToken()`) in `LogoutAsync.finally`, transitioning `HasActiveSession` to `false`.
+* **Scientific Parser, Analytics Sandbox & Client REST SDK End-to-End Verification Suite (Forgejo #153 / P150)**:
+  - Added comprehensive test suites in `DcdPipeReaderTests`, `DuckDbTrajectoryAnalyticsServiceTests`, `SimulationCampaignServiceTests`, `NanoWeaverNodeClientTests`, and `WeaverNodeApiClientAndZeroizableBufferTests`.
+  - Maintained 100.00% line & branch code coverage threshold across 1,781 deterministic unit tests with 0 compiler-generated state machine regressions.
+
+---
+
 ## v2026.11.09.1 — Code-Complete Milestone: Multi-Engine Persistence Parity, Cryptographic Audit Determinism, Minimal API Security Hardening & 100.00% Un-Excluded Coverage Ratchet (2026-11-09)
 
 Code-complete milestone release resolving Work Packages `P141–P145` (Forgejo Issues `#144–#148`), delivering 4-engine SQL DDL and DML parity across SQLite, PostgreSQL, DuckDB, and MySQL/MariaDB (`MySqlConnector`), isolated `0700` node secret storage with persistent HIPAA/GDPR pseudonymization key provisioning, microsecond-precision FDA 21 CFR Part 11 audit ledger hash chains, full-stream FASTA/VCF Safe Harbor de-identification, minimal API security gating and logout session revocation, and a downward ratchet to **0 uncovered compiler-generated state machine lines (`100.00%` un-excluded line coverage)** in `coverage-baseline.json`.

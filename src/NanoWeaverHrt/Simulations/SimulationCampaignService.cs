@@ -37,6 +37,9 @@ public sealed class SimulationCampaignService : ISimulationCampaignService
     /// <returns>Collection of simulation campaign metadata records.</returns>
     public IReadOnlyList<SimulationCampaignInfo> GetCampaignCatalog() => _campaigns;
 
+    /// <inheritdoc/>
+    public IReadOnlyList<SimulationCampaignInfo> GetCampaignResults() => _campaigns;
+
     /// <summary>
     /// Executes Campaign 1: oxDNA Physiological Serum &amp; Low-Magnesium Stability Simulation.
     /// </summary>
@@ -373,7 +376,8 @@ public sealed class SimulationCampaignService : ISimulationCampaignService
             if (isMtf)
             {
                 // MtF: High E2 (target 500-600 pmol/L) suppresses pituitary LH (< 2.5 IU/L), dropping endogenous T (< 1.8 nmol/L)
-                double baselineE2 = 550.0 / clearanceMultiplier;
+                double doseScaleMtf = request.DepotDoseMg / 25.0;
+                double baselineE2 = (550.0 * doseScaleMtf) / clearanceMultiplier;
                 // Minor sinusoidal metabolic fluctuation
                 e2 = Math.Round(baselineE2 + (25.0 * Math.Sin(day * 0.1)), 1);
 
@@ -390,6 +394,13 @@ public sealed class SimulationCampaignService : ISimulationCampaignService
                     e2 = 500.0; // Automatically capped by pharmacogenomics feedback
                 }
 
+                if (e2 > 800.0)
+                {
+                    surgeDetected = true;
+                }
+
+                e2 = Math.Clamp(e2, 20.0, 2500.0);
+
                 // Testosterone suppression via negative feedback
                 t = Math.Round(1.1 + (0.3 * Math.Exp(-0.08 * day)) + (0.1 * Math.Cos(day * 0.05)), 2);
                 lh = Math.Round(1.8 + (1.2 * Math.Exp(-0.1 * day)), 1);
@@ -398,16 +409,12 @@ public sealed class SimulationCampaignService : ISimulationCampaignService
                 {
                     inRangeDays++;
                 }
-
-                if (e2 > 800.0)
-                {
-                    surgeDetected = true;
-                }
             }
             else
             {
                 // FtM: High T (target 15-25 nmol/L) suppresses GnRH pulsatility and ovarian E2 (< 150 pmol/L)
-                double baselineT = 20.0 / clearanceMultiplier;
+                double doseScaleFtm = Math.Sqrt(request.DepotDoseMg / 30.0);
+                double baselineT = (20.0 * doseScaleFtm) / clearanceMultiplier;
                 t = Math.Round(baselineT + (1.5 * Math.Sin(day * 0.08)), 2);
                 e2 = Math.Round(100.0 * Math.Exp(-0.06 * day) + 20.0, 1);
                 lh = Math.Round(1.5 + (0.8 * Math.Exp(-0.05 * day)), 1);

@@ -15,6 +15,12 @@ public interface ISimulationCampaignService
     IReadOnlyList<SimulationCampaignInfo> GetCampaignCatalog();
 
     /// <summary>
+    /// Retrieves the collection of simulation campaign definitions and active results.
+    /// </summary>
+    /// <returns>Collection of simulation campaign metadata and results.</returns>
+    IReadOnlyList<SimulationCampaignInfo> GetCampaignResults();
+
+    /// <summary>
     /// Executes Campaign 1: oxDNA Physiological Serum &amp; Low-Magnesium Stability Simulation.
     /// </summary>
     /// <param name="request">Input parameters specifying salt, temperature, and passivation.</param>

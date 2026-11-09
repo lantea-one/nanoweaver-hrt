@@ -130,6 +130,7 @@ public class Program
         builder.Services.AddSingleton<SubjectErasureJournal>();
         builder.Services.AddSingleton<SubjectKeyVault>();
         builder.Services.AddSingleton<ISimulationCampaignService, SimulationCampaignService>();
+        builder.Services.AddSingleton<IAcceleratorTelemetryProvider, DefaultAcceleratorTelemetryProvider>();
         builder.Services.AddSingleton<DatabaseMigrationRunner>();
         builder.Services.AddSingleton<IWeaverDbConnectionFactory, WeaverDbConnectionFactory>();
         builder.Services.AddSingleton<IAuditLedgerRepository, AuditLedgerRepository>();
@@ -935,17 +936,17 @@ public class Program
         // ---------------------------------------------------------------------
         // REST API: Node Telemetry & Accelerator Monitoring
         // ---------------------------------------------------------------------
-        app.MapGet("/api/system/telemetry", () =>
+        app.MapGet("/api/system/telemetry", (
+            IAcceleratorTelemetryProvider telemetryProvider,
+            ISimulationCampaignService campaignService) =>
         {
             Process currentProcess = Process.GetCurrentProcess();
             TimeSpan uptime = DateTime.UtcNow - StartTimeUtc;
 
-            string backend = Environment.GetEnvironmentVariable("ACCELERATOR_BACKEND") ?? "Intel iGPU / OpenCL (Default)";
-
             SystemTelemetry telemetry = new()
             {
                 NodeName = Environment.MachineName,
-                AcceleratorBackend = backend,
+                AcceleratorBackend = telemetryProvider.DeviceName,
                 FramesParsed = Interlocked.Read(ref _totalFramesParsed),
                 FramesPerSecond = 0.0,
                 HeapMemoryMb = GC.GetTotalMemory(forceFullCollection: false) / (1024.0 * 1024.0),
@@ -955,9 +956,9 @@ public class Program
                 GcGen2Collections = GC.CollectionCount(2),
                 Uptime = $"{uptime.Days}d {uptime.Hours}h {uptime.Minutes}m {uptime.Seconds}s",
                 CpuUtilizationPercent = 12.5,
-                GpuUtilizationPercent = 24.0,
-                GpuTemperatureCelsius = 42.0,
-                ActiveSimulationCount = 1
+                GpuUtilizationPercent = Math.Round(Math.Clamp(telemetryProvider.PowerUsageWatts / 2.25, 0.0, 100.0), 1),
+                GpuTemperatureCelsius = telemetryProvider.TemperatureCelsius,
+                ActiveSimulationCount = Math.Max(1, campaignService.GetCampaignResults().Count)
             };
 
             return Results.Ok(telemetry);
@@ -3340,6 +3341,7 @@ public class Program
             string groupId,
             UpdateSubjectGroupRequest request,
             ISubjectAccessService accessService,
+            ISubjectAccessRepository repo,
             HttpContext context,
             CancellationToken ct) =>
         {
@@ -3367,7 +3369,8 @@ public class Program
                     return Results.NotFound(new { error = $"Group '{groupId}' not found." });
                 }
 
-                return Results.Ok(new { message = $"Group '{groupId}' successfully updated." });
+                SubjectGroup? group = await repo.GetGroupAsync(groupId, ct);
+                return Results.Ok(group);
             }
             catch (UnauthorizedAccessException ex)
             {
@@ -3379,7 +3382,7 @@ public class Program
         .WithSummary("Updates cohort group name and description.")
         .WithDescription("Updates group metadata (Administrator or cohort creator only).")
         .Accepts<UpdateSubjectGroupRequest>("application/json")
-        .Produces(StatusCodes.Status200OK)
+        .Produces<SubjectGroup>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status400BadRequest)
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status403Forbidden)

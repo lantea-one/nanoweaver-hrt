@@ -114,6 +114,14 @@ public sealed class DuckDbTrajectoryAnalyticsServiceTests
     /// </summary>
     /// <param name="prohibitedQuery">The prohibited SQL statement containing a forbidden keyword.</param>
     [Theory]
+    [InlineData("CREATE TABLE evil (id INT);")]
+    [InlineData("CREATE OR REPLACE VIEW evil AS SELECT 1;")]
+    [InlineData("TRUNCATE trajectory;")]
+    [InlineData("EXPORT DATABASE '/tmp/db';")]
+    [InlineData("IMPORT DATABASE '/tmp/db';")]
+    [InlineData("SET threads = 4;")]
+    [InlineData("RESET threads;")]
+    [InlineData("CALL pragma_version();")]
     [InlineData("DROP TABLE trajectory;")]
     [InlineData("DELETE FROM trajectory;")]
     [InlineData("INSERT INTO trajectory VALUES (1, 2, 3);")]
@@ -195,6 +203,10 @@ public sealed class DuckDbTrajectoryAnalyticsServiceTests
         TrajectoryAnalyticsQuery queryLimit1 = new("sample", "SELECT * FROM trajectory;", MaxRows: 1);
         TrajectoryAnalyticsResult result1 = await service.ExecuteQueryAsync(queryLimit1);
         Assert.Equal(1, result1.TotalRows);
+
+        TrajectoryAnalyticsQuery queryActive = new("sample", "SELECT * FROM active_trajectory;", MaxRows: 1);
+        TrajectoryAnalyticsResult resultActive = await service.ExecuteQueryAsync(queryActive);
+        Assert.Equal(1, resultActive.TotalRows);
 
         // 2. Non-positive limit (0 or negative) falls back to default 1000
         TrajectoryAnalyticsQuery queryDefault = new("sample", "SELECT * FROM trajectory;", MaxRows: -10);
@@ -603,6 +615,15 @@ public sealed class DuckDbTrajectoryAnalyticsServiceTests
         Assert.False(DuckDbTrajectoryAnalyticsService.IsReadOnlySelectQuery("   "));
         Assert.True(DuckDbTrajectoryAnalyticsService.IsReadOnlySelectQuery("SELECT 1;"));
         Assert.True(DuckDbTrajectoryAnalyticsService.IsReadOnlySelectQuery("SELECT atom_index, x, y FROM trajectory;"));
+        Assert.True(DuckDbTrajectoryAnalyticsService.IsReadOnlySelectQuery("SELECT atom_index, x, y FROM active_trajectory;"));
+        Assert.False(DuckDbTrajectoryAnalyticsService.IsReadOnlySelectQuery("CREATE TABLE t (id INT);"));
+        Assert.False(DuckDbTrajectoryAnalyticsService.IsReadOnlySelectQuery("REPLACE INTO t VALUES (1);"));
+        Assert.False(DuckDbTrajectoryAnalyticsService.IsReadOnlySelectQuery("TRUNCATE trajectory;"));
+        Assert.False(DuckDbTrajectoryAnalyticsService.IsReadOnlySelectQuery("EXPORT DATABASE '/tmp';"));
+        Assert.False(DuckDbTrajectoryAnalyticsService.IsReadOnlySelectQuery("IMPORT DATABASE '/tmp';"));
+        Assert.False(DuckDbTrajectoryAnalyticsService.IsReadOnlySelectQuery("SET threads = 2;"));
+        Assert.False(DuckDbTrajectoryAnalyticsService.IsReadOnlySelectQuery("RESET threads;"));
+        Assert.False(DuckDbTrajectoryAnalyticsService.IsReadOnlySelectQuery("CALL pragma_version();"));
         Assert.False(DuckDbTrajectoryAnalyticsService.IsReadOnlySelectQuery("DROP TABLE trajectory;"));
         Assert.False(DuckDbTrajectoryAnalyticsService.IsReadOnlySelectQuery("SELECT * FROM read_parquet('/tmp/secret.parquet');"));
         Assert.False(DuckDbTrajectoryAnalyticsService.IsReadOnlySelectQuery("SELECT * FROM read_csv('/etc/passwd');"));

@@ -285,6 +285,11 @@ public sealed class SubjectAccessEndpointsTests : IClassFixture<WebApplicationFa
             Description = "Updated description"
         });
         Assert.Equal(HttpStatusCode.OK, updateGrpRes.StatusCode);
+        SubjectGroup? updatedGroup = await updateGrpRes.Content.ReadFromJsonAsync<SubjectGroup>();
+        Assert.NotNull(updatedGroup);
+        Assert.Equal(grpId, updatedGroup.Id);
+        Assert.Equal("Res1 Cohort Updated", updatedGroup.Name);
+        Assert.Equal("Updated description", updatedGroup.Description);
 
         // =====================================================================
         // Part 5: Cohort Group Members

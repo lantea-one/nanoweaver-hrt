@@ -602,7 +602,7 @@ public sealed class ComprehensiveCoverageTests : IClassFixture<WebApplicationFac
         Assert.False(DcdPipeReader.TryParseHeader(ref validToTitleReader, out _, out _));
 
         // 11. natomRecordLength != 4 (line 207 part 2)
-        byte[] badNatomLen = new byte[104];
+        byte[] badNatomLen = new byte[112];
         validToTitle.CopyTo(badNatomLen, 0);
         BinaryPrimitives.WriteInt32LittleEndian(badNatomLen.AsSpan(100, 4), 8); // != 4
         ReadOnlySequence<byte> badNatomLenSeq = new(badNatomLen);
@@ -618,20 +618,48 @@ public sealed class ComprehensiveCoverageTests : IClassFixture<WebApplicationFac
         Assert.False(DcdPipeReader.TryParseHeader(ref noAtomCountReader, out _, out _));
 
         // 13. atomCount <= 0 (line 208 part 2)
-        byte[] zeroAtomCount = new byte[108];
-        noAtomCount.CopyTo(zeroAtomCount, 0);
+        byte[] zeroAtomCount = new byte[112];
+        validToTitle.CopyTo(zeroAtomCount, 0);
+        BinaryPrimitives.WriteInt32LittleEndian(zeroAtomCount.AsSpan(100, 4), 4);
         BinaryPrimitives.WriteInt32LittleEndian(zeroAtomCount.AsSpan(104, 4), 0); // <= 0
+        BinaryPrimitives.WriteInt32LittleEndian(zeroAtomCount.AsSpan(108, 4), 4);
         ReadOnlySequence<byte> zeroAtomCountSeq = new(zeroAtomCount);
         SequenceReader<byte> zeroAtomCountReader = new(zeroAtomCountSeq);
         Assert.False(DcdPipeReader.TryParseHeader(ref zeroAtomCountReader, out _, out _));
 
-        // 14. Truncated before trailing natom marker (line 209)
-        byte[] noTrailingNatom = new byte[108];
-        noAtomCount.CopyTo(noTrailingNatom, 0);
-        BinaryPrimitives.WriteInt32LittleEndian(noTrailingNatom.AsSpan(104, 4), 2); // > 0
-        ReadOnlySequence<byte> noTrailingNatomSeq = new(noTrailingNatom);
-        SequenceReader<byte> noTrailingNatomReader = new(noTrailingNatomSeq);
-        Assert.False(DcdPipeReader.TryParseHeader(ref noTrailingNatomReader, out _, out _));
+        // 14. Mismatched trailing natom marker (!= 4)
+        byte[] badTrailingNatom = new byte[112];
+        validToTitle.CopyTo(badTrailingNatom, 0);
+        BinaryPrimitives.WriteInt32LittleEndian(badTrailingNatom.AsSpan(100, 4), 4);
+        BinaryPrimitives.WriteInt32LittleEndian(badTrailingNatom.AsSpan(104, 4), 2);
+        BinaryPrimitives.WriteInt32LittleEndian(badTrailingNatom.AsSpan(108, 4), 8); // != 4
+        ReadOnlySequence<byte> badTrailingNatomSeq = new(badTrailingNatom);
+        Assert.Throws<InvalidDataException>(() =>
+        {
+            SequenceReader<byte> reader = new(badTrailingNatomSeq);
+            DcdPipeReader.TryParseHeader(ref reader, out _, out _);
+        });
+
+        // 14b. Invalid DCD title block length (< 0 and > 65536)
+        byte[] negTitleLen = new byte[100];
+        validToTitle.CopyTo(negTitleLen, 0);
+        BinaryPrimitives.WriteInt32LittleEndian(negTitleLen.AsSpan(88, 4), -1);
+        ReadOnlySequence<byte> negTitleSeq = new(negTitleLen);
+        Assert.Throws<InvalidDataException>(() =>
+        {
+            SequenceReader<byte> reader = new(negTitleSeq);
+            DcdPipeReader.TryParseHeader(ref reader, out _, out _);
+        });
+
+        byte[] largeTitleLen = new byte[100];
+        validToTitle.CopyTo(largeTitleLen, 0);
+        BinaryPrimitives.WriteInt32LittleEndian(largeTitleLen.AsSpan(88, 4), 70000);
+        ReadOnlySequence<byte> largeTitleSeq = new(largeTitleLen);
+        Assert.Throws<InvalidDataException>(() =>
+        {
+            SequenceReader<byte> reader = new(largeTitleSeq);
+            DcdPipeReader.TryParseHeader(ref reader, out _, out _);
+        });
 
         // 15. Short stream (< 104 bytes) that completes in ParseAsync
         byte[] shortStream = new byte[50];

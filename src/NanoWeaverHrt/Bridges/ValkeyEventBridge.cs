@@ -235,6 +235,11 @@ public sealed class ValkeyEventBridge : BackgroundService, IValkeyEventBridge
             {
                 await ProcessInboundMessageAsync<SystemTelemetryUpdatedEvent>(message).ConfigureAwait(false);
             }).ConfigureAwait(false);
+
+            await subscriber.SubscribeAsync(RedisChannel.Literal(ChannelPrefix + "TrajectoryFrameBatch"), async (_, message) =>
+            {
+                await ProcessInboundMessageAsync<TrajectoryFrameBatchEvent>(message).ConfigureAwait(false);
+            }).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

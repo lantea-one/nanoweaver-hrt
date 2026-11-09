@@ -1490,4 +1490,62 @@ public interface INanoWeaverNodeClient
     Task<SystemHealthOverview> GetHealthzAsync(
         InstanceProfile profile,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Synthesizes and registers a digitized DNA blueprint for a patient via POST /api/patients/{username}/dna.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="username">Target patient username.</param>
+    /// <param name="request">DNA blueprint synthesis parameters and nanocarrier specifications.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The created <see cref="PatientDigitalDnaRecord"/> record.</returns>
+    Task<PatientDigitalDnaRecord> CreatePatientDnaAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string username,
+        CreatePatientDnaRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Evaluates node operational health via the standard GET /health probe.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>High-level system health overview.</returns>
+    Task<SystemHealthOverview> GetHealthAsync(
+        InstanceProfile profile,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Retrieves detailed subsystem diagnostic telemetry via authenticated GET /api/system/health.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Granular multi-subsystem diagnostic health report.</returns>
+    Task<GranularSystemHealth> GetGranularSystemHealthAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Retrieves digitized DNA nanocarrier fabrication regimens for a patient with filtering parameters via GET /api/patient/dna.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="patientId">Optional patient identifier to retrieve; if omitted, defaults to the authenticated subject.</param>
+    /// <param name="regimen">Optional therapeutic regimen filter.</param>
+    /// <param name="geometry">Optional nanocarrier geometry filter.</param>
+    /// <param name="targetKd">Optional target aptamer dissociation constant filter in nanomolar.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Complete patient Digital DNA package including staple oligos and annealing ramps.</returns>
+    Task<PatientDigitalDnaPackage> GetPatientDnaRegimensAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string? patientId,
+        TherapeuticRegimen? regimen,
+        string? geometry,
+        double? targetKd,
+        CancellationToken ct = default);
 }

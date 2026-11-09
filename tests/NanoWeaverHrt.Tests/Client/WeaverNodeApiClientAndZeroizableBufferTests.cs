@@ -417,7 +417,7 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         innerMock.Setup(i => i.CreateShareKeyAsync(profile, "cached_token", createShareKeyReq, It.IsAny<CancellationToken>())).ReturnsAsync(createdShareKeyRec);
 
         var redeemReq = new RedeemShareKeyRequest { Token = "nanoweaver_hrt_tok" };
-        var redeemRes = new ShareKeyConsumeResult { Success = true, Message = "Token redeemed.", Record = null, PeerSessionToken = "jwt" };
+        var redeemRes = new ShareKeyConsumeResult { Success = true, Message = "Token redeemed.", Record = null, PeerSessionToken = "cached_token" };
         innerMock.Setup(i => i.RedeemShareKeyAsync(profile, redeemReq, It.IsAny<CancellationToken>())).ReturnsAsync(redeemRes);
 
         var updateGrpReq = new UpdateSubjectGroupRequest { Name = "Updated Cohort" };
@@ -762,6 +762,37 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         var sampleHealthzRes = sampleHealth;
         innerMock.Setup(i => i.GetHealthzAsync(profile, It.IsAny<CancellationToken>())).ReturnsAsync(sampleHealthzRes);
 
+        var sampleCreateDnaReq = new CreatePatientDnaRequest { Title = "Custom 6HB" };
+        var sampleCreatedDnaRecord = new PatientDigitalDnaRecord
+        {
+            Id = "dna_123",
+            Username = "user1",
+            Title = "Custom 6HB",
+            Regimen = TherapeuticRegimen.MaleToFemale,
+            TargetTissue = "Pituitary",
+            ActiveLigand = "GnRH",
+            NanocarrierGeometry = "6HB",
+            TargetAptamerKdNm = 3.5,
+            ScaffoldFasta = "ACGT",
+            GcPercentage = 50.0,
+            EstimatedMwKDa = 100.0,
+            Staples = [],
+            AnnealingProtocol = [],
+            ProvenanceSha256 = "hash123",
+            CreatedAtUtc = DateTimeOffset.UtcNow
+        };
+        innerMock.Setup(i => i.CreatePatientDnaAsync(profile, "explicit_token", "user1", sampleCreateDnaReq, It.IsAny<CancellationToken>())).ReturnsAsync(sampleCreatedDnaRecord);
+        innerMock.Setup(i => i.CreatePatientDnaAsync(profile, "cached_token", "user1", sampleCreateDnaReq, It.IsAny<CancellationToken>())).ReturnsAsync(sampleCreatedDnaRecord);
+
+        innerMock.Setup(i => i.GetHealthAsync(profile, It.IsAny<CancellationToken>())).ReturnsAsync(sampleHealth);
+
+        var sampleGranularHealth = ((GranularSystemHealth)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(GranularSystemHealth))).GetExamples();
+        innerMock.Setup(i => i.GetGranularSystemHealthAsync(profile, "explicit_token", It.IsAny<CancellationToken>())).ReturnsAsync(sampleGranularHealth);
+        innerMock.Setup(i => i.GetGranularSystemHealthAsync(profile, "cached_token", It.IsAny<CancellationToken>())).ReturnsAsync(sampleGranularHealth);
+
+        innerMock.Setup(i => i.GetPatientDnaRegimensAsync(profile, "explicit_token", "pt1", TherapeuticRegimen.MaleToFemale, "6HB", 3.5, It.IsAny<CancellationToken>())).ReturnsAsync(dnaPkg);
+        innerMock.Setup(i => i.GetPatientDnaRegimensAsync(profile, "cached_token", "pt1", TherapeuticRegimen.MaleToFemale, "6HB", 3.5, It.IsAny<CancellationToken>())).ReturnsAsync(dnaPkg);
+
         using var client = new WeaverNodeApiClient(innerMock.Object);
 
         // 1. Missing token without cache throws InvalidOperationException
@@ -779,6 +810,9 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetLatestBenchmarkAsync(profile, ""));
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.GenerateOpentronsProtocolAsync(profile, "", opentronsReq));
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetPatientDnaRegimensAsync(profile, "", "pt1"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetPatientDnaRegimensAsync(profile, "", "pt1", TherapeuticRegimen.MaleToFemale, "6HB", 3.5));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.CreatePatientDnaAsync(profile, "", "user1", sampleCreateDnaReq));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetGranularSystemHealthAsync(profile, ""));
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetPatientDigitalDnaAsync(profile, "", "pt1"));
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.ListTrajectoriesAsync(profile, ""));
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.ExportDatasetAsync(profile, "", expReq));
@@ -1162,6 +1196,18 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         var healthz1 = await client.GetHealthzAsync(profile);
         Assert.Equal(sampleHealthzRes.Status, healthz1.Status);
 
+        var createdDna1 = await client.CreatePatientDnaAsync(profile, "explicit_token", "user1", sampleCreateDnaReq);
+        Assert.Equal(sampleCreatedDnaRecord.Id, createdDna1.Id);
+
+        var healthOverview1 = await client.GetHealthAsync(profile);
+        Assert.Equal(sampleHealth.Status, healthOverview1.Status);
+
+        var granularHealth1 = await client.GetGranularSystemHealthAsync(profile, "explicit_token");
+        Assert.Equal(sampleGranularHealth.Status, granularHealth1.Status);
+
+        var filteredDna1 = await client.GetPatientDnaRegimensAsync(profile, "explicit_token", "pt1", TherapeuticRegimen.MaleToFemale, "6HB", 3.5);
+        Assert.Equal("pt1", filteredDna1.PatientId);
+
         // 3. Set cached token and call with empty token argument
         client.SetSessionToken("cached_token");
 
@@ -1381,6 +1427,9 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         Assert.Equal(sampleUser.Username, me2.Username);
 
         await client.LogoutAsync(profile, "");
+        Assert.False(client.HasActiveSession);
+        client.SetSessionToken("cached_token");
+        Assert.True(client.HasActiveSession);
 
         var setupStatus2 = await client.GetSetupStatusAsync(profile);
         Assert.Equal(sampleStatus.SetupRequired, setupStatus2.SetupRequired);
@@ -1452,6 +1501,18 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         var pbpk2 = await client.RunPbpkSimulationAsync(profile, "", samplePbpkReq);
         Assert.Equal(samplePbpkRes.AverageSteadyStateEstradiolPmolL, pbpk2.AverageSteadyStateEstradiolPmolL);
 
+        var createdDna2 = await client.CreatePatientDnaAsync(profile, "", "user1", sampleCreateDnaReq);
+        Assert.Equal(sampleCreatedDnaRecord.Id, createdDna2.Id);
+
+        var healthOverview2 = await client.GetHealthAsync(profile);
+        Assert.Equal(sampleHealth.Status, healthOverview2.Status);
+
+        var granularHealth2 = await client.GetGranularSystemHealthAsync(profile, "");
+        Assert.Equal(sampleGranularHealth.Status, granularHealth2.Status);
+
+        var filteredDna2 = await client.GetPatientDnaRegimensAsync(profile, "", "pt1", TherapeuticRegimen.MaleToFemale, "6HB", 3.5);
+        Assert.Equal("pt1", filteredDna2.PatientId);
+
         // 4. Set whitespace token buffer to exercise whitespace fallback exception
         using var whitespaceBuf = ZeroizableSecretBuffer.FromUtf8("   ");
         client.SetSessionToken(whitespaceBuf);
@@ -1489,6 +1550,7 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         var sampleLeakageReq = new PayloadLeakageRequest().GetExamples();
         var samplePbpkReq = new PbpkSimulationRequest().GetExamples();
         var sampleWebTokenReq = new TokenExchangeRequest().GetExamples();
+        var sampleCreateDnaReq = new CreatePatientDnaRequest { Title = "s1" };
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.AuthenticateAsync(profile, "pass".ToCharArray()));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.PollSnapshotAsync(profile, "token"));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.StartSimulationCampaignAsync(profile, "token", "serum-stability"));
@@ -1595,5 +1657,87 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.RunPbpkSimulationAsync(profile, "token", samplePbpkReq));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ExchangeWebTokenAsync(profile, sampleWebTokenReq));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetHealthzAsync(profile));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.CreatePatientDnaAsync(profile, "token", "user1", sampleCreateDnaReq));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetHealthAsync(profile));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetGranularSystemHealthAsync(profile, "token"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetPatientDnaRegimensAsync(profile, "token", "pt1", TherapeuticRegimen.MaleToFemale, "6HB", 3.5));
+    }
+
+    /// <summary>
+    /// Verifies that session token caching is properly wired for setup initialization, share-key redemption, web-token exchange, and logout.
+    /// </summary>
+    /// <returns>A task representing asynchronous test completion.</returns>
+    [Fact]
+    public async Task WeaverNodeApiClient_TokenCaching_WiresSessionTokenCorrectly()
+    {
+        // WHAT: Tests zeroizable session token caching across setup, share-key redemption, web-token exchange, and logout.
+        // WHY:  Issue #152 ([P149]): Guarantees tokens from authentication-establishing endpoints are cached and wiped on logout.
+        // HOW:  Invokes each endpoint, verifies HasActiveSession and session token value, then logs out and verifies null/disposed.
+        InstanceProfile profile = new("p1", "Profile 1", "http://127.0.0.1:5000", true, "admin", "Administrator", "Ed25519", "pub", "enc", false, 10, DateTimeOffset.UtcNow, null);
+        Mock<INanoWeaverNodeClient> innerMock = new();
+
+        InitialSetupRequest setupReq = new InitialSetupRequest().GetExamples();
+        AuthTokenResponse setupRes = new() { Token = "setup_token_123" };
+        innerMock.Setup(i => i.InitializeSetupAdminAsync(profile, setupReq, It.IsAny<CancellationToken>())).ReturnsAsync(setupRes);
+
+        RedeemShareKeyRequest redeemReq = new() { Token = "share_key_abc" };
+        ShareKeyConsumeResult redeemRes = new() { Success = true, Message = "Redeemed", PeerSessionToken = "share_session_456" };
+        ShareKeyConsumeResult redeemFailRes = new() { Success = false, Message = "Invalid", PeerSessionToken = "fail_token" };
+        innerMock.Setup(i => i.RedeemShareKeyAsync(profile, redeemReq, It.IsAny<CancellationToken>())).ReturnsAsync(redeemRes);
+
+        TokenExchangeRequest webReq = new TokenExchangeRequest().GetExamples();
+        AuthTokenResponse webRes = new() { Token = "web_token_789" };
+        innerMock.Setup(i => i.ExchangeWebTokenAsync(profile, webReq, It.IsAny<CancellationToken>())).ReturnsAsync(webRes);
+
+        innerMock.Setup(i => i.LogoutAsync(profile, It.IsAny<string>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+        using WeaverNodeApiClient client = new(innerMock.Object);
+        Assert.False(client.HasActiveSession);
+
+        // 1. InitializeSetupAdminAsync caches token
+        AuthTokenResponse authRes = await client.InitializeSetupAdminAsync(profile, setupReq);
+        Assert.Equal("setup_token_123", authRes.Token);
+        Assert.True(client.HasActiveSession);
+        using (ZeroizableSecretBuffer? buf = client.SessionTokenBuffer)
+        {
+            Assert.NotNull(buf);
+            Assert.Equal("setup_token_123", buf.ToUnprotectedString());
+        }
+
+        // 2. LogoutAsync clears token
+        await client.LogoutAsync(profile, "");
+        Assert.False(client.HasActiveSession);
+
+        // 3. RedeemShareKeyAsync caches token when successful
+        ShareKeyConsumeResult shareRes = await client.RedeemShareKeyAsync(profile, redeemReq);
+        Assert.True(shareRes.Success);
+        Assert.True(client.HasActiveSession);
+        using (ZeroizableSecretBuffer? buf = client.SessionTokenBuffer)
+        {
+            Assert.NotNull(buf);
+            Assert.Equal("share_session_456", buf.ToUnprotectedString());
+        }
+
+        // 4. Failed redeem does not cache token
+        client.ClearSessionToken();
+        innerMock.Setup(i => i.RedeemShareKeyAsync(profile, It.Is<RedeemShareKeyRequest>(r => r.Token == "bad"), It.IsAny<CancellationToken>())).ReturnsAsync(redeemFailRes);
+        ShareKeyConsumeResult failRes = await client.RedeemShareKeyAsync(profile, new RedeemShareKeyRequest { Token = "bad" });
+        Assert.False(failRes.Success);
+        Assert.False(client.HasActiveSession);
+
+        // 5. ExchangeWebTokenAsync caches token
+        AuthTokenResponse webAuth = await client.ExchangeWebTokenAsync(profile, webReq);
+        Assert.Equal("web_token_789", webAuth.Token);
+        Assert.True(client.HasActiveSession);
+        using (ZeroizableSecretBuffer? buf = client.SessionTokenBuffer)
+        {
+            Assert.NotNull(buf);
+            Assert.Equal("web_token_789", buf.ToUnprotectedString());
+        }
+
+        // 6. LogoutAsync purges token even if inner throws
+        innerMock.Setup(i => i.LogoutAsync(profile, "web_token_789", It.IsAny<CancellationToken>())).ThrowsAsync(new InvalidOperationException("Logout failed on server"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.LogoutAsync(profile, ""));
+        Assert.False(client.HasActiveSession);
     }
 }
