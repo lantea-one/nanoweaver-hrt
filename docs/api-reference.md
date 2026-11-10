@@ -459,10 +459,14 @@ Streams a raw trajectory file (`.xyz`, `.dcd` or `.dump`) from the incoming traj
 ---
 
 ### `GET /api/datasets/download/{fileName}`
-Directly downloads an exported dataset archive or provenance manifest from the exports directory.
+Directly streams an exported dataset archive (`.tar.gz`, `.enc.tar.gz`) or provenance manifest (`.manifest.json`) from the exports directory. Requires Administrator or Researcher role.
 
 * **Method**: `GET`
-* **Response Headers**: `Content-Type: application/gzip`
+* **Path Parameters**:
+  * `fileName` (string, required): Bare filename of the target exported bundle or manifest.
+* **Role Requirement**: `Administrator` or `Researcher`
+* **Response Status**: `200 OK` — streams the raw binary or JSON file bytes (`application/octet-stream`).
+* **Errors**: `404 Not Found` when the file does not exist or has an unapproved extension.
 
 ---
 
@@ -567,18 +571,48 @@ Permanently revokes an active peer key and records a `RevokePeerKey` entry in th
 ---
 
 ### `POST /api/parser/process/{fileName}`
-Executes zero-allocation `System.IO.Pipelines` trajectory ingestion across `.xyz`, `.dump`, or `.dcd` files.
+Executes zero-allocation `System.IO.Pipelines` trajectory ingestion across `.xyz`, `.dump`, or `.dcd` files, streaming atomic coordinates through hardware SIMD vectorization and measuring throughput.
 
 * **Method**: `POST`
+* **Path Parameters**:
+  * `fileName` (string, required): Trajectory filename in shared storage.
+* **Role Requirement**: `Administrator` or `Researcher`
 * **Response Status**: `200 OK`
+* **Response Payload (JSON)**:
+  ```json
+  {
+    "fileName": "sample_nanotube.xyz",
+    "format": "Extended XYZ",
+    "framesParsed": 1000,
+    "totalAtomsProcessed": 1250000,
+    "elapsedMilliseconds": 142,
+    "framesPerSecond": 7042.25
+  }
+  ```
+* **Errors**: `404 Not Found` when the target trajectory file does not exist.
 
 ---
 
 ### `POST /api/parser/export-parquet/{fileName}`
-Transforms raw text trajectory coordinate frames into compressed columnar Apache Parquet format.
+Transforms raw text or binary trajectory coordinate frames into compressed columnar Apache Parquet format using DuckDB and SIMD vectorization.
 
 * **Method**: `POST`
+* **Path Parameters**:
+  * `fileName` (string, required): Source trajectory filename in shared storage.
+* **Role Requirement**: `Administrator` or `Researcher`
 * **Response Status**: `200 OK`
+* **Response Payload (JSON)**:
+  ```json
+  {
+    "source_file": "sample_nanotube.xyz",
+    "parquet_file": "sample_nanotube.parquet",
+    "format": "Extended XYZ",
+    "total_records_serialized": 1000,
+    "file_size_bytes": 482910,
+    "elapsed_milliseconds": 210
+  }
+  ```
+* **Errors**: `404 Not Found` when the target trajectory file does not exist.
 
 ---
 
@@ -644,20 +678,72 @@ Retrieves the 72-hour simulated pharmacodynamics curve points.
 ---
 
 ### `POST /api/endocrine/analyze/{fileName}`
-Analyzes molecular dynamics coordinates to calculate aptamer binding pocket dimensions, center-of-mass drift, and binding affinity (Kd).
+Streams trajectory coordinates to compute real-time ligand-pocket contact counts and binding occupancy ratios, evaluating conformational stability.
 
 * **Method**: `POST`
+* **Path Parameters**:
+  * `fileName` (string, required): Trajectory filename in shared storage.
+* **Role Requirement**: `Administrator` or `Researcher`
 * **Response Status**: `200 OK`
-* **Response Payload**:
+* **Response Payload (JSON)** — `AptamerTrajectoryMetrics`:
   ```json
   {
-    "fileName": "aptamer_docking.xyz",
-    "targetKd": 45.2,
-    "pocketVolume": 12450.0,
-    "bindingAffinityScore": 0.94,
-    "centerOfMassDrift": 0.12
+    "trajectoryFileName": "aptamer_docking.xyz",
+    "framesAnalyzed": 1000,
+    "averageContactsPerFrame": 3.85,
+    "bindingOccupancyRatio": 0.942,
+    "stabilityVerdict": "Optimal Conformation Stable"
   }
   ```
+* **Errors**: `404 Not Found` when the target trajectory file does not exist.
+
+---
+
+### `POST /api/endocrine/closed-loop/simulate`
+Simulates dynamic closed-loop endocrine feedback and pituitary gonadotropin suppression kinetics over 1 to 720 hours using 4th-order Runge-Kutta numerical integration.
+
+* **Method**: `POST`
+* **Role Requirement**: `Administrator` or `Researcher`
+* **Request Headers**: `Content-Type: application/json`
+* **Request Payload (JSON)** — `ClosedLoopSimulationRequest`:
+  ```json
+  {
+    "initialEstradiolPmolL": 120.0,
+    "initialTestosteroneNmolL": 18.0,
+    "initialLhIuL": 6.5,
+    "initialFshIuL": 5.0,
+    "targetEstradiolPmolL": 550.0,
+    "targetTestosteroneNmolL": 1.2,
+    "targetState": "EstrogenicDominant",
+    "totalHours": 72.0,
+    "stepHours": 0.5
+  }
+  ```
+* **Response Status**: `200 OK`
+* **Response Payload (JSON)** — `ClosedLoopSimulationResult`:
+  ```json
+  {
+    "targetState": "EstrogenicDominant",
+    "totalHours": 72.0,
+    "stepHours": 0.5,
+    "finalEstradiolPmolL": 548.2,
+    "finalTestosteroneNmolL": 1.25,
+    "finalLhIuL": 1.8,
+    "finalFshIuL": 1.4,
+    "targetSetpointsAchieved": true,
+    "hoursToTargetEquilibrium": 24.5,
+    "trajectory": [
+      {
+        "hour": 0.0,
+        "estradiolPmolL": 120.0,
+        "testosteroneNmolL": 18.0,
+        "lhIuL": 6.5,
+        "fshIuL": 5.0
+      }
+    ]
+  }
+  ```
+* **Errors**: `400 Bad Request` when hours are out of range or request is invalid; `401 Unauthorized`; `403 Forbidden`.
 
 ---
 
@@ -727,6 +813,108 @@ Generates a complete benchtop fabrication package: staple routing, stoichiometri
     }
   }
   ```
+
+---
+
+### `POST /api/fabrication/opentrons/generate`
+Generates an executable Opentrons Protocol API v2 Python script and deck layout summary for automating DNA origami stoichiometric pipetting on Opentrons OT-2 or Flex liquid handlers.
+
+* **Method**: `POST`
+* **Role Requirement**: `Administrator` or `Researcher`
+* **Request Headers**: `Content-Type: application/json`
+* **Request Payload (JSON)** — `GenerateOpentronsScriptRequest`:
+  ```json
+  {
+    "sequenceOrSampleId": "SAMPLE-MTF-001",
+    "regimen": "MaleToFemale",
+    "geometry": "Nanotube",
+    "targetKd": 4.8,
+    "options": {
+      "robotModel": "OT-2",
+      "pipetteModel": "p20_single_gen2",
+      "pipetteMount": "right",
+      "tipRackModel": "opentrons_96_tiprack_20ul",
+      "plateModel": "nest_96_wellplate_100ul_pcr_full_skirt",
+      "reservoirModel": "nest_12_reservoir_15ml",
+      "generateThermalRamp": true
+    }
+  }
+  ```
+* **Response Status**: `200 OK`
+* **Response Payload (JSON)** — `OpentronsProtocolResult`:
+  ```json
+  {
+    "protocolId": "proto_ot2_mtf_001",
+    "pythonScript": "# Opentrons Protocol API v2\nfrom opentrons import protocol_api\nmetadata = {\n    'protocolName': 'NanoWeaver DNA Origami Stoichiometric Annealing',\n    'author': 'NanoWeaverHrt Automated Synthesis',\n    'apiLevel': '2.14'\n}\n...",
+    "metadata": {
+      "protocolName": "NanoWeaver DNA Origami Stoichiometric Annealing",
+      "author": "NanoWeaverHrt Automated Synthesis",
+      "apiLevel": "2.14"
+    },
+    "deckLayoutSummary": "Slot 1: 96-well PCR plate; Slot 2: 12-channel reservoir; Slot 3: 20 µL tip rack"
+  }
+  ```
+* **Errors**: `400 Bad Request`, `401 Unauthorized`, `403 Forbidden`.
+
+---
+
+### `POST /api/fabrication/opentrons/download`
+Generates and directly streams the Opentrons Protocol API v2 Python script as a downloadable UTF-8 file (`nanoweaver_origami_opentrons.py`).
+
+* **Method**: `POST`
+* **Role Requirement**: `Administrator` or `Researcher`
+* **Request Headers**: `Content-Type: application/json`
+* **Request Payload**: Same as `POST /api/fabrication/opentrons/generate` (`GenerateOpentronsScriptRequest`).
+* **Response Status**: `200 OK` — streams file bytes with `Content-Type: text/x-python; charset=utf-8` and `Content-Disposition: attachment; filename="nanoweaver_origami_opentrons.py"`.
+* **Errors**: `400 Bad Request`, `401 Unauthorized`, `403 Forbidden`.
+
+---
+
+### `POST /api/fabrication/gel/analyze`
+Executes automated computer vision agarose gel electrophoresis image segmentation, lane profiling, and molecular weight band densitometry for DNA origami assembly verification.
+
+* **Method**: `POST`
+* **Role Requirement**: `Administrator` or `Researcher`
+* **Request Headers**: `Content-Type: application/json`
+* **Request Payload (JSON)** — `GelAnalysisRequest`:
+  ```json
+  {
+    "imageBytes": "...",
+    "width": 160,
+    "height": 100,
+    "expectedLaneCount": 8,
+    "ladderType": "OneKbDnaLadder",
+    "ladderLaneNumber": 1,
+    "backgroundThreshold": 0.15
+  }
+  ```
+* **Response Status**: `200 OK`
+* **Response Payload (JSON)** — `GelAnalysisResult`:
+  ```json
+  {
+    "imageWidth": 160,
+    "imageHeight": 100,
+    "lanesDetected": 8,
+    "ladderCalibrated": true,
+    "lanes": [
+      {
+        "laneNumber": 1,
+        "isLadderLane": true,
+        "bands": [
+          {
+            "bandIndex": 0,
+            "pixelY": 25.0,
+            "relativeIntensity": 0.85,
+            "calibratedBasePairs": 10000.0
+          }
+        ]
+      }
+    ],
+    "foldingQualityVerdict": "Optimal Yield Monodisperse",
+    "qualityScore": 0.92
+  }
+  ```
+* **Errors**: `400 Bad Request`, `401 Unauthorized`, `403 Forbidden`.
 
 ---
 
@@ -827,6 +1015,7 @@ Scans raw nucleotide sequences for CpG dinucleotide density (TLR9 immunogenicity
 Evaluates markers and applies personalized setpoints and kinetic modifiers directly to the active endocrine engine.
 
 * **Method**: `POST`
+* **Role Requirement**: `Administrator` or `Researcher`
 * **Request Headers**: `Content-Type: application/json`
 * **Request Payload**:
   ```json
@@ -837,6 +1026,23 @@ Evaluates markers and applies personalized setpoints and kinetic modifiers direc
   }
   ```
 * **Response Status**: `200 OK`
+* **Response Payload (JSON)**:
+  ```json
+  {
+    "genomic_profile": {
+      "patientId": "PATIENT-001",
+      "regimen": "MaleToFemale",
+      "thrombosisRiskIndex": 5.04,
+      "overallClearanceMultiplier": 0.75,
+      "recommendedMaxEstradiolPmolL": 500.0
+    },
+    "adjusted_endocrine_profile": {
+      "regimen": "MaleToFemale",
+      "targetEstradiolPmolL": 500.0,
+      "targetTestosteroneNmolL": 1.2
+    }
+  }
+  ```
 
 ---
 
@@ -947,6 +1153,23 @@ Executes Campaign 4: Quantitative Systems Pharmacology (QSP) whole-body 5-compar
   }
   ```
 * **Response Status**: `200 OK`
+* **Response Payload (JSON)** — `PbpkEndocrineSimulationResult`:
+  ```json
+  {
+    "patientId": "SUBJECT-001",
+    "regimen": "MaleToFemale",
+    "simulationDurationDays": 90,
+    "depotDoseMg": 25.0,
+    "averageSteadyStateEstradiolPmolL": 542.8,
+    "averageSteadyStateTestosteroneNmolL": 1.15,
+    "averageLhIuL": 1.42,
+    "timeInTargetRangePercent": 94.5,
+    "targetSuppressionAchieved": true,
+    "thromboticSurgeDetected": false,
+    "recommendedDosingIntervalDays": 180,
+    "clinicalFeasibilityVerdict": "Optimal Efficacy with Cis-Typical Hormone Stability"
+  }
+  ```
 
 ### `GET /api/simulations/configs/{campaignId}`
 Exports runnable oxDNA or LAMMPS input deck scripts formatted for GPU/SYCL hardware execution.
@@ -1108,16 +1331,27 @@ Decrypts an authenticated post-quantum envelope using the subject's private ML-K
 Exports an authenticated `.enc.tar.gz` trajectory bundle encrypted with ML-KEM-768 + AES-256-GCM and signed with ML-DSA-65.
 
 * **Method**: `POST`
+* **Role Requirement**: `Administrator` or `Researcher`
 * **Request Headers**: `Content-Type: application/json`
-* **Request Payload**:
+* **Request Payload (JSON)** — `ExportEncryptedDatasetRequest`:
   ```json
   {
     "trajectoryFileName": "dna_nanotube_sample.xyz",
     "subjectId": "sub_a1b2c3d4e5f67890",
-    "destinationDirectory": "simulations/exports"
+    "exportDirectory": "simulations/exports"
   }
   ```
 * **Response Status**: `200 OK`
+* **Response Payload (JSON)**:
+  ```json
+  {
+    "bundle_path": "dna_nanotube_sample.enc.tar.gz",
+    "algorithm": "ML-KEM-768+AES-256-GCM",
+    "subject_id": "sub_a1b2c3d4e5f67890",
+    "message": "Encrypted dataset bundle packaged and signed with ML-DSA-65."
+  }
+  ```
+* **Errors**: `400 Bad Request` if `trajectoryFileName` is missing or invalid; `404 Not Found` if file does not exist.
 
 ---
 
@@ -1852,43 +2086,52 @@ Lists all active P2P swarm federation peers registered in the `IPeerKeyRegistry`
 ---
 
 ### `POST /api/federation/manifests/build`
-Builds a cryptographic dataset federation manifest (`TrajectoryFederationManifest`) for a target simulation dataset, signed via local node asymmetric identity (`INodeSecretStore`).
+Builds a cryptographic dataset federation manifest (`TrajectoryFederationManifest`) for a target simulation dataset, computed via chunk Merkle tree and signed via local node asymmetric identity (`INodeSecretStore`).
 
 * **Method**: `POST`
-* **Request Payload (JSON)**:
+* **Role Requirement**: `Administrator` or `Researcher`
+* **Request Headers**: `Content-Type: application/json`
+* **Request Payload (JSON)** — `FederationBuildManifestRequest`:
   ```json
   {
-    "datasetId": "ds_sim_2026_01",
-    "totalChunks": 128
+    "trajectoryFileName": "dna_nanotube_sample.xyz"
   }
   ```
-* **Response Status**: `201 Created` — `TrajectoryFederationManifest`.
-* **Errors**: `400 Bad Request`, `403 Forbidden`, `404 Not Found`.
+* **Response Status**: `200 OK` — `TrajectoryFederationManifest`.
+* **Errors**: `400 Bad Request`, `401 Unauthorized`, `403 Forbidden`, `404 Not Found`.
 
 ---
 
 ### `POST /api/federation/manifests/verify`
-Verifies a foreign dataset federation manifest signature against trusted peer laboratories in `IPeerKeyRegistry`.
+Verifies a foreign dataset federation manifest signature and chunk hashes against trusted peer laboratories in `IPeerKeyRegistry`.
 
 * **Method**: `POST`
-* **Request Payload (JSON)**:
+* **Role Requirement**: `Administrator` or `Researcher`
+* **Request Headers**: `Content-Type: application/json`
+* **Request Payload (JSON)** — `TrajectoryFederationManifest`.
+* **Response Status**: `200 OK` — `FederationVerifyManifestResponse`:
   ```json
   {
-    "manifestId": "mf_019283",
-    "signature": "base64_ed25519_signature..."
+    "isValid": true,
+    "trajectoryId": "dna_nanotube_sample.xyz",
+    "chunkCount": 12,
+    "totalSizeBytes": 12582912
   }
   ```
-* **Response Status**: `200 OK` — verification status result.
-* **Errors**: `400 Bad Request`, `401 Unauthorized`.
+* **Errors**: `400 Bad Request`, `401 Unauthorized`, `403 Forbidden`.
 
 ---
 
-### `GET /api/federation/chunks/{fileName}?index={n}`
-Streams a 1 MB content-addressed trajectory chunk (`TrajectoryChunkDescriptor`) for P2P swarm synchronization. Mapped at `GET /api/federation/chunks/{fileName}` with an optional `?index={n}` query parameter.
+### `GET /api/federation/chunks/{fileName}`
+Streams a 1 MB content-addressed trajectory chunk for P2P swarm synchronization. Mapped at `GET /api/federation/chunks/{fileName}` with an optional `?index={n}` query parameter.
 
 * **Method**: `GET`
-* **Parameters**: `fileName` (string), `index` (integer query param `?index=0`, optional).
+* **Role Requirement**: `Administrator` or `Researcher`
+* **Parameters**:
+  * `fileName` (string, path parameter, required): Target trajectory filename in shared storage.
+  * `index` (integer, query parameter `?index=0`, optional, default: 0): 0-based chunk sequence index.
 * **Response Status**: `200 OK` — binary chunk stream (`application/octet-stream`).
+* **Errors**: `400 Bad Request`, `401 Unauthorized`, `403 Forbidden`, `404 Not Found`.
 * **Errors**: `404 Not Found`.
 
 ---

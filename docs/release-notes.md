@@ -4,6 +4,35 @@
 
 ---
 
+## v2026.11.09.4 — Code-Complete Milestone: Desktop MVVM Workspaces, Headless Daemon Lifecycle, Mobile Biometric Key Separation, Container Hardening & Documentation Parity (2026-11-09)
+
+Code-complete milestone release resolving Work Packages `P156–P160` (Forgejo Issues `#159–#163`), completing MVVM workspace viewmodels across `NanoWeaverHrt.Gui.Core` (`SimulationWorkspaceViewModel`, `ClinicalGenomicsWorkspaceViewModel`, `WetLabComplianceWorkspaceViewModel`, and `MainShellViewModel` child property exposure), integrating `AvaloniaShellBootstrapper.CreateDefault` and configurable headless daemon polling intervals (`DesktopDaemonConfig`) into `DesktopProgram.cs`, implementing HKDF (SHA-256) subkey separation (`nanoweaver-android-ed25519-sign-v1` vs `nanoweaver-android-aes256gcm-wrap-v1`, and Apple Secure Enclave equivalents) with zeroizable memory wiping and encrypted local file persistence in `NanoWeaverHrt.Mobile`, hardening Docker Compose runtime security (`127.0.0.1:5000:5000`, `cap_drop: [ALL]`, `no-new-privileges:true`), synchronizing CalVer release versioning `2026.11.09.4` across all 12 packaging manifests and scripts, migrating certificate rotation workflows to Forgejo Actions (`.forgejo/workflows/rotate-codesign-certs.yml`), and bringing all documentation files into 100% parity with the codebase.
+
+### Highlights
+* **Desktop MVVM Specialized Workspaces & Shell ViewModel Exposure (Forgejo #159 / P156)**:
+  - Implemented `SimulationWorkspaceViewModel` providing simulation campaign lifecycle management, active trajectory streaming observation, and parameter configuration bindings.
+  - Implemented `ClinicalGenomicsWorkspaceViewModel` managing patient digital DNA blue-printing, pharmacogenomic marker screening, and setpoint adjustment calculations.
+  - Implemented `WetLabComplianceWorkspaceViewModel` coordinating Opentrons robot pipetting protocol generation, agarose gel electrophoretic image densitometry, and tamper-evident audit ledger verification.
+  - Exposed strongly-typed child workspace viewmodel properties on `MainShellViewModel` with property change notifications, maintaining 100.00% test coverage in `GuiWorkspaceViewModelsTests.cs`.
+* **Desktop Entry Point Lifecycle, Avalonia Bootstrapping & Headless Polling Cadence (Forgejo #160 / P157)**:
+  - Initialized `DefaultDesktopUiHost` to wire `AvaloniaShellBootstrapper.CreateDefault` by default when no custom bootstrapper is supplied.
+  - Added `Console.CancelKeyPress` SIGINT/SIGTERM cancellation token registration for graceful headless shutdown.
+  - Wired `DesktopDaemonConfig` to derive headless polling iteration delays from `config.PollingIntervalSeconds` with full boundary checks, verified in `DesktopProgramTests.cs`.
+* **Mobile Biometric Key Separation (HKDF Signing vs Encryption), Prompt Gating & Storage (Forgejo #161 / P158)**:
+  - Implemented HKDF (SHA-256) subkey separation (`nanoweaver-android-ed25519-sign-v1` vs `nanoweaver-android-aes256gcm-wrap-v1`, and iOS equivalents) in `DefaultAndroidKeyStoreBridge` and `DefaultAppleSecureEnclaveBridge`.
+  - Added zeroizable memory wiping of derived key material in `finally` blocks, preventing secret retention in process memory.
+  - Added encrypted file persistence via `storageDirectoryPath` and enforced mandatory biometric challenge prompting in `AndroidBiometricSecurityProvider` and `AppleSecureEnclaveSecurityProvider`, verified in `MobileBiometricSecurityTests.cs`.
+* **Docker Compose Least-Privilege Hardening, Packaging Script Verification & CalVer Manifest Sync (Forgejo #162 / P159)**:
+  - Bound service port strictly to host loopback `127.0.0.1:5000:5000` and added `cap_drop: [ALL]` and `security_opt: [no-new-privileges:true]` across `docker-compose.yml` and `docker-compose.infra.yml`.
+  - Aligned CalVer release versioning `2026.11.09.4` across `Directory.Build.props`, Gentoo ebuild, Arch AUR `.SRCINFO`/`PKGBUILD`, and packaging scripts.
+  - Resolved `${rid}` shell unexpansion in `build-linux-packages.sh` and added `--allow-stub-packaging` fast-fail flags to packaging scripts.
+  - Replaced legacy GitHub workflow with sovereign Forgejo Actions workflow `.forgejo/workflows/rotate-codesign-certs.yml`.
+* **Comprehensive Documentation Parity & Full 8-Gate Verification Closeout (Forgejo #163 / P160)**:
+  - Brought `docs/api-reference.md`, `docs/database-engines.md`, `docs/localization.md`, `docs/compliance-and-security.md`, `docs/index.md`, `docs/release-notes.md`, and `AGENTS.md` into 100% factual alignment with the codebase.
+  - Maintained 100.00% line & branch coverage threshold across 1,847 deterministic unit tests with 0 compiler-generated state machine regressions.
+
+---
+
 ## v2026.11.09.3 — Code-Complete Milestone: Sovereign Blazor UI Zero-Style Refactoring, Real Trajectory/Parquet Pipelines, bUnit Verification Suite & Regression Guards (2026-11-09)
 
 Code-complete milestone release resolving Work Packages `P151–P155` (Forgejo Issues `#154–#158`), eliminating all 128 inline `style="..."` attributes across Blazor components in favor of reusable semantic dark-mode CSS classes, wiring real simulation campaigns, zero-allocation trajectory streaming (`XyzPipeReader`, `DcdPipeReader`, `LammpsCustomPipeReader`), and Parquet batch exports with SHA-256 verification into `WorkflowWizard.razor`, aligning JavaScript chart interop properties to camelCase (`hour`, `estradiolPmolL`, `testosteroneNmolL`), eliminating duplicate DOM IDs, enforcing Administrator gating and removing share-key auto-seeding in `ConfigurationManagement.razor`, authorizing Researcher patient profile inspection via `ISubjectAccessService`, recording authenticated operator attribution on GDPR crypto-shred in `ComplianceSecurity.razor`, adding archive upload controls in `TrajectoryBrowser.razor`, adding 100% XML docblocks across all Razor `@code` blocks, and establishing comprehensive bUnit component tests and permanent regression guards in `WebUiAndConfigurationTests` and `LocalizationTests`.

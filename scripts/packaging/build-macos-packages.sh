@@ -17,6 +17,15 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 OUTPUT_DIR="${ROOT_DIR}/artifacts/packages/macos"
 mkdir -p "${OUTPUT_DIR}"
 
+ALLOW_STUB_PACKAGING="${ALLOW_STUB_PACKAGING:-false}"
+for arg in "$@"; do
+    case "$arg" in
+        --allow-stub-packaging)
+            ALLOW_STUB_PACKAGING=true
+            ;;
+    esac
+done
+
 echo "=== NanoWeaver HRT macOS Packaging Engine ==="
 
 # WHAT: Helper to create Mach-O binary stubs when cross-compilation SDK is absent.
@@ -106,7 +115,12 @@ publish_macos_arch() {
     fi
 
     if [ ! -f "${staging_dir}/NanoWeaverHrt" ]; then
-        echo "Creating deterministic Mach-O binary for ${rid} (${arch_name})"
+        if [ "${ALLOW_STUB_PACKAGING}" != "true" ]; then
+            echo "ERROR: Compiled macOS binary not found at ${staging_dir}/NanoWeaverHrt and --allow-stub-packaging was not specified." >&2
+            echo "Please compile NanoWeaverHrt.Desktop for ${rid} or pass --allow-stub-packaging." >&2
+            exit 1
+        fi
+        echo "Creating deterministic Mach-O binary for ${rid} (${arch_name}) (--allow-stub-packaging enabled)"
         # Copy compiled managed assemblies if available
         if [ -d "${ROOT_DIR}/src/NanoWeaverHrt.Desktop/bin/Release/net10.0" ]; then
             cp -r "${ROOT_DIR}/src/NanoWeaverHrt.Desktop/bin/Release/net10.0"/* "${staging_dir}/" 2>/dev/null || true
@@ -195,6 +209,34 @@ create_fat_macho_binary \
     "${FAT_BINARY}"
 
 assemble_app_bundle "${ROOT_DIR}/artifacts/staging/osx-arm64" "${APP_UNIVERSAL}" "${FAT_BINARY}"
+
+# Ensure architecture-appropriate .dylib libraries are copied/merged into Universal app
+echo "Synchronizing architecture-appropriate .dylib libraries for Universal bundle..."
+for dylib_x64 in "${ROOT_DIR}/artifacts/staging/osx-x64"/*.dylib; do
+    if [ -f "${dylib_x64}" ]; then
+        dylib_name="$(basename "${dylib_x64}")"
+        dylib_arm64="${ROOT_DIR}/artifacts/staging/osx-arm64/${dylib_name}"
+        target_dylib="${APP_UNIVERSAL}/Contents/MacOS/${dylib_name}"
+        if [ -f "${dylib_arm64}" ]; then
+            if command -v lipo &>/dev/null; then
+                lipo -create -output "${target_dylib}" "${dylib_x64}" "${dylib_arm64}"
+            else
+                create_fat_macho_binary "${dylib_x64}" "${dylib_arm64}" "${target_dylib}"
+            fi
+        else
+            cp -f "${dylib_x64}" "${target_dylib}"
+        fi
+    fi
+done
+for dylib_arm64 in "${ROOT_DIR}/artifacts/staging/osx-arm64"/*.dylib; do
+    if [ -f "${dylib_arm64}" ]; then
+        dylib_name="$(basename "${dylib_arm64}")"
+        target_dylib="${APP_UNIVERSAL}/Contents/MacOS/${dylib_name}"
+        if [ ! -f "${target_dylib}" ]; then
+            cp -f "${dylib_arm64}" "${target_dylib}"
+        fi
+    fi
+done
 
 # Package Universal tar.gz archive
 echo "Packaging Universal .app.tar.gz archive..."

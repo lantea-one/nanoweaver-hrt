@@ -9,10 +9,10 @@
 The mission of **`nanoweaver-hrt`** is to democratize advanced synthetic biology, DNA nanotechnology, and gender-affirming healthcare research. Historically, scientific computational tooling and clinical research platforms have been restricted to English-only interfaces, presenting steep barriers for community biohackers, patient cohorts, and autonomous lab collectives across Latin America, Europe, Asia, and Africa.
 
 The **NanoWeaver HRT Community Localization Subsystem** delivers:
-- **10 Native Language Catalogs**: Seamless user experience across English, Spanish, French, German, Brazilian Portuguese, Italian, Japanese, Simplified Chinese, Dutch, and Polish.
+- **18 Native Language Catalogs**: Seamless user experience across English, Spanish, French, German, Brazilian Portuguese, Italian, Japanese, Simplified Chinese, Dutch, Polish, Arabic, Korean, Turkish, Hindi, Ukrainian, Vietnamese, Indonesian, and Swedish.
 - **Unified Cross-Platform Coverage**: Identical terminology and resource keys across the Sovereign Web UI, Blazor server circuits, Desktop GUI shells (Avalonia UI), system tray monitors, and mobile platform heads.
 - **Zero-Allocation In-Memory Catalogs**: Pre-parsed, thread-safe embedded JSON resources with fast O(1) dictionary lookups and fallback resolution.
-- **Dual-Engine Preference Persistence**: Multi-tiered storage supporting local SQLite client databases, enterprise PostgreSQL servers, and client-side browser cookies (`weaver_lang` with `SameSite=Strict`).
+- **Multi-Engine Preference Persistence**: Multi-tiered storage supporting local SQLite client databases, enterprise PostgreSQL servers, DuckDB analytical stores, MySQL / MariaDB instances, and client-side browser cookies (`weaver_lang` with `SameSite=Strict`).
 
 ```mermaid
 flowchart TD
@@ -21,8 +21,10 @@ flowchart TD
     Dispatcher --> Service["ILanguagePreferenceService<br>Persistence Engine"]
     Service -->|Local Client| Sqlite[("SQLite Engine<br>weaver_gui_preferences")]
     Service -->|Enterprise Node| Postgres[("PostgreSQL Engine<br>weaver_gui_preferences")]
+    Service -->|In-Process Analytics| DuckDb[("DuckDB Engine<br>weaver_gui_preferences")]
+    Service -->|Clustered Hosting| MySql[("MySQL/MariaDB Engine<br>weaver_gui_preferences")]
     Dispatcher --> Localizer["IWeaverLocalizer<br>Zero-Allocation Lookups"]
-    Localizer --> Catalogs[("10 Embedded JSON Catalogs<br>src/NanoWeaverHrt/Localization/Resources")]
+    Localizer --> Catalogs[("18 Embedded JSON Catalogs<br>src/NanoWeaverHrt/Localization/Resources")]
     Catalogs --> UI["Reactive UI Translations<br>Nav, Endocrine Hub, Wizard, System Tray"]
 ```
 
@@ -30,7 +32,7 @@ flowchart TD
 
 ## 2. Supported Languages & Culture Tags
 
-The platform currently ships with 10 community-authored translation packs:
+The platform currently ships with 18 community-authored translation packs:
 
 | Language Name | Native Endonym | IETF BCP 47 Tag | WeaverLanguage Enum | Default Locale Code |
 |:---|:---|:---|:---|:---|
@@ -38,12 +40,20 @@ The platform currently ships with 10 community-authored translation packs:
 | **Spanish** | Español | `es-ES` | `WeaverLanguage.Spanish` | `es` |
 | **French** | Français | `fr-FR` | `WeaverLanguage.French` | `fr` |
 | **German** | Deutsch | `de-DE` | `WeaverLanguage.German` | `de` |
-| **Portuguese (Brazil)** | Português (Brasil) | `pt-BR` | `WeaverLanguage.Portuguese` | `pt` |
+| **Portuguese (Brazil)** | Português | `pt-BR` | `WeaverLanguage.Portuguese` | `pt` |
 | **Italian** | Italiano | `it-IT` | `WeaverLanguage.Italian` | `it` |
 | **Japanese** | 日本語 | `ja-JP` | `WeaverLanguage.Japanese` | `ja` |
 | **Chinese (Simplified)** | 简体中文 | `zh-CN` | `WeaverLanguage.Chinese` | `zh` |
 | **Dutch** | Nederlands | `nl-NL` | `WeaverLanguage.Dutch` | `nl` |
 | **Polish** | Polski | `pl-PL` | `WeaverLanguage.Polish` | `pl` |
+| **Arabic** | العربية | `ar-SA` (RTL) | `WeaverLanguage.Arabic` | `ar` |
+| **Korean** | 한국어 | `ko-KR` | `WeaverLanguage.Korean` | `ko` |
+| **Turkish** | Türkçe | `tr-TR` | `WeaverLanguage.Turkish` | `tr` |
+| **Hindi** | हिन्दी | `hi-IN` | `WeaverLanguage.Hindi` | `hi` |
+| **Ukrainian** | Українська | `uk-UA` | `WeaverLanguage.Ukrainian` | `uk` |
+| **Vietnamese** | Tiếng Việt | `vi-VN` | `WeaverLanguage.Vietnamese` | `vi` |
+| **Indonesian** | Bahasa Indonesia | `id-ID` | `WeaverLanguage.Indonesian` | `id` |
+| **Swedish** | Svenska | `sv-SE` | `WeaverLanguage.Swedish` | `sv` |
 
 ---
 

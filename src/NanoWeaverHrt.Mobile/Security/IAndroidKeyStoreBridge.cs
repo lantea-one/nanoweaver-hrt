@@ -28,7 +28,8 @@ public interface IAndroidKeyStoreBridge
     /// </summary>
     /// <param name="alias">Unique key alias identifying the key inside the Android Keystore.</param>
     /// <param name="keyMaterial">Byte span containing the raw or wrapped key material to persist.</param>
-    void StoreWrappedKey(string alias, ReadOnlySpan<byte> keyMaterial);
+    /// <param name="requiresBiometric">Flag indicating whether access to this key or derived keys requires biometric prompt authorization.</param>
+    void StoreWrappedKey(string alias, ReadOnlySpan<byte> keyMaterial, bool requiresBiometric = false);
 
     /// <summary>
     /// Attempts to load wrapped or raw cryptographic key material from the Android Keystore.
@@ -37,6 +38,40 @@ public interface IAndroidKeyStoreBridge
     /// <param name="keyMaterial">When this method returns, contains defensive copy of key material if found; otherwise an empty array.</param>
     /// <returns><see langword="true"/> if the key alias was located in the Keystore; otherwise <see langword="false"/>.</returns>
     bool TryLoadWrappedKey(string alias, out byte[] keyMaterial);
+
+    /// <summary>
+    /// Attempts to load the domain-separated Ed25519 signing key derived from the master seed via HKDF.
+    /// </summary>
+    /// <param name="alias">Unique key alias identifying the key inside the Android Keystore.</param>
+    /// <param name="signingKey">When this method returns, contains defensive copy of the derived 32-byte signing key if found and authorized; otherwise an empty array.</param>
+    /// <returns><see langword="true"/> if the key was located and authorized; otherwise <see langword="false"/>.</returns>
+    bool TryLoadKeyForSigning(string alias, out byte[] signingKey);
+
+    /// <summary>
+    /// Attempts to load the domain-separated AES-256-GCM wrapping key derived from the master seed via HKDF.
+    /// </summary>
+    /// <param name="alias">Unique key alias identifying the key inside the Android Keystore.</param>
+    /// <param name="wrappingKey">When this method returns, contains defensive copy of the derived 32-byte wrapping key if found and authorized; otherwise an empty array.</param>
+    /// <returns><see langword="true"/> if the key was located and authorized; otherwise <see langword="false"/>.</returns>
+    bool TryLoadKeyForWrapping(string alias, out byte[] wrappingKey);
+
+    /// <summary>
+    /// Asynchronously retrieves the domain-separated Ed25519 signing key derived from the master seed, evaluating BiometricPrompt if required.
+    /// </summary>
+    /// <param name="alias">Unique key alias identifying the key.</param>
+    /// <param name="reason">Prompt explanation displayed if biometric authentication is enforced.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task yielding the derived 32-byte signing key if successful and authorized; otherwise <see langword="null"/>.</returns>
+    Task<byte[]?> GetKeyForSigningAsync(string alias, string? reason = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// Asynchronously retrieves the domain-separated AES-256-GCM wrapping key derived from the master seed, evaluating BiometricPrompt if required.
+    /// </summary>
+    /// <param name="alias">Unique key alias identifying the key.</param>
+    /// <param name="reason">Prompt explanation displayed if biometric authentication is enforced.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task yielding the derived 32-byte wrapping key if successful and authorized; otherwise <see langword="null"/>.</returns>
+    Task<byte[]?> GetKeyForWrappingAsync(string alias, string? reason = null, CancellationToken ct = default);
 
     /// <summary>
     /// Deletes a wrapped key from the Android Keystore and zeroizes its buffer.

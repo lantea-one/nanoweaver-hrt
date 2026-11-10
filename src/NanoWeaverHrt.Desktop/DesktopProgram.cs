@@ -3,6 +3,7 @@ using NanoWeaverHrt.Client.Api;
 using NanoWeaverHrt.Client.Security;
 using NanoWeaverHrt.Client.Storage;
 using NanoWeaverHrt.Desktop.Platform;
+using NanoWeaverHrt.Desktop.Shell;
 using NanoWeaverHrt.Gui.Core.Services;
 
 namespace NanoWeaverHrt.Desktop;
@@ -27,8 +28,81 @@ public static class DesktopProgram
     {
         // WHAT: Standard executable entrypoint delegating to testable RunAsync implementation.
         // WHY:  Decouples process exit handling from CLI parsing logic for deterministic unit test execution.
-        // HOW:  Invokes RunAsync with system Console streams and default platform dependencies.
-        return await RunAsync(args, Console.Out, Console.Error).ConfigureAwait(false);
+        // HOW:  Hooks Console.CancelKeyPress, invokes RunAsync with system Console streams and cancellation token.
+        using var cts = new CancellationTokenSource();
+        using (HookConsoleCancel(cts))
+        {
+            return await RunAsync(args, Console.Out, Console.Error, ct: cts.Token).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Hooks <see cref="Console.CancelKeyPress"/> to trigger cancellation on the specified source while unhooking upon completion.
+    /// </summary>
+    /// <param name="cts">Cancellation token source to signal upon cancel key press.</param>
+    /// <returns>An <see cref="IDisposable"/> registration that unhooks the handler when disposed.</returns>
+    internal static IDisposable HookConsoleCancel(CancellationTokenSource cts)
+    {
+        // WHAT: Registers a Console.CancelKeyPress handler that signals cts and prevents process abort.
+        // WHY:  Issue #160 (P157): Permits clean graceful shutdown on SIGINT/Ctrl+C.
+        // HOW:  Attaches event handler, marks Cancel=true, triggers cts.Cancel(), and handles unregistration in Dispose.
+        ArgumentNullException.ThrowIfNull(cts);
+        ConsoleCancelEventHandler handler = (_, e) =>
+        {
+            e.Cancel = true;
+            try
+            {
+                cts.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+        };
+
+        Console.CancelKeyPress += handler;
+        return new CancelKeyPressHook(handler);
+    }
+
+    /// <summary>
+    /// Encapsulates disposal and unhooking of the <see cref="Console.CancelKeyPress"/> event handler.
+    /// </summary>
+    internal sealed class CancelKeyPressHook : IDisposable
+    {
+        /// <summary>
+        /// The registered console cancel event handler.
+        /// </summary>
+        private readonly ConsoleCancelEventHandler _handler;
+
+        /// <summary>
+        /// Flag indicating whether unhooking has already occurred.
+        /// </summary>
+        private bool _disposed;
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="CancelKeyPressHook"/> class.
+        /// </summary>
+        /// <param name="handler">The registered event handler.</param>
+        public CancelKeyPressHook(ConsoleCancelEventHandler handler)
+        {
+            _handler = handler;
+        }
+
+        /// <summary>
+        /// Gets the underlying event handler delegate for testing purposes.
+        /// </summary>
+        internal ConsoleCancelEventHandler Handler => _handler;
+
+        /// <inheritdoc/>
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            Console.CancelKeyPress -= _handler;
+        }
     }
 
     /// <summary>
@@ -44,6 +118,8 @@ public static class DesktopProgram
     /// <param name="daemonMonitor">Optional background instance monitor override for daemon mode.</param>
     /// <param name="daemonTrayController">Optional tray controller override for daemon mode.</param>
     /// <param name="daemonCoordinator">Optional coordinator override for daemon mode.</param>
+    /// <param name="daemonConfig">Optional daemon configuration specifying polling cadence.</param>
+    /// <param name="customTickDelay">Optional override for polling loop delay to accelerate test execution.</param>
     /// <returns>Process exit code: 0 for clean execution, 1 for CLI syntax error, 2 for instance collision.</returns>
     public static async Task<int> RunAsync(
         string[] args,
@@ -55,7 +131,9 @@ public static class DesktopProgram
         IDesktopUiHost? uiHost = null,
         IBackgroundInstanceMonitor? daemonMonitor = null,
         ITrayIconController? daemonTrayController = null,
-        IMultiInstanceCoordinator? daemonCoordinator = null)
+        IMultiInstanceCoordinator? daemonCoordinator = null,
+        DesktopDaemonConfig? daemonConfig = null,
+        TimeSpan? customTickDelay = null)
     {
         // WHAT: Validate and initialize output stream writers.
         // WHY:  Permits redirection of output to string buffers during test assertions.
@@ -96,7 +174,9 @@ public static class DesktopProgram
                     ct,
                     daemonMonitor,
                     daemonTrayController,
-                    daemonCoordinator).ConfigureAwait(false);
+                    daemonCoordinator,
+                    daemonConfig,
+                    customTickDelay).ConfigureAwait(false);
 
             default:
                 await errWriter.WriteLineAsync($"[NanoWeaver HRT Desktop] Unrecognized option: {command}").ConfigureAwait(false);
@@ -158,6 +238,8 @@ public static class DesktopProgram
     /// <param name="customMonitor">Optional background instance monitor override.</param>
     /// <param name="customTrayController">Optional tray controller override.</param>
     /// <param name="customCoordinator">Optional coordinator override.</param>
+    /// <param name="daemonConfig">Optional daemon configuration specifying polling cadence.</param>
+    /// <param name="customTickDelay">Optional override for polling loop delay to accelerate test execution.</param>
     /// <returns>Integer status code: 0 on normal shutdown, 2 on mutex collision.</returns>
     private static async Task<int> RunHeadlessDaemonAsync(
         TextWriter stdout,
@@ -166,10 +248,12 @@ public static class DesktopProgram
         CancellationToken ct,
         IBackgroundInstanceMonitor? customMonitor = null,
         ITrayIconController? customTrayController = null,
-        IMultiInstanceCoordinator? customCoordinator = null)
+        IMultiInstanceCoordinator? customCoordinator = null,
+        DesktopDaemonConfig? daemonConfig = null,
+        TimeSpan? customTickDelay = null)
     {
         // WHAT: Enforce single-instance lock and execute continuous background monitoring loop.
-        // WHY:  Issue #84 (P81): Actively polls configured instances and routes alerts via BackgroundInstanceMonitor in daemon mode.
+        // WHY:  Issue #84 (P81) & Issue #160 (P157): Actively polls configured instances and routes alerts with configurable cadence.
         // HOW:  Acquires SingleInstanceMutexGuard; wires monitor, tray, and coordinator; executes ticks; shuts down cleanly on cancellation.
         string effectiveMutex = mutexName ?? SingleInstanceMutexGuard.DefaultMutexName;
         using var guard = new SingleInstanceMutexGuard(effectiveMutex);
@@ -191,7 +275,11 @@ public static class DesktopProgram
         }
         else
         {
-            string dbPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "NanoWeaverHrt", "profiles.db");
+            string appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            string baseDir = string.IsNullOrWhiteSpace(appData) ? Path.GetTempPath() : appData;
+            string dbDir = Path.Combine(baseDir, "NanoWeaverHrt");
+            Directory.CreateDirectory(dbDir);
+            string dbPath = Path.Combine(dbDir, "profiles.db");
             var repo = new SqliteInstanceProfileRepository($"Data Source={dbPath}");
             var httpClient = new HttpClient();
             var keyVault = new AesGcmClientKeyRingVault();
@@ -200,6 +288,7 @@ public static class DesktopProgram
         }
 
         IBackgroundInstanceMonitor monitor = customMonitor ?? new BackgroundInstanceMonitor(coordinator, tray, sink);
+        DesktopDaemonConfig config = daemonConfig ?? new DesktopDaemonConfig();
 
         await stdout.WriteLineAsync("NanoWeaver HRT Headless Daemon started. Press Ctrl+C to terminate.").ConfigureAwait(false);
 
@@ -208,7 +297,8 @@ public static class DesktopProgram
             while (true)
             {
                 await monitor.ExecuteMonitoringTickAsync(DateTimeOffset.UtcNow, ct).ConfigureAwait(false);
-                await Task.Delay(50, ct).ConfigureAwait(false);
+                TimeSpan delay = customTickDelay ?? TimeSpan.FromSeconds(Math.Max(1, config.PollingIntervalSeconds));
+                await Task.Delay(delay, ct).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException)
@@ -242,7 +332,7 @@ public static class DesktopProgram
     {
         // WHAT: Acquire single-instance mutex and delegate to desktop UI host.
         // WHY:  Prevents launching duplicate GUI windows while providing interactive desktop shell experience.
-        // HOW:  Validates primary instance status with SingleInstanceMutexGuard and awaits uiHost.RunUiAsync.
+        // HOW:  Validates primary instance status with SingleInstanceMutexGuard, constructs default bootstrapper if needed, and awaits uiHost.RunUiAsync.
         string effectiveMutex = mutexName ?? SingleInstanceMutexGuard.DefaultMutexName;
         using var guard = new SingleInstanceMutexGuard(effectiveMutex);
 
@@ -252,7 +342,25 @@ public static class DesktopProgram
             return 2;
         }
 
-        IDesktopUiHost host = uiHost ?? new DefaultDesktopUiHost(null, null, stdout);
-        return await host.RunUiAsync(ct).ConfigureAwait(false);
+        AvaloniaShellBootstrapper? bootstrapper = null;
+        try
+        {
+            IDesktopUiHost host;
+            if (uiHost != null)
+            {
+                host = uiHost;
+            }
+            else
+            {
+                bootstrapper = AvaloniaShellBootstrapper.CreateDefault(mutexName: effectiveMutex, mutexGuard: guard);
+                host = new DefaultDesktopUiHost(bootstrapper.WindowHost.ShellViewModel, bootstrapper.TrayController, stdout);
+            }
+
+            return await host.RunUiAsync(ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            bootstrapper?.Dispose();
+        }
     }
 }

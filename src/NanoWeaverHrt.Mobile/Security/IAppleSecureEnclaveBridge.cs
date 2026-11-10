@@ -28,7 +28,8 @@ public interface IAppleSecureEnclaveBridge
     /// </summary>
     /// <param name="tag">Unique tag identifying the secret in the keychain.</param>
     /// <param name="secretBytes">Byte span containing the raw secret material.</param>
-    void StoreKeychainSecret(string tag, ReadOnlySpan<byte> secretBytes);
+    /// <param name="requiresBiometric">Flag indicating whether access to this secret or derived keys requires biometric policy authorization.</param>
+    void StoreKeychainSecret(string tag, ReadOnlySpan<byte> secretBytes, bool requiresBiometric = false);
 
     /// <summary>
     /// Attempts to read secret key material from the Apple Secure Enclave keychain.
@@ -37,6 +38,40 @@ public interface IAppleSecureEnclaveBridge
     /// <param name="secretBytes">When this method returns, contains defensive copy of secret bytes if found; otherwise an empty array.</param>
     /// <returns><see langword="true"/> if the keychain tag was located; otherwise <see langword="false"/>.</returns>
     bool TryReadKeychainSecret(string tag, out byte[] secretBytes);
+
+    /// <summary>
+    /// Attempts to read the domain-separated Ed25519 signing key derived from the master secret via HKDF.
+    /// </summary>
+    /// <param name="tag">Unique tag identifying the secret in the keychain.</param>
+    /// <param name="signingKey">When this method returns, contains defensive copy of the derived 32-byte signing key if found and authorized; otherwise an empty array.</param>
+    /// <returns><see langword="true"/> if the secret was located and authorized; otherwise <see langword="false"/>.</returns>
+    bool TryReadKeyForSigning(string tag, out byte[] signingKey);
+
+    /// <summary>
+    /// Attempts to read the domain-separated AES-256-GCM wrapping key derived from the master secret via HKDF.
+    /// </summary>
+    /// <param name="tag">Unique tag identifying the secret in the keychain.</param>
+    /// <param name="wrappingKey">When this method returns, contains defensive copy of the derived 32-byte wrapping key if found and authorized; otherwise an empty array.</param>
+    /// <returns><see langword="true"/> if the secret was located and authorized; otherwise <see langword="false"/>.</returns>
+    bool TryReadKeyForWrapping(string tag, out byte[] wrappingKey);
+
+    /// <summary>
+    /// Asynchronously retrieves the domain-separated Ed25519 signing key derived from the master secret, evaluating LocalAuthentication policy if required.
+    /// </summary>
+    /// <param name="tag">Unique tag identifying the secret.</param>
+    /// <param name="reason">Prompt explanation displayed if biometric authentication is enforced.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task yielding the derived 32-byte signing key if successful and authorized; otherwise <see langword="null"/>.</returns>
+    Task<byte[]?> GetKeyForSigningAsync(string tag, string? reason = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// Asynchronously retrieves the domain-separated AES-256-GCM wrapping key derived from the master secret, evaluating LocalAuthentication policy if required.
+    /// </summary>
+    /// <param name="tag">Unique tag identifying the secret.</param>
+    /// <param name="reason">Prompt explanation displayed if biometric authentication is enforced.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task yielding the derived 32-byte wrapping key if successful and authorized; otherwise <see langword="null"/>.</returns>
+    Task<byte[]?> GetKeyForWrappingAsync(string tag, string? reason = null, CancellationToken ct = default);
 
     /// <summary>
     /// Deletes a secret from the Apple Secure Enclave keychain and zeroizes its memory buffer.

@@ -19,9 +19,18 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 OUTPUT_DIR="${ROOT_DIR}/artifacts/packages/mobile"
 mkdir -p "${OUTPUT_DIR}"
 
+ALLOW_STUB_PACKAGING="${ALLOW_STUB_PACKAGING:-false}"
+for arg in "$@"; do
+    case "$arg" in
+        --allow-stub-packaging)
+            ALLOW_STUB_PACKAGING=true
+            ;;
+    esac
+done
+
 PACKAGE_VERSION="${PACKAGE_VERSION:-${GITHUB_REF_NAME:-}}"
 if [ -z "${PACKAGE_VERSION}" ] || [ "${PACKAGE_VERSION}" = "main" ]; then
-    PACKAGE_VERSION="$(git describe --tags --exact-match 2>/dev/null || echo "2026.11.04.10")"
+    PACKAGE_VERSION="$(git describe --tags --exact-match 2>/dev/null || echo "2026.11.09.4")"
 fi
 PACKAGE_VERSION="${PACKAGE_VERSION#v}"
 
@@ -44,7 +53,12 @@ fi
 
 # Ensure NanoWeaverHrtMobile.dll exists
 if [ ! -f "${STAGING_DIR}/NanoWeaverHrtMobile.dll" ]; then
-    echo "Staging fallback mobile assembly placeholder..."
+    if [ "${ALLOW_STUB_PACKAGING}" != "true" ]; then
+        echo "ERROR: Compiled Mobile assembly not found at ${STAGING_DIR}/NanoWeaverHrtMobile.dll and --allow-stub-packaging was not specified." >&2
+        echo "Please compile NanoWeaverHrt.Mobile or pass --allow-stub-packaging." >&2
+        exit 1
+    fi
+    echo "Staging fallback mobile assembly placeholder (--allow-stub-packaging enabled)..."
     touch "${STAGING_DIR}/NanoWeaverHrtMobile.dll"
 fi
 

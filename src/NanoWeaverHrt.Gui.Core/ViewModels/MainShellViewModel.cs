@@ -86,12 +86,18 @@ public sealed class MainShellViewModel : INotifyPropertyChanged, IDisposable
     /// <param name="nodeClient">Optional REST client for triggering simulations.</param>
     /// <param name="localizer">Optional localization provider. Defaults to a new instance of <see cref="WeaverLocalizer"/>.</param>
     /// <param name="languagePreferenceService">Optional language preference persistence service.</param>
+    /// <param name="simulationWorkspace">Optional simulation workspace ViewModel override.</param>
+    /// <param name="clinicalGenomicsWorkspace">Optional clinical genomics workspace ViewModel override.</param>
+    /// <param name="wetLabComplianceWorkspace">Optional wet lab compliance workspace ViewModel override.</param>
     public MainShellViewModel(
         IInstanceProfileRepository profileRepository,
         IMultiInstanceCoordinator coordinator,
         INanoWeaverNodeClient? nodeClient = null,
         IWeaverLocalizer? localizer = null,
-        ILanguagePreferenceService? languagePreferenceService = null)
+        ILanguagePreferenceService? languagePreferenceService = null,
+        SimulationWorkspaceViewModel? simulationWorkspace = null,
+        ClinicalGenomicsWorkspaceViewModel? clinicalGenomicsWorkspace = null,
+        WetLabComplianceWorkspaceViewModel? wetLabComplianceWorkspace = null)
     {
         // WHAT: Assigns dependencies for profile storage, multi-instance coordination, REST API access, and localization.
         // WHY:  Coordinates data flows between client-side services, localizer catalogs, and Avalonia presentation layer.
@@ -102,7 +108,27 @@ public sealed class MainShellViewModel : INotifyPropertyChanged, IDisposable
         _localizer = localizer ?? new WeaverLocalizer();
         _languagePreferenceService = languagePreferenceService;
         _selectedLanguage = WeaverLanguage.English;
+
+        INanoWeaverNodeClient effectiveClient = nodeClient ?? new NanoWeaverNodeClient(new HttpClient(), new AesGcmClientKeyRingVault());
+        SimulationWorkspace = simulationWorkspace ?? new SimulationWorkspaceViewModel(effectiveClient, GetSelectedProfile, GetSelectedToken);
+        ClinicalGenomicsWorkspace = clinicalGenomicsWorkspace ?? new ClinicalGenomicsWorkspaceViewModel(effectiveClient, GetSelectedProfile, GetSelectedToken);
+        WetLabComplianceWorkspace = wetLabComplianceWorkspace ?? new WetLabComplianceWorkspaceViewModel(effectiveClient, GetSelectedProfile, GetSelectedToken);
     }
+
+    /// <summary>
+    /// Gets the simulation workspace ViewModel managing in-silico dynamics, aptamer gating, and PBPK runs.
+    /// </summary>
+    public SimulationWorkspaceViewModel SimulationWorkspace { get; }
+
+    /// <summary>
+    /// Gets the clinical genomics workspace ViewModel managing closed-loop endocrine feedback, pharmacogenomics, and digital DNA.
+    /// </summary>
+    public ClinicalGenomicsWorkspaceViewModel ClinicalGenomicsWorkspace { get; }
+
+    /// <summary>
+    /// Gets the wet lab compliance workspace ViewModel managing Opentrons automation, gel analysis, and audit trails.
+    /// </summary>
+    public WetLabComplianceWorkspaceViewModel WetLabComplianceWorkspace { get; }
 
     /// <summary>
     /// Gets the collection of configured instance profiles.
@@ -754,6 +780,38 @@ public sealed class MainShellViewModel : INotifyPropertyChanged, IDisposable
         UpdateSelectedSnapshot();
         OnPropertyChanged(nameof(Snapshots));
         OnPropertyChanged(nameof(SelectedSnapshot));
+    }
+
+    /// <summary>
+    /// Resolves the currently selected instance profile, if any.
+    /// </summary>
+    /// <returns>The active <see cref="InstanceProfile"/>, or <see langword="null"/> if unselected.</returns>
+    private InstanceProfile? GetSelectedProfile()
+    {
+        // WHAT: Looks up the configured profile for the active SelectedInstanceId.
+        // WHY:  Provides child workspace ViewModels with active connection endpoint metadata.
+        // HOW:  Searches _profiles by matching SelectedInstanceId.
+        return _profiles.FirstOrDefault(p => string.Equals(p.InstanceId, _selectedInstanceId, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Resolves the currently active zeroizable bearer token as a string, if available.
+    /// </summary>
+    /// <returns>Plaintext token string, or <see langword="null"/> if not authenticated.</returns>
+    private string? GetSelectedToken()
+    {
+        // WHAT: Retrieves and unprotects the active session token for the selected instance.
+        // WHY:  Enables child workspace ViewModels to issue authenticated REST requests.
+        // HOW:  Queries _activeTokens for _selectedInstanceId and converts to unprotected string if valid.
+        if (!string.IsNullOrWhiteSpace(_selectedInstanceId) &&
+            _activeTokens.TryGetValue(_selectedInstanceId, out var tokenBuffer) &&
+            !tokenBuffer.IsDisposed &&
+            tokenBuffer.Length > 0)
+        {
+            return tokenBuffer.ToUnprotectedString();
+        }
+
+        return null;
     }
 
     /// <inheritdoc/>

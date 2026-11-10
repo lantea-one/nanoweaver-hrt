@@ -79,7 +79,7 @@ flowchart TD
 
 ### 4. Authoritative Database Configuration & Sovereign Peering
 - **Database Precedence Law**: *"Whatever is in the database wins, stack environment variables do nothing if configuration exists in the database."*
-- Supports PostgreSQL (`pg_duckdb`) with automatic fallback to embedded SQLite.
+- Supports 4 database engines with strict resolution precedence: PostgreSQL (`pg_duckdb`), MySQL / MariaDB, DuckDB (in-process analytical), and embedded SQLite (`weaver_config.db`).
 - Single-use cryptographically random tokens (`nanoweaver_hrt_...`) with configurable expiration windows:
   - `1h`, `4h`, `24h`, `7d`, `1m` (30 days), `1y` (365 days), and `Never` (permanent peering).
 - Atomic redemption semantics preventing replay attacks or concurrent session takeover.
@@ -103,37 +103,51 @@ Explore the comprehensive guides and references below:
    * Local development prerequisites, .NET 10 setup, Docker Compose GPU backends (Intel Arc, NVIDIA CUDA, AMD ROCm, CPU).
 3. [**Desktop & Mobile Applications**](desktop-and-mobile-gui.md)
    * Standalone cross-platform applications (Avalonia UI 11 / .NET 10) for Linux, macOS, Windows, Android, iOS, iPadOS, direct portable `.exe`, and 90-day sovereign code-signing PKI.
-4. [**Community Localization**](localization.md)
-   * 10 native community languages (English, Spanish, French, German, Portuguese, Italian, Japanese, Chinese, Dutch, Polish), zero-allocation embedded JSON catalogs, dual-engine SQLite/PostgreSQL persistence, and SameSite=Strict cookies.
-5. [**Secure Public Access & Reverse Proxies**](secure-public-access.md)
+4. [**Native Mobile Biometrics & Enclave**](mobile-biometrics.md)
+   * Android Keystore and iOS Secure Enclave hardware key generation, HKDF (SHA-256) subkey separation, and biometric authentication prompt gating.
+5. [**Community Localization**](localization.md)
+   * 18 native community languages (English, Spanish, French, German, Portuguese, Italian, Japanese, Chinese, Dutch, Polish, Arabic, Korean, Turkish, Hindi, Ukrainian, Vietnamese, Indonesian, Swedish), zero-allocation embedded JSON catalogs, multi-engine SQLite/PostgreSQL/DuckDB/MySQL persistence, and SameSite=Strict cookies.
+6. [**Secure Public Access & Reverse Proxies**](secure-public-access.md)
    * Hardened production deployment architectures, automated Let's Encrypt SSL/TLS, Caddy, Nginx + Certbot, and Cloudflare Tunnels (CGNAT bypass).
-6. [**Guided DNA Workflow Wizard**](workflow-wizard.md)
+7. [**Guided DNA Workflow Wizard**](workflow-wizard.md)
    * Deep-dive walkthrough of all 6 stages from digitized sequence ingestion to physical bench synthesis.
-7. [**Endocrine Hub & Pharmacodynamics**](endocrine-hub.md)
+8. [**Endocrine Hub & Pharmacodynamics**](endocrine-hub.md)
    * Plain-English biomedical context of the HPG axis, bistable state transitions, and 72-hour kinetics.
-8. [**In-Silico Simulation Studio**](in-silico-simulations.md)
-   * Multi-scale molecular dynamics (oxDNA, LAMMPS) and whole-body PBPK modeling for in-silico translational de-risking.
-9. [**Configuration & Sovereign Peering**](configuration-peers.md)
-   * Database-first precedence rules, single-use share key lifecycle, and federating remote UI instances.
-10. [**Stack Topology & Hardware Telemetry**](stack-services.md)
+9. [**Closed-Loop Endocrine Modeling**](closed-loop-endocrine.md)
+   * 4th-order Runge-Kutta integration of reciprocal pituitary gonadotropin (LH/FSH) feedback loops and target hormone setpoints.
+10. [**In-Silico Simulation Studio**](in-silico-simulations.md)
+    * Multi-scale molecular dynamics (oxDNA, LAMMPS) and whole-body PBPK modeling for in-silico translational de-risking.
+11. [**Configuration & Sovereign Peering**](configuration-peers.md)
+    * Database-first precedence rules, single-use share key lifecycle, and federating remote UI instances.
+12. [**P2P Trajectory Swarm Federation**](p2p-federation.md)
+    * Decentralized peer discovery, 1 MB chunk Merkle trees, and ML-DSA-65 post-quantum signed dataset manifests.
+13. [**Multi-Engine Database Persistence**](database-engines.md)
+    * Relational and analytical persistence across SQLite, PostgreSQL, DuckDB, and MySQL/MariaDB with deterministic schema migrations.
+14. [**Stack Topology & Hardware Telemetry**](stack-services.md)
     * Service health inspection, diagnostic connectivity pings, SIMD detection, and Server GC telemetry.
-11. [**Trajectory Streaming & Dataset Provenance**](trajectories-and-datasets.md)
+15. [**Hardware Accelerator Benchmarks**](accelerator-benchmarking.md)
+    * In-situ compute performance benchmarking across Intel Arc, NVIDIA CUDA, AMD ROCm, and CPU SIMD backends.
+16. [**Trajectory Streaming & Dataset Provenance**](trajectories-and-datasets.md)
     * Zero-allocation streaming pipelines, columnar Parquet serialization, and SHA-256 signed tarballs.
-12. [**Example Biomedical Workflows**](example-workflows.md)
+17. [**Trajectory Columnar Analytics**](trajectory-analytics.md)
+    * High-throughput SQL analytics with DuckDB read-only sandboxing and Parquet frame batching.
+18. [**Example Biomedical Workflows**](example-workflows.md)
     * Concrete step-by-step examples: MtF feminizing nanotube, FtM masculinizing nanocage, and collaborative compute peering.
-13. [**DIY & HomeLab Benchtop Fabrication Guide**](diy-fabrication-guide.md)
+19. [**DIY & HomeLab Benchtop Fabrication Guide**](diy-fabrication-guide.md)
     * Step-by-step physical instructions for community scientists: 50 µL pipetting recipe, reagents checklist, 7-step bench execution, agarose gel QC, and non-toxic safety protocols.
-14. [**Opentrons Wet-Lab Automation**](opentrons-automation.md)
+20. [**Opentrons Wet-Lab Automation**](opentrons-automation.md)
     * Programmatic Python API v2 protocol generation for Opentrons OT-2 and Flex liquid handlers, 96/384-well plate layouts, stoichiometric 10:1 staple dispensing, and automated on-deck thermocycler ramps.
-15. [**Post-Quantum Cryptography & Regulatory Compliance**](compliance-and-security.md)
+21. [**Agarose Gel Quality Analysis**](gel-electrophoresis-analysis.md)
+    * Automated computer vision segmentation, lane profiling, and band densitometry for DNA origami quality control.
+22. [**Post-Quantum Cryptography & Regulatory Compliance**](compliance-and-security.md)
     * NIST FIPS 203 (ML-KEM-768), FIPS 204 (ML-DSA-65), HIPAA Safe Harbor, GDPR Article 17 crypto-shredding, GINA non-discrimination, FDA 21 CFR Part 11 audit trails, asymmetric PKI identities, SQL migrations, and idle session guards.
-16. [**Vendored JavaScript Subsystem & SRI Integrity**](vendored-javascript.md)
+23. [**Vendored JavaScript Subsystem & SRI Integrity**](vendored-javascript.md)
     * Zero external CDNs, Subresource Integrity (SRI) dynamic hashing, noble crypto Known-Answer Tests, and browser sandbox security.
-17. [**REST API Reference**](api-reference.md)
+24. [**REST API Reference**](api-reference.md)
     * Full endpoint catalog, request/response JSON schemas, and test suite execution.
-18. [**Release Notes & Architecture Evolution**](release-notes.md)
-    * Post-quantum cryptographic upgrades, multi-engine database persistence, client REST SDK parity, and milestone releases through v2026.11.04.10.
-19. [**Scientific Research & Legal Disclaimer**](disclaimer.md)
+25. [**Release Notes & Architecture Evolution**](release-notes.md)
+    * Post-quantum cryptographic upgrades, multi-engine database persistence, client REST SDK parity, and milestone releases through v2026.11.09.4.
+26. [**Scientific Research & Legal Disclaimer**](disclaimer.md)
     * Formal scientific research scope, medical non-advice, and BSL-1 biosafety declarations.
 
 ---

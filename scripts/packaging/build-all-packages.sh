@@ -25,19 +25,19 @@ echo "==========================================================================
 
 # 1. Build Linux Packages (.deb, .rpm, .pkg.tar.zst for x86_64 and arm64)
 echo ">>> Step 1/5: Building Linux Packages..."
-"${ROOT_DIR}/scripts/packaging/build-linux-packages.sh"
+"${ROOT_DIR}/scripts/packaging/build-linux-packages.sh" "$@"
 
 # 2. Build macOS Packages (.dmg for amd64/arm64/universal and universal .app.tar.gz)
 echo ">>> Step 2/5: Building macOS Packages..."
-"${ROOT_DIR}/scripts/packaging/build-macos-packages.sh"
+"${ROOT_DIR}/scripts/packaging/build-macos-packages.sh" "$@"
 
 # 3. Build Windows Packages (dual-scope installer .exe and .msix)
 echo ">>> Step 3/5: Building Windows Packages..."
-"${ROOT_DIR}/scripts/packaging/build-windows-packages.sh"
+"${ROOT_DIR}/scripts/packaging/build-windows-packages.sh" "$@"
 
 # 4. Build Mobile Packages (Android .apk, iOS .ipa, iPadOS .ipa)
 echo ">>> Step 4/5: Building Mobile Packages..."
-"${ROOT_DIR}/scripts/packaging/build-mobile-packages.sh"
+"${ROOT_DIR}/scripts/packaging/build-mobile-packages.sh" "$@"
 
 # 5. Sovereign PKI Signing & Manifest Generation
 echo ">>> Step 5/5: Cryptographically Signing All Packages & Manifests..."

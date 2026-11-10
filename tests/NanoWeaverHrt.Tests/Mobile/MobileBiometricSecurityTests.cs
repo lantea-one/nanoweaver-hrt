@@ -1312,4 +1312,533 @@ public sealed class MobileBiometricSecurityTests
         await Assert.ThrowsAsync<ArgumentException>(() => vault.DownloadAndCachePatientPackageAsync(clientMock.Object, profile, "", "patient-1"));
         await Assert.ThrowsAsync<ArgumentException>(() => vault.DownloadAndCachePatientPackageAsync(clientMock.Object, profile, "token", ""));
     }
+
+    /// <summary>
+    /// Verifies HKDF key separation between Ed25519 signing and AES-256-GCM wrapping keys across Android and Apple platforms.
+    /// </summary>
+    [Fact]
+    public void MobileBiometricSecurity_HkdfKeySeparation_SigningVsWrapping()
+    {
+        // WHAT: Verify HKDF domain separation between Ed25519 signing and AES-256-GCM wrapping keys.
+        // WHY:  Guarantees zero cryptographic key reuse between asymmetric signing and symmetric wrapping.
+        // HOW:  Stores identical master seed under Android and Apple bridges, retrieves signing and wrapping keys, asserts inequality.
+        byte[] masterSeed = new byte[32];
+        RandomNumberGenerator.Fill(masterSeed);
+
+        // Android bridge domain separation
+        var androidBridge = new DefaultAndroidKeyStoreBridge();
+        androidBridge.StoreWrappedKey("patient-key", masterSeed);
+
+        Assert.True(androidBridge.TryLoadKeyForSigning("patient-key", out byte[] androidSignKey));
+        Assert.True(androidBridge.TryLoadKeyForWrapping("patient-key", out byte[] androidWrapKey));
+
+        Assert.Equal(32, androidSignKey.Length);
+        Assert.Equal(32, androidWrapKey.Length);
+        Assert.NotEqual(androidSignKey, androidWrapKey);
+        Assert.NotEqual(masterSeed, androidSignKey);
+        Assert.NotEqual(masterSeed, androidWrapKey);
+
+        // Apple bridge domain separation
+        var appleBridge = new DefaultAppleSecureEnclaveBridge();
+        appleBridge.StoreKeychainSecret("patient-key", masterSeed);
+
+        Assert.True(appleBridge.TryReadKeyForSigning("patient-key", out byte[] appleSignKey));
+        Assert.True(appleBridge.TryReadKeyForWrapping("patient-key", out byte[] appleWrapKey));
+
+        Assert.Equal(32, appleSignKey.Length);
+        Assert.Equal(32, appleWrapKey.Length);
+        Assert.NotEqual(appleSignKey, appleWrapKey);
+        Assert.NotEqual(masterSeed, appleSignKey);
+        Assert.NotEqual(masterSeed, appleWrapKey);
+
+        // Cross-platform domain separation: Android keys != Apple keys even for identical master seed and alias
+        Assert.NotEqual(androidSignKey, appleSignKey);
+        Assert.NotEqual(androidWrapKey, appleWrapKey);
+    }
+
+    /// <summary>
+    /// Verifies biometric prompt gating on Android: operations fail or throw when biometric authentication is denied.
+    /// </summary>
+    [Fact]
+    public async Task MobileBiometricSecurity_BiometricPromptGating_Android_FailuresAndExceptions()
+    {
+        // WHAT: Verify biometric authorization enforcement on Android bridge and provider.
+        // WHY:  Ensures cryptographic operations cannot execute when biometric authentication prompt fails.
+        // HOW:  Configures bridge with denied biometric handler, verifies TryLoad, signing, and decryption failures.
+        static bool AndroidPlatform(string p) => p.Equals("Android", StringComparison.OrdinalIgnoreCase);
+
+        // Bridge with denied biometric prompt
+        var deniedBridge = new DefaultAndroidKeyStoreBridge(
+            hardwareAvailable: true,
+            authHandler: (reason, ct) => Task.FromResult(false));
+
+        byte[] seed = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+        deniedBridge.StoreWrappedKey("bio-key", seed, requiresBiometric: true);
+
+        // TryLoadWrappedKey fails (returns false)
+        Assert.False(deniedBridge.TryLoadWrappedKey("bio-key", out byte[] emptyMaterial));
+        Assert.Empty(emptyMaterial);
+
+        // TryLoadKeyForSigning throws CryptographicException
+        Assert.Throws<CryptographicException>(() => deniedBridge.TryLoadKeyForSigning("bio-key", out _));
+
+        // TryLoadKeyForWrapping throws CryptographicException
+        Assert.Throws<CryptographicException>(() => deniedBridge.TryLoadKeyForWrapping("bio-key", out _));
+
+        // Async methods throw CryptographicException
+        await Assert.ThrowsAsync<CryptographicException>(() => deniedBridge.GetKeyForSigningAsync("bio-key"));
+        await Assert.ThrowsAsync<CryptographicException>(() => deniedBridge.GetKeyForWrappingAsync("bio-key"));
+
+        // Non-biometric key succeeds on denied bridge
+        deniedBridge.StoreWrappedKey("open-key", seed, requiresBiometric: false);
+        Assert.True(deniedBridge.TryLoadWrappedKey("open-key", out byte[] openMaterial));
+        Assert.Equal(seed, openMaterial);
+        Assert.True(deniedBridge.TryLoadKeyForSigning("open-key", out byte[] openSignKey));
+        Assert.NotEmpty(openSignKey);
+        Assert.True(deniedBridge.TryLoadKeyForWrapping("open-key", out byte[] openWrapKey));
+        Assert.NotEmpty(openWrapKey);
+        Assert.NotNull(await deniedBridge.GetKeyForSigningAsync("open-key"));
+        Assert.NotNull(await deniedBridge.GetKeyForWrappingAsync("open-key"));
+
+        // Provider integration with biometric gating
+        var provider = new AndroidBiometricSecurityProvider(
+            isPlatform: AndroidPlatform,
+            keyStoreBridge: deniedBridge);
+
+        await provider.GenerateHardwareBoundKeyAsync("provider-bio-key", requiresBiometric: true);
+
+        // SignChallengeAsync throws CryptographicException when biometric prompt denied
+        byte[] challenge = "CHALLENGE-2026"u8.ToArray();
+        await Assert.ThrowsAsync<CryptographicException>(() => provider.SignChallengeAsync("provider-bio-key", challenge));
+
+        // EncryptPayload throws CryptographicException when biometric prompt denied
+        Assert.Throws<CryptographicException>(() => provider.EncryptPayload("provider-bio-key", [1, 2, 3]));
+
+        // AuthenticateAndDecryptAsync returns BiometricAuthResult with Failed status
+        var authReq = new BiometricAuthRequest("Unlock", "Sub", "Desc", "provider-bio-key", new byte[32]);
+        var authResult = await provider.AuthenticateAndDecryptAsync(authReq);
+        Assert.False(authResult.Success);
+        Assert.Equal(BiometricStatus.Failed, authResult.Status);
+        Assert.Contains("failed", authResult.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+
+        // GenerateHardwareKeyAsync with requiresBiometric: true and successful bridge
+        var allowedBridge = new DefaultAndroidKeyStoreBridge();
+        var allowedProvider = new AndroidBiometricSecurityProvider(isPlatform: AndroidPlatform, keyStoreBridge: allowedBridge);
+        byte[] pubKey = await allowedProvider.GenerateHardwareKeyAsync("allowed-bio-key", requiresBiometric: true);
+        Assert.Equal(32, pubKey.Length);
+        byte[] sig = await allowedProvider.SignChallengeAsync("allowed-bio-key", challenge);
+        Assert.Equal(64, sig.Length);
+
+        var verifier = new Ed25519Signer();
+        verifier.Init(false, new Ed25519PublicKeyParameters(pubKey, 0));
+        verifier.BlockUpdate(challenge, 0, challenge.Length);
+        Assert.True(verifier.VerifySignature(sig));
+    }
+
+    /// <summary>
+    /// Verifies biometric prompt gating on Apple: operations fail or throw when LocalAuthentication is denied.
+    /// </summary>
+    [Fact]
+    public async Task MobileBiometricSecurity_BiometricPromptGating_Apple_FailuresAndExceptions()
+    {
+        // WHAT: Verify biometric authorization enforcement on Apple bridge and provider.
+        // WHY:  Ensures cryptographic operations cannot execute when LocalAuthentication policy fails.
+        // HOW:  Configures bridge with denied policy handler, verifies TryRead, signing, and decryption failures.
+        static bool ApplePlatform(string p) => p.Equals("iOS", StringComparison.OrdinalIgnoreCase);
+
+        // Bridge with denied policy evaluation
+        var deniedBridge = new DefaultAppleSecureEnclaveBridge(
+            hardwareAvailable: true,
+            policyHandler: (reason, ct) => Task.FromResult(false));
+
+        byte[] seed = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+        deniedBridge.StoreKeychainSecret("bio-tag", seed, requiresBiometric: true);
+
+        // TryReadKeychainSecret fails (returns false)
+        Assert.False(deniedBridge.TryReadKeychainSecret("bio-tag", out byte[] emptyMaterial));
+        Assert.Empty(emptyMaterial);
+
+        // TryReadKeyForSigning throws CryptographicException
+        Assert.Throws<CryptographicException>(() => deniedBridge.TryReadKeyForSigning("bio-tag", out _));
+
+        // TryReadKeyForWrapping throws CryptographicException
+        Assert.Throws<CryptographicException>(() => deniedBridge.TryReadKeyForWrapping("bio-tag", out _));
+
+        // Async methods throw CryptographicException
+        await Assert.ThrowsAsync<CryptographicException>(() => deniedBridge.GetKeyForSigningAsync("bio-tag"));
+        await Assert.ThrowsAsync<CryptographicException>(() => deniedBridge.GetKeyForWrappingAsync("bio-tag"));
+
+        // Non-biometric key succeeds on denied bridge
+        deniedBridge.StoreKeychainSecret("open-tag", seed, requiresBiometric: false);
+        Assert.True(deniedBridge.TryReadKeychainSecret("open-tag", out byte[] openMaterial));
+        Assert.Equal(seed, openMaterial);
+        Assert.True(deniedBridge.TryReadKeyForSigning("open-tag", out byte[] openSignKey));
+        Assert.NotEmpty(openSignKey);
+        Assert.True(deniedBridge.TryReadKeyForWrapping("open-tag", out byte[] openWrapKey));
+        Assert.NotEmpty(openWrapKey);
+        Assert.NotNull(await deniedBridge.GetKeyForSigningAsync("open-tag"));
+        Assert.NotNull(await deniedBridge.GetKeyForWrappingAsync("open-tag"));
+
+        // Provider integration with biometric gating
+        var provider = new AppleSecureEnclaveSecurityProvider(
+            isPlatform: ApplePlatform,
+            enclaveBridge: deniedBridge);
+
+        await provider.GenerateHardwareBoundKeyAsync("provider-bio-tag", requiresBiometric: true);
+
+        // SignChallengeAsync throws CryptographicException when LocalAuthentication policy denied
+        byte[] challenge = "APPLE-CHALLENGE-2026"u8.ToArray();
+        await Assert.ThrowsAsync<CryptographicException>(() => provider.SignChallengeAsync("provider-bio-tag", challenge));
+
+        // EncryptPayload throws CryptographicException when LocalAuthentication policy denied
+        Assert.Throws<CryptographicException>(() => provider.EncryptPayload("provider-bio-tag", [1, 2, 3]));
+
+        // AuthenticateAndDecryptAsync returns BiometricAuthResult with Failed status
+        var authReq = new BiometricAuthRequest("Unlock", "Sub", "Desc", "provider-bio-tag", new byte[32]);
+        var authResult = await provider.AuthenticateAndDecryptAsync(authReq);
+        Assert.False(authResult.Success);
+        Assert.Equal(BiometricStatus.Failed, authResult.Status);
+        Assert.Contains("failed", authResult.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+
+        // GenerateHardwareKeyAsync with requiresBiometric: true and successful bridge
+        var allowedBridge = new DefaultAppleSecureEnclaveBridge();
+        var allowedProvider = new AppleSecureEnclaveSecurityProvider(isPlatform: ApplePlatform, enclaveBridge: allowedBridge);
+        byte[] pubKey = await allowedProvider.GenerateHardwareKeyAsync("allowed-bio-tag", requiresBiometric: true);
+        Assert.Equal(32, pubKey.Length);
+        byte[] sig = await allowedProvider.SignChallengeAsync("allowed-bio-tag", challenge);
+        Assert.Equal(64, sig.Length);
+
+        var verifier = new Ed25519Signer();
+        verifier.Init(false, new Ed25519PublicKeyParameters(pubKey, 0));
+        verifier.BlockUpdate(challenge, 0, challenge.Length);
+        Assert.True(verifier.VerifySignature(sig));
+    }
+
+    /// <summary>
+    /// Verifies file-backed persistence: stored keys survive bridge reconstruction with the same directory path.
+    /// </summary>
+    [Fact]
+    public async Task MobileBiometricSecurity_FilePersistence_SurvivesBridgeReconstruction()
+    {
+        // WHAT: Verify file persistence across bridge instances for both Android and Apple bridges.
+        // WHY:  Ensures keys survive app restarts and bridge re-creation without key loss.
+        // HOW:  Persists keys in bridge 1, re-creates bridge 2 with same path, verifies keys exist, deletes, re-checks bridge 3.
+        string tempDir = Path.Combine(Path.GetTempPath(), "nanoweaver_ks_persist_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            byte[] masterSeed = new byte[32];
+            RandomNumberGenerator.Fill(masterSeed);
+
+            // 1. Android Keystore Bridge persistence
+            string androidDir = Path.Combine(tempDir, "android");
+            var android1 = new DefaultAndroidKeyStoreBridge(storageDirectoryPath: androidDir);
+            android1.StoreWrappedKey("patient-android-key", masterSeed, requiresBiometric: false);
+            android1.StoreWrappedKey("bio-android-key", masterSeed, requiresBiometric: true);
+
+            Assert.True(android1.TryLoadWrappedKey("patient-android-key", out byte[] loaded1));
+            Assert.Equal(masterSeed, loaded1);
+
+            // Reconstruct bridge instance with same directory
+            var android2 = new DefaultAndroidKeyStoreBridge(storageDirectoryPath: androidDir);
+            Assert.True(android2.TryLoadWrappedKey("patient-android-key", out byte[] loaded2));
+            Assert.Equal(masterSeed, loaded2);
+
+            Assert.True(android2.TryLoadKeyForSigning("patient-android-key", out byte[] sign2));
+            Assert.True(android1.TryLoadKeyForSigning("patient-android-key", out byte[] sign1));
+            Assert.Equal(sign1, sign2);
+
+            // Verify biometric-required key loaded from disk succeeds when prompt succeeds
+            Assert.True(android2.TryLoadWrappedKey("bio-android-key", out byte[] loadedBio));
+            Assert.Equal(masterSeed, loadedBio);
+            Assert.True(android2.TryLoadKeyForSigning("bio-android-key", out byte[] signBio));
+            Assert.NotEmpty(signBio);
+            Assert.True(android2.TryLoadKeyForWrapping("bio-android-key", out byte[] wrapBio));
+            Assert.NotEmpty(wrapBio);
+            Assert.NotNull(await android2.GetKeyForSigningAsync("bio-android-key"));
+            Assert.NotNull(await android2.GetKeyForWrappingAsync("bio-android-key"));
+
+            // Delete key in bridge 2
+            Assert.True(android2.DeleteWrappedKey("patient-android-key"));
+
+            // Reconstruct bridge 3 - key must no longer exist
+            var android3 = new DefaultAndroidKeyStoreBridge(storageDirectoryPath: androidDir);
+            Assert.False(android3.TryLoadWrappedKey("patient-android-key", out _));
+
+            // 2. Apple Secure Enclave Bridge persistence
+            string appleDir = Path.Combine(tempDir, "apple");
+            var apple1 = new DefaultAppleSecureEnclaveBridge(storageDirectoryPath: appleDir);
+            apple1.StoreKeychainSecret("patient-apple-tag", masterSeed, requiresBiometric: false);
+            apple1.StoreKeychainSecret("bio-apple-tag", masterSeed, requiresBiometric: true);
+
+            Assert.True(apple1.TryReadKeychainSecret("patient-apple-tag", out byte[] loadedApple1));
+            Assert.Equal(masterSeed, loadedApple1);
+
+            // Reconstruct bridge instance with same directory
+            var apple2 = new DefaultAppleSecureEnclaveBridge(storageDirectoryPath: appleDir);
+            Assert.True(apple2.TryReadKeychainSecret("patient-apple-tag", out byte[] loadedApple2));
+            Assert.Equal(masterSeed, loadedApple2);
+
+            Assert.True(apple2.TryReadKeyForSigning("patient-apple-tag", out byte[] signApple2));
+            Assert.True(apple1.TryReadKeyForSigning("patient-apple-tag", out byte[] signApple1));
+            Assert.Equal(signApple1, signApple2);
+
+            // Verify biometric-required secret loaded from disk succeeds when prompt succeeds
+            Assert.True(apple2.TryReadKeychainSecret("bio-apple-tag", out byte[] loadedAppleBio));
+            Assert.Equal(masterSeed, loadedAppleBio);
+            Assert.True(apple2.TryReadKeyForSigning("bio-apple-tag", out byte[] signAppleBio));
+            Assert.NotEmpty(signAppleBio);
+            Assert.True(apple2.TryReadKeyForWrapping("bio-apple-tag", out byte[] wrapAppleBio));
+            Assert.NotEmpty(wrapAppleBio);
+            Assert.NotNull(await apple2.GetKeyForSigningAsync("bio-apple-tag"));
+            Assert.NotNull(await apple2.GetKeyForWrappingAsync("bio-apple-tag"));
+
+            // Delete key in bridge 2
+            Assert.True(apple2.DeleteKeychainSecret("patient-apple-tag"));
+
+            // Reconstruct bridge 3 - key must no longer exist
+            var apple3 = new DefaultAppleSecureEnclaveBridge(storageDirectoryPath: appleDir);
+            Assert.False(apple3.TryReadKeychainSecret("patient-apple-tag", out _));
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verifies error handling and edge cases in file-backed persistence: corrupted files, wrong magic/version, null paths.
+    /// </summary>
+    [Fact]
+    public void MobileBiometricSecurity_FilePersistence_CorruptionAndEdgeCases()
+    {
+        // WHAT: Test corrupted file handling, invalid magic/version payloads, and null/whitespace storage paths.
+        // WHY:  Guarantees robust operation in presence of damaged files without crashing.
+        // HOW:  Creates files with invalid headers and truncated lengths, loads bridge, asserts safe skipping and path handling.
+        string tempDir = Path.Combine(Path.GetTempPath(), "nanoweaver_ks_corrupt_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            string androidDir = Path.Combine(tempDir, "android");
+            string appleDir = Path.Combine(tempDir, "apple");
+            Directory.CreateDirectory(androidDir);
+            Directory.CreateDirectory(appleDir);
+
+            // 1. File shorter than minimum envelope length (e.g. 10 bytes)
+            File.WriteAllBytes(Path.Combine(androidDir, "short.key"), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+            File.WriteAllBytes(Path.Combine(appleDir, "short.key"), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+
+            // 2. Corrupted ciphertext that fails AES-GCM decryption
+            byte[] corruptedEnvelope = new byte[40];
+            RandomNumberGenerator.Fill(corruptedEnvelope);
+            File.WriteAllBytes(Path.Combine(androidDir, "corrupted.key"), corruptedEnvelope);
+            File.WriteAllBytes(Path.Combine(appleDir, "corrupted.key"), corruptedEnvelope);
+
+            static void WriteEncryptedEnvelope(string dir, string name, byte[] diskKey, byte[] payload)
+            {
+                byte[] nonce = new byte[12];
+                byte[] tag = new byte[16];
+                byte[] cipher = new byte[payload.Length];
+                using (var aes = new AesGcm(diskKey, 16))
+                {
+                    aes.Encrypt(nonce, payload, cipher, tag);
+                }
+                byte[] envelope = new byte[28 + cipher.Length];
+                Buffer.BlockCopy(nonce, 0, envelope, 0, 12);
+                Buffer.BlockCopy(tag, 0, envelope, 12, 16);
+                Buffer.BlockCopy(cipher, 0, envelope, 28, cipher.Length);
+                File.WriteAllBytes(Path.Combine(dir, name), envelope);
+            }
+
+            // Derive Android diskKey
+            byte[] androidDiskKey = new byte[32];
+            HKDF.DeriveKey(
+                HashAlgorithmName.SHA256,
+                SHA256.HashData(Encoding.UTF8.GetBytes($"nanoweaver:{Environment.MachineName}:{Environment.UserName}")),
+                androidDiskKey,
+                salt: default,
+                info: "nanoweaver-mobile-keystore-storage-v1"u8);
+
+            // Derive Apple diskKey
+            byte[] appleDiskKey = new byte[32];
+            HKDF.DeriveKey(
+                HashAlgorithmName.SHA256,
+                SHA256.HashData(Encoding.UTF8.GetBytes($"nanoweaver:{Environment.MachineName}:{Environment.UserName}")),
+                appleDiskKey,
+                salt: default,
+                info: "nanoweaver-mobile-keychain-storage-v1"u8);
+
+            // Populate invalid cases for Android (NWKS magic)
+            byte[] wrongMagic = [0x5A, 0x5A, 0x5A, 0x5A, 1, 0, 4, 0, (byte)'t', (byte)'e', (byte)'s', (byte)'t', 4, 0, 0, 0, 1, 2, 3, 4];
+            byte[] wrongVer = [(byte)'N', (byte)'W', (byte)'K', (byte)'S', 99, 0, 4, 0, (byte)'t', (byte)'e', (byte)'s', (byte)'t', 4, 0, 0, 0, 1, 2, 3, 4];
+            byte[] shortPl = [(byte)'N', (byte)'W', (byte)'K', (byte)'S', 1];
+            byte[] zeroAlias = [(byte)'N', (byte)'W', (byte)'K', (byte)'S', 1, 0, 0, 0, 0, 0, 0, 0];
+            byte[] truncAlias = [(byte)'N', (byte)'W', (byte)'K', (byte)'S', 1, 0, 50, 0, (byte)'a', 0, 0, 0];
+            byte[] zeroSeed = [(byte)'N', (byte)'W', (byte)'K', (byte)'S', 1, 0, 1, 0, (byte)'a', 0, 0, 0, 0];
+            byte[] truncSeed = [(byte)'N', (byte)'W', (byte)'K', (byte)'S', 1, 0, 1, 0, (byte)'a', 50, 0, 0, 0, 1, 2];
+
+            WriteEncryptedEnvelope(androidDir, "wrong_magic.key", androidDiskKey, wrongMagic);
+            WriteEncryptedEnvelope(androidDir, "wrong_ver.key", androidDiskKey, wrongVer);
+            WriteEncryptedEnvelope(androidDir, "short_pl.key", androidDiskKey, shortPl);
+            WriteEncryptedEnvelope(androidDir, "zero_alias.key", androidDiskKey, zeroAlias);
+            WriteEncryptedEnvelope(androidDir, "trunc_alias.key", androidDiskKey, truncAlias);
+            WriteEncryptedEnvelope(androidDir, "zero_seed.key", androidDiskKey, zeroSeed);
+            WriteEncryptedEnvelope(androidDir, "trunc_seed.key", androidDiskKey, truncSeed);
+
+            // Populate invalid cases for Apple (NWEC magic)
+            byte[] wrongMagicApple = [0x5A, 0x5A, 0x5A, 0x5A, 1, 0, 4, 0, (byte)'t', (byte)'e', (byte)'s', (byte)'t', 4, 0, 0, 0, 1, 2, 3, 4];
+            byte[] wrongVerApple = [(byte)'N', (byte)'W', (byte)'E', (byte)'C', 99, 0, 4, 0, (byte)'t', (byte)'e', (byte)'s', (byte)'t', 4, 0, 0, 0, 1, 2, 3, 4];
+            byte[] shortPlApple = [(byte)'N', (byte)'W', (byte)'E', (byte)'C', 1];
+            byte[] zeroAliasApple = [(byte)'N', (byte)'W', (byte)'E', (byte)'C', 1, 0, 0, 0, 0, 0, 0, 0];
+            byte[] truncAliasApple = [(byte)'N', (byte)'W', (byte)'E', (byte)'C', 1, 0, 50, 0, (byte)'a', 0, 0, 0];
+            byte[] zeroSeedApple = [(byte)'N', (byte)'W', (byte)'E', (byte)'C', 1, 0, 1, 0, (byte)'a', 0, 0, 0, 0];
+            byte[] truncSeedApple = [(byte)'N', (byte)'W', (byte)'E', (byte)'C', 1, 0, 1, 0, (byte)'a', 50, 0, 0, 0, 1, 2];
+
+            WriteEncryptedEnvelope(appleDir, "wrong_magic.key", appleDiskKey, wrongMagicApple);
+            WriteEncryptedEnvelope(appleDir, "wrong_ver.key", appleDiskKey, wrongVerApple);
+            WriteEncryptedEnvelope(appleDir, "short_pl.key", appleDiskKey, shortPlApple);
+            WriteEncryptedEnvelope(appleDir, "zero_alias.key", appleDiskKey, zeroAliasApple);
+            WriteEncryptedEnvelope(appleDir, "trunc_alias.key", appleDiskKey, truncAliasApple);
+            WriteEncryptedEnvelope(appleDir, "zero_seed.key", appleDiskKey, zeroSeedApple);
+            WriteEncryptedEnvelope(appleDir, "trunc_seed.key", appleDiskKey, truncSeedApple);
+
+            // Load Android bridge: ignores all invalid files without error
+            var bridge = new DefaultAndroidKeyStoreBridge(storageDirectoryPath: androidDir);
+            Assert.False(bridge.TryLoadWrappedKey("test", out _));
+
+            // Load Apple bridge: ignores all invalid files without error
+            var appleBridge = new DefaultAppleSecureEnclaveBridge(storageDirectoryPath: appleDir);
+            Assert.False(appleBridge.TryReadKeychainSecret("test", out _));
+
+            // Null and empty storage directory path branches
+            var nullBridge = new DefaultAndroidKeyStoreBridge(storageDirectoryPath: null);
+            nullBridge.StoreWrappedKey("k1", [1, 2, 3]);
+            Assert.True(nullBridge.DeleteWrappedKey("k1"));
+
+            var whiteBridge = new DefaultAndroidKeyStoreBridge(storageDirectoryPath: "   ");
+            whiteBridge.StoreWrappedKey("k2", [1, 2, 3]);
+            Assert.True(whiteBridge.DeleteWrappedKey("k2"));
+
+            var nullAppleBridge = new DefaultAppleSecureEnclaveBridge(storageDirectoryPath: null);
+            nullAppleBridge.StoreKeychainSecret("t1", [1, 2, 3]);
+            Assert.True(nullAppleBridge.DeleteKeychainSecret("t1"));
+
+            var whiteAppleBridge = new DefaultAppleSecureEnclaveBridge(storageDirectoryPath: "   ");
+            whiteAppleBridge.StoreKeychainSecret("t2", [1, 2, 3]);
+            Assert.True(whiteAppleBridge.DeleteKeychainSecret("t2"));
+
+            // Provider constructors with storageDirectoryPath
+            var androidProv = new AndroidBiometricSecurityProvider(
+                isPlatform: p => p == "Android",
+                storageDirectoryPath: tempDir);
+            Assert.NotNull(androidProv.KeyStoreBridge);
+
+            var appleProv = new AppleSecureEnclaveSecurityProvider(
+                isPlatform: p => p == "iOS",
+                storageDirectoryPath: tempDir);
+            Assert.NotNull(appleProv.EnclaveBridge);
+
+            // Delete key from disk when file does not exist
+            bridge.StoreWrappedKey("mem-only", [1, 2, 3]);
+            string nonExistentFile = Path.Combine(tempDir, Convert.ToHexString(SHA256.HashData("mem-only"u8)) + ".key");
+            if (File.Exists(nonExistentFile))
+            {
+                File.Delete(nonExistentFile);
+            }
+            Assert.True(bridge.DeleteWrappedKey("mem-only"));
+
+            // Apple bridge delete when file does not exist
+            appleBridge.StoreKeychainSecret("mem-only-apple", [1, 2, 3]);
+            string nonExistentAppleFile = Path.Combine(tempDir, Convert.ToHexString(SHA256.HashData("mem-only-apple"u8)) + ".key");
+            if (File.Exists(nonExistentAppleFile))
+            {
+                File.Delete(nonExistentAppleFile);
+            }
+            Assert.True(appleBridge.DeleteKeychainSecret("mem-only-apple"));
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verifies input validation, cancellations, and missing key branches on all bridge methods.
+    /// </summary>
+    [Fact]
+    public async Task MobileBiometricSecurity_BridgeMethods_ArgumentValidationsAndBranches()
+    {
+        // WHAT: Test argument validations, cancellation tokens, and missing key lookups across all bridge APIs.
+        // WHY:  Guarantees 100% line and branch coverage across bridge implementations.
+        // HOW:  Validates null/empty/whitespace inputs, cancellation tokens, and missing key returns.
+        var androidBridge = new DefaultAndroidKeyStoreBridge();
+
+        // Android validations
+        Assert.Throws<ArgumentNullException>(() => androidBridge.TryLoadKeyForSigning(null!, out _));
+        Assert.Throws<ArgumentException>(() => androidBridge.TryLoadKeyForSigning("", out _));
+        Assert.Throws<ArgumentException>(() => androidBridge.TryLoadKeyForSigning("   ", out _));
+
+        Assert.Throws<ArgumentNullException>(() => androidBridge.TryLoadKeyForWrapping(null!, out _));
+        Assert.Throws<ArgumentException>(() => androidBridge.TryLoadKeyForWrapping("", out _));
+        Assert.Throws<ArgumentException>(() => androidBridge.TryLoadKeyForWrapping("   ", out _));
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => androidBridge.GetKeyForSigningAsync(null!));
+        await Assert.ThrowsAsync<ArgumentException>(() => androidBridge.GetKeyForSigningAsync(""));
+        await Assert.ThrowsAsync<ArgumentException>(() => androidBridge.GetKeyForSigningAsync("   "));
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => androidBridge.GetKeyForWrappingAsync(null!));
+        await Assert.ThrowsAsync<ArgumentException>(() => androidBridge.GetKeyForWrappingAsync(""));
+        await Assert.ThrowsAsync<ArgumentException>(() => androidBridge.GetKeyForWrappingAsync("   "));
+
+        // Missing key lookups
+        Assert.False(androidBridge.TryLoadKeyForSigning("missing-key", out _));
+        Assert.False(androidBridge.TryLoadKeyForWrapping("missing-key", out _));
+        Assert.Null(await androidBridge.GetKeyForSigningAsync("missing-key"));
+        Assert.Null(await androidBridge.GetKeyForWrappingAsync("missing-key"));
+
+        // Cancellation on async lookups
+        using (var cts = new CancellationTokenSource())
+        {
+            cts.Cancel();
+            await Assert.ThrowsAsync<OperationCanceledException>(() => androidBridge.GetKeyForSigningAsync("any-key", ct: cts.Token));
+            await Assert.ThrowsAsync<OperationCanceledException>(() => androidBridge.GetKeyForWrappingAsync("any-key", ct: cts.Token));
+        }
+
+        // Apple validations
+        var appleBridge = new DefaultAppleSecureEnclaveBridge();
+
+        Assert.Throws<ArgumentNullException>(() => appleBridge.TryReadKeyForSigning(null!, out _));
+        Assert.Throws<ArgumentException>(() => appleBridge.TryReadKeyForSigning("", out _));
+        Assert.Throws<ArgumentException>(() => appleBridge.TryReadKeyForSigning("   ", out _));
+
+        Assert.Throws<ArgumentNullException>(() => appleBridge.TryReadKeyForWrapping(null!, out _));
+        Assert.Throws<ArgumentException>(() => appleBridge.TryReadKeyForWrapping("", out _));
+        Assert.Throws<ArgumentException>(() => appleBridge.TryReadKeyForWrapping("   ", out _));
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => appleBridge.GetKeyForSigningAsync(null!));
+        await Assert.ThrowsAsync<ArgumentException>(() => appleBridge.GetKeyForSigningAsync(""));
+        await Assert.ThrowsAsync<ArgumentException>(() => appleBridge.GetKeyForSigningAsync("   "));
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => appleBridge.GetKeyForWrappingAsync(null!));
+        await Assert.ThrowsAsync<ArgumentException>(() => appleBridge.GetKeyForWrappingAsync(""));
+        await Assert.ThrowsAsync<ArgumentException>(() => appleBridge.GetKeyForWrappingAsync("   "));
+
+        // Missing key lookups
+        Assert.False(appleBridge.TryReadKeyForSigning("missing-tag", out _));
+        Assert.False(appleBridge.TryReadKeyForWrapping("missing-tag", out _));
+        Assert.Null(await appleBridge.GetKeyForSigningAsync("missing-tag"));
+        Assert.Null(await appleBridge.GetKeyForWrappingAsync("missing-tag"));
+
+        // Cancellation on async lookups
+        using (var ctsApple = new CancellationTokenSource())
+        {
+            ctsApple.Cancel();
+            await Assert.ThrowsAsync<OperationCanceledException>(() => appleBridge.GetKeyForSigningAsync("any-tag", ct: ctsApple.Token));
+            await Assert.ThrowsAsync<OperationCanceledException>(() => appleBridge.GetKeyForWrappingAsync("any-tag", ct: ctsApple.Token));
+        }
+    }
 }

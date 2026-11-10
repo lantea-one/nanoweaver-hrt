@@ -1,11 +1,9 @@
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
-using Org.BouncyCastle.Crypto;
-using Org.BouncyCastle.Crypto.Generators;
+using System.Text;
 using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Crypto.Signers;
-using Org.BouncyCastle.Security;
 
 namespace NanoWeaverHrt.Mobile.Security;
 
@@ -16,7 +14,7 @@ namespace NanoWeaverHrt.Mobile.Security;
 /// <remarks>
 /// // WHAT: Apple Secure Enclave and LocalAuthentication biometric security provider.
 /// // WHY:  Guarantees cryptographic patient DNA regimen protection on Apple iOS/iPadOS/macOS devices.
-/// // HOW:  Simulates Apple Secure Enclave hardware key generation, Touch ID / Face ID evaluation, and AES-256-GCM envelope crypto.
+/// // HOW:  Simulates Apple Secure Enclave key generation, HKDF key separation, Touch ID / Face ID evaluation, and AES-256-GCM crypto.
 /// </remarks>
 public sealed class AppleSecureEnclaveSecurityProvider : IBiometricSecurityProvider, IDisposable
 {
@@ -36,7 +34,17 @@ public sealed class AppleSecureEnclaveSecurityProvider : IBiometricSecurityProvi
     private const int MinimumEnvelopeLength = NonceSizeBytes + TagSizeBytes;
 
     /// <summary>
-    /// In-memory simulated Apple Secure Enclave keychain holding 256-bit hardware-bound symmetric keys.
+    /// Ed25519 signing HKDF info context string.
+    /// </summary>
+    private static ReadOnlySpan<byte> Ed25519SignInfo => "nanoweaver-ios-ed25519-sign-v1"u8;
+
+    /// <summary>
+    /// AES-256-GCM wrapping HKDF info context string.
+    /// </summary>
+    private static ReadOnlySpan<byte> Aes256GcmWrapInfo => "nanoweaver-ios-aes256gcm-wrap-v1"u8;
+
+    /// <summary>
+    /// In-memory simulated Apple Secure Enclave keychain holding master secrets for hardware-bound keys.
     /// </summary>
     private readonly ConcurrentDictionary<string, byte[]> _keyStore = new(StringComparer.Ordinal);
 
@@ -73,21 +81,23 @@ public sealed class AppleSecureEnclaveSecurityProvider : IBiometricSecurityProvi
     /// <param name="biometricType">Biometric modality supported on this Apple device (defaults to AppleFaceId).</param>
     /// <param name="typeProbe">Optional dynamic type probe delegate returning AppleFaceId or AppleTouchId.</param>
     /// <param name="enclaveBridge">Optional Apple Secure Enclave bridge abstraction (defaults to <see cref="DefaultAppleSecureEnclaveBridge"/>).</param>
+    /// <param name="storageDirectoryPath">Optional storage directory path for encrypted file-backed persistence.</param>
     public AppleSecureEnclaveSecurityProvider(
         Func<string, bool>? isPlatform = null,
         Func<BiometricStatus>? statusProbe = null,
         BiometricType biometricType = BiometricType.AppleFaceId,
         Func<BiometricType>? typeProbe = null,
-        IAppleSecureEnclaveBridge? enclaveBridge = null)
+        IAppleSecureEnclaveBridge? enclaveBridge = null,
+        string? storageDirectoryPath = null)
     {
-        // WHAT: Initialize Apple Secure Enclave provider with test hooks and bridge.
+        // WHAT: Initialize Apple Secure Enclave provider with test hooks, bridge, and persistence path.
         // WHY:  Allows deterministic testing of LAContext Touch ID / Face ID states without Apple hardware.
         // HOW:  Stores injected platform predicate, status probe, static modality, dynamic type probe, and bridge.
         _isPlatform = isPlatform;
         _statusProbe = statusProbe;
         _biometricType = biometricType;
         _typeProbe = typeProbe;
-        _enclaveBridge = enclaveBridge ?? new DefaultAppleSecureEnclaveBridge();
+        _enclaveBridge = enclaveBridge ?? new DefaultAppleSecureEnclaveBridge(storageDirectoryPath: storageDirectoryPath);
     }
 
     /// <summary>
@@ -120,12 +130,27 @@ public sealed class AppleSecureEnclaveSecurityProvider : IBiometricSecurityProvi
     /// <inheritdoc/>
     public Task<HardwareKeyGenerationResult> GenerateHardwareBoundKeyAsync(string keyAlias, CancellationToken ct = default)
     {
-        // WHAT: Generate a hardware-bound key inside Apple Secure Enclave keychain.
-        // WHY:  Provides a secure key alias bound to device biometric authentication.
-        // HOW:  Validates alias, checks platform, generates genuine Ed25519 key in keychain bridge, and returns public key metadata.
+        // WHAT: Generate a hardware-bound key inside Apple Secure Enclave without biometric requirement.
+        // WHY:  Provides a secure key alias bound to enclave keychain.
+        // HOW:  Validates alias and delegates to core generation logic with requiresBiometric false.
         ArgumentException.ThrowIfNullOrWhiteSpace(keyAlias);
+        return Task.FromResult(GenerateHardwareBoundKeyCore(keyAlias, requiresBiometric: false, ct));
+    }
 
-        return Task.FromResult(GenerateHardwareBoundKeyCore(keyAlias, ct));
+    /// <summary>
+    /// Generates a hardware-bound key inside Apple Secure Enclave with an optional biometric requirement.
+    /// </summary>
+    /// <param name="keyAlias">Unique alias identifying the key within the hardware module.</param>
+    /// <param name="requiresBiometric">Flag indicating whether access to this key requires biometric authorization.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task yielding the populated <see cref="HardwareKeyGenerationResult"/>.</returns>
+    public Task<HardwareKeyGenerationResult> GenerateHardwareBoundKeyAsync(string keyAlias, bool requiresBiometric, CancellationToken ct = default)
+    {
+        // WHAT: Generate a hardware-bound key inside Apple Secure Enclave with explicit biometric requirement.
+        // WHY:  Allows gating key access behind LocalAuthentication biometric policy.
+        // HOW:  Validates alias and delegates to core generation logic.
+        ArgumentException.ThrowIfNullOrWhiteSpace(keyAlias);
+        return Task.FromResult(GenerateHardwareBoundKeyCore(keyAlias, requiresBiometric, ct));
     }
 
     /// <summary>
@@ -138,9 +163,26 @@ public sealed class AppleSecureEnclaveSecurityProvider : IBiometricSecurityProvi
     /// <exception cref="PlatformNotSupportedException">Thrown when the current platform is not Apple.</exception>
     public Task<byte[]> GenerateHardwareKeyAsync(string keyAlias, CancellationToken ct = default)
     {
-        // WHAT: Generate genuine RFC 8032 Ed25519 keypair and persist seed in Secure Enclave bridge.
-        // WHY:  Provides hardware-bound asymmetric identity for node and patient federation on Apple platforms.
-        // HOW:  Validates inputs, initializes Ed25519 generator, stores wrapped seed, zeroes seed buffer, and returns public key bytes.
+        // WHAT: Generate genuine Ed25519 keypair without biometric prompt requirement.
+        // WHY:  Provides hardware-bound asymmetric identity for node and patient federation.
+        // HOW:  Delegates to overload with requiresBiometric false.
+        return GenerateHardwareKeyAsync(keyAlias, requiresBiometric: false, ct);
+    }
+
+    /// <summary>
+    /// Generates a genuine RFC 8032 Ed25519 key pair inside the Apple Secure Enclave bridge with an optional biometric requirement.
+    /// </summary>
+    /// <param name="keyAlias">Unique alias identifying the key inside the Apple Secure Enclave keychain.</param>
+    /// <param name="requiresBiometric">Flag indicating whether key usage requires biometric authorization.</param>
+    /// <param name="ct">Cancellation token for cancelling the key generation operation.</param>
+    /// <returns>A task yielding the genuine 32-byte RFC 8032 Ed25519 public key bytes.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="keyAlias"/> is null or whitespace.</exception>
+    /// <exception cref="PlatformNotSupportedException">Thrown when the current platform is not Apple.</exception>
+    public Task<byte[]> GenerateHardwareKeyAsync(string keyAlias, bool requiresBiometric, CancellationToken ct = default)
+    {
+        // WHAT: Generate genuine RFC 8032 Ed25519 keypair and persist master secret in Secure Enclave bridge.
+        // WHY:  Provides hardware-bound asymmetric identity with HKDF domain separation.
+        // HOW:  Generates random master secret, derives Ed25519 signing subkey via HKDF, computes public key, zeroizes buffers.
         ArgumentException.ThrowIfNullOrWhiteSpace(keyAlias);
         ct.ThrowIfCancellationRequested();
 
@@ -149,23 +191,30 @@ public sealed class AppleSecureEnclaveSecurityProvider : IBiometricSecurityProvi
             throw new PlatformNotSupportedException("Apple Secure Enclave is unavailable on this platform.");
         }
 
-        var secureRandom = new SecureRandom();
-        var keyGen = new Ed25519KeyPairGenerator();
-        keyGen.Init(new Ed25519KeyGenerationParameters(secureRandom));
-        AsymmetricCipherKeyPair keyPair = keyGen.GenerateKeyPair();
-        var privKeyParams = (Ed25519PrivateKeyParameters)keyPair.Private;
-        var pubKeyParams = (Ed25519PublicKeyParameters)keyPair.Public;
+        byte[] masterSecret = new byte[32];
+        RandomNumberGenerator.Fill(masterSecret);
 
-        byte[] seedBytes = privKeyParams.GetEncoded();
         try
         {
-            _enclaveBridge.StoreKeychainSecret(keyAlias, seedBytes);
-            _keyStore[keyAlias] = (byte[])seedBytes.Clone();
-            return Task.FromResult(pubKeyParams.GetEncoded());
+            _enclaveBridge.StoreKeychainSecret(keyAlias, masterSecret, requiresBiometric);
+            _keyStore[keyAlias] = (byte[])masterSecret.Clone();
+
+            byte[] signingKey = DeriveSigningKey(keyAlias, masterSecret);
+
+            try
+            {
+                var privKeyParams = new Ed25519PrivateKeyParameters(signingKey, 0);
+                Ed25519PublicKeyParameters pubKeyParams = privKeyParams.GeneratePublicKey();
+                return Task.FromResult(pubKeyParams.GetEncoded());
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(signingKey);
+            }
         }
         finally
         {
-            CryptographicOperations.ZeroMemory(seedBytes);
+            CryptographicOperations.ZeroMemory(masterSecret);
         }
     }
 
@@ -179,24 +228,25 @@ public sealed class AppleSecureEnclaveSecurityProvider : IBiometricSecurityProvi
     /// <exception cref="ArgumentException">Thrown when <paramref name="keyAlias"/> is null or whitespace.</exception>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="challengeBytes"/> is null.</exception>
     /// <exception cref="InvalidOperationException">Thrown when the key alias does not exist in Apple Secure Enclave keychain.</exception>
-    public Task<byte[]> SignChallengeAsync(string keyAlias, byte[] challengeBytes, CancellationToken ct = default)
+    /// <exception cref="CryptographicException">Thrown when LocalAuthentication policy evaluation fails.</exception>
+    public async Task<byte[]> SignChallengeAsync(string keyAlias, byte[] challengeBytes, CancellationToken ct = default)
     {
-        // WHAT: Produce RFC 8032 Ed25519 signature over challenge using Secure Enclave-backed private key.
+        // WHAT: Produce RFC 8032 Ed25519 signature over challenge using domain-separated Secure Enclave signing key.
         // WHY:  Allows iOS/macOS mobile clients to prove private-key possession during node challenge-response authentication.
-        // HOW:  Loads secret seed, initializes Ed25519Signer, generates 64-byte signature, and zeroizes private key memory.
+        // HOW:  Loads derived signing key, initializes Ed25519Signer, generates 64-byte signature, and zeroizes private key memory.
         ArgumentException.ThrowIfNullOrWhiteSpace(keyAlias);
         ArgumentNullException.ThrowIfNull(challengeBytes);
         ct.ThrowIfCancellationRequested();
 
-        byte[] keyBytes;
-        bool loadedFromBridge = _enclaveBridge.TryReadKeychainSecret(keyAlias, out byte[]? bridgeBytes);
-        if (loadedFromBridge)
+        byte[] signingKey;
+        byte[]? bridgeSigningKey = await _enclaveBridge.GetKeyForSigningAsync(keyAlias, "Authenticate to sign cryptographic challenge", ct).ConfigureAwait(false);
+        if (bridgeSigningKey != null)
         {
-            keyBytes = bridgeBytes;
+            signingKey = bridgeSigningKey;
         }
         else if (_keyStore.TryGetValue(keyAlias, out byte[]? storeBytes))
         {
-            keyBytes = (byte[])storeBytes.Clone();
+            signingKey = DeriveSigningKey(keyAlias, storeBytes);
         }
         else
         {
@@ -205,16 +255,16 @@ public sealed class AppleSecureEnclaveSecurityProvider : IBiometricSecurityProvi
 
         try
         {
-            var privKeyParams = new Ed25519PrivateKeyParameters(keyBytes, 0);
+            var privKeyParams = new Ed25519PrivateKeyParameters(signingKey, 0);
             var signer = new Ed25519Signer();
             signer.Init(true, privKeyParams);
             signer.BlockUpdate(challengeBytes, 0, challengeBytes.Length);
             byte[] signature = signer.GenerateSignature();
-            return Task.FromResult(signature);
+            return signature;
         }
         finally
         {
-            CryptographicOperations.ZeroMemory(keyBytes);
+            CryptographicOperations.ZeroMemory(signingKey);
         }
     }
 
@@ -243,22 +293,22 @@ public sealed class AppleSecureEnclaveSecurityProvider : IBiometricSecurityProvi
     /// <returns>Encrypted envelope bytes containing nonce, tag, and ciphertext.</returns>
     /// <exception cref="ArgumentException">Thrown when <paramref name="keyAlias"/> is null or whitespace.</exception>
     /// <exception cref="InvalidOperationException">Thrown when the key alias does not exist in the keychain.</exception>
+    /// <exception cref="CryptographicException">Thrown when LocalAuthentication policy evaluation fails.</exception>
     public byte[] EncryptPayload(string keyAlias, ReadOnlySpan<byte> plaintext)
     {
-        // WHAT: Encrypt plaintext payload with AES-256-GCM using Secure Enclave key.
+        // WHAT: Encrypt plaintext payload with AES-256-GCM using domain-separated wrapping key.
         // WHY:  Provides symmetric vault encryption aligned with Apple Secure Enclave capabilities.
-        // HOW:  Loads key defensively, generates 12-byte random nonce, encrypts plaintext, appends authentication tag, and formats envelope.
+        // HOW:  Loads derived wrapping key defensively, generates 12-byte random nonce, encrypts plaintext, appends authentication tag, and formats envelope.
         ArgumentException.ThrowIfNullOrWhiteSpace(keyAlias);
 
-        byte[] keyBytes;
-        bool loadedFromBridge = _enclaveBridge.TryReadKeychainSecret(keyAlias, out byte[]? bridgeBytes);
-        if (loadedFromBridge)
+        byte[] wrappingKey;
+        if (_enclaveBridge.TryReadKeyForWrapping(keyAlias, out byte[] bridgeKey))
         {
-            keyBytes = bridgeBytes;
+            wrappingKey = bridgeKey;
         }
         else if (_keyStore.TryGetValue(keyAlias, out byte[]? storeBytes))
         {
-            keyBytes = (byte[])storeBytes.Clone();
+            wrappingKey = DeriveWrappingKey(keyAlias, storeBytes);
         }
         else
         {
@@ -273,7 +323,7 @@ public sealed class AppleSecureEnclaveSecurityProvider : IBiometricSecurityProvi
             byte[] tag = new byte[TagSizeBytes];
             byte[] ciphertext = new byte[plaintext.Length];
 
-            using (var aesGcm = new AesGcm(keyBytes, TagSizeBytes))
+            using (var aesGcm = new AesGcm(wrappingKey, TagSizeBytes))
             {
                 aesGcm.Encrypt(nonce, plaintext, ciphertext, tag);
             }
@@ -287,7 +337,7 @@ public sealed class AppleSecureEnclaveSecurityProvider : IBiometricSecurityProvi
         }
         finally
         {
-            CryptographicOperations.ZeroMemory(keyBytes);
+            CryptographicOperations.ZeroMemory(wrappingKey);
         }
     }
 
@@ -429,7 +479,7 @@ public sealed class AppleSecureEnclaveSecurityProvider : IBiometricSecurityProvi
     {
         // WHAT: Core decryption logic verifying Apple biometric prompt and Secure Enclave key.
         // WHY:  Guarantees robust decryption of encrypted patient DNA payloads.
-        // HOW:  Checks cancellation, verifies availability, looks up Secure Enclave key, and decrypts via AES-GCM.
+        // HOW:  Checks cancellation, verifies availability, loads domain-separated wrapping key, and decrypts via AES-GCM.
         if (ct.IsCancellationRequested)
         {
             return new BiometricAuthResult(
@@ -449,28 +499,38 @@ public sealed class AppleSecureEnclaveSecurityProvider : IBiometricSecurityProvi
                 Status: availability.Status);
         }
 
-        byte[] keyBytes;
-        bool loadedFromBridge = _enclaveBridge.TryReadKeychainSecret(request.KeyAlias, out byte[]? bridgeBytes);
-        if (loadedFromBridge)
+        byte[] wrappingKey;
+        try
         {
-            keyBytes = bridgeBytes;
+            if (_enclaveBridge.TryReadKeyForWrapping(request.KeyAlias, out byte[] bridgeKey))
+            {
+                wrappingKey = bridgeKey;
+            }
+            else if (_keyStore.TryGetValue(request.KeyAlias, out byte[]? storeBytes))
+            {
+                wrappingKey = DeriveWrappingKey(request.KeyAlias, storeBytes);
+            }
+            else
+            {
+                return new BiometricAuthResult(
+                    Success: false,
+                    DecryptedPayload: null,
+                    ErrorMessage: $"Hardware key '{request.KeyAlias}' not found in Apple Secure Enclave keychain.",
+                    Status: BiometricStatus.Failed);
+            }
         }
-        else if (_keyStore.TryGetValue(request.KeyAlias, out byte[]? storeBytes))
-        {
-            keyBytes = (byte[])storeBytes.Clone();
-        }
-        else
+        catch (CryptographicException ex)
         {
             return new BiometricAuthResult(
                 Success: false,
                 DecryptedPayload: null,
-                ErrorMessage: $"Hardware key '{request.KeyAlias}' not found in Apple Secure Enclave keychain.",
+                ErrorMessage: $"Biometric authorization failed: {ex.Message}",
                 Status: BiometricStatus.Failed);
         }
 
         if (request.EncryptedVaultPayload.Length < MinimumEnvelopeLength)
         {
-            CryptographicOperations.ZeroMemory(keyBytes);
+            CryptographicOperations.ZeroMemory(wrappingKey);
             return new BiometricAuthResult(
                 Success: false,
                 DecryptedPayload: null,
@@ -486,7 +546,7 @@ public sealed class AppleSecureEnclaveSecurityProvider : IBiometricSecurityProvi
         byte[] plaintext = new byte[ciphertext.Length];
         try
         {
-            using var aesGcm = new AesGcm(keyBytes, TagSizeBytes);
+            using var aesGcm = new AesGcm(wrappingKey, TagSizeBytes);
             aesGcm.Decrypt(nonce, ciphertext, tag, plaintext);
 
             return new BiometricAuthResult(
@@ -506,7 +566,7 @@ public sealed class AppleSecureEnclaveSecurityProvider : IBiometricSecurityProvi
         }
         finally
         {
-            CryptographicOperations.ZeroMemory(keyBytes);
+            CryptographicOperations.ZeroMemory(wrappingKey);
         }
     }
 
@@ -514,13 +574,14 @@ public sealed class AppleSecureEnclaveSecurityProvider : IBiometricSecurityProvi
     /// Synchronously generates a hardware-bound key inside the simulated Apple Secure Enclave keychain.
     /// </summary>
     /// <param name="keyAlias">Target key alias.</param>
+    /// <param name="requiresBiometric">Flag indicating whether biometric auth is required.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>Populated <see cref="HardwareKeyGenerationResult"/>.</returns>
-    private HardwareKeyGenerationResult GenerateHardwareBoundKeyCore(string keyAlias, CancellationToken ct)
+    private HardwareKeyGenerationResult GenerateHardwareBoundKeyCore(string keyAlias, bool requiresBiometric, CancellationToken ct)
     {
         // WHAT: Core key generation routine for Apple Secure Enclave.
-        // WHY:  Simulates hardware key generation backed by Apple T2/T3/M-series/A-series Secure Enclave processor.
-        // HOW:  Checks cancellation, confirms Apple platform, generates genuine Ed25519 key, and stores wrapped seed in bridge.
+        // WHY:  Simulates hardware key generation backed by Apple Secure Enclave processor with HKDF subkey derivation.
+        // HOW:  Checks cancellation, confirms Apple platform, generates random master secret, derives Ed25519 signing key, and stores in bridge.
         if (ct.IsCancellationRequested)
         {
             return new HardwareKeyGenerationResult(
@@ -539,31 +600,81 @@ public sealed class AppleSecureEnclaveSecurityProvider : IBiometricSecurityProvi
                 ErrorMessage: "Apple Secure Enclave is unavailable on this platform.");
         }
 
-        var secureRandom = new SecureRandom();
-        var keyGen = new Ed25519KeyPairGenerator();
-        keyGen.Init(new Ed25519KeyGenerationParameters(secureRandom));
-        AsymmetricCipherKeyPair keyPair = keyGen.GenerateKeyPair();
-        var privKeyParams = (Ed25519PrivateKeyParameters)keyPair.Private;
-        var pubKeyParams = (Ed25519PublicKeyParameters)keyPair.Public;
+        byte[] masterSecret = new byte[32];
+        RandomNumberGenerator.Fill(masterSecret);
 
-        byte[] seedBytes = privKeyParams.GetEncoded();
         try
         {
-            _enclaveBridge.StoreKeychainSecret(keyAlias, seedBytes);
-            _keyStore[keyAlias] = (byte[])seedBytes.Clone();
+            _enclaveBridge.StoreKeychainSecret(keyAlias, masterSecret, requiresBiometric);
+            _keyStore[keyAlias] = (byte[])masterSecret.Clone();
 
-            byte[] pubBytes = pubKeyParams.GetEncoded();
-            string publicKeyBase64 = Convert.ToBase64String(pubBytes);
+            byte[] signingKey = DeriveSigningKey(keyAlias, masterSecret);
 
-            return new HardwareKeyGenerationResult(
-                Success: true,
-                KeyAlias: keyAlias,
-                PublicKeyBase64: publicKeyBase64,
-                ErrorMessage: null);
+            try
+            {
+                var privKeyParams = new Ed25519PrivateKeyParameters(signingKey, 0);
+                Ed25519PublicKeyParameters pubKeyParams = privKeyParams.GeneratePublicKey();
+                byte[] pubBytes = pubKeyParams.GetEncoded();
+                string publicKeyBase64 = Convert.ToBase64String(pubBytes);
+
+                return new HardwareKeyGenerationResult(
+                    Success: true,
+                    KeyAlias: keyAlias,
+                    PublicKeyBase64: publicKeyBase64,
+                    ErrorMessage: null);
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(signingKey);
+            }
         }
         finally
         {
-            CryptographicOperations.ZeroMemory(seedBytes);
+            CryptographicOperations.ZeroMemory(masterSecret);
         }
+    }
+
+    /// <summary>
+    /// Derives the 32-byte Ed25519 signing key from the master secret using HKDF.
+    /// </summary>
+    /// <param name="keyAlias">Key alias used as HKDF salt.</param>
+    /// <param name="masterSecret">Master secret bytes.</param>
+    /// <returns>A 32-byte derived signing key.</returns>
+    private static byte[] DeriveSigningKey(string keyAlias, ReadOnlySpan<byte> masterSecret)
+    {
+        // WHAT: Derive domain-separated Ed25519 signing key via HKDF.
+        // WHY:  Ensures signing key is cryptographically separated from wrapping key.
+        // HOW:  Uses HKDF with SHA256, alias salt, and Apple signing info string.
+        byte[] aliasBytes = Encoding.UTF8.GetBytes(keyAlias);
+        byte[] subkey = new byte[32];
+        HKDF.DeriveKey(
+            HashAlgorithmName.SHA256,
+            masterSecret,
+            subkey,
+            salt: aliasBytes,
+            info: Ed25519SignInfo);
+        return subkey;
+    }
+
+    /// <summary>
+    /// Derives the 32-byte AES-256-GCM wrapping key from the master secret using HKDF.
+    /// </summary>
+    /// <param name="keyAlias">Key alias used as HKDF salt.</param>
+    /// <param name="masterSecret">Master secret bytes.</param>
+    /// <returns>A 32-byte derived wrapping key.</returns>
+    private static byte[] DeriveWrappingKey(string keyAlias, ReadOnlySpan<byte> masterSecret)
+    {
+        // WHAT: Derive domain-separated AES-256-GCM wrapping key via HKDF.
+        // WHY:  Ensures wrapping key is cryptographically separated from signing key.
+        // HOW:  Uses HKDF with SHA256, alias salt, and Apple wrapping info string.
+        byte[] aliasBytes = Encoding.UTF8.GetBytes(keyAlias);
+        byte[] subkey = new byte[32];
+        HKDF.DeriveKey(
+            HashAlgorithmName.SHA256,
+            masterSecret,
+            subkey,
+            salt: aliasBytes,
+            info: Aes256GcmWrapInfo);
+        return subkey;
     }
 }

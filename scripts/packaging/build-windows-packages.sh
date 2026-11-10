@@ -21,6 +21,15 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 OUTPUT_DIR="${ROOT_DIR}/artifacts/packages/windows"
 mkdir -p "${OUTPUT_DIR}"
 
+ALLOW_STUB_PACKAGING="${ALLOW_STUB_PACKAGING:-false}"
+for arg in "$@"; do
+    case "$arg" in
+        --allow-stub-packaging)
+            ALLOW_STUB_PACKAGING=true
+            ;;
+    esac
+done
+
 if [ -z "${XDG_RUNTIME_DIR:-}" ] || [ ! -d "${XDG_RUNTIME_DIR}" ]; then
     export XDG_RUNTIME_DIR="/tmp"
 fi
@@ -90,7 +99,12 @@ fi
 
 # Ensure managed assemblies and PE32+ executable exist in staging
 if [ ! -f "${STAGING_DIR}/NanoWeaverHrt.exe" ]; then
-    echo "Creating deterministic PE32+ executable for win-x64"
+    if [ "${ALLOW_STUB_PACKAGING}" != "true" ]; then
+        echo "ERROR: Compiled Windows binary not found at ${STAGING_DIR}/NanoWeaverHrt.exe and --allow-stub-packaging was not specified." >&2
+        echo "Please compile NanoWeaverHrt.Desktop for win-x64 or pass --allow-stub-packaging." >&2
+        exit 1
+    fi
+    echo "Creating deterministic PE32+ executable for win-x64 (--allow-stub-packaging enabled)"
     if [ -d "${ROOT_DIR}/src/NanoWeaverHrt.Desktop/bin/Release/net10.0" ]; then
         cp -r "${ROOT_DIR}/src/NanoWeaverHrt.Desktop/bin/Release/net10.0"/* "${STAGING_DIR}/" 2>/dev/null || true
     elif [ -d "${ROOT_DIR}/src/NanoWeaverHrt.Desktop/bin/Debug/net10.0" ]; then
@@ -241,7 +255,11 @@ if command -v dotnet &>/dev/null; then
 fi
 
 if [ ! -f "${PORTABLE_TARGET}" ]; then
-    echo "Creating deterministic standalone PE32+ portable executable fallback..."
+    if [ "${ALLOW_STUB_PACKAGING}" != "true" ]; then
+        echo "ERROR: Portable Windows executable not found at ${PORTABLE_TARGET} and --allow-stub-packaging was not specified." >&2
+        exit 1
+    fi
+    echo "Creating deterministic standalone PE32+ portable executable fallback (--allow-stub-packaging enabled)..."
     ZIP_PORTABLE_TMP="${ROOT_DIR}/artifacts/staging/win-portable-payload.zip"
     rm -f "${ZIP_PORTABLE_TMP}"
     python3 -c "

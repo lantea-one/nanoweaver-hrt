@@ -196,9 +196,13 @@ The interactive Blazor dashboard provides continuous compliance monitoring:
 
 ---
 
-## 10. BouncyCastle FIPS 203 ML-KEM-768 & AES-256-GCM Salt AAD Interop
+## 9. BouncyCastle FIPS 203 ML-KEM-768 & AES-256-GCM Salt AAD Interop
 - **BouncyCastle FIPS 203 `ML-KEM-768`**: Integrated via BouncyCastle cryptographic provider to guarantee standardized module learning with errors encapsulation and decapsulation.
 - **AES-256-GCM Salt & Additional Authenticated Data (AAD)**: Encrypted payloads bind cryptographic salts, initialization vectors, and deterministic Additional Authenticated Data (such as subject IDs and timestamps) to prevent ciphertext substitution and replay attacks across P2P federation channels.
+
+---
+
+## 10. Asymmetric PKI Identity, RBAC & Idle Session Watchdog
 
 To prevent credential leakage, eliminate brute-force password attacks, and protect against administrative hijacking, NanoWeaverHrt implements a **zero-password cryptographic public-key infrastructure (PKI)** for all user accounts and API clients.
 
@@ -263,12 +267,12 @@ Unattended workstations in clinical and wet-lab environments represent a critica
 
 ---
 
-## 10. Deterministic Multi-Dialect SQL Schema Migrations
+## 11. Deterministic Multi-Dialect SQL Schema Migrations
 
 NanoWeaverHrt guarantees reliable database evolution without relying on fragile ad-hoc DDL scripts or manual SQL interventions.
 
 ### Architecture of `DatabaseMigrationRunner`
-The migration subsystem coordinates versioned, idempotent schema updates across both **SQLite** (local embedded node) and **PostgreSQL** (`pg_duckdb` cluster backend):
+The migration subsystem coordinates versioned, idempotent schema updates across all 4 supported backends: **SQLite** (local embedded node), **PostgreSQL** (`pg_duckdb` cluster backend), **DuckDB** (in-process analytics), and **MySQL / MariaDB**:
 
 ```mermaid
 flowchart TD
@@ -280,7 +284,7 @@ flowchart TD
     HasPending -- No --> UpToDate["Schema Up-to-Date (Proceed to App Boot)"]
     HasPending -- Yes --> Loop["Iterate Migrations Ordered by Version"]
     Loop --> Tx["Begin Database Transaction"]
-    Tx --> ExecDDL["Execute Dialect DDL (SQLite / PostgreSQL)"]
+    Tx --> ExecDDL["Execute Dialect DDL (SQLite / PostgreSQL / DuckDB / MySQL)"]
     ExecDDL --> Record["Record Version in 'weaver_schema_migrations'"]
     Record --> Commit["Commit Transaction"]
     Commit --> HasMore{"More Migrations?"}
@@ -292,12 +296,22 @@ flowchart TD
 
 | Version | Migration Name | Dialect Highlights | Purpose |
 | :--- | :--- | :--- | :--- |
-| **001** | `001_InitialSchema` | SQLite & PostgreSQL | Creates `weaver_configuration`, `weaver_share_keys`, and `weaver_users` tables. |
+| **001** | `001_InitialSchema` | SQLite, PostgreSQL, DuckDB, MySQL | Creates `weaver_configuration`, `weaver_share_keys`, and `weaver_users` tables. |
 | **002** | `002_UserAuditAndIndexes` | `CREATE INDEX IF NOT EXISTS` | Adds secondary indexes on `role`, `access_gate`, and `is_active` for high-throughput auth. |
+| **003** | `003_UserProfileAddressesAndContacts` | Dialect DDL Parity | Adds patient address, emergency contact, and demographic directory columns to `weaver_user_profiles`. |
+| **004** | `004_PatientDnaImportsAndResults` | Multi-engine relational storage | Creates `weaver_patient_dna_imports` and `weaver_patient_dna_results` tables. |
+| **005** | `005_EncryptPatientPhi` | Cryptographic data-at-rest migration | Encrypts existing patient protected health information (PHI) fields in `weaver_user_profiles`. |
+| **006** | `006_EncryptGenderIdentity` | HIPAA Safe Harbor encryption | Encrypts `gender_identity` column in `weaver_user_profiles` using AES-256-GCM. |
+| **007** | `007_PeerKeyRegistry` | Decentralized federation DDL | Creates `weaver_peer_keys` table for federated node Ed25519 public key verification. |
+| **008** | `008_SubjectKeyStore` | Persistent key storage | Creates `weaver_subject_keys` table for persistent node and subject cryptographic key storage. |
+| **009** | `009_AuditLedgerStore` | FDA 21 CFR Part 11 ledger | Creates `weaver_audit_ledger` table with microsecond timestamp and SHA-256 hash chains. |
+| **010** | `010_EncryptPatientDnaPhi` | Envelope PHI encryption | Encrypts patient DNA payload PHI in `weaver_patient_dna_imports` using envelope encryption. |
+| **011** | `011_SubjectAccessAndGroups` | Multi-tier RBAC DDL | Creates `weaver_subject_groups` and `weaver_subject_group_members` tables for tiered cohort access. |
+| **012** | `012_GuiPreferences` | Transactional preferences | Creates `weaver_gui_preferences` table storing user UI configuration, localization choices, and theme states. |
 
 ---
 
-## 11. Zero-Information-Disclosure RFC 7807 ProblemDetails
+## 12. Zero-Information-Disclosure RFC 7807 ProblemDetails
 
 In accordance with strict security hardening guidelines, NanoWeaverHrt eliminates sensitive data leakage across all REST API endpoints.
 
@@ -315,7 +329,7 @@ The `SecureExceptionSanitizer` enforces four zero-disclosure rules:
 
 ---
 
-## 12. Subject Access Delegation, Tiered Gating & Research Cohorts
+## 13. Subject Access Delegation, Tiered Gating & Research Cohorts
 
 To support decentralized collaborative clinical studies without compromising patient confidentiality, NanoWeaverHrt implements asymmetric subject access delegation and cohort privacy boundaries.
 
@@ -343,7 +357,7 @@ $$
 
 ---
 
-## 13. Sovereign Code-Signing PKI & Automated 90-Day Rotation
+## 14. Sovereign Code-Signing PKI & Automated 90-Day Rotation
 
 To guarantee binary integrity, authenticity, and tamper-resistance for all distributed release artifacts without relying on centralized commercial certificate authority vendor lock-in, NanoWeaverHrt implements a sovereign X.509 Code-Signing Public Key Infrastructure (PKI) combined with an OpenPGP/GPG archive signing keyring.
 

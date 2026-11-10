@@ -7,7 +7,7 @@ mkdir -p "${OUTPUT_DIR}"
 
 PACKAGE_VERSION="${PACKAGE_VERSION:-${GITHUB_REF_NAME:-}}"
 if [ -z "${PACKAGE_VERSION}" ] || [ "${PACKAGE_VERSION}" = "main" ]; then
-    PACKAGE_VERSION="$(git describe --tags --exact-match 2>/dev/null || echo "2026.11.04.10")"
+    PACKAGE_VERSION="$(git describe --tags --exact-match 2>/dev/null || echo "2026.11.09.4")"
 fi
 PACKAGE_VERSION="${PACKAGE_VERSION#v}"
 
@@ -52,15 +52,15 @@ publish_architecture() {
                 cp -r "${ROOT_DIR}/src/NanoWeaverHrt.Desktop/bin/Release/net10.0"/* "${staging_dir}/" 2>/dev/null || true
             fi
         fi
-        cat << 'EOF' > "${staging_dir}/NanoWeaverHrt"
+        cat << EOF > "${staging_dir}/NanoWeaverHrt"
 #!/bin/sh
 echo "NanoWeaver HRT Desktop Stub (${rid})"
 if [ -f /usr/lib/nanoweaver-hrt-desktop/NanoWeaverHrt.Desktop.dll ]; then
-    exec /usr/bin/env dotnet /usr/lib/nanoweaver-hrt-desktop/NanoWeaverHrt.Desktop.dll "$@"
+    exec /usr/bin/env dotnet /usr/lib/nanoweaver-hrt-desktop/NanoWeaverHrt.Desktop.dll "\$@"
 elif [ -f /usr/lib/nanoweaver-hrt/NanoWeaverHrt.Desktop.dll ]; then
-    exec /usr/bin/env dotnet /usr/lib/nanoweaver-hrt/NanoWeaverHrt.Desktop.dll "$@"
+    exec /usr/bin/env dotnet /usr/lib/nanoweaver-hrt/NanoWeaverHrt.Desktop.dll "\$@"
 else
-    exec /usr/bin/env dotnet /usr/lib/nanoweaver-hrt-desktop/NanoWeaverHrt.Desktop.dll "$@"
+    exec /usr/bin/env dotnet /usr/lib/nanoweaver-hrt-desktop/NanoWeaverHrt.Desktop.dll "\$@"
 fi
 EOF
         chmod +x "${staging_dir}/NanoWeaverHrt"
@@ -320,7 +320,7 @@ rootfs = sys.argv[1]
 out_path = sys.argv[2]
 arch = sys.argv[3]
 name = 'nanoweaver-hrt-desktop'
-version = sys.argv[4] if len(sys.argv) > 4 else '2026.10.29.2'
+version = sys.argv[4] if len(sys.argv) > 4 else '2026.11.09.4'
 release = '1'
 
 def build_rpm(rootfs, out_path, name, version, release, arch):

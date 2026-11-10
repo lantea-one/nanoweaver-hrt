@@ -41,11 +41,11 @@ The core abstraction is `IWeaverDbConnectionFactory`, which manages connection p
 ```
 
 ### Configuration Resolution
-The connection factory inspects application settings (`appsettings.json`, environment variables, or command-line flags) using the following precedence:
-1. `POSTGRES_CONNECTION_STRING` or `ConnectionStrings:PostgreSQL` → Resolves PostgreSQL.
-2. `DUCKDB_CONNECTION_STRING` or `ConnectionStrings:DuckDB` → Resolves DuckDB.
-3. `MYSQL_CONNECTION_STRING` or `ConnectionStrings:MySQL` → Resolves MySQL / MariaDB.
-4. Default fallback: SQLite file in `Data Source=./weaver_data/weaver.db;Cache=Shared`.
+The connection factory inspects application settings (`appsettings.json`, environment variables, or command-line flags) using the following strict resolution precedence (`WeaverDbConnectionFactory.cs`):
+1. `POSTGRES_CONNECTION_STRING` or `ConnectionStrings:PostgreSQL` → Resolves PostgreSQL (`NpgsqlConnection`).
+2. `MYSQL_CONNECTION_STRING` or `ConnectionStrings:MySQL` → Resolves MySQL / MariaDB (`MySqlConnection`).
+3. `DUCKDB_CONNECTION_STRING` or `DUCKDB_DATABASE_PATH` or `ConnectionStrings:DuckDB` → Resolves DuckDB (`DuckDBConnection`).
+4. Default fallback: SQLite file in `Data Source={TRAJECTORY_INCOMING_DIR}/weaver_config.db` (defaults to `./simulations/shared-data/weaver_config.db`).
 
 ### Example Configuration Snippets
 
@@ -53,7 +53,7 @@ The connection factory inspects application settings (`appsettings.json`, enviro
 ```json
 {
   "ConnectionStrings": {
-    "DefaultConnection": "Data Source=./weaver_data/weaver.db;Cache=Shared"
+    "DefaultConnection": "Data Source=./simulations/shared-data/weaver_config.db"
   }
 }
 ```

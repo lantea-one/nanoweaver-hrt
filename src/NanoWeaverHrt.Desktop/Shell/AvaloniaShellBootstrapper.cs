@@ -84,16 +84,27 @@ public sealed class AvaloniaShellBootstrapper : IDisposable
     /// </summary>
     /// <param name="connectionString">Optional SQLite connection string override.</param>
     /// <param name="mutexName">Optional single-instance mutex name override.</param>
+    /// <param name="mutexGuard">Optional pre-acquired single-instance mutex guard.</param>
+    /// <param name="baseDirectory">Optional base directory override for local application data storage.</param>
     /// <returns>A fully configured <see cref="AvaloniaShellBootstrapper"/> instance.</returns>
     public static AvaloniaShellBootstrapper CreateDefault(
         string? connectionString = null,
-        string? mutexName = null)
+        string? mutexName = null,
+        SingleInstanceMutexGuard? mutexGuard = null,
+        string? baseDirectory = null)
     {
         // WHAT: Factories default dependencies for desktop shell execution.
         // WHY:  Encapsulates production wiring in a single reusable entrypoint.
         // HOW:  Instantiates storage, clients, coordinator, ViewModels, and window host.
-        string effectiveConn = connectionString ??
-            $"Data Source={Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "NanoWeaverHrt", "profiles.db")}";
+        string? effectiveConn = connectionString;
+        if (effectiveConn == null)
+        {
+            string appData = baseDirectory ?? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            string baseDir = string.IsNullOrWhiteSpace(appData) ? Path.GetTempPath() : appData;
+            string dir = Path.Combine(baseDir, "NanoWeaverHrt");
+            Directory.CreateDirectory(dir);
+            effectiveConn = $"Data Source={Path.Combine(dir, "profiles.db")}";
+        }
         var repo = new SqliteInstanceProfileRepository(effectiveConn);
         var httpClient = new HttpClient();
         var keyVault = new AesGcmClientKeyRingVault();
@@ -105,14 +116,14 @@ public sealed class AvaloniaShellBootstrapper : IDisposable
         var aboutVm = new AboutViewModel();
         var windowHost = new MainShellWindowHost(shellVm, instanceManagerVm, vaultUnlockVm, aboutVm);
         var trayController = new DesktopTrayIconController();
-        var mutexGuard = new SingleInstanceMutexGuard(mutexName ?? SingleInstanceMutexGuard.DefaultMutexName);
+        var effectiveGuard = mutexGuard ?? new SingleInstanceMutexGuard(mutexName ?? SingleInstanceMutexGuard.DefaultMutexName);
 
         return new AvaloniaShellBootstrapper(
             windowHost,
             trayController,
             coordinator,
             nodeClient,
-            mutexGuard);
+            effectiveGuard);
     }
 
     /// <summary>
