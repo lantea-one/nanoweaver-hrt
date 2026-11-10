@@ -11,6 +11,7 @@ using NanoWeaverHrt.Fabrication.Gel;
 using NanoWeaverHrt.Genomics;
 using NanoWeaverHrt.Hardware.Benchmarking;
 using NanoWeaverHrt.Models;
+using NanoWeaverHrt.Security.Access;
 using NanoWeaverHrt.Security.Authentication;
 using Xunit;
 
@@ -1625,5 +1626,334 @@ public sealed class EndpointIntegrationTests : IClassFixture<WebApplicationFacto
         using StringContent contentPbpk = new(jsonPbpk, Encoding.UTF8, "application/json");
         HttpResponseMessage respPbpk = await _client.PostAsync("/api/simulations/run/pbpk-endocrine", contentPbpk);
         Assert.Equal(HttpStatusCode.OK, respPbpk.StatusCode);
+    }
+
+    /// <summary>
+    /// Verifies that POST /api/depots/simulate-release simulates 180-day depot kinetics, supports string and integer enum deserialization,
+    /// enforces role gating, and rejects out-of-range parameters with 400 Bad Request.
+    /// </summary>
+    /// <returns>A task representing the asynchronous test operation.</returns>
+    [Fact]
+    public async Task SimulateDepotRelease_ValidAndInvalidRequests()
+    {
+        // WHAT: Tests the POST /api/depots/simulate-release endpoint.
+        // WHY:  Verifies API contract, numerical simulation execution, input boundary validation, enum deserialization parity, and role gating.
+        // HOW:  Executes positive simulations, tests string and integer enums, tests parameter validation branches, and validates role gating.
+
+        // 1. Positive MtF simulation with default/null baseline concentrations
+        SimulateDepotReleaseRequest validMtf = new()
+        {
+            Regimen = TherapeuticRegimen.MaleToFemale,
+            MatrixType = PolymerMatrixType.PlgaPegPlga,
+            KineticsModel = ReleaseKineticsModel.KorsmeyerPeppas,
+            InitialNanocarrierMassMg = 16.0,
+            HorizonDays = 180,
+            DailyErosionRatePercent = 0.55,
+            ClearanceMultiplier = 1.0,
+            TargetDailyDoseMg = 0.08
+        };
+        HttpResponseMessage okMtf = await _client.PostAsJsonAsync("/api/depots/simulate-release", validMtf);
+        Assert.Equal(HttpStatusCode.OK, okMtf.StatusCode);
+        TimeReleaseSimulationResult? resultMtf = await okMtf.Content.ReadFromJsonAsync<TimeReleaseSimulationResult>();
+        Assert.NotNull(resultMtf);
+        Assert.Equal(181, resultMtf.Points.Count);
+        Assert.True(resultMtf.BurstSuppressed);
+        Assert.True(resultMtf.LhSuppressionAchieved);
+        Assert.True(resultMtf.FshSuppressionAchieved);
+
+        // 2. Positive FtM simulation with custom baseline concentrations
+        SimulateDepotReleaseRequest validFtm = new()
+        {
+            Regimen = TherapeuticRegimen.FemaleToMale,
+            MatrixType = PolymerMatrixType.PlgaPegPlga,
+            KineticsModel = ReleaseKineticsModel.KorsmeyerPeppas,
+            InitialNanocarrierMassMg = 1050.0,
+            HorizonDays = 180,
+            DailyErosionRatePercent = 0.55,
+            ClearanceMultiplier = 1.0,
+            TargetDailyDoseMg = 6.0,
+            InitialEstradiolPmolL = 500.0,
+            InitialTestosteroneNmolL = 2.0,
+            InitialLhIuL = 6.0,
+            InitialFshIuL = 4.5
+        };
+        HttpResponseMessage okFtm = await _client.PostAsJsonAsync("/api/depots/simulate-release", validFtm);
+        Assert.Equal(HttpStatusCode.OK, okFtm.StatusCode);
+        TimeReleaseSimulationResult? resultFtm = await okFtm.Content.ReadFromJsonAsync<TimeReleaseSimulationResult>();
+        Assert.NotNull(resultFtm);
+        Assert.Equal(181, resultFtm.Points.Count);
+        Assert.True(resultFtm.BurstSuppressed);
+
+        // 3. Positive Custom regimen simulation
+        SimulateDepotReleaseRequest validCustom = new()
+        {
+            Regimen = TherapeuticRegimen.Custom,
+            MatrixType = PolymerMatrixType.AlginateChitosan,
+            KineticsModel = ReleaseKineticsModel.Higuchi,
+            InitialNanocarrierMassMg = 100.0,
+            HorizonDays = 90,
+            DailyErosionRatePercent = 0.40,
+            ClearanceMultiplier = 1.1,
+            InitialEstradiolPmolL = 200.0,
+            InitialTestosteroneNmolL = 5.0,
+            InitialLhIuL = 5.0,
+            InitialFshIuL = 4.0
+        };
+        HttpResponseMessage okCustom = await _client.PostAsJsonAsync("/api/depots/simulate-release", validCustom);
+        Assert.Equal(HttpStatusCode.OK, okCustom.StatusCode);
+
+        // 4. Raw JSON string enum literals deserialization parity (Issue #174)
+        string jsonStringEnums = "{\"regimen\":\"MaleToFemale\",\"matrixType\":\"PlgaPegPlga\",\"kineticsModel\":\"KorsmeyerPeppas\",\"initialNanocarrierMassMg\":16.0,\"horizonDays\":180,\"dailyErosionRatePercent\":0.55,\"clearanceMultiplier\":1.0}";
+        using StringContent contentStringEnums = new(jsonStringEnums, Encoding.UTF8, "application/json");
+        HttpResponseMessage okStringEnums = await _client.PostAsync("/api/depots/simulate-release", contentStringEnums);
+        Assert.Equal(HttpStatusCode.OK, okStringEnums.StatusCode);
+
+        // 5. Raw JSON integer enum literals deserialization parity (Issue #174)
+        string jsonIntEnums = "{\"regimen\":0,\"matrixType\":0,\"kineticsModel\":0,\"initialNanocarrierMassMg\":16.0,\"horizonDays\":180,\"dailyErosionRatePercent\":0.55,\"clearanceMultiplier\":1.0}";
+        using StringContent contentIntEnums = new(jsonIntEnums, Encoding.UTF8, "application/json");
+        HttpResponseMessage okIntEnums = await _client.PostAsync("/api/depots/simulate-release", contentIntEnums);
+        Assert.Equal(HttpStatusCode.OK, okIntEnums.StatusCode);
+
+        // 6. Validation: Null request body -> 400 Bad Request
+        using StringContent nullContent = new("null", Encoding.UTF8, "application/json");
+        HttpResponseMessage nullResp = await _client.PostAsync("/api/depots/simulate-release", nullContent);
+        Assert.Equal(HttpStatusCode.BadRequest, nullResp.StatusCode);
+
+        // 7. Validation: Non-positive mass -> 400 Bad Request
+        HttpResponseMessage zeroMassResp = await _client.PostAsJsonAsync("/api/depots/simulate-release", validMtf with { InitialNanocarrierMassMg = 0.0 });
+        Assert.Equal(HttpStatusCode.BadRequest, zeroMassResp.StatusCode);
+        HttpResponseMessage negMassResp = await _client.PostAsJsonAsync("/api/depots/simulate-release", validMtf with { InitialNanocarrierMassMg = -5.0 });
+        Assert.Equal(HttpStatusCode.BadRequest, negMassResp.StatusCode);
+
+        // 8. Validation: Invalid horizon (< 1 or > 365) -> 400 Bad Request
+        HttpResponseMessage zeroDaysResp = await _client.PostAsJsonAsync("/api/depots/simulate-release", validMtf with { HorizonDays = 0 });
+        Assert.Equal(HttpStatusCode.BadRequest, zeroDaysResp.StatusCode);
+        HttpResponseMessage highDaysResp = await _client.PostAsJsonAsync("/api/depots/simulate-release", validMtf with { HorizonDays = 366 });
+        Assert.Equal(HttpStatusCode.BadRequest, highDaysResp.StatusCode);
+
+        // 9. Validation: Invalid erosion (<= 0 or > 100) -> 400 Bad Request
+        HttpResponseMessage zeroErosionResp = await _client.PostAsJsonAsync("/api/depots/simulate-release", validMtf with { DailyErosionRatePercent = 0.0 });
+        Assert.Equal(HttpStatusCode.BadRequest, zeroErosionResp.StatusCode);
+        HttpResponseMessage highErosionResp = await _client.PostAsJsonAsync("/api/depots/simulate-release", validMtf with { DailyErosionRatePercent = 101.0 });
+        Assert.Equal(HttpStatusCode.BadRequest, highErosionResp.StatusCode);
+
+        // 10. Validation: Invalid clearance (< 0.1 or > 5.0) -> 400 Bad Request
+        HttpResponseMessage lowClearanceResp = await _client.PostAsJsonAsync("/api/depots/simulate-release", validMtf with { ClearanceMultiplier = 0.05 });
+        Assert.Equal(HttpStatusCode.BadRequest, lowClearanceResp.StatusCode);
+        HttpResponseMessage highClearanceResp = await _client.PostAsJsonAsync("/api/depots/simulate-release", validMtf with { ClearanceMultiplier = 5.5 });
+        Assert.Equal(HttpStatusCode.BadRequest, highClearanceResp.StatusCode);
+
+        // 11. Validation: Negative initial concentrations -> 400 Bad Request
+        HttpResponseMessage negE2Resp = await _client.PostAsJsonAsync("/api/depots/simulate-release", validMtf with { InitialEstradiolPmolL = -1.0 });
+        Assert.Equal(HttpStatusCode.BadRequest, negE2Resp.StatusCode);
+        HttpResponseMessage negTResp = await _client.PostAsJsonAsync("/api/depots/simulate-release", validMtf with { InitialTestosteroneNmolL = -1.0 });
+        Assert.Equal(HttpStatusCode.BadRequest, negTResp.StatusCode);
+        HttpResponseMessage negLhResp = await _client.PostAsJsonAsync("/api/depots/simulate-release", validMtf with { InitialLhIuL = -0.5 });
+        Assert.Equal(HttpStatusCode.BadRequest, negLhResp.StatusCode);
+        HttpResponseMessage negFshResp = await _client.PostAsJsonAsync("/api/depots/simulate-release", validMtf with { InitialFshIuL = -0.5 });
+        Assert.Equal(HttpStatusCode.BadRequest, negFshResp.StatusCode);
+
+        // 12. Role Gating: Unauthenticated call -> 401 Unauthorized
+        using HttpClient anonClient = CreateClientWithBearer(null);
+        HttpResponseMessage anonResp = await anonClient.PostAsJsonAsync("/api/depots/simulate-release", validMtf);
+        Assert.Equal(HttpStatusCode.Unauthorized, anonResp.StatusCode);
+
+        // 13. Role Gating: Patient role call -> 403 Forbidden
+        string patientToken = await ProvisionUserAndGetTokenAsync("depot_patient_sim", UserRole.Patient);
+        using HttpClient patientClient = CreateClientWithBearer(patientToken);
+        HttpResponseMessage patientResp = await patientClient.PostAsJsonAsync("/api/depots/simulate-release", validMtf);
+        Assert.Equal(HttpStatusCode.Forbidden, patientResp.StatusCode);
+
+        // 14. Role Gating: Researcher role call -> 200 OK
+        string researcherToken = await ProvisionUserAndGetTokenAsync("depot_researcher_sim", UserRole.Researcher);
+        using HttpClient researcherClient = CreateClientWithBearer(researcherToken);
+        HttpResponseMessage researcherResp = await researcherClient.PostAsJsonAsync("/api/depots/simulate-release", validMtf);
+        Assert.Equal(HttpStatusCode.OK, researcherResp.StatusCode);
+    }
+
+    /// <summary>
+    /// Verifies POST /api/depots/formulations and GET /api/depots/formulations/{patientId} lifecycle, input validation,
+    /// schedule persistence, and tiered role gating (Administrator, Researcher with subject grant, Patient self).
+    /// </summary>
+    /// <returns>A task representing the asynchronous test operation.</returns>
+    [Fact]
+    public async Task DepotFormulations_CreateAndGet_RoleGatingAndValidation()
+    {
+        // WHAT: Tests formulation creation and cohort retrieval across authorization tiers.
+        // WHY:  Upholds Prime Directive 12 role gating and clinical persistence integrity across SQLite/Postgres.
+        // HOW:  Exercises Administrator creation, Researcher with/without grant, Patient self/cross-patient access, and input validation.
+
+        string patientAlice = "depot_patient_alice";
+        string patientBob = "depot_patient_bob";
+        string researcherLead = "depot_res_lead";
+
+        string tokenAlice = await ProvisionUserAndGetTokenAsync(patientAlice, UserRole.Patient);
+        string tokenBob = await ProvisionUserAndGetTokenAsync(patientBob, UserRole.Patient);
+        string tokenResearcher = await ProvisionUserAndGetTokenAsync(researcherLead, UserRole.Researcher);
+
+        using HttpClient clientAlice = CreateClientWithBearer(tokenAlice);
+        using HttpClient clientBob = CreateClientWithBearer(tokenBob);
+        using HttpClient clientResearcher = CreateClientWithBearer(tokenResearcher);
+        using HttpClient clientAnon = CreateClientWithBearer(null);
+
+        // 1. Validation on POST /api/depots/formulations: Null body -> 400 Bad Request
+        using StringContent nullContent = new("null", Encoding.UTF8, "application/json");
+        HttpResponseMessage nullResp = await _client.PostAsync("/api/depots/formulations", nullContent);
+        Assert.Equal(HttpStatusCode.BadRequest, nullResp.StatusCode);
+
+        // 2. Validation: Empty or whitespace PatientId -> 400 Bad Request
+        HttpResponseMessage emptyPatientResp = await _client.PostAsJsonAsync("/api/depots/formulations", new CreateDepotFormulationRequest { PatientId = "", InitialNanocarrierMassMg = 100.0, DailyErosionRatePercent = 0.5 });
+        Assert.Equal(HttpStatusCode.BadRequest, emptyPatientResp.StatusCode);
+        HttpResponseMessage wsPatientResp = await _client.PostAsJsonAsync("/api/depots/formulations", new CreateDepotFormulationRequest { PatientId = "   ", InitialNanocarrierMassMg = 100.0, DailyErosionRatePercent = 0.5 });
+        Assert.Equal(HttpStatusCode.BadRequest, wsPatientResp.StatusCode);
+
+        // 3. Validation: Invalid PatientId format -> 400 Bad Request
+        HttpResponseMessage invalidPatientResp = await _client.PostAsJsonAsync("/api/depots/formulations", new CreateDepotFormulationRequest { PatientId = "invalid/patient/id", InitialNanocarrierMassMg = 100.0, DailyErosionRatePercent = 0.5 });
+        Assert.Equal(HttpStatusCode.BadRequest, invalidPatientResp.StatusCode);
+
+        // 4. Validation: Non-positive mass -> 400 Bad Request
+        HttpResponseMessage zeroMassResp = await _client.PostAsJsonAsync("/api/depots/formulations", new CreateDepotFormulationRequest { PatientId = patientAlice, InitialNanocarrierMassMg = 0.0, DailyErosionRatePercent = 0.5 });
+        Assert.Equal(HttpStatusCode.BadRequest, zeroMassResp.StatusCode);
+
+        // 5. Validation: Invalid erosion (<= 0 or > 100) -> 400 Bad Request
+        HttpResponseMessage zeroErosionResp = await _client.PostAsJsonAsync("/api/depots/formulations", new CreateDepotFormulationRequest { PatientId = patientAlice, InitialNanocarrierMassMg = 100.0, DailyErosionRatePercent = 0.0 });
+        Assert.Equal(HttpStatusCode.BadRequest, zeroErosionResp.StatusCode);
+        HttpResponseMessage highErosionResp = await _client.PostAsJsonAsync("/api/depots/formulations", new CreateDepotFormulationRequest { PatientId = patientAlice, InitialNanocarrierMassMg = 100.0, DailyErosionRatePercent = 100.5 });
+        Assert.Equal(HttpStatusCode.BadRequest, highErosionResp.StatusCode);
+
+        // 6. Validation: Invalid horizon (< 1 or > 365) -> 400 Bad Request
+        HttpResponseMessage lowHorizonResp = await _client.PostAsJsonAsync("/api/depots/formulations", new CreateDepotFormulationRequest { PatientId = patientAlice, InitialNanocarrierMassMg = 100.0, DailyErosionRatePercent = 0.5, TargetHorizonDays = 0 });
+        Assert.Equal(HttpStatusCode.BadRequest, lowHorizonResp.StatusCode);
+        HttpResponseMessage highHorizonResp = await _client.PostAsJsonAsync("/api/depots/formulations", new CreateDepotFormulationRequest { PatientId = patientAlice, InitialNanocarrierMassMg = 100.0, DailyErosionRatePercent = 0.5, TargetHorizonDays = 366 });
+        Assert.Equal(HttpStatusCode.BadRequest, highHorizonResp.StatusCode);
+
+        // 7. Role Gating: Unauthenticated caller -> 401 Unauthorized
+        CreateDepotFormulationRequest validAliceReq = new()
+        {
+            PatientId = patientAlice,
+            Regimen = TherapeuticRegimen.MaleToFemale,
+            PolymerMatrixType = "PLGA-PEG-PLGA",
+            InitialNanocarrierMassMg = 150.0,
+            DailyErosionRatePercent = 0.55,
+            ReleaseKineticsModel = "Korsmeyer-Peppas",
+            TargetHorizonDays = 180,
+            InitialSchedule =
+            [
+                new DepotSchedulePoint { ScheduleId = "", TimepointDay = 1, CumulativeReleaseFraction = 0.01, InstantaneousRateMgDay = 0.8, RemainingReserveMg = 149.2 },
+                new DepotSchedulePoint { ScheduleId = "explicit_sched_1", TimepointDay = 30, CumulativeReleaseFraction = 0.16, InstantaneousRateMgDay = 0.8, RemainingReserveMg = 126.0 }
+            ]
+        };
+        HttpResponseMessage unauthCreateResp = await clientAnon.PostAsJsonAsync("/api/depots/formulations", validAliceReq);
+        Assert.Equal(HttpStatusCode.Unauthorized, unauthCreateResp.StatusCode);
+
+        HttpResponseMessage unauthGetResp = await clientAnon.GetAsync($"/api/depots/formulations/{patientAlice}");
+        Assert.Equal(HttpStatusCode.Unauthorized, unauthGetResp.StatusCode);
+
+        // 8. Role Gating: Patient caller trying to create formulation -> 403 Forbidden
+        HttpResponseMessage patientCreateResp = await clientAlice.PostAsJsonAsync("/api/depots/formulations", validAliceReq);
+        Assert.Equal(HttpStatusCode.Forbidden, patientCreateResp.StatusCode);
+
+        // 9. Role Gating: Researcher WITHOUT subject grant trying to create formulation -> 403 Forbidden
+        HttpResponseMessage resNoGrantCreateResp = await clientResearcher.PostAsJsonAsync("/api/depots/formulations", validAliceReq);
+        Assert.Equal(HttpStatusCode.Forbidden, resNoGrantCreateResp.StatusCode);
+
+        // 10. Role Gating: Researcher WITHOUT grant trying to read formulation -> 403 Forbidden
+        HttpResponseMessage resNoGrantGetResp = await clientResearcher.GetAsync($"/api/depots/formulations/{patientAlice}");
+        Assert.Equal(HttpStatusCode.Forbidden, resNoGrantGetResp.StatusCode);
+
+        // 11. Positive path: Administrator creates formulation with schedule -> 201 Created
+        HttpResponseMessage adminCreateResp = await _client.PostAsJsonAsync("/api/depots/formulations", validAliceReq);
+        Assert.Equal(HttpStatusCode.Created, adminCreateResp.StatusCode);
+        Assert.NotNull(adminCreateResp.Headers.Location);
+        DepotFormulationResponse? createdAliceResp = await adminCreateResp.Content.ReadFromJsonAsync<DepotFormulationResponse>();
+        Assert.NotNull(createdAliceResp);
+        Assert.Equal(patientAlice, createdAliceResp.Formulation.PatientId);
+        Assert.Equal(2, createdAliceResp.Schedule.Count);
+        Assert.False(string.IsNullOrWhiteSpace(createdAliceResp.Schedule[0].ScheduleId));
+        Assert.Equal("explicit_sched_1", createdAliceResp.Schedule[1].ScheduleId);
+
+        // 12. Positive path: Administrator creates formulation with null schedule and alias fallbacks -> 201 Created
+        CreateDepotFormulationRequest fallbackReq = new()
+        {
+            PatientId = patientAlice,
+            Regimen = TherapeuticRegimen.MaleToFemale,
+            PolymerMatrixType = "",
+            MatrixType = "CrosslinkedHydrogel",
+            InitialNanocarrierMassMg = 80.0,
+            DailyErosionRatePercent = 0.45,
+            ReleaseKineticsModel = "",
+            KineticsModel = "CoupledAnomalousFickian",
+            TargetHorizonDays = 90,
+            InitialSchedule = null
+        };
+        HttpResponseMessage fallbackCreateResp = await _client.PostAsJsonAsync("/api/depots/formulations", fallbackReq);
+        Assert.Equal(HttpStatusCode.Created, fallbackCreateResp.StatusCode);
+        DepotFormulationResponse? createdFallbackResp = await fallbackCreateResp.Content.ReadFromJsonAsync<DepotFormulationResponse>();
+        Assert.NotNull(createdFallbackResp);
+        Assert.Equal("CrosslinkedHydrogel", createdFallbackResp.Formulation.PolymerMatrixType);
+        Assert.Equal("CoupledAnomalousFickian", createdFallbackResp.Formulation.ReleaseKineticsModel);
+        Assert.Empty(createdFallbackResp.Schedule);
+
+        // 13. Positive path: Administrator reads formulations for patientAlice -> 200 OK (2 items)
+        HttpResponseMessage adminGetResp = await _client.GetAsync($"/api/depots/formulations/{patientAlice}");
+        Assert.Equal(HttpStatusCode.OK, adminGetResp.StatusCode);
+        List<DepotFormulationResponse>? aliceDepots = await adminGetResp.Content.ReadFromJsonAsync<List<DepotFormulationResponse>>();
+        Assert.NotNull(aliceDepots);
+        Assert.Equal(2, aliceDepots.Count);
+
+        // 14. Positive path: Patient reads own formulations (Self-Access) -> 200 OK
+        HttpResponseMessage selfGetResp = await clientAlice.GetAsync($"/api/depots/formulations/{patientAlice}");
+        Assert.Equal(HttpStatusCode.OK, selfGetResp.StatusCode);
+        List<DepotFormulationResponse>? selfDepots = await selfGetResp.Content.ReadFromJsonAsync<List<DepotFormulationResponse>>();
+        Assert.NotNull(selfDepots);
+        Assert.Equal(2, selfDepots.Count);
+
+        // 15. Cross-Patient Access Denied: Patient Bob tries to read Patient Alice's formulations -> 403 Forbidden
+        HttpResponseMessage crossGetResp = await clientBob.GetAsync($"/api/depots/formulations/{patientAlice}");
+        Assert.Equal(HttpStatusCode.Forbidden, crossGetResp.StatusCode);
+
+        // 16. Grant researcher subject access on patientBob, then verify Researcher access
+        using (IServiceScope scope = _factory.Services.CreateScope())
+        {
+            ISubjectAccessService accessService = scope.ServiceProvider.GetRequiredService<ISubjectAccessService>();
+            await accessService.GrantSubjectAccessAsync("admin", researcherLead, patientBob, SubjectAccessLevel.FullReadAccess, "Test grant");
+        }
+
+        CreateDepotFormulationRequest bobReq = new()
+        {
+            PatientId = patientBob,
+            Regimen = TherapeuticRegimen.FemaleToMale,
+            PolymerMatrixType = "PLGA-PEG-PLGA",
+            InitialNanocarrierMassMg = 950.0,
+            DailyErosionRatePercent = 0.50,
+            ReleaseKineticsModel = "Korsmeyer-Peppas",
+            TargetHorizonDays = 180,
+            InitialSchedule = []
+        };
+
+        // Researcher WITH subject grant creates formulation for patientBob -> 201 Created
+        HttpResponseMessage resGrantedCreateResp = await clientResearcher.PostAsJsonAsync("/api/depots/formulations", bobReq);
+        Assert.Equal(HttpStatusCode.Created, resGrantedCreateResp.StatusCode);
+
+        // Researcher WITH subject grant reads formulations for patientBob -> 200 OK
+        HttpResponseMessage resGrantedGetResp = await clientResearcher.GetAsync($"/api/depots/formulations/{patientBob}");
+        Assert.Equal(HttpStatusCode.OK, resGrantedGetResp.StatusCode);
+        List<DepotFormulationResponse>? bobDepots = await resGrantedGetResp.Content.ReadFromJsonAsync<List<DepotFormulationResponse>>();
+        Assert.NotNull(bobDepots);
+        Assert.Single(bobDepots);
+
+        // 17. GET formulations for a patient with zero formulations -> 200 OK (empty list)
+        string patientEmpty = "depot_patient_empty";
+        string tokenEmpty = await ProvisionUserAndGetTokenAsync(patientEmpty, UserRole.Patient);
+        using HttpClient clientEmpty = CreateClientWithBearer(tokenEmpty);
+        HttpResponseMessage emptyGetResp = await clientEmpty.GetAsync($"/api/depots/formulations/{patientEmpty}");
+        Assert.Equal(HttpStatusCode.OK, emptyGetResp.StatusCode);
+        List<DepotFormulationResponse>? emptyList = await emptyGetResp.Content.ReadFromJsonAsync<List<DepotFormulationResponse>>();
+        Assert.NotNull(emptyList);
+        Assert.Empty(emptyList);
+
+        // 18. GET formulations with invalid identifier format -> 400 Bad Request
+        HttpResponseMessage invalidGetResp = await _client.GetAsync("/api/depots/formulations/bad*id");
+        Assert.Equal(HttpStatusCode.BadRequest, invalidGetResp.StatusCode);
     }
 }

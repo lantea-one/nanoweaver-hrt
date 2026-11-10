@@ -4175,6 +4175,263 @@ public class Program
         .Produces<SecureProblemDetails>(StatusCodes.Status404NotFound)
         .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest);
 
+        // ---------------------------------------------------------------------
+        // REST API: Time-Release Depot Formulations & Simulation
+        // ---------------------------------------------------------------------
+        app.MapPost("/api/depots/formulations", async (
+            CreateDepotFormulationRequest? request,
+            IDepotFormulationRepository repository,
+            ISubjectAccessService subjectAccess,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Creates and persists a semi-annual time-release depot formulation and optional initial schedule.
+            // WHY:  Allows clinicians and researchers to configure sustained nanocarrier elution parameters for a patient.
+            // HOW:  Validates input bounds, verifies caller authorization (Admin or Researcher with subject access), and persists to IDepotFormulationRepository.
+            if (request is null)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Request body cannot be null.");
+            }
+
+            if (string.IsNullOrWhiteSpace(request.PatientId))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "PatientId must not be empty.");
+            }
+
+            string trimmedPatientId = request.PatientId.Trim().ToLowerInvariant();
+            if (!IsValidPatientIdentifier(trimmedPatientId))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "The requested patient identifier format is invalid.");
+            }
+
+            if (request.InitialNanocarrierMassMg <= 0.0)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "InitialNanocarrierMassMg must be greater than zero.");
+            }
+
+            if (request.DailyErosionRatePercent <= 0.0 || request.DailyErosionRatePercent > 100.0)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "DailyErosionRatePercent must be between 0.0 (exclusive) and 100.0 (inclusive).");
+            }
+
+            if (request.TargetHorizonDays < 1 || request.TargetHorizonDays > 365)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "TargetHorizonDays must be between 1 and 365.");
+            }
+
+            // WHY `!`: Authentication middleware guarantees CurrentUser is populated with an authenticated UserAccount before reaching this handler.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+
+            if (caller.Role != UserRole.Administrator && caller.Role != UserRole.Researcher)
+            {
+                return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: Administrator or Researcher role required to create depot formulations.");
+            }
+
+            if (caller.Role == UserRole.Researcher)
+            {
+                SubjectAccessLevel? accessLevel = await subjectAccess.GetEffectiveAccessLevelAsync(caller.Username, trimmedPatientId, ct);
+                if (!accessLevel.HasValue)
+                {
+                    return SecureProblemResult(context, StatusCodes.Status403Forbidden, $"Forbidden: Caller does not possess subject access to patient '{trimmedPatientId}'.");
+                }
+            }
+
+            string depotId = $"depot_{Guid.NewGuid():N}";
+            DepotFormulationRecord record = new()
+            {
+                DepotId = depotId,
+                PatientId = trimmedPatientId,
+                Regimen = request.Regimen,
+                PolymerMatrixType = !string.IsNullOrWhiteSpace(request.PolymerMatrixType) ? request.PolymerMatrixType : (request.MatrixType ?? "PLGA-PEG-PLGA"),
+                InitialNanocarrierMassMg = request.InitialNanocarrierMassMg,
+                DailyErosionRatePercent = request.DailyErosionRatePercent,
+                ReleaseKineticsModel = !string.IsNullOrWhiteSpace(request.ReleaseKineticsModel) ? request.ReleaseKineticsModel : (request.KineticsModel ?? "Korsmeyer-Peppas"),
+                TargetHorizonDays = request.TargetHorizonDays,
+                CreatedAtUtc = DateTimeOffset.UtcNow
+            };
+
+            await repository.UpsertDepotFormulationAsync(record, ct);
+
+            IReadOnlyList<DepotSchedulePoint> schedulePoints = [];
+            if (request.InitialSchedule is { Count: > 0 })
+            {
+                List<DepotSchedulePoint> normalizedPoints = new(request.InitialSchedule.Count);
+                for (int i = 0; i < request.InitialSchedule.Count; i++)
+                {
+                    DepotSchedulePoint pt = request.InitialSchedule[i];
+                    normalizedPoints.Add(new DepotSchedulePoint
+                    {
+                        ScheduleId = string.IsNullOrWhiteSpace(pt.ScheduleId) ? $"sched_{Guid.NewGuid():N}" : pt.ScheduleId,
+                        DepotId = depotId,
+                        TimepointDay = pt.TimepointDay,
+                        CumulativeReleaseFraction = pt.CumulativeReleaseFraction,
+                        InstantaneousRateMgDay = pt.InstantaneousRateMgDay,
+                        RemainingReserveMg = pt.RemainingReserveMg
+                    });
+                }
+                await repository.SaveReleaseScheduleAsync(depotId, normalizedPoints, ct);
+                schedulePoints = normalizedPoints;
+            }
+
+            DepotFormulationResponse response = new()
+            {
+                Formulation = record,
+                Schedule = schedulePoints
+            };
+
+            return Results.Created($"/api/depots/formulations/{depotId}", response);
+        })
+        .WithName("CreateDepotFormulation")
+        .WithTags("Depot Formulations")
+        .WithSummary("Creates and persists a semi-annual time-release depot formulation.")
+        .WithDescription("Persists formulation parameters and optional initial release schedule points for a target patient (Administrator or Researcher role required).")
+        .Accepts<CreateDepotFormulationRequest>("application/json")
+        .Produces<DepotFormulationResponse>(StatusCodes.Status201Created)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden);
+
+        app.MapGet("/api/depots/formulations/{patientId}", async (
+            string patientId,
+            IDepotFormulationRepository repository,
+            ISubjectAccessService subjectAccess,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Retrieves all semi-annual time-release depot formulations and schedules associated with a patient.
+            // WHY:  Permits patients, researchers, and administrators to review active and historical depot configurations.
+            // HOW:  Validates caller authorization (Administrator, Researcher with subject access, or Patient self), queries repository, and returns formulation responses.
+            string trimmedPatientId = (patientId ?? string.Empty).Trim().ToLowerInvariant();
+            if (!IsValidPatientIdentifier(trimmedPatientId))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "The requested patient identifier format is invalid.");
+            }
+
+            // WHY `!`: Authentication middleware guarantees CurrentUser is populated with an authenticated UserAccount before reaching this handler.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+
+            bool isAuthorized = caller.Role == UserRole.Administrator ||
+                (caller.Role == UserRole.Patient && string.Equals(caller.Username, trimmedPatientId, StringComparison.OrdinalIgnoreCase));
+
+            if (!isAuthorized && caller.Role == UserRole.Researcher)
+            {
+                SubjectAccessLevel? accessLevel = await subjectAccess.GetEffectiveAccessLevelAsync(caller.Username, trimmedPatientId, ct);
+                if (accessLevel.HasValue)
+                {
+                    isAuthorized = true;
+                }
+            }
+
+            if (!isAuthorized)
+            {
+                return SecureProblemResult(context, StatusCodes.Status403Forbidden, $"Forbidden: Caller is not authorized to access depot formulations for patient '{trimmedPatientId}'.");
+            }
+
+            IReadOnlyList<DepotFormulationRecord> depots = await repository.GetDepotsByPatientIdAsync(trimmedPatientId, ct);
+            List<DepotFormulationResponse> responses = new(depots.Count);
+            for (int i = 0; i < depots.Count; i++)
+            {
+                DepotFormulationRecord depot = depots[i];
+                IReadOnlyList<DepotSchedulePoint> schedule = await repository.GetReleaseScheduleAsync(depot.DepotId, ct);
+                responses.Add(new DepotFormulationResponse
+                {
+                    Formulation = depot,
+                    Schedule = schedule
+                });
+            }
+
+            return Results.Ok(responses);
+        })
+        .WithName("GetDepotFormulationsByPatientId")
+        .WithTags("Depot Formulations")
+        .WithSummary("Retrieves all depot formulations and release schedules for a specified patient.")
+        .WithDescription("Returns depot formulations and schedules for a patient (Administrator, authorized Researcher, or Patient self).")
+        .Produces<IReadOnlyList<DepotFormulationResponse>>(StatusCodes.Status200OK)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden);
+
+        app.MapPost("/api/depots/simulate-release", IResult (
+            SimulateDepotReleaseRequest? request,
+            ITimeReleaseDepotService depotService,
+            HttpContext context) =>
+        {
+            // WHAT: Simulates a multi-phase 180-day time-release depot elution trajectory and coupled HPG axis feedback.
+            // WHY:  Permits computational prediction of burst fraction suppression, steady-state plateau micro-dosing, and LH/FSH gonadotropin suppression.
+            // HOW:  Validates simulation boundaries, invokes ITimeReleaseDepotService.Simulate180DayDepot, and returns TimeReleaseSimulationResult.
+            if (request is null)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Request body cannot be null.");
+            }
+
+            if (request.InitialNanocarrierMassMg <= 0.0)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "InitialNanocarrierMassMg must be greater than zero.");
+            }
+
+            if (request.HorizonDays < 1 || request.HorizonDays > 365)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "HorizonDays must be between 1 and 365.");
+            }
+
+            if (request.DailyErosionRatePercent <= 0.0 || request.DailyErosionRatePercent > 100.0)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "DailyErosionRatePercent must be between 0.0 (exclusive) and 100.0 (inclusive).");
+            }
+
+            if (request.ClearanceMultiplier < 0.1 || request.ClearanceMultiplier > 5.0)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "ClearanceMultiplier must be between 0.1 and 5.0.");
+            }
+
+            if (request.InitialEstradiolPmolL.HasValue && request.InitialEstradiolPmolL.Value < 0.0)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "InitialEstradiolPmolL cannot be negative.");
+            }
+
+            if (request.InitialTestosteroneNmolL.HasValue && request.InitialTestosteroneNmolL.Value < 0.0)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "InitialTestosteroneNmolL cannot be negative.");
+            }
+
+            if (request.InitialLhIuL.HasValue && request.InitialLhIuL.Value < 0.0)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "InitialLhIuL cannot be negative.");
+            }
+
+            if (request.InitialFshIuL.HasValue && request.InitialFshIuL.Value < 0.0)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "InitialFshIuL cannot be negative.");
+            }
+
+            bool isFtm = request.Regimen == TherapeuticRegimen.FemaleToMale;
+            TimeReleaseDepotParameters parameters = new()
+            {
+                Regimen = request.Regimen,
+                MatrixType = request.MatrixType,
+                KineticsModel = request.KineticsModel,
+                InitialPayloadMassMg = request.InitialNanocarrierMassMg,
+                TargetHorizonDays = request.HorizonDays,
+                ClearanceMultiplier = request.ClearanceMultiplier,
+                InitialEstradiolPmolL = request.InitialEstradiolPmolL ?? (isFtm ? 550.0 : 120.0),
+                InitialTestosteroneNmolL = request.InitialTestosteroneNmolL ?? (isFtm ? 1.5 : 18.0),
+                InitialLhIuL = request.InitialLhIuL ?? 6.5,
+                InitialFshIuL = request.InitialFshIuL ?? 5.0,
+                TargetEstradiolPmolL = isFtm ? 100.0 : 550.0,
+                TargetTestosteroneNmolL = isFtm ? 20.0 : 1.2
+            };
+
+            TimeReleaseSimulationResult result = depotService.Simulate180DayDepot(parameters);
+            return Results.Ok(result);
+        })
+        .WithName("SimulateDepotRelease")
+        .WithTags("Depot Formulations")
+        .WithSummary("Simulates multi-phase time-release depot kinetics and coupled endocrine response.")
+        .WithDescription("Predicts daily payload release, burst suppression compliance, and pituitary gonadotropin suppression over a multi-month horizon.")
+        .Accepts<SimulateDepotReleaseRequest>("application/json")
+        .Produces<TimeReleaseSimulationResult>(StatusCodes.Status200OK)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest);
+
         app.Run();
     }
 
@@ -4425,7 +4682,8 @@ public class Program
         new("/api/precision/genomics", MatchDescendants: true),
         new("/api/trajectories/analytics/query", MatchDescendants: false),
         new("/api/endocrine/closed-loop/simulate", MatchDescendants: false),
-        new("/api/fabrication/gel/analyze", MatchDescendants: false)
+        new("/api/fabrication/gel/analyze", MatchDescendants: false),
+        new("/api/depots/simulate-release", MatchDescendants: false)
     ];
 
     /// <summary>

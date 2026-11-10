@@ -541,4 +541,124 @@ public sealed class DepotFormulationRepositoryTests : IDisposable
         Assert.NotNull(record);
         Assert.Equal(TherapeuticRegimen.MaleToFemale, record.Regimen);
     }
+
+    /// <summary>
+    /// Verifies property accessors, default instantiations, and OpenAPI example generators for
+    /// <see cref="CreateDepotFormulationRequest"/>, <see cref="DepotFormulationResponse"/>, and <see cref="SimulateDepotReleaseRequest"/>.
+    /// </summary>
+    [Fact]
+    public void DepotFormulationRequestResponseModels_InstantiationAndExamples()
+    {
+        // WHAT: Tests property assignment, default values, and GetExamples() implementations for depot DTO contracts.
+        // WHY:  Ensures full test coverage across request and response contracts and Swagger documentation models.
+        // HOW:  Instantiates records with custom and default values, asserts property round-trips, and verifies GetExamples outputs.
+
+        // 1. CreateDepotFormulationRequest
+        CreateDepotFormulationRequest defaultCreate = new();
+        Assert.Equal(string.Empty, defaultCreate.PatientId);
+        Assert.Equal(TherapeuticRegimen.MaleToFemale, defaultCreate.Regimen);
+        Assert.Equal("PLGA-PEG-PLGA", defaultCreate.PolymerMatrixType);
+        Assert.Null(defaultCreate.MatrixType);
+        Assert.Equal(0.0, defaultCreate.InitialNanocarrierMassMg);
+        Assert.Equal(0.0, defaultCreate.DailyErosionRatePercent);
+        Assert.Equal("Korsmeyer-Peppas", defaultCreate.ReleaseKineticsModel);
+        Assert.Null(defaultCreate.KineticsModel);
+        Assert.Equal(180, defaultCreate.TargetHorizonDays);
+        Assert.Null(defaultCreate.InitialSchedule);
+
+        CreateDepotFormulationRequest customCreate = new()
+        {
+            PatientId = "patient_carol",
+            Regimen = TherapeuticRegimen.FemaleToMale,
+            PolymerMatrixType = "Alginate-Chitosan",
+            MatrixType = "Alginate-Chitosan",
+            InitialNanocarrierMassMg = 120.0,
+            DailyErosionRatePercent = 0.45,
+            ReleaseKineticsModel = "Coupled-Fickian",
+            KineticsModel = "Coupled-Fickian",
+            TargetHorizonDays = 90,
+            InitialSchedule = [new DepotSchedulePoint { TimepointDay = 1 }]
+        };
+        Assert.Equal("patient_carol", customCreate.PatientId);
+        Assert.Equal(TherapeuticRegimen.FemaleToMale, customCreate.Regimen);
+        Assert.Equal("Alginate-Chitosan", customCreate.PolymerMatrixType);
+        Assert.Equal("Alginate-Chitosan", customCreate.MatrixType);
+        Assert.Equal(120.0, customCreate.InitialNanocarrierMassMg);
+        Assert.Equal(0.45, customCreate.DailyErosionRatePercent);
+        Assert.Equal("Coupled-Fickian", customCreate.ReleaseKineticsModel);
+        Assert.Equal("Coupled-Fickian", customCreate.KineticsModel);
+        Assert.Equal(90, customCreate.TargetHorizonDays);
+        Assert.NotNull(customCreate.InitialSchedule);
+        Assert.Single(customCreate.InitialSchedule);
+
+        CreateDepotFormulationRequest createExample = customCreate.GetExamples();
+        Assert.NotNull(createExample);
+        Assert.False(string.IsNullOrWhiteSpace(createExample.PatientId));
+        Assert.True(createExample.InitialNanocarrierMassMg > 0.0);
+
+        // 2. DepotFormulationResponse
+        DepotFormulationResponse defaultResp = new();
+        Assert.NotNull(defaultResp.Formulation);
+        Assert.Empty(defaultResp.Schedule);
+
+        DepotFormulationResponse customResp = new()
+        {
+            Formulation = customCreate.GetExamples() is var c ? new DepotFormulationRecord { DepotId = "d1", PatientId = c.PatientId } : new(),
+            Schedule = [new DepotSchedulePoint { ScheduleId = "s1" }]
+        };
+        Assert.Equal("d1", customResp.Formulation.DepotId);
+        Assert.Single(customResp.Schedule);
+
+        DepotFormulationResponse respExample = customResp.GetExamples();
+        Assert.NotNull(respExample);
+        Assert.NotNull(respExample.Formulation);
+        Assert.NotEmpty(respExample.Schedule);
+
+        // 3. SimulateDepotReleaseRequest
+        SimulateDepotReleaseRequest defaultSim = new();
+        Assert.Equal(TherapeuticRegimen.MaleToFemale, defaultSim.Regimen);
+        Assert.Equal(PolymerMatrixType.PlgaPegPlga, defaultSim.MatrixType);
+        Assert.Equal(ReleaseKineticsModel.KorsmeyerPeppas, defaultSim.KineticsModel);
+        Assert.Equal(18.0, defaultSim.InitialNanocarrierMassMg);
+        Assert.Equal(0.55, defaultSim.DailyErosionRatePercent);
+        Assert.Equal(180, defaultSim.HorizonDays);
+        Assert.Equal(1.0, defaultSim.ClearanceMultiplier);
+        Assert.Equal(0.10, defaultSim.TargetDailyDoseMg);
+        Assert.Null(defaultSim.InitialEstradiolPmolL);
+        Assert.Null(defaultSim.InitialTestosteroneNmolL);
+        Assert.Null(defaultSim.InitialLhIuL);
+        Assert.Null(defaultSim.InitialFshIuL);
+
+        SimulateDepotReleaseRequest customSim = new()
+        {
+            Regimen = TherapeuticRegimen.FemaleToMale,
+            MatrixType = PolymerMatrixType.AlginateChitosan,
+            KineticsModel = ReleaseKineticsModel.Higuchi,
+            InitialNanocarrierMassMg = 1000.0,
+            DailyErosionRatePercent = 0.60,
+            HorizonDays = 90,
+            ClearanceMultiplier = 1.2,
+            TargetDailyDoseMg = 5.0,
+            InitialEstradiolPmolL = 500.0,
+            InitialTestosteroneNmolL = 2.0,
+            InitialLhIuL = 6.0,
+            InitialFshIuL = 4.5
+        };
+        Assert.Equal(TherapeuticRegimen.FemaleToMale, customSim.Regimen);
+        Assert.Equal(PolymerMatrixType.AlginateChitosan, customSim.MatrixType);
+        Assert.Equal(ReleaseKineticsModel.Higuchi, customSim.KineticsModel);
+        Assert.Equal(1000.0, customSim.InitialNanocarrierMassMg);
+        Assert.Equal(0.60, customSim.DailyErosionRatePercent);
+        Assert.Equal(90, customSim.HorizonDays);
+        Assert.Equal(1.2, customSim.ClearanceMultiplier);
+        Assert.Equal(5.0, customSim.TargetDailyDoseMg);
+        Assert.Equal(500.0, customSim.InitialEstradiolPmolL);
+        Assert.Equal(2.0, customSim.InitialTestosteroneNmolL);
+        Assert.Equal(6.0, customSim.InitialLhIuL);
+        Assert.Equal(4.5, customSim.InitialFshIuL);
+
+        SimulateDepotReleaseRequest simExample = customSim.GetExamples();
+        Assert.NotNull(simExample);
+        Assert.True(simExample.InitialNanocarrierMassMg > 0);
+    }
 }
