@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Formats.Tar;
 using System.Globalization;
 using System.IO.Compression;
@@ -218,11 +219,18 @@ public sealed class DatasetTransferService : IDatasetManager
 
             // Compute hash of the generated .tar.gz file on disk
             fileStream.Position = 0;
-            byte[] readBuffer = new byte[81920];
-            int read;
-            while ((read = await fileStream.ReadAsync(readBuffer.AsMemory(0, readBuffer.Length), cancellationToken)) > 0)
+            byte[] readBuffer = ArrayPool<byte>.Shared.Rent(81920);
+            try
             {
-                sha256.AppendData(readBuffer, 0, read);
+                int read;
+                while ((read = await fileStream.ReadAsync(readBuffer.AsMemory(0, readBuffer.Length), cancellationToken)) > 0)
+                {
+                    sha256.AppendData(readBuffer, 0, read);
+                }
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(readBuffer);
             }
 
             computedHash = sha256.GetHashAndReset();
@@ -274,13 +282,20 @@ public sealed class DatasetTransferService : IDatasetManager
             using (FileStream tempFile = File.Create(tempArchivePath))
             using (IncrementalHash sha256 = IncrementalHash.CreateHash(HashAlgorithmName.SHA256))
             {
-                byte[] buffer = new byte[81920];
-                int bytesRead;
-                while ((bytesRead = await archiveStream.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken)) > 0)
+                byte[] buffer = ArrayPool<byte>.Shared.Rent(81920);
+                try
                 {
-                    sha256.AppendData(buffer, 0, bytesRead);
-                    await tempFile.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken);
-                    totalBytesWritten += bytesRead;
+                    int bytesRead;
+                    while ((bytesRead = await archiveStream.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken)) > 0)
+                    {
+                        sha256.AppendData(buffer, 0, bytesRead);
+                        await tempFile.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken);
+                        totalBytesWritten += bytesRead;
+                    }
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(buffer);
                 }
                 actualHashBytes = sha256.GetHashAndReset();
             }
@@ -408,14 +423,31 @@ public sealed class DatasetTransferService : IDatasetManager
                         throw new InvalidOperationException("Dataset import rejected: an archive member carries a file type that is not an accepted trajectory or dataset artifact.");
                     }
 
-                    expandedBytes += entry.Length;
-                    if (expandedBytes > _maxImportExpandedBytes)
+                    string targetFilePath = Path.Combine(stagingDirectory, entry.Name);
+                    // WHAT: Stream extracted file data into destination using a rented buffer.
+                    // WHY:  Issue #168 (P165): Bounded stream extraction prevents tar-bomb attacks without heap allocations.
+                    // HOW:  TarReader guarantees entry.DataStream is non-null for TarEntryType.RegularFile; stream into FileStream.
+                    Stream dataStream = entry.DataStream!;
+                    byte[] extractBuffer = ArrayPool<byte>.Shared.Rent(81920);
+                    try
                     {
-                        _logger.LogError("Rejected dataset import {DatasetName}: expanded size exceeded the configured limit of {Limit} bytes.", datasetName, _maxImportExpandedBytes);
-                        throw new InvalidOperationException("Dataset import rejected: the archive expands to more bytes than the configured import limit allows.");
+                        using FileStream targetStream = File.Create(targetFilePath);
+                        int readBytes;
+                        while ((readBytes = dataStream.Read(extractBuffer, 0, extractBuffer.Length)) > 0)
+                        {
+                            expandedBytes += readBytes;
+                            if (expandedBytes > _maxImportExpandedBytes)
+                            {
+                                _logger.LogError("Rejected dataset import {DatasetName}: expanded size exceeded the configured limit of {Limit} bytes.", datasetName, _maxImportExpandedBytes);
+                                throw new InvalidOperationException("Dataset import rejected: the archive expands to more bytes than the configured import limit allows.");
+                            }
+                            targetStream.Write(extractBuffer, 0, readBytes);
+                        }
                     }
-
-                    entry.ExtractToFile(Path.Combine(stagingDirectory, entry.Name), overwrite: true);
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(extractBuffer);
+                    }
                 }
             }
 

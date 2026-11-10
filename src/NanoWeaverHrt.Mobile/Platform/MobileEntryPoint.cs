@@ -224,4 +224,29 @@ public static class MobileEntryPoint
 
         return 0;
     }
+
+    /// <summary>
+    /// Gets or sets the active Android activity lifecycle host instance.
+    /// </summary>
+    public static MainActivity? CurrentMainActivity { get; set; }
+
+    /// <summary>
+    /// Gets or sets the active iOS/iPadOS application delegate lifecycle host instance.
+    /// </summary>
+    public static AppDelegate? CurrentAppDelegate { get; set; }
+
+    /// <summary>
+    /// Executes the mobile platform entrypoint asynchronously coordinating with platform lifecycle hosts.
+    /// </summary>
+    /// <param name="platform">Target mobile platform label ("Android", "iOS", or "iPadOS").</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Exit code representing the result of execution.</returns>
+    public static async Task<int> RunAsync(string platform = "Android", CancellationToken ct = default)
+    {
+        // WHAT: Dispatches mobile lifecycle coordination through configured platform hosts.
+        // WHY:  Issue #171 (P168): Centralizes async runner coordinating MainActivity or AppDelegate.
+        // HOW:  Normalizes platform string, instantiates platform-specific notification sink, and executes RunMobileLifecycleAsync.
+        var sink = new MobileNotificationSink(platform);
+        return await RunMobileLifecycleAsync(platform, sink, ct).ConfigureAwait(false);
+    }
 }

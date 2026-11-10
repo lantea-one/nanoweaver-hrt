@@ -89,6 +89,9 @@ public sealed class MainShellViewModel : INotifyPropertyChanged, IDisposable
     /// <param name="simulationWorkspace">Optional simulation workspace ViewModel override.</param>
     /// <param name="clinicalGenomicsWorkspace">Optional clinical genomics workspace ViewModel override.</param>
     /// <param name="wetLabComplianceWorkspace">Optional wet lab compliance workspace ViewModel override.</param>
+    /// <param name="nodeAdministration">Optional node administration workspace ViewModel override.</param>
+    /// <param name="patientClinicalWorkspace">Optional patient clinical workspace ViewModel override.</param>
+    /// <param name="federationAndDatasetWorkspace">Optional federation and dataset workspace ViewModel override.</param>
     public MainShellViewModel(
         IInstanceProfileRepository profileRepository,
         IMultiInstanceCoordinator coordinator,
@@ -97,7 +100,10 @@ public sealed class MainShellViewModel : INotifyPropertyChanged, IDisposable
         ILanguagePreferenceService? languagePreferenceService = null,
         SimulationWorkspaceViewModel? simulationWorkspace = null,
         ClinicalGenomicsWorkspaceViewModel? clinicalGenomicsWorkspace = null,
-        WetLabComplianceWorkspaceViewModel? wetLabComplianceWorkspace = null)
+        WetLabComplianceWorkspaceViewModel? wetLabComplianceWorkspace = null,
+        NodeAdministrationViewModel? nodeAdministration = null,
+        PatientClinicalWorkspaceViewModel? patientClinicalWorkspace = null,
+        FederationAndDatasetWorkspaceViewModel? federationAndDatasetWorkspace = null)
     {
         // WHAT: Assigns dependencies for profile storage, multi-instance coordination, REST API access, and localization.
         // WHY:  Coordinates data flows between client-side services, localizer catalogs, and Avalonia presentation layer.
@@ -113,6 +119,9 @@ public sealed class MainShellViewModel : INotifyPropertyChanged, IDisposable
         SimulationWorkspace = simulationWorkspace ?? new SimulationWorkspaceViewModel(effectiveClient, GetSelectedProfile, GetSelectedToken);
         ClinicalGenomicsWorkspace = clinicalGenomicsWorkspace ?? new ClinicalGenomicsWorkspaceViewModel(effectiveClient, GetSelectedProfile, GetSelectedToken);
         WetLabComplianceWorkspace = wetLabComplianceWorkspace ?? new WetLabComplianceWorkspaceViewModel(effectiveClient, GetSelectedProfile, GetSelectedToken);
+        NodeAdministration = nodeAdministration ?? new NodeAdministrationViewModel(effectiveClient, GetSelectedProfile, GetSelectedToken);
+        PatientClinicalWorkspace = patientClinicalWorkspace ?? new PatientClinicalWorkspaceViewModel(effectiveClient, GetSelectedProfile, GetSelectedToken);
+        FederationAndDatasetWorkspace = federationAndDatasetWorkspace ?? new FederationAndDatasetWorkspaceViewModel(effectiveClient, GetSelectedProfile, GetSelectedToken);
     }
 
     /// <summary>
@@ -129,6 +138,21 @@ public sealed class MainShellViewModel : INotifyPropertyChanged, IDisposable
     /// Gets the wet lab compliance workspace ViewModel managing Opentrons automation, gel analysis, and audit trails.
     /// </summary>
     public WetLabComplianceWorkspaceViewModel WetLabComplianceWorkspace { get; }
+
+    /// <summary>
+    /// Gets the node administration workspace ViewModel managing users, configuration, services, and system health.
+    /// </summary>
+    public NodeAdministrationViewModel NodeAdministration { get; }
+
+    /// <summary>
+    /// Gets the patient clinical workspace ViewModel managing profiles, digital DNA regimens, clinical results, and cohort groups.
+    /// </summary>
+    public PatientClinicalWorkspaceViewModel PatientClinicalWorkspace { get; }
+
+    /// <summary>
+    /// Gets the federation and dataset workspace ViewModel managing share keys, peer keys, dataset transfers, and swarm federation.
+    /// </summary>
+    public FederationAndDatasetWorkspaceViewModel FederationAndDatasetWorkspace { get; }
 
     /// <summary>
     /// Gets the collection of configured instance profiles.
@@ -678,6 +702,20 @@ public sealed class MainShellViewModel : INotifyPropertyChanged, IDisposable
     }
 
     /// <summary>
+    /// Selects the active display language and persists it to storage (convenience alias for <see cref="SetLanguageAsync"/>).
+    /// </summary>
+    /// <param name="language">Target language to select.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task representing the asynchronous save operation.</returns>
+    public Task SelectLanguageAsync(WeaverLanguage language, CancellationToken ct = default)
+    {
+        // WHAT: Dispatches language selection via SetLanguageAsync.
+        // WHY:  Issue #170 (P167): Supports SelectLanguageAsync convention requested by callers.
+        // HOW:  Delegates to SetLanguageAsync.
+        return SetLanguageAsync(language, ct);
+    }
+
+    /// <summary>
     /// Resolves a localized string for the specified key using the currently selected language, returning a fallback if missing.
     /// </summary>
     /// <param name="key">Localization resource key.</param>
@@ -780,6 +818,17 @@ public sealed class MainShellViewModel : INotifyPropertyChanged, IDisposable
         UpdateSelectedSnapshot();
         OnPropertyChanged(nameof(Snapshots));
         OnPropertyChanged(nameof(SelectedSnapshot));
+    }
+
+    /// <summary>
+    /// Locks the active session by disconnecting all connected instances and zeroizing in-memory tokens.
+    /// </summary>
+    public void LockActiveSession()
+    {
+        // WHAT: Disconnects all instances, wipes active token secrets, and updates connection snapshots to Disconnected.
+        // WHY:  Issue #170 / #171 (P167, P168): Enforces immediate vault locking on mobile backgrounding or idle timeout.
+        // HOW:  Delegates directly to OnIdleTimeout to purge session state and disconnect instances.
+        OnIdleTimeout();
     }
 
     /// <summary>

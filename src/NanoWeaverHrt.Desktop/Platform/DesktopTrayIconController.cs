@@ -137,6 +137,29 @@ public sealed class DesktopTrayIconController : ITrayIconController, IDisposable
     }
 
     /// <summary>
+    /// Builds the list of localized tray context menu item labels for display.
+    /// </summary>
+    /// <param name="activeNodeName">Optional active node display name to include in status item.</param>
+    /// <returns>A list containing the localized menu item labels.</returns>
+    public IReadOnlyList<string> BuildMenuItems(string? activeNodeName = null)
+    {
+        // WHAT: Builds localized context menu items including active node status.
+        // WHY:  Issue #170 (P167): Ensures all tray menu items are localized dynamically via IWeaverLocalizer.
+        // HOW:  Queries localized labels for Show, ActiveNode, LockVault, and Exit.
+        string nodeItem = string.IsNullOrWhiteSpace(activeNodeName)
+            ? GetLocalizedLabel("Tray.NoActiveNode", "No Active Node")
+            : string.Format(System.Globalization.CultureInfo.InvariantCulture, GetLocalizedLabel("Tray.ActiveNodeFormat", "Active Node: {0}"), activeNodeName);
+
+        return [LocalizedShowLabel, nodeItem, LocalizedLockVaultLabel, LocalizedExitLabel];
+    }
+
+    /// <summary>
+    /// Builds the standard list of localized tray context menu item labels.
+    /// </summary>
+    /// <returns>A list containing the localized menu item labels.</returns>
+    public IReadOnlyList<string> BuildMenuItems() => BuildMenuItems(null);
+
+    /// <summary>
     /// Resolves a localized label for the specified key using the active language, falling back to a default value.
     /// </summary>
     /// <param name="key">Localization resource key.</param>

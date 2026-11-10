@@ -643,4 +643,87 @@ public sealed class GelAnalysisServiceTests
 
         return pixels;
     }
+
+    /// <summary>
+    /// Verifies that <see cref="GelAnalysisService.AnalyzeGel(GelAnalysisRequest)"/> throws <see cref="ArgumentOutOfRangeException"/> when Width exceeds 8192.
+    /// </summary>
+    [Fact]
+    public void AnalyzeGel_WidthExceeds8192_ThrowsArgumentOutOfRangeException()
+    {
+        // WHAT: Tests maximum width boundary guard.
+        // WHY:  Prevents 32-bit signed integer buffer overflow when calculating total pixel byte capacity.
+        // HOW:  Supplies Width = 8193 and asserts ArgumentOutOfRangeException is thrown.
+        Assert.Throws<ArgumentOutOfRangeException>(() => _service.AnalyzeGel(new GelAnalysisRequest
+        {
+            ImageBytes = [1, 2, 3, 4],
+            Width = 8193,
+            Height = 100
+        }));
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="GelAnalysisService.AnalyzeGel(GelAnalysisRequest)"/> throws <see cref="ArgumentOutOfRangeException"/> when Height exceeds 8192.
+    /// </summary>
+    [Fact]
+    public void AnalyzeGel_HeightExceeds8192_ThrowsArgumentOutOfRangeException()
+    {
+        // WHAT: Tests maximum height boundary guard.
+        // WHY:  Prevents buffer overflow when calculating total pixel byte capacity.
+        // HOW:  Supplies Height = 8193 and asserts ArgumentOutOfRangeException is thrown.
+        Assert.Throws<ArgumentOutOfRangeException>(() => _service.AnalyzeGel(new GelAnalysisRequest
+        {
+            ImageBytes = [1, 2, 3, 4],
+            Width = 100,
+            Height = 8193
+        }));
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="GelAnalysisService.AnalyzeGelAsync"/> throws <see cref="ArgumentOutOfRangeException"/> when dimensions exceed 8192.
+    /// </summary>
+    [Fact]
+    public async Task AnalyzeGelAsync_DimensionsExceed8192_ThrowsArgumentOutOfRangeException()
+    {
+        // WHAT: Tests maximum dimension guards on asynchronous stream analysis.
+        // WHY:  Protects async image ingestion against oversized allocations.
+        // HOW:  Supplies Width = 8193 and Height = 8193 respectively and asserts ArgumentOutOfRangeException is thrown.
+        using var stream = new MemoryStream([1, 2, 3, 4]);
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => _service.AnalyzeGelAsync(stream, 8193, 100));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => _service.AnalyzeGelAsync(stream, 100, 8193));
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="GelAnalysisService.AnalyzeGelAsync"/> throws <see cref="ArgumentException"/> when image stream exceeds maximum allowed byte capacity.
+    /// </summary>
+    [Fact]
+    public async Task AnalyzeGelAsync_StreamExceedsMaxCapacity_ThrowsArgumentException()
+    {
+        // WHAT: Tests bounded stream reading in AnalyzeGelAsync for both seekable and non-seekable streams.
+        // WHY:  Guarantees protection against memory exhaustion from unbounded stream uploads.
+        // HOW:  Supplies seekable stream larger than width*height*4, and non-seekable stream emitting more bytes than allowed.
+        int width = 10;
+        int height = 10;
+        long maxAllowed = (long)width * height * 4; // 400 bytes
+
+        // 1. Seekable stream with Length > maxAllowed (500 bytes)
+        byte[] oversizedData = new byte[maxAllowed + 100];
+        using var seekableStream = new MemoryStream(oversizedData);
+        await Assert.ThrowsAsync<ArgumentException>(() => _service.AnalyzeGelAsync(seekableStream, width, height));
+
+        // 2. Non-seekable stream reading more bytes than maxAllowed
+        using var nonSeekableStream = new NonSeekableStream(oversizedData);
+        await Assert.ThrowsAsync<ArgumentException>(() => _service.AnalyzeGelAsync(nonSeekableStream, width, height));
+    }
+
+    /// <summary>
+    /// Non-seekable stream wrapper for testing stream copy bounds.
+    /// </summary>
+    private sealed class NonSeekableStream(byte[] data) : MemoryStream(data)
+    {
+        /// <summary>
+        /// Gets a value indicating whether the current stream supports seeking (always false).
+        /// </summary>
+        public override bool CanSeek => false;
+    }
 }

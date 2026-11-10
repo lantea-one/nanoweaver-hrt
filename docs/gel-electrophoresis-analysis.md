@@ -72,6 +72,10 @@ $$
    - **Un-annealed Staple Smear**: ≤ 25.0% of total lane integrated optical density.
    - When both thresholds are met, the sample is classified as **`FoldingQualityAcceptable = true`**.
 
+5. **Input Dimension & Stream Security Bounds**:
+   - Image dimensions are strictly validated within `[1, 8192]` pixels for width and height, rejecting zero, negative, or excessive image footprints.
+   - Stream reads are bounded to `width * height * 4` bytes max, preventing buffer overflow and memory exhaustion from untrusted image streams.
+
 ---
 
 ## 3. REST API Reference

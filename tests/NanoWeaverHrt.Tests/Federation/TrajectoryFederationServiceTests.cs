@@ -102,7 +102,7 @@ public sealed class TrajectoryFederationServiceTests : IDisposable
         _nodeKeyId = DatasetManifestSignature.ComputeKeyId(spkiDer);
         _nodePublicKeyBase64 = Convert.ToBase64String(spkiDer);
 
-        _secretStoreMock.Setup(s => s.GetDatasetSigningKey()).Returns(_nodeSeed);
+        _secretStoreMock.Setup(s => s.GetDatasetSigningKey()).Returns(() => (byte[])_nodeSeed.Clone());
         _configMock.Setup(c => c.GetValueAsync("Storage:TrajectoryIncomingDir", "./simulations/shared-data", It.IsAny<CancellationToken>()))
             .ReturnsAsync(_tempDirectory);
         string parquetDir = Path.Combine(_tempDirectory, "parquet");
@@ -758,6 +758,33 @@ public sealed class TrajectoryFederationServiceTests : IDisposable
     }
 
     /// <summary>
+    /// Verifies <see cref="NodeSecretStore.GetNodeSigningMldsa65Key"/> loads or provisions the 32-byte ML-DSA-65 signing key.
+    /// </summary>
+    [Fact]
+    public void NodeSecretStore_GetNodeSigningMldsa65Key_Returns32ByteSeed()
+    {
+        // WHAT: Tests NodeSecretStore ML-DSA-65 signing seed generation and disk persistence.
+        // WHY:  Issue #168 (P165): Guarantees post-quantum local node verification keys are reliably provisioned.
+        // HOW:  Instantiates NodeSecretStore, invokes GetNodeSigningMldsa65Key twice, asserts 32-byte length and consistency.
+        Microsoft.Extensions.Configuration.ConfigurationBuilder builder = new();
+        builder.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["WEAVER_NODE_KEYS_DIR"] = Path.Combine(_tempDirectory, "mldsa_keys")
+        });
+        Microsoft.Extensions.Configuration.IConfiguration configuration = builder.Build();
+
+        NodeSecretStore store = new(configuration);
+        byte[] key = store.GetNodeSigningMldsa65Key();
+
+        Assert.NotNull(key);
+        Assert.Equal(32, key.Length);
+
+        // Successive call should return identical seed from disk
+        byte[] key2 = store.GetNodeSigningMldsa65Key();
+        Assert.Equal(key, key2);
+    }
+
+    /// <summary>
     /// Creates a new <see cref="TrajectoryFederationService"/> instance with test mock dependencies.
     /// </summary>
     /// <param name="pqcProvider">Optional post-quantum crypto provider.</param>
@@ -1003,6 +1030,53 @@ public sealed class TrajectoryFederationServiceTests : IDisposable
     }
 
     /// <summary>
+    /// Verifies that <see cref="TrajectoryFederationService.VerifyManifestAsync"/> verifies ML-DSA-65 manifests
+    /// signed by the local node without requiring the local node to be registered in the peer key registry.
+    /// </summary>
+    [Fact]
+    public async Task VerifyManifestAsync_LocalNodeMlDsa65_VerifiesWithoutPeerRegistration()
+    {
+        // WHAT: Tests local node ML-DSA-65 manifest verification.
+        // WHY:  Nodes must be capable of verifying their own post-quantum manifests without self-registration in weaver_peer_keys.
+        // HOW:  Derives ML-DSA-65 keypair from seed, configures secretStore mock, signs manifest, and verifies with empty peer registry.
+        PostQuantumCryptoProvider pqc = new();
+        byte[] localSeed = new byte[32];
+        System.Security.Cryptography.RandomNumberGenerator.Fill(localSeed);
+        PqcKeyMaterial localKey = pqc.DeriveSigningKeyPairFromSeed(localSeed);
+
+        _secretStoreMock.Setup(s => s.GetNodeSigningMldsa65Key()).Returns((byte[])localSeed.Clone());
+
+        TrajectoryFederationManifest unsignedManifest = new()
+        {
+            DatasetName = "local_pqc_sim.xyz",
+            TotalSizeBytes = 1000,
+            ChunkSizeBytes = 500,
+            TotalChunks = 2,
+            Chunks =
+            [
+                new TrajectoryChunkDescriptor { ChunkIndex = 0, OffsetBytes = 0, LengthBytes = 500, Sha256Checksum = new string('a', 64) },
+                new TrajectoryChunkDescriptor { ChunkIndex = 1, OffsetBytes = 500, LengthBytes = 500, Sha256Checksum = new string('b', 64) }
+            ],
+            SigningNodeId = localKey.KeyId,
+            SignatureAlgorithm = "MlDsa65",
+            SignatureBase64 = string.Empty,
+            ManifestTimestampUtc = DateTimeOffset.UtcNow
+        };
+
+        byte[] canonicalBytes = TrajectoryFederationService.ComputeCanonicalBytes(unsignedManifest);
+        Assert.NotNull(localKey.PrivateKeyBase64);
+        PqcSignature signature = pqc.SignData(canonicalBytes, localKey.PrivateKeyBase64!, localKey.KeyId);
+
+        TrajectoryFederationManifest signedManifest = unsignedManifest with { SignatureBase64 = signature.SignatureBase64 };
+
+        TrajectoryFederationService service = CreateService(pqc);
+        bool verified = await service.VerifyManifestAsync(signedManifest);
+
+        Assert.True(verified);
+        _peerRegistryMock.Verify(r => r.FindActiveAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    /// <summary>
     /// Verifies <see cref="TrajectoryFederationService.VerifyManifestAsync"/> rejects ML-DSA-65 manifests when peer key is revoked, unknown, or mismatched.
     /// </summary>
     /// <returns>A task representing the asynchronous test.</returns>
@@ -1189,6 +1263,10 @@ public sealed class TrajectoryFederationServiceTests : IDisposable
 
         _peerRegistryMock.Setup(r => r.FindActiveAsync(keyId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(badPeer);
+
+        byte[] localSeed = new byte[32];
+        System.Security.Cryptography.RandomNumberGenerator.Fill(localSeed);
+        _secretStoreMock.Setup(s => s.GetNodeSigningMldsa65Key()).Returns((byte[])localSeed.Clone());
 
         TrajectoryFederationService service = CreateService();
         Assert.False(await service.VerifyManifestAsync(manifest));

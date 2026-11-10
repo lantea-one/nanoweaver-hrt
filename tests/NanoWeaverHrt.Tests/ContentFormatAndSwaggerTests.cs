@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using System.Xml;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Abstractions;
@@ -787,6 +788,82 @@ public sealed class ContentFormatAndSwaggerTests
         var appBuilder = new ApplicationBuilder(null!);
         var result = appBuilder.UseFormatNegotiation();
         Assert.Same(appBuilder, result);
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="ContentFormatSerializer.XmlToJson(string)"/> rejects DTD declarations and throws <see cref="XmlException"/>.
+    /// </summary>
+    [Fact]
+    public void XmlToJson_WithDtdDeclaration_ThrowsXmlException()
+    {
+        // WHAT: Tests that DtdProcessing.Prohibit prevents XXE payload processing.
+        // WHY:  Verifies security boundary against XML external entity injection attacks.
+        // HOW:  Passes XML with DOCTYPE entity expansion and asserts XmlException is thrown.
+        string dtdXml = """
+            <?xml version="1.0" encoding="utf-8"?>
+            <!DOCTYPE test [
+              <!ENTITY xxe SYSTEM "file:///etc/passwd">
+            ]>
+            <root><name>&xxe;</name></root>
+            """;
+
+        Assert.Throws<XmlException>(() => ContentFormatSerializer.XmlToJson(dtdXml));
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="FormatNegotiationMiddleware"/> throws <see cref="BadHttpRequestException"/> with status 413 when ContentLength exceeds 10 MB.
+    /// </summary>
+    [Fact]
+    public async Task FormatNegotiationMiddleware_OversizedContentLength_ThrowsPayloadTooLarge()
+    {
+        // WHAT: Tests middleware rejection of oversized Content-Length requests.
+        // WHY:  Guarantees protection against memory exhaustion before reading request bodies.
+        // HOW:  Constructs HttpContext with Content-Length header set to 11 MB and verifies 413 exception.
+        var middleware = new FormatNegotiationMiddleware(_ => Task.CompletedTask);
+        var context = new DefaultHttpContext();
+        context.Request.ContentType = "application/xml";
+        context.Request.ContentLength = 11 * 1024 * 1024;
+
+        BadHttpRequestException ex = await Assert.ThrowsAsync<BadHttpRequestException>(() => middleware.InvokeAsync(context));
+        Assert.Equal(StatusCodes.Status413PayloadTooLarge, ex.StatusCode);
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="FormatNegotiationMiddleware"/> throws <see cref="BadHttpRequestException"/> with status 413 when XML body length exceeds 10 MB.
+    /// </summary>
+    [Fact]
+    public async Task FormatNegotiationMiddleware_OversizedXmlBody_ThrowsPayloadTooLarge()
+    {
+        // WHAT: Tests middleware rejection of oversized XML stream bodies when Content-Length is not pre-announced.
+        // WHY:  Guarantees protection against chunked transfer memory exhaustion attacks.
+        // HOW:  Constructs HttpContext with an 11 MB stream and verifies 413 exception.
+        var middleware = new FormatNegotiationMiddleware(_ => Task.CompletedTask);
+        var context = new DefaultHttpContext();
+        context.Request.ContentType = "application/xml";
+        string largeXml = "<data>" + new string('a', 11 * 1024 * 1024) + "</data>";
+        context.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(largeXml));
+
+        BadHttpRequestException ex = await Assert.ThrowsAsync<BadHttpRequestException>(() => middleware.InvokeAsync(context));
+        Assert.Equal(StatusCodes.Status413PayloadTooLarge, ex.StatusCode);
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="FormatNegotiationMiddleware"/> throws <see cref="BadHttpRequestException"/> with status 413 when YAML body length exceeds 10 MB.
+    /// </summary>
+    [Fact]
+    public async Task FormatNegotiationMiddleware_OversizedYamlBody_ThrowsPayloadTooLarge()
+    {
+        // WHAT: Tests middleware rejection of oversized YAML stream bodies.
+        // WHY:  Guarantees protection against YAML bomb DoS attacks.
+        // HOW:  Constructs HttpContext with an 11 MB YAML stream and verifies 413 exception.
+        var middleware = new FormatNegotiationMiddleware(_ => Task.CompletedTask);
+        var context = new DefaultHttpContext();
+        context.Request.ContentType = "application/x-yaml";
+        string largeYaml = "data: " + new string('b', 11 * 1024 * 1024);
+        context.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(largeYaml));
+
+        BadHttpRequestException ex = await Assert.ThrowsAsync<BadHttpRequestException>(() => middleware.InvokeAsync(context));
+        Assert.Equal(StatusCodes.Status413PayloadTooLarge, ex.StatusCode);
     }
 }
 

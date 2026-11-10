@@ -68,13 +68,15 @@ public sealed class OpentronsProtocolGenerator : IOpentronsProtocolGenerator
         // HOW:  Pulls available slots sequentially, reserving thermocycler and temperature module positions.
         DeckLayout deck = PlanDeckLayout(options, sourcePlatesRequired, tipRacksRequired);
 
-        // WHAT: Computes pipetting volumes for stoichiometric assembly.
-        // WHY:  Staples must achieve target molar excess (default 10:1) relative to viral scaffold backbone.
-        // HOW:  Calculates aliquot volumes from scaffold concentration, excess ratio, and total volume.
+        // WHAT: Computes pipetting volumes for stoichiometric assembly based on C1*V1 = C2*V2.
+        // WHY:  Staples must achieve target molar excess (default 10:1) relative to viral scaffold backbone,
+        //       ensuring masterMixVolume + sum(stapleVolumes) == TotalReactionVolumeMicroliters.
+        // HOW:  Calculates aliquot volumes from scaffold concentration, excess ratio, and total volume against 10 µM working stock.
+        const double workingStockConcentrationMicroMolar = 10.0;
         double targetStapleConcentrationMicroMolar = (options.ScaffoldConcentrationNanomolar * options.StapleMolarExcessRatio) / 1000.0;
-        double stapleVolume = Math.Max(1.0, Math.Round((targetStapleConcentrationMicroMolar * options.TotalReactionVolumeMicroliters) / 10.0, 1));
-        double totalStapleVolume = isMultiChannel ? (((stapleCount + 7) / 8) * stapleVolume) : (stapleCount * stapleVolume);
-        double masterMixVolume = Math.Max(5.0, Math.Round(options.TotalReactionVolumeMicroliters - (stapleCount > 0 ? Math.Min(options.TotalReactionVolumeMicroliters * 0.8, totalStapleVolume) : 0.0), 1));
+        double stapleVolume = Math.Max(1.0, Math.Round((targetStapleConcentrationMicroMolar * options.TotalReactionVolumeMicroliters) / workingStockConcentrationMicroMolar, 1));
+        double perWellStapleVolume = isMultiChannel ? (((stapleCount + 7) / 8) * stapleVolume) : (stapleCount * stapleVolume);
+        double masterMixVolume = Math.Max(0.0, Math.Round(options.TotalReactionVolumeMicroliters - (stapleCount > 0 ? perWellStapleVolume : 0.0), 1));
 
         // WHAT: Computes estimated run duration in minutes.
         // WHY:  Allows operators to schedule robot availability and manage time-critical reagents.
@@ -456,12 +458,23 @@ public sealed class OpentronsProtocolGenerator : IOpentronsProtocolGenerator
         }
         sb.AppendLine();
 
-        // 4. Reagent Tube Rack (Master Mix)
+        // 4. Reagent Tube Rack (Master Mix) or Reagent Reservoir (Multi-Channel)
         sb.AppendLine("    # -------------------------------------------------------------------------");
         sb.AppendLine("    # 4. Master Mix Reagent Vessel (Scaffold + Buffer + Solvent)");
         sb.AppendLine("    # -------------------------------------------------------------------------");
-        sb.AppendLine($"    reagent_rack = protocol.load_labware('opentrons_24_tuberack_generic_2ml_screwcap', '{deck.MasterMixSlot}', label='Reagent Tube Rack')");
-        sb.AppendLine("    master_mix_tube = reagent_rack['A1']");
+        if (isMultiChannel)
+        {
+            sb.AppendLine($"    reagent_reservoir = protocol.load_labware('nest_12_reservoir_15ml', '{deck.MasterMixSlot}', label='Reagent Reservoir 12-Channel 15ml')");
+            sb.AppendLine("    master_mix_source = reagent_reservoir['A1']");
+            sb.AppendLine("    buffer_source = reagent_reservoir['A2']");
+            sb.AppendLine("    payload_source = reagent_reservoir['A3']");
+            sb.AppendLine("    master_mix_tube = master_mix_source");
+        }
+        else
+        {
+            sb.AppendLine($"    reagent_rack = protocol.load_labware('opentrons_24_tuberack_generic_2ml_screwcap', '{deck.MasterMixSlot}', label='Reagent Tube Rack')");
+            sb.AppendLine("    master_mix_tube = reagent_rack['A1']");
+        }
         sb.AppendLine();
 
         // 5. Source Library Plates
@@ -478,7 +491,7 @@ public sealed class OpentronsProtocolGenerator : IOpentronsProtocolGenerator
             for (int i = 0; i < deck.SourcePlateSlots.Count; i++)
             {
                 string comma = i < deck.SourcePlateSlots.Count - 1 ? "," : "";
-                sb.AppendLine($"        protocol.load_labware('{sourcePlateLabware}', '{deck.SourcePlateSlots[i]}', label='Staple Source Plate {i + 1}'){comma}");
+                sb.AppendLine($"        protocol.load_labware('{sourcePlateLabware}', '{deck.SourcePlateSlots[i]}', label='96-Well Working Stock Plate (10 µM Staples, 1:10 from 100 µM Master) {i + 1}'){comma}");
             }
             sb.AppendLine("    ]");
         }

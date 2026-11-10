@@ -66,6 +66,12 @@ public interface INodeSecretStore
     byte[] GetDatasetSigningKey();
 
     /// <summary>
+    /// Loads or generates the 32-byte ML-DSA-65 post-quantum signing private seed for this sovereign node.
+    /// </summary>
+    /// <returns>A 32-byte private seed array for ML-DSA-65 post-quantum signing.</returns>
+    byte[] GetNodeSigningMldsa65Key();
+
+    /// <summary>
     /// Loads an existing secret key file from the node keys directory or generates and atomically persists a new random key.
     /// </summary>
     /// <param name="fileName">The key file name within the node keys directory.</param>

@@ -4,6 +4,64 @@
 
 ---
 
+## v2026.11.09.6 — Code-Complete Milestone: GUI Core 70-SDK ViewModel Parity, 18-Language Desktop Localizer Integration, Mobile Android & iOS Platform Lifecycle Hosts, Full Test Suite & End-to-End Verification (2026-11-09)
+
+Code-complete milestone release resolving Work Packages P166–P170 (Forgejo Issues #169–#173), completing 100% SDK method parity across `NanoWeaverHrt.Gui.Core` (`NodeAdministrationViewModel`, `PatientClinicalWorkspaceViewModel`, `FederationAndDatasetWorkspaceViewModel`, and `MainShellViewModel` child property exposure), integrating dynamic 18-language localization with `IWeaverLocalizer` across all community resource files (`strings.*.json`) and `DesktopTrayIconController.BuildMenuItems()`, supporting automated right-to-left layout directionality for Arabic (`WeaverLanguage.Arabic`), establishing deterministic Android `MainActivity` and iOS/iPadOS `AppDelegate` platform lifecycle hosts with automated background biometric vault locking, preserving structured error diagnostics across `BackgroundInstanceMonitor` and `InstanceOnboardingViewModel.TestAndSaveAsync`, implementing comprehensive unit test suites in `GuiPhase4WorkspaceViewModelsTests`, `MobilePlatformLifecycleTests`, and `DesktopLocalizationAndDiagnosticsTests`, and achieving clean 8-gate `./scripts/verify-all.sh` verification.
+
+### Highlights
+* **GUI Core ViewModel Parity for Remaining 70 INanoWeaverNodeClient SDK Operations (Forgejo #169 / P166)**:
+  - Implemented `NodeAdministrationViewModel` wrapping first-launch setup bootstrapping, user account management, authoritative configuration overrides, container stack services, and hardware benchmarks.
+  - Implemented `PatientClinicalWorkspaceViewModel` wrapping demographic profiles, addresses, contacts, digitized DNA regimens, clinical laboratory results, and cohort access groups.
+  - Implemented `FederationAndDatasetWorkspaceViewModel` wrapping single-use peer share keys, trusted peer laboratory key registry, dataset export/import bundles, and trajectory federation swarm manifests.
+  - Exposed strongly-typed child workspace viewmodel properties on `MainShellViewModel` with property change notifications.
+* **DesktopTrayIconController & MainShellViewModel 18-Language IWeaverLocalizer Integration (Forgejo #170 / P167)**:
+  - Integrated `IWeaverLocalizer` into `DesktopTrayIconController` and `MainShellViewModel`, dynamically translating context menu items, tooltip text, and RTL directionality across all 18 supported languages (`ar-SA`, `de-DE`, `en-US`, `es-ES`, `fr-FR`, `hi-IN`, `id-ID`, `it-IT`, `ja-JP`, `ko-KR`, `nl-NL`, `pl-PL`, `pt-BR`, `sv-SE`, `tr-TR`, `uk-UA`, `vi-VN`, `zh-CN`).
+  - Added `Tray.Show`, `Tray.Exit`, `Tray.ActiveNodeFormat`, and `Tray.NoActiveNode` across all 18 community localization catalogs (`strings.*.json`).
+  - Preserved structured diagnostic error strings in `BackgroundInstanceMonitor` instance summaries and distinguished remote node connection failures from local SQLite profile persistence errors in `InstanceOnboardingViewModel.TestAndSaveAsync`.
+* **Mobile Android MainActivity & iOS AppDelegate Platform Lifecycle Hosts (Forgejo #171 / P168)**:
+  - Implemented `MainActivity.cs` (Android lifecycle, runtime notification and biometric permissions, OS memory pressure trimming via `OnTrimMemory`, and automated vault zeroization on `OnPause`).
+  - Implemented `AppDelegate.cs` (iOS/iPadOS lifecycle, scene backgrounding, memory warnings via `ReceiveMemoryWarning`, and automated session zeroization on `DidEnterBackground`).
+  - Wired `MobileEntryPoint.RunAsync` to coordinate platform hosts and background alert delivery.
+* **Comprehensive Unit Test Suite for Second-Pass Remediations (Forgejo #172 / P169)**:
+  - Added `GuiPhase4WorkspaceViewModelsTests.cs`, `MobilePlatformLifecycleTests.cs`, and `DesktopLocalizationAndDiagnosticsTests.cs`.
+  - Maintained 100.00% line & branch coverage threshold across all new and updated components.
+* **Final End-to-End 8-Gate Verification & Release Notes Consolidation (Forgejo #173 / P170)**:
+  - Brought all documentation files into 100% factual alignment with the codebase.
+  - Successfully verified all 8 gates of `./scripts/verify-all.sh` with 0 warnings and 0 compiler-generated state machine regressions.
+
+---
+
+## v2026.11.09.5 — Code-Complete Milestone: Second-Pass Security Hardening, Zero-Allocation Catalog, Geometry-Specific Staples, Opentrons Multi-Channel Volume Balance & Local PQC Federation Verification (2026-11-09)
+
+Code-complete milestone release resolving Work Packages P161–P165 (Forgejo Issues #164–#168), hardening `ContentFormatSerializer` against XML external entity (XXE) and billion laughs expansion (`DtdProcessing = Prohibit`, `XmlResolver = null`, `MaxCharactersInDocument = 10MB`), bounding incoming format payloads to 10 MB in `FormatNegotiationMiddleware` (returning HTTP 413 `PayloadTooLarge`), capping `GelAnalysisService` image dimensions to [1, 8192] and stream reads to `width * height * 4` bytes, eliminating pharmacogenomics bypasses and pre-computing an immutable zero-allocation variant catalog in `PharmacogenomicsService`, differentiating DNA origami structural crossover staple ensembles across Nanotube (6HB), Cuboid (24-helix), and Icosahedral (5-way vertex) geometries with Kd-tuned aptamer stems and FASTA mid-line `>` handling in `FabricationService`, dynamically loading 8-channel `nest_12_reservoir_15ml` labware and enforcing stoichiometric volume conservation in `OpentronsProtocolGenerator`, and enabling local node ML-DSA-65 federation manifest verification with zeroized secret seeds, 512 MB bounded archive decompression, and 4-engine database health reporting in `TrajectoryFederationService`, `DatasetTransferService`, and `StackServiceManager`.
+
+### Highlights
+* **Security & Secret Zeroization (Forgejo #164 / P161)**:
+  - Configured `XmlReaderSettings` in `ContentFormatSerializer` with `DtdProcessing.Prohibit` and `XmlResolver = null` to prohibit XXE and entity expansion attacks.
+  - Bounded inbound XML and YAML request payloads to 10 MB in `FormatNegotiationMiddleware`, returning RFC 7807 HTTP 413 `PayloadTooLarge`.
+  - Capped image dimensions in `GelAnalysisService` to [1, 8192] pixels and bounded stream reading to `width * height * 4` bytes max.
+  - Hardened `.dockerignore` to exclude `**/node-keys/`, `**/*.key`, `**/*.db*`, and `simulations/`.
+* **Pharmacogenomics Backdoor Removal & Zero-Allocation Catalog (Forgejo #165 / P162)**:
+  - Pre-computed `SortedCatalog` using in-place `Array.Sort` by category ascending, then severity descending.
+  - Returned `SortedCatalog` directly from `GetCatalog()` with zero runtime allocations and zero LINQ queries.
+  - Removed unused `AddMarker` method and removed `-OK` suffix bypass in `ApplyGeneticAdjustments`, enforcing ceiling clamps across all patient identifiers.
+* **Geometry-Specific Staples & Kd-Tuned Aptamers (Forgejo #166 / P163)**:
+  - Differentiated structural core crossover staples across Nanotube (6HB), Cuboid (24-helix), and Icosahedral (5-way vertex) geometries.
+  - Preserved full-length 52 nt MtF / 48 nt FtM aptamer core motifs with 4 locus scaffold anchor extensions and target Kd stem modulation.
+  - Fixed FASTA mid-line `>` header bug by validating `atLineStart && rawCh == '>'`.
+  - Validated `PackageId` against path traversal (`..`, `/`, `\`) in `ExportFabricationManifestJsonAsync`.
+* **Opentrons Labware & Stoichiometric Volume Balance (Forgejo #167 / P164)**:
+  - Loaded `nest_12_reservoir_15ml` on Slot 1 when multi-channel pipettes (`P20_Multi_Gen2`, `P300_Multi_Gen2`, `Flex_8Channel_50`) are selected, addressing A1 master mix, A2 buffer, and A3 payload to prevent tube rack collisions.
+  - Enforced stoichiometric volume conservation based on `C1 * V1 = C2 * V2` against 10 µM working stock plate, ensuring `masterMixVolume + perWellStapleVolume == options.TotalReactionVolumeMicroliters`.
+* **Federation Crypto, Dataset Streaming & Stack Health (Forgejo #168 / P165)**:
+  - Added `GetNodeSigningMldsa65Key()` to `INodeSecretStore` and `NodeSecretStore`, loading 32-byte ML-DSA-65 seeds from `node_signing_mldsa65.key`.
+  - Enabled local node ML-DSA-65 verification in `TrajectoryFederationService` without requiring local node self-registration in `weaver_peer_keys`.
+  - Zeroized private seed arrays in `finally` blocks and sanitized local path disclosures in `FileNotFoundException` messages.
+  - Rented 80 KB buffers from `ArrayPool<byte>.Shared` in `DatasetTransferService` and enforced a 512 MB expansion limit on decompressed archive streams.
+  - Updated `StackServiceManager` to accurately report all 4 storage backends (`PostgreSQL`, `DuckDB`, `MySQL`, `SQLite`) with zero LINQ and zero-Regex password redaction.
+
+---
+
 ## v2026.11.09.4 — Code-Complete Milestone: Desktop MVVM Workspaces, Headless Daemon Lifecycle, Mobile Biometric Key Separation, Container Hardening & Documentation Parity (2026-11-09)
 
 Code-complete milestone release resolving Work Packages `P156–P160` (Forgejo Issues `#159–#163`), completing MVVM workspace viewmodels across `NanoWeaverHrt.Gui.Core` (`SimulationWorkspaceViewModel`, `ClinicalGenomicsWorkspaceViewModel`, `WetLabComplianceWorkspaceViewModel`, and `MainShellViewModel` child property exposure), integrating `AvaloniaShellBootstrapper.CreateDefault` and configurable headless daemon polling intervals (`DesktopDaemonConfig`) into `DesktopProgram.cs`, implementing HKDF (SHA-256) subkey separation (`nanoweaver-android-ed25519-sign-v1` vs `nanoweaver-android-aes256gcm-wrap-v1`, and Apple Secure Enclave equivalents) with zeroizable memory wiping and encrypted local file persistence in `NanoWeaverHrt.Mobile`, hardening Docker Compose runtime security (`127.0.0.1:5000:5000`, `cap_drop: [ALL]`, `no-new-privileges:true`), synchronizing CalVer release versioning `2026.11.09.4` across all 12 packaging manifests and scripts, migrating certificate rotation workflows to Forgejo Actions (`.forgejo/workflows/rotate-codesign-certs.yml`), and bringing all documentation files into 100% parity with the codebase.

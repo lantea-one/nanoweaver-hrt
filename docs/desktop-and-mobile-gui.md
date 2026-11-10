@@ -45,6 +45,31 @@ flowchart TD
      - Alert / Critical: Emergency Magenta (`#ff2a85`)
      - Text Primary: Pure White (`#ffffff`)
 
+### 1.1 Complete MVVM Workspace Architecture (`NanoWeaverHrt.Gui.Core`)
+
+All desktop and mobile platform heads share a high-throughput, reactive presentation core (`src/NanoWeaverHrt.Gui.Core`) exposing 100% of all operations provided by the REST client SDK (`INanoWeaverNodeClient`):
+
+| ViewModel | Responsibilities & SDK Domain |
+| :--- | :--- |
+| `MainShellViewModel` | Root multi-instance switcher, live telemetry rollup, 18-language switching, and child workspace coordination. |
+| `SimulationWorkspaceViewModel` | In-silico molecular dynamics campaigns, aptamer gating thermodynamics, PBPK endocrine kinetics, and analytical SQL queries. |
+| `ClinicalGenomicsWorkspaceViewModel` | Closed-loop endocrine feedback, pre-computed pharmacogenomic variant screening, and patient digital DNA payloads. |
+| `WetLabComplianceWorkspaceViewModel` | Opentrons robotic protocol generation, agarose gel image densitometry, and FDA 21 CFR Part 11 audit ledger verification. |
+| `NodeAdministrationViewModel` | First-launch setup bootstrapping, user account management, authoritative configuration overrides, container stack services, and hardware benchmarks. |
+| `PatientClinicalWorkspaceViewModel` | Demographics, addresses, emergency contacts, digitized DNA regimens, clinical laboratory results, and cohort access groups. |
+| `FederationAndDatasetWorkspaceViewModel` | Single-use peer share keys, trusted peer laboratory key registry, dataset export/import bundles, and trajectory federation swarm manifests. |
+| `InstanceOnboardingViewModel` | Connection profile wizard, client-side keypair generation, and remote health connectivity verification (`TestAndSaveAsync`). |
+| `InstanceManagerViewModel` | Profile listing, search filtering, profile deletion, and persistence synchronization. |
+| `VaultUnlockViewModel` | Ephemeral passphrase entry, cryptographic private key envelope unsealing, and immediate memory zeroization. |
+
+### 1.2 18-Language Community Localization & System Tray Integration
+
+The desktop presentation layer integrates `IWeaverLocalizer` with `DesktopTrayIconController` and `MainShellViewModel`, delivering dynamic multilingual support across 18 world languages:
+
+- **Supported Locales**: Arabic (`ar-SA`), German (`de-DE`), English (`en-US`), Spanish (`es-ES`), French (`fr-FR`), Hindi (`hi-IN`), Indonesian (`id-ID`), Italian (`it-IT`), Japanese (`ja-JP`), Korean (`ko-KR`), Dutch (`nl-NL`), Polish (`pl-PL`), Portuguese (`pt-BR`), Swedish (`sv-SE`), Turkish (`tr-TR`), Ukrainian (`uk-UA`), Vietnamese (`vi-VN`), and Simplified Chinese (`zh-CN`).
+- **Dynamic Context Menus**: `DesktopTrayIconController.BuildMenuItems()` dynamically translates menu actions ("Open NanoWeaver HRT", "Active Node: ...", "Lock Key Vault", "Quit") without requiring application restart.
+- **Bi-Directional Layout**: Automatically enables right-to-left (`IsRightToLeft = true`) layout flow for Arabic (`WeaverLanguage.Arabic`).
+
 ---
 
 ## 2. Installation & Distribution Packages
@@ -172,6 +197,22 @@ Mobile platform heads connect directly to local wireless node instances or sover
 3. **iPadOS (`nanoweaver-hrt-mobile-ipados.ipa`)**:
    - Configured for iPad displays (`UIDeviceFamily = [2]`).
    - Supports iPad multitasking, split-view side-by-side simulation monitoring, and stage manager.
+
+### 2.5 Mobile Platform Lifecycle Architecture (`NanoWeaverHrt.Mobile`)
+
+Mobile heads execute within deterministic platform coordinators enforcing strict session security and memory management:
+
+1. **Android Lifecycle Host (`MainActivity.cs`)**:
+   - Manages activity state transitions: `OnCreate`, `OnResume`, `OnPause`, `OnStop`, and `OnDestroy`.
+   - Coordinates Android 13+ runtime permissions (`RequestNotificationPermission`, `RequestBiometricPermission`).
+   - Responds to system memory pressure via `OnTrimMemory(level)`, purging cached telemetry buffers and triggering garbage collection.
+   - Automatically zeroes in-memory session tokens and locks the biometric key vault on `OnPause` and `OnStop`.
+2. **iOS & iPadOS Lifecycle Host (`AppDelegate.cs`)**:
+   - Manages UIApplicationDelegate state transitions: `FinishedLaunching`, `OnActivated`, `OnResignActivation`, and `DidEnterBackground`.
+   - Handles memory warnings (`ReceiveMemoryWarning`) to prevent watchdog eviction.
+   - Automatically zeroes sensitive session keys and locks the biometric vault on `DidEnterBackground`.
+3. **Unified Mobile Runner (`MobileEntryPoint.RunAsync`)**:
+   - Coordinates platform hosts, diagnostic self-verification, and background alert delivery via `INativeNotificationSink`.
 
 ---
 

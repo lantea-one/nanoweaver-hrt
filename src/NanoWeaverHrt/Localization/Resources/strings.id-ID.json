@@ -34,5 +34,9 @@
   "Nav.Stack": "Stack Orchestrator",
   "Nav.Config": "Node Configuration",
   "Nav.Users": "User Identity Registry",
-  "Nav.Peers": "Federation Peers"
+  "Nav.Peers": "Federation Peers",
+  "Tray.Show": "Buka NanoWeaver HRT",
+  "Tray.Exit": "Keluar",
+  "Tray.ActiveNodeFormat": "Node Aktif: {0}",
+  "Tray.NoActiveNode": "Tidak Ada Node Aktif"
 }

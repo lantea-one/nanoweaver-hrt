@@ -34,5 +34,9 @@
   "Nav.Stack": "Stack Orchestrator",
   "Nav.Config": "Node Configuration",
   "Nav.Users": "User Identity Registry",
-  "Nav.Peers": "Federation Peers"
+  "Nav.Peers": "Federation Peers",
+  "Tray.Show": "NanoWeaver HRT'yi Aç",
+  "Tray.Exit": "Çıkış",
+  "Tray.ActiveNodeFormat": "Aktif Düğüm: {0}",
+  "Tray.NoActiveNode": "Aktif Düğüm Yok"
 }

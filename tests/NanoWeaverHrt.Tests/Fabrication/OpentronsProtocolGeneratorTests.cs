@@ -717,4 +717,59 @@ public sealed class OpentronsProtocolGeneratorTests
         Assert.Equal(50.0, OpentronsProtocolGenerator.GetMaxPipetteVolumeMicroliters(OpentronsPipetteModel.Flex_8Channel_50));
         Assert.Equal(50.0, OpentronsProtocolGenerator.GetMaxPipetteVolumeMicroliters((OpentronsPipetteModel)999));
     }
+
+    /// <summary>
+    /// Verifies that multi-channel pipettes load nest_12_reservoir_15ml and address reagent sources across columns A1, A2, and A3.
+    /// </summary>
+    [Theory]
+    [InlineData(OpentronsPipetteModel.P20_Multi_Gen2)]
+    [InlineData(OpentronsPipetteModel.P300_Multi_Gen2)]
+    [InlineData(OpentronsPipetteModel.Flex_8Channel_50)]
+    public void GenerateProtocol_MultiChannelPipettes_LoadsReservoirAndAddressesColumns(OpentronsPipetteModel pipetteModel)
+    {
+        // WHAT: Tests multi-channel pipette labware loading for reagent supply.
+        // WHY:  8-channel pipettes cannot aspirate from 24-tube racks without crashing gantry; 12-channel reservoir is required.
+        // HOW:  Asserts presence of 'nest_12_reservoir_15ml', master_mix_source, buffer_source, and payload_source.
+        OpentronsProtocolGenerator generator = new();
+        FabricationPackage package = CreateTestPackage(16);
+        OpentronsProtocolOptions options = new()
+        {
+            RobotModel = pipetteModel == OpentronsPipetteModel.Flex_8Channel_50 ? OpentronsRobotModel.Flex : OpentronsRobotModel.OT2,
+            PipetteModel = pipetteModel
+        };
+
+        OpentronsProtocolResult result = generator.GenerateProtocol(package, options);
+
+        AssertPythonAstCompiles(result.PythonScript);
+        Assert.Contains("nest_12_reservoir_15ml", result.PythonScript);
+        Assert.Contains("master_mix_source = reagent_reservoir['A1']", result.PythonScript);
+        Assert.Contains("buffer_source = reagent_reservoir['A2']", result.PythonScript);
+        Assert.Contains("payload_source = reagent_reservoir['A3']", result.PythonScript);
+        Assert.DoesNotContain("opentrons_24_tuberack_generic_2ml_screwcap", result.PythonScript);
+    }
+
+    /// <summary>
+    /// Verifies stoichiometric volume conservation where master mix plus staple volume equals total reaction volume.
+    /// </summary>
+    [Fact]
+    public void GenerateProtocol_StoichiometricVolumeConservation_BalancesTotalVolume()
+    {
+        // WHAT: Verifies that master mix volume + total per-well staple volume matches TotalReactionVolumeMicroliters.
+        // WHY:  Ensures wet-lab stoichiometric assembly does not overflow or underfill target reaction wells.
+        // HOW:  Generates protocols for 14 staples at 50 µL and asserts 36.0 µL master mix + 14.0 µL staples = 50.0 µL.
+        OpentronsProtocolGenerator generator = new();
+        FabricationPackage package = CreateTestPackage(14);
+        OpentronsProtocolOptions options = new()
+        {
+            TotalReactionVolumeMicroliters = 50.0,
+            ScaffoldConcentrationNanomolar = 10.0,
+            StapleMolarExcessRatio = 10.0
+        };
+
+        OpentronsProtocolResult result = generator.GenerateProtocol(package, options);
+
+        AssertPythonAstCompiles(result.PythonScript);
+        Assert.Contains("pipette.aspirate(20.0, master_mix_tube)", result.PythonScript);
+        Assert.Contains("pipette.aspirate(16.0, master_mix_tube)", result.PythonScript);
+    }
 }

@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
-  "seeded_from_commit": "ae828686d2e83b7f3e84cc534dd7bb50e32ca6c0",
-  "seeded_on_utc": "2026-11-09",
+  "seeded_from_commit": "1ee0058115b573ba7acb44207f6b1155d2733c50",
+  "seeded_on_utc": "2026-11-10",
   "measurement": {
     "runsettings": "coverage-full.runsettings",
     "weaver_test_postgres": "unset"
   },
   "line_rate": 100.0,
-  "branch_rate": 98.74,
+  "branch_rate": 98.79,
   "uncovered_lines_total": 0,
   "classes": {}
 }

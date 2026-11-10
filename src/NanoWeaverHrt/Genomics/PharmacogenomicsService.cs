@@ -19,6 +19,11 @@ namespace NanoWeaverHrt.Genomics;
 public sealed class PharmacogenomicsService : IPharmacogenomicsService
 {
     /// <summary>
+    /// Pre-sorted immutable list of curated genetic markers sorted by Category ascending, then Severity descending.
+    /// </summary>
+    private static readonly IReadOnlyList<GeneticMarker> SortedCatalog = BuildSortedCatalog();
+
+    /// <summary>
     /// Thread-safe in-memory cache of curated pharmacogenomic markers indexed by unique marker ID.
     /// </summary>
     private readonly ConcurrentDictionary<string, GeneticMarker> _markerCatalog = new(StringComparer.OrdinalIgnoreCase);
@@ -42,162 +47,165 @@ public sealed class PharmacogenomicsService : IPharmacogenomicsService
     /// </summary>
     private void InitializeCatalog()
     {
-        // ---------------------------------------------------------------------
-        // 1. Factor V Leiden (rs6025) - High Thrombotic Risk
-        // ---------------------------------------------------------------------
-        AddMarker(new GeneticMarker
+        // WHAT: Populates the lookup dictionary from the pre-sorted static catalog.
+        // WHY:  Permits O(1) key lookups by marker ID while sharing single immutable marker instances.
+        // HOW:  Iterates over SortedCatalog and adds each marker to _markerCatalog.
+        foreach (GeneticMarker marker in SortedCatalog)
         {
-            MarkerId = "F5_LEIDEN",
-            GeneSymbol = "F5",
-            VariantName = "Factor V Leiden (rs6025, c.1691G>A, p.Arg506Gln)",
-            Category = GeneticCategory.ThromboticRisk,
-            Severity = ClinicalSeverity.Critical,
-            ObservedGenotype = "G/A (Heterozygous Carrier)",
-            ClinicalDescription = "Resistance to Activated Protein C (APC) prevents inactivation of clotting Factor Va, multiplying venous thromboembolism risk 3x to 8x.",
-            RecommendedAction = "In MtF regimens, cap peak 17β-estradiol setpoint to <= 500 pmol/L. Prohibit bolus burst release; enforce zero-pulsatile continuous micro-release kinetics.",
-            AssociatedRegimen = TherapeuticRegimen.MaleToFemale,
-            ClearanceRateMultiplier = 1.0,
-            TargetKdOffsetNanoMolar = 0.0,
-            MaxSafeEstradiolPmolL = 500.0,
-            ThrombosisRiskMultiplier = 4.2
+            _markerCatalog[marker.MarkerId] = marker;
+        }
+    }
+
+    /// <summary>
+    /// Builds and sorts the curated genetic marker catalog during static initialization.
+    /// </summary>
+    /// <returns>An immutable pre-sorted list of curated genetic markers.</returns>
+    private static IReadOnlyList<GeneticMarker> BuildSortedCatalog()
+    {
+        // WHAT: Assembles all curated pharmacogenomic markers and sorts deterministically.
+        // WHY:  Guarantees zero heap allocations during runtime GetCatalog() calls conforming to AGENTS.md Prime Directive 1.
+        // HOW:  Constructs marker array, sorts in-place by Category then Severity, and wraps in ReadOnlyCollection.
+        GeneticMarker[] markers =
+        [
+            new()
+            {
+                MarkerId = "F5_LEIDEN",
+                GeneSymbol = "F5",
+                VariantName = "Factor V Leiden (rs6025, c.1691G>A, p.Arg506Gln)",
+                Category = GeneticCategory.ThromboticRisk,
+                Severity = ClinicalSeverity.Critical,
+                ObservedGenotype = "G/A (Heterozygous Carrier)",
+                ClinicalDescription = "Resistance to Activated Protein C (APC) prevents inactivation of clotting Factor Va, multiplying venous thromboembolism risk 3x to 8x.",
+                RecommendedAction = "In MtF regimens, cap peak 17β-estradiol setpoint to <= 500 pmol/L. Prohibit bolus burst release; enforce zero-pulsatile continuous micro-release kinetics.",
+                AssociatedRegimen = TherapeuticRegimen.MaleToFemale,
+                ClearanceRateMultiplier = 1.0,
+                TargetKdOffsetNanoMolar = 0.0,
+                MaxSafeEstradiolPmolL = 500.0,
+                ThrombosisRiskMultiplier = 4.2
+            },
+            new()
+            {
+                MarkerId = "F2_PROTHROMBIN",
+                GeneSymbol = "F2",
+                VariantName = "Prothrombin G20210A (rs1799963, 3' UTR)",
+                Category = GeneticCategory.ThromboticRisk,
+                Severity = ClinicalSeverity.Critical,
+                ObservedGenotype = "G/A (Heterozygous Carrier)",
+                ClinicalDescription = "Elevated 3' UTR mRNA stability results in 30% higher circulating plasma prothrombin, significantly elevating deep vein thrombosis (DVT) probability.",
+                RecommendedAction = "Enforce conservative steady-state estradiol concentration and verify bilateral lower extremity Doppler clearance prior to dose escalation.",
+                AssociatedRegimen = TherapeuticRegimen.MaleToFemale,
+                ClearanceRateMultiplier = 1.0,
+                TargetKdOffsetNanoMolar = 0.0,
+                MaxSafeEstradiolPmolL = 480.0,
+                ThrombosisRiskMultiplier = 2.8
+            },
+            new()
+            {
+                MarkerId = "AR_CAG_LONG",
+                GeneSymbol = "AR",
+                VariantName = "Androgen Receptor Exon 1 Polyglutamine Elongation (CAG > 26)",
+                Category = GeneticCategory.ReceptorSensitivity,
+                Severity = ClinicalSeverity.Warning,
+                ObservedGenotype = "CAG Repeat Count: 28 (Extended)",
+                ClinicalDescription = "Extended polyglutamine tract impairs p160 co-activator recruitment to the AF-1 transactivation domain, decreasing target gene responsiveness to testosterone.",
+                RecommendedAction = "In FtM regimens, increase minimum target testosterone to >= 22.0 nmol/L. Tune nanocarrier aptamer affinity by -1.5 nM (higher affinity) for increased pocket contact frequency.",
+                AssociatedRegimen = TherapeuticRegimen.FemaleToMale,
+                ClearanceRateMultiplier = 1.0,
+                TargetKdOffsetNanoMolar = -1.5,
+                MinRecommendedTestosteroneNmolL = 22.0,
+                ThrombosisRiskMultiplier = 1.0
+            },
+            new()
+            {
+                MarkerId = "AR_CAG_SHORT",
+                GeneSymbol = "AR",
+                VariantName = "Androgen Receptor Exon 1 Polyglutamine Shortening (CAG < 20)",
+                Category = GeneticCategory.ReceptorSensitivity,
+                Severity = ClinicalSeverity.Advisory,
+                ObservedGenotype = "CAG Repeat Count: 16 (Shortened)",
+                ClinicalDescription = "Shortened polyglutamine tract enhances ligand-dependent transcriptional transactivation, making target tissues hypersensitive to low circulating androgens.",
+                RecommendedAction = "In FtM regimens, moderate target testosterone (14.0 to 18.0 nmol/L) to prevent excessive erythrocytosis, severe cystic acne, or premature androgenic alopecia.",
+                AssociatedRegimen = TherapeuticRegimen.FemaleToMale,
+                ClearanceRateMultiplier = 1.0,
+                TargetKdOffsetNanoMolar = 0.5,
+                MinRecommendedTestosteroneNmolL = 14.0,
+                MaxRecommendedTestosteroneNmolL = 18.0,
+                ThrombosisRiskMultiplier = 1.0
+            },
+            new()
+            {
+                MarkerId = "COMT_VAL158MET",
+                GeneSymbol = "COMT",
+                VariantName = "Catechol-O-Methyltransferase Val158Met (rs4680, p.Val158Met)",
+                Category = GeneticCategory.SteroidMetabolism,
+                Severity = ClinicalSeverity.Warning,
+                ObservedGenotype = "A/A (Met/Met - Low Activity)",
+                ClinicalDescription = "3- to 4-fold reduction in enzymatic methylation activity causes accumulation of reactive 2- and 4-hydroxyestrone catechol metabolites and localized oxidative stress.",
+                RecommendedAction = "In MtF regimens, slow delivery clearance multiplier to 0.75x. Recommend adjuvant antioxidant supplementation (e.g. N-acetylcysteine) and monitor liver function enzymes.",
+                AssociatedRegimen = TherapeuticRegimen.MaleToFemale,
+                ClearanceRateMultiplier = 0.75,
+                TargetKdOffsetNanoMolar = 0.0,
+                ThrombosisRiskMultiplier = 1.2
+            },
+            new()
+            {
+                MarkerId = "CYP1B1_RAPID",
+                GeneSymbol = "CYP1B1",
+                VariantName = "Cytochrome P450 1B1*3 (rs1056836, c.1294C>G, p.Leu432Val)",
+                Category = GeneticCategory.SteroidMetabolism,
+                Severity = ClinicalSeverity.Advisory,
+                ObservedGenotype = "G/G (Homozygous Rapid Hydroxylase)",
+                ClinicalDescription = "Enhanced catalytic efficiency preferentially converts estradiol into 4-hydroxyestradiol, accelerating systemic estrogen clearance.",
+                RecommendedAction = "In MtF regimens, increase clearance rate multiplier to 1.35x. Monitor E2 serum levels to confirm sustained gonadotropin (LH/FSH) negative feedback suppression.",
+                AssociatedRegimen = TherapeuticRegimen.MaleToFemale,
+                ClearanceRateMultiplier = 1.35,
+                TargetKdOffsetNanoMolar = 0.0,
+                ThrombosisRiskMultiplier = 1.0
+            },
+            new()
+            {
+                MarkerId = "UGT2B17_DELETION",
+                GeneSymbol = "UGT2B17",
+                VariantName = "UDP-Glucuronosyltransferase 2B17 Null Deletion (CNV *2/*2)",
+                Category = GeneticCategory.SteroidMetabolism,
+                Severity = ClinicalSeverity.Warning,
+                ObservedGenotype = "Del/Del (Homozygous Null)",
+                ClinicalDescription = "Complete loss of major hepatic testosterone glucuronidation enzyme prolongs circulating testosterone and DHT half-life by up to 60%.",
+                RecommendedAction = "In FtM regimens, decrease clearance rate multiplier to 0.60x. Avoid standard dosage stacking; extend steady-state plateau half-life monitoring.",
+                AssociatedRegimen = TherapeuticRegimen.FemaleToMale,
+                ClearanceRateMultiplier = 0.60,
+                TargetKdOffsetNanoMolar = 0.0,
+                ThrombosisRiskMultiplier = 1.1
+            },
+            new()
+            {
+                MarkerId = "TLR9_HIGH_SENSITIVITY",
+                GeneSymbol = "TLR9",
+                VariantName = "Toll-Like Receptor 9 Promoter Polymorphism (rs187084, -1486T>C)",
+                Category = GeneticCategory.NanocarrierImmunogenicity,
+                Severity = ClinicalSeverity.Critical,
+                ObservedGenotype = "C/C (High Expression / Hyper-Reactive)",
+                ClinicalDescription = "Up-regulated TLR9 receptor expression triggers acute endosomal recognition of unmethylated CpG motifs in viral scaffold DNA (e.g. M13mp18), inducing inflammatory cytokines and rapid macrophage clearance.",
+                RecommendedAction = "MANDATORY: Perform full enzymatic CpG methylation (using M.SssI CpG methyltransferase and S-adenosylmethionine) on scaffold DNA before thermal annealing to prevent carrier clearance.",
+                AssociatedRegimen = null,
+                ClearanceRateMultiplier = 1.20,
+                TargetKdOffsetNanoMolar = 0.0,
+                RequiresCpGMethylation = true
+            }
+        ];
+
+        Array.Sort(markers, static (a, b) =>
+        {
+            int catCompare = a.Category.CompareTo(b.Category);
+            if (catCompare != 0)
+            {
+                return catCompare;
+            }
+
+            return b.Severity.CompareTo(a.Severity);
         });
 
-        // ---------------------------------------------------------------------
-        // 2. Prothrombin G20210A (rs1799963) - Thrombotic Risk
-        // ---------------------------------------------------------------------
-        AddMarker(new GeneticMarker
-        {
-            MarkerId = "F2_PROTHROMBIN",
-            GeneSymbol = "F2",
-            VariantName = "Prothrombin G20210A (rs1799963, 3' UTR)",
-            Category = GeneticCategory.ThromboticRisk,
-            Severity = ClinicalSeverity.Critical,
-            ObservedGenotype = "G/A (Heterozygous Carrier)",
-            ClinicalDescription = "Elevated 3' UTR mRNA stability results in 30% higher circulating plasma prothrombin, significantly elevating deep vein thrombosis (DVT) probability.",
-            RecommendedAction = "Enforce conservative steady-state estradiol concentration and verify bilateral lower extremity Doppler clearance prior to dose escalation.",
-            AssociatedRegimen = TherapeuticRegimen.MaleToFemale,
-            ClearanceRateMultiplier = 1.0,
-            TargetKdOffsetNanoMolar = 0.0,
-            MaxSafeEstradiolPmolL = 480.0,
-            ThrombosisRiskMultiplier = 2.8
-        });
-
-        // ---------------------------------------------------------------------
-        // 3. Androgen Receptor CAG Repeat Elongation - Androgen Resistance
-        // ---------------------------------------------------------------------
-        AddMarker(new GeneticMarker
-        {
-            MarkerId = "AR_CAG_LONG",
-            GeneSymbol = "AR",
-            VariantName = "Androgen Receptor Exon 1 Polyglutamine Elongation (CAG > 26)",
-            Category = GeneticCategory.ReceptorSensitivity,
-            Severity = ClinicalSeverity.Warning,
-            ObservedGenotype = "CAG Repeat Count: 28 (Extended)",
-            ClinicalDescription = "Extended polyglutamine tract impairs p160 co-activator recruitment to the AF-1 transactivation domain, decreasing target gene responsiveness to testosterone.",
-            RecommendedAction = "In FtM regimens, increase minimum target testosterone to >= 22.0 nmol/L. Tune nanocarrier aptamer affinity by -1.5 nM (higher affinity) for increased pocket contact frequency.",
-            AssociatedRegimen = TherapeuticRegimen.FemaleToMale,
-            ClearanceRateMultiplier = 1.0,
-            TargetKdOffsetNanoMolar = -1.5,
-            MinRecommendedTestosteroneNmolL = 22.0,
-            ThrombosisRiskMultiplier = 1.0
-        });
-
-        // ---------------------------------------------------------------------
-        // 4. Androgen Receptor CAG Repeat Shortening - Androgen Hypersensitivity
-        // ---------------------------------------------------------------------
-        AddMarker(new GeneticMarker
-        {
-            MarkerId = "AR_CAG_SHORT",
-            GeneSymbol = "AR",
-            VariantName = "Androgen Receptor Exon 1 Polyglutamine Shortening (CAG < 20)",
-            Category = GeneticCategory.ReceptorSensitivity,
-            Severity = ClinicalSeverity.Advisory,
-            ObservedGenotype = "CAG Repeat Count: 16 (Shortened)",
-            ClinicalDescription = "Shortened polyglutamine tract enhances ligand-dependent transcriptional transactivation, making target tissues hypersensitive to low circulating androgens.",
-            RecommendedAction = "In FtM regimens, moderate target testosterone (14.0 to 18.0 nmol/L) to prevent excessive erythrocytosis, severe cystic acne, or premature androgenic alopecia.",
-            AssociatedRegimen = TherapeuticRegimen.FemaleToMale,
-            ClearanceRateMultiplier = 1.0,
-            TargetKdOffsetNanoMolar = 0.5,
-            MinRecommendedTestosteroneNmolL = 14.0,
-            MaxRecommendedTestosteroneNmolL = 18.0,
-            ThrombosisRiskMultiplier = 1.0
-        });
-
-        // ---------------------------------------------------------------------
-        // 5. COMT Val158Met (rs4680) - Slow Catechol-Estrogen Methylation
-        // ---------------------------------------------------------------------
-        AddMarker(new GeneticMarker
-        {
-            MarkerId = "COMT_VAL158MET",
-            GeneSymbol = "COMT",
-            VariantName = "Catechol-O-Methyltransferase Val158Met (rs4680, p.Val158Met)",
-            Category = GeneticCategory.SteroidMetabolism,
-            Severity = ClinicalSeverity.Warning,
-            ObservedGenotype = "A/A (Met/Met - Low Activity)",
-            ClinicalDescription = "3- to 4-fold reduction in enzymatic methylation activity causes accumulation of reactive 2- and 4-hydroxyestrone catechol metabolites and localized oxidative stress.",
-            RecommendedAction = "In MtF regimens, slow delivery clearance multiplier to 0.75x. Recommend adjuvant antioxidant supplementation (e.g. N-acetylcysteine) and monitor liver function enzymes.",
-            AssociatedRegimen = TherapeuticRegimen.MaleToFemale,
-            ClearanceRateMultiplier = 0.75,
-            TargetKdOffsetNanoMolar = 0.0,
-            ThrombosisRiskMultiplier = 1.2
-        });
-
-        // ---------------------------------------------------------------------
-        // 6. CYP1B1*3 (rs1056836) - Rapid Estrogen 4-Hydroxylation
-        // ---------------------------------------------------------------------
-        AddMarker(new GeneticMarker
-        {
-            MarkerId = "CYP1B1_RAPID",
-            GeneSymbol = "CYP1B1",
-            VariantName = "Cytochrome P450 1B1*3 (rs1056836, c.1294C>G, p.Leu432Val)",
-            Category = GeneticCategory.SteroidMetabolism,
-            Severity = ClinicalSeverity.Advisory,
-            ObservedGenotype = "G/G (Homozygous Rapid Hydroxylase)",
-            ClinicalDescription = "Enhanced catalytic efficiency preferentially converts estradiol into 4-hydroxyestradiol, accelerating systemic estrogen clearance.",
-            RecommendedAction = "In MtF regimens, increase clearance rate multiplier to 1.35x. Monitor E2 serum levels to confirm sustained gonadotropin (LH/FSH) negative feedback suppression.",
-            AssociatedRegimen = TherapeuticRegimen.MaleToFemale,
-            ClearanceRateMultiplier = 1.35,
-            TargetKdOffsetNanoMolar = 0.0,
-            ThrombosisRiskMultiplier = 1.0
-        });
-
-        // ---------------------------------------------------------------------
-        // 7. UGT2B17 Deletion (*2/*2) - Impaired Testosterone Glucuronidation
-        // ---------------------------------------------------------------------
-        AddMarker(new GeneticMarker
-        {
-            MarkerId = "UGT2B17_DELETION",
-            GeneSymbol = "UGT2B17",
-            VariantName = "UDP-Glucuronosyltransferase 2B17 Null Deletion (CNV *2/*2)",
-            Category = GeneticCategory.SteroidMetabolism,
-            Severity = ClinicalSeverity.Warning,
-            ObservedGenotype = "Del/Del (Homozygous Null)",
-            ClinicalDescription = "Complete loss of major hepatic testosterone glucuronidation enzyme prolongs circulating testosterone and DHT half-life by up to 60%.",
-            RecommendedAction = "In FtM regimens, decrease clearance rate multiplier to 0.60x. Avoid standard dosage stacking; extend steady-state plateau half-life monitoring.",
-            AssociatedRegimen = TherapeuticRegimen.FemaleToMale,
-            ClearanceRateMultiplier = 0.60,
-            TargetKdOffsetNanoMolar = 0.0,
-            ThrombosisRiskMultiplier = 1.1
-        });
-
-        // ---------------------------------------------------------------------
-        // 8. TLR9 High-Sensitivity Allele (rs187084) - DNA Origami Immunogenicity
-        // ---------------------------------------------------------------------
-        AddMarker(new GeneticMarker
-        {
-            MarkerId = "TLR9_HIGH_SENSITIVITY",
-            GeneSymbol = "TLR9",
-            VariantName = "Toll-Like Receptor 9 Promoter Polymorphism (rs187084, -1486T>C)",
-            Category = GeneticCategory.NanocarrierImmunogenicity,
-            Severity = ClinicalSeverity.Critical,
-            ObservedGenotype = "C/C (High Expression / Hyper-Reactive)",
-            ClinicalDescription = "Up-regulated TLR9 receptor expression triggers acute endosomal recognition of unmethylated CpG motifs in viral scaffold DNA (e.g. M13mp18), inducing inflammatory cytokines and rapid macrophage clearance.",
-            RecommendedAction = "MANDATORY: Perform full enzymatic CpG methylation (using M.SssI CpG methyltransferase and S-adenosylmethionine) on scaffold DNA before thermal annealing to prevent carrier clearance.",
-            AssociatedRegimen = null,
-            ClearanceRateMultiplier = 1.20,
-            TargetKdOffsetNanoMolar = 0.0,
-            RequiresCpGMethylation = true
-        });
+        return Array.AsReadOnly(markers);
     }
 
     /// <summary>
@@ -242,19 +250,10 @@ public sealed class PharmacogenomicsService : IPharmacogenomicsService
         });
     }
 
-    /// <summary>
-    /// Adds a marker definition into the thread-safe catalog.
-    /// </summary>
-    /// <param name="marker">The marker definition to store.</param>
-    private void AddMarker(GeneticMarker marker)
-    {
-        _markerCatalog[marker.MarkerId] = marker;
-    }
-
     /// <inheritdoc />
     public IReadOnlyList<GeneticMarker> GetCatalog()
     {
-        return _markerCatalog.Values.OrderBy(m => m.Category).ThenByDescending(m => m.Severity).ToList();
+        return SortedCatalog;
     }
 
     /// <inheritdoc />
@@ -474,8 +473,7 @@ public sealed class PharmacogenomicsService : IPharmacogenomicsService
         }
 
         if (genomicProfile.RecommendedMaxTestosteroneNmolL.HasValue &&
-            targetT > genomicProfile.RecommendedMaxTestosteroneNmolL.Value &&
-            !genomicProfile.PatientId.EndsWith("-OK", StringComparison.OrdinalIgnoreCase))
+            targetT > genomicProfile.RecommendedMaxTestosteroneNmolL.Value)
         {
             targetT = genomicProfile.RecommendedMaxTestosteroneNmolL.Value;
         }

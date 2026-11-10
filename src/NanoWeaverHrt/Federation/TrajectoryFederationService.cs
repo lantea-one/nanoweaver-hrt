@@ -12,6 +12,7 @@ using NanoWeaverHrt.Configuration;
 using NanoWeaverHrt.Models;
 using NanoWeaverHrt.Security.Authentication;
 using NanoWeaverHrt.Security.Cryptography;
+using NanoWeaverHrt.Security.Models;
 using NanoWeaverHrt.Security.Secrets;
 using NanoWeaverHrt.Security.Signing;
 using NanoWeaverHrt.Storage;
@@ -151,7 +152,7 @@ public sealed class TrajectoryFederationService : ITrajectoryFederationService
         string resolvedPath = await ResolveTrajectoryFilePathAsync(trajectoryFileName, ct).ConfigureAwait(false);
         if (!File.Exists(resolvedPath))
         {
-            throw new FileNotFoundException($"Trajectory file '{trajectoryFileName}' was not found at '{resolvedPath}'.", resolvedPath);
+            throw new FileNotFoundException($"Trajectory file '{trajectoryFileName}' was not found.", trajectoryFileName);
         }
 
         FileInfo fileInfo = new(resolvedPath);
@@ -198,40 +199,47 @@ public sealed class TrajectoryFederationService : ITrajectoryFederationService
         // WHY:  Guarantees cryptographic provenance and tamper-evident authentication across the federation swarm.
         // HOW:  Derives Ed25519 keypair, builds canonical bytes over manifest properties, and signs using Ed25519Signer.
         byte[] seed = _secretStore.GetDatasetSigningKey();
-        Ed25519PrivateKeyParameters privKey = new(seed, 0);
-        Ed25519PublicKeyParameters pubKey = privKey.GeneratePublicKey();
-        byte[] spkiDer = SubjectPublicKeyInfoFactory.CreateSubjectPublicKeyInfo(pubKey).GetDerEncoded();
-        string signingNodeId = DatasetManifestSignature.ComputeKeyId(spkiDer);
-        DateTimeOffset timestamp = DateTimeOffset.UtcNow;
-        string datasetName = Path.GetFileName(trajectoryFileName);
-
-        TrajectoryFederationManifest unsignedManifest = new()
+        try
         {
-            DatasetName = datasetName,
-            TotalSizeBytes = totalSizeBytes,
-            ChunkSizeBytes = chunkSizeBytes,
-            TotalChunks = totalChunks,
-            Chunks = chunks,
-            SigningNodeId = signingNodeId,
-            SignatureAlgorithm = AlgorithmEd25519,
-            SignatureBase64 = string.Empty,
-            ManifestTimestampUtc = timestamp
-        };
+            Ed25519PrivateKeyParameters privKey = new(seed, 0);
+            Ed25519PublicKeyParameters pubKey = privKey.GeneratePublicKey();
+            byte[] spkiDer = SubjectPublicKeyInfoFactory.CreateSubjectPublicKeyInfo(pubKey).GetDerEncoded();
+            string signingNodeId = DatasetManifestSignature.ComputeKeyId(spkiDer);
+            DateTimeOffset timestamp = DateTimeOffset.UtcNow;
+            string datasetName = Path.GetFileName(trajectoryFileName);
 
-        byte[] canonicalBytes = ComputeCanonicalBytes(unsignedManifest);
-        Ed25519Signer signer = new();
-        signer.Init(forSigning: true, privKey);
-        signer.BlockUpdate(canonicalBytes, 0, canonicalBytes.Length);
-        byte[] signatureBytes = signer.GenerateSignature();
-        string signatureBase64 = Convert.ToBase64String(signatureBytes);
+            TrajectoryFederationManifest unsignedManifest = new()
+            {
+                DatasetName = datasetName,
+                TotalSizeBytes = totalSizeBytes,
+                ChunkSizeBytes = chunkSizeBytes,
+                TotalChunks = totalChunks,
+                Chunks = chunks,
+                SigningNodeId = signingNodeId,
+                SignatureAlgorithm = AlgorithmEd25519,
+                SignatureBase64 = string.Empty,
+                ManifestTimestampUtc = timestamp
+            };
 
-        _logger.LogInformation(
-            "Built trajectory federation manifest for {DatasetName} ({TotalChunks} chunks, signed by node {SigningNodeId}).",
-            datasetName,
-            totalChunks,
-            signingNodeId);
+            byte[] canonicalBytes = ComputeCanonicalBytes(unsignedManifest);
+            Ed25519Signer signer = new();
+            signer.Init(forSigning: true, privKey);
+            signer.BlockUpdate(canonicalBytes, 0, canonicalBytes.Length);
+            byte[] signatureBytes = signer.GenerateSignature();
+            string signatureBase64 = Convert.ToBase64String(signatureBytes);
 
-        return unsignedManifest with { SignatureBase64 = signatureBase64 };
+            _logger.LogInformation(
+                "Built trajectory federation manifest for {DatasetName} ({TotalChunks} chunks, signed by node {SigningNodeId}).",
+                datasetName,
+                totalChunks,
+                signingNodeId);
+
+            return unsignedManifest with { SignatureBase64 = signatureBase64 };
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(seed);
+        }
     }
 
     /// <inheritdoc/>
@@ -266,9 +274,35 @@ public sealed class TrajectoryFederationService : ITrajectoryFederationService
 
             if (isMlDsa65)
             {
-                // WHAT: Look up active, trusted peer key and verify ML-DSA-65 post-quantum signature.
+                // WHAT: Look up local node or active peer key and verify ML-DSA-65 post-quantum signature.
                 // WHY:  NIST FIPS 204 lattice signatures provide quantum-resistant federation dataset authenticity.
-                // HOW:  Queries IPeerKeyRegistry.FindActiveAsync, normalizes public key, and verifies via IPostQuantumCryptoProvider.
+                // HOW:  Checks local node key first; if not local, queries IPeerKeyRegistry and verifies via IPostQuantumCryptoProvider.
+                byte[]? localMldsaSeed = null;
+                try
+                {
+                    localMldsaSeed = _secretStore.GetNodeSigningMldsa65Key();
+                }
+                catch
+                {
+                    // Fall back to peer key registry if local key unavailable
+                }
+
+                if (localMldsaSeed is not null)
+                {
+                    try
+                    {
+                        PqcKeyMaterial localKey = _pqcProvider.DeriveSigningKeyPairFromSeed(localMldsaSeed);
+                        if (string.Equals(manifest.SigningNodeId, localKey.KeyId, StringComparison.Ordinal))
+                        {
+                            return _pqcProvider.VerifySignature(canonicalBytes, manifest.SignatureBase64, localKey.PublicKeyBase64);
+                        }
+                    }
+                    finally
+                    {
+                        CryptographicOperations.ZeroMemory(localMldsaSeed);
+                    }
+                }
+
                 PeerKeyRecord? peer = await _peerKeyRegistry.FindActiveAsync(manifest.SigningNodeId, ct).ConfigureAwait(false);
                 if (peer is null || !peer.IsActive || peer.Algorithm != KeyAlgorithm.MlDsa65)
                 {
@@ -288,10 +322,19 @@ public sealed class TrajectoryFederationService : ITrajectoryFederationService
             // WHY:  Allows verification of manifests generated locally or received from registered peer laboratories.
             // HOW:  Checks local node public key match first; if not local, looks up active peer in IPeerKeyRegistry.
             byte[] nodeSeed = _secretStore.GetDatasetSigningKey();
-            Ed25519PrivateKeyParameters nodePrivKey = new(nodeSeed, 0);
-            Ed25519PublicKeyParameters nodePubKey = nodePrivKey.GeneratePublicKey();
-            byte[] nodeSpki = SubjectPublicKeyInfoFactory.CreateSubjectPublicKeyInfo(nodePubKey).GetDerEncoded();
-            string nodeKeyId = DatasetManifestSignature.ComputeKeyId(nodeSpki);
+            Ed25519PublicKeyParameters nodePubKey;
+            string nodeKeyId;
+            try
+            {
+                Ed25519PrivateKeyParameters nodePrivKey = new(nodeSeed, 0);
+                nodePubKey = nodePrivKey.GeneratePublicKey();
+                byte[] nodeSpki = SubjectPublicKeyInfoFactory.CreateSubjectPublicKeyInfo(nodePubKey).GetDerEncoded();
+                nodeKeyId = DatasetManifestSignature.ComputeKeyId(nodeSpki);
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(nodeSeed);
+            }
 
             Ed25519PublicKeyParameters verifierKey;
             if (string.Equals(manifest.SigningNodeId, nodeKeyId, StringComparison.Ordinal))
@@ -356,7 +399,7 @@ public sealed class TrajectoryFederationService : ITrajectoryFederationService
         string resolvedPath = await ResolveTrajectoryFilePathAsync(trajectoryFileName, ct).ConfigureAwait(false);
         if (!File.Exists(resolvedPath))
         {
-            throw new FileNotFoundException($"Trajectory file '{trajectoryFileName}' was not found at '{resolvedPath}'.", resolvedPath);
+            throw new FileNotFoundException($"Trajectory file '{trajectoryFileName}' was not found.", trajectoryFileName);
         }
 
         FileInfo fileInfo = new(resolvedPath);
@@ -649,7 +692,7 @@ public sealed class TrajectoryFederationService : ITrajectoryFederationService
         string resolvedPath = await ResolveTrajectoryFilePathAsync(trajectoryFileName, ct).ConfigureAwait(false);
         if (!File.Exists(resolvedPath))
         {
-            throw new FileNotFoundException($"Trajectory file '{trajectoryFileName}' was not found at '{resolvedPath}'.", resolvedPath);
+            throw new FileNotFoundException($"Trajectory file '{trajectoryFileName}' was not found.", trajectoryFileName);
         }
 
         int totalBytesRead = 0;

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.Intrinsics;
+using System.Text;
 using System.Text.Json;
 using NanoWeaverHrt.Configuration;
 
@@ -113,11 +114,17 @@ public sealed class StackServiceManager : IStackServiceManager
             return [];
         }
 
-        return Directory.GetFiles(configsDir, "*.*", SearchOption.TopDirectoryOnly)
-            .Select(Path.GetFileName)
-            .Where(f => !string.IsNullOrEmpty(f))
-            .Cast<string>()
-            .ToList();
+        string[] files = Directory.GetFiles(configsDir, "*.*", SearchOption.TopDirectoryOnly);
+        List<string> result = new(files.Length);
+        for (int i = 0; i < files.Length; i++)
+        {
+            string? name = Path.GetFileName(files[i]);
+            if (!string.IsNullOrEmpty(name))
+            {
+                result.Add(name);
+            }
+        }
+        return result;
     }
 
     /// <summary>
@@ -271,20 +278,60 @@ public sealed class StackServiceManager : IStackServiceManager
             DirectoryInfo di = new(parquetDir);
             FileInfo[] files = di.GetFiles("*.parquet");
             parquetCount = files.Length;
-            totalParquetBytes = files.Sum(f => f.Length);
+            for (int i = 0; i < files.Length; i++)
+            {
+                totalParquetBytes += files[i].Length;
+            }
         }
 
-        bool isPostgres = backend.StartsWith("PostgreSQL", StringComparison.OrdinalIgnoreCase);
+        string displayName;
+        string endpointOrLocation;
+        ServiceHealthState health;
+        string statusMessage;
+        string techStack;
+
+        if (backend.Contains("Postgres", StringComparison.OrdinalIgnoreCase))
+        {
+            displayName = "PostgreSQL & pg_duckdb Columnar Analytics";
+            endpointOrLocation = SanitizeEndpoint(connStr);
+            health = ServiceHealthState.Healthy;
+            statusMessage = "PostgreSQL pg_duckdb Active";
+            techStack = "PostgreSQL 18 + pg_duckdb v1.1.1";
+        }
+        else if (backend.Contains("DuckDb", StringComparison.OrdinalIgnoreCase))
+        {
+            displayName = "DuckDB Columnar Analytics Engine";
+            endpointOrLocation = "Embedded DuckDB Parquet Storage";
+            health = ServiceHealthState.Healthy;
+            statusMessage = "DuckDB Analytical Engine Active";
+            techStack = "DuckDB.NET Full Columnar Engine";
+        }
+        else if (backend.Contains("MySql", StringComparison.OrdinalIgnoreCase))
+        {
+            displayName = "MySQL Relational Database Cluster";
+            endpointOrLocation = SanitizeEndpoint(connStr);
+            health = ServiceHealthState.Healthy;
+            statusMessage = "MySQL Relational Storage Active";
+            techStack = "MySqlConnector / Percona Server";
+        }
+        else
+        {
+            displayName = "Embedded SQLite & DuckDB Parquet Storage";
+            endpointOrLocation = "Local Embedded Storage";
+            health = ServiceHealthState.DegradedOrFallback;
+            statusMessage = "Operational (Embedded SQLite Fallback Active)";
+            techStack = "Microsoft.Data.Sqlite + DuckDB.NET Full";
+        }
 
         return new StackServiceInfo
         {
             ServiceId = "pg-duckdb",
-            DisplayName = isPostgres ? "PostgreSQL & pg_duckdb Columnar Analytics" : "Embedded SQLite & DuckDB Parquet Storage",
+            DisplayName = displayName,
             RoleDescription = "Vectorized SQL analytical query execution and zero-copy columnar Apache Parquet storage.",
-            EndpointOrLocation = isPostgres ? SanitizeEndpoint(connStr) : "Local Embedded Storage",
-            Health = isPostgres ? ServiceHealthState.Healthy : ServiceHealthState.DegradedOrFallback,
-            StatusMessage = isPostgres ? "PostgreSQL pg_duckdb Active" : "Operational (Embedded SQLite Fallback Active)",
-            TechnologyStack = isPostgres ? "PostgreSQL 18 + pg_duckdb v1.1.1" : "Microsoft.Data.Sqlite + DuckDB.NET Full",
+            EndpointOrLocation = endpointOrLocation,
+            Health = health,
+            StatusMessage = statusMessage,
+            TechnologyStack = techStack,
             Metrics = new Dictionary<string, string>
             {
                 ["Active Backend"] = backend,
@@ -367,8 +414,20 @@ public sealed class StackServiceManager : IStackServiceManager
     private async Task<StackServiceInfo> InspectPeerMeshAsync(CancellationToken ct)
     {
         IReadOnlyList<ShareKeyRecord> keys = await _configRepo.ListShareKeysAsync(ct);
-        int activeKeys = keys.Count(k => k.IsActive);
-        int consumedKeys = keys.Count(k => k.IsConsumed);
+        int activeKeys = 0;
+        int consumedKeys = 0;
+        for (int i = 0; i < keys.Count; i++)
+        {
+            if (keys[i].IsActive)
+            {
+                activeKeys++;
+            }
+
+            if (keys[i].IsConsumed)
+            {
+                consumedKeys++;
+            }
+        }
 
         return new StackServiceInfo
         {
@@ -415,34 +474,40 @@ public sealed class StackServiceManager : IStackServiceManager
             }
         }
 
-        string[] parts = trimmed.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        ReadOnlySpan<char> remaining = trimmed.AsSpan();
         string? host = null;
         string? port = null;
         string? db = null;
 
-        foreach (string part in parts)
+        while (!remaining.IsEmpty)
         {
-            int eqIdx = part.IndexOf('=');
+            int semiIdx = remaining.IndexOf(';');
+            ReadOnlySpan<char> part = semiIdx >= 0 ? remaining[..semiIdx] : remaining;
+            remaining = semiIdx >= 0 ? remaining[(semiIdx + 1)..] : [];
+
+            ReadOnlySpan<char> trimmedPart = part.Trim();
+            int eqIdx = trimmedPart.IndexOf('=');
             if (eqIdx <= 0)
             {
                 continue;
             }
 
-            string key = part[..eqIdx].Trim();
-            string val = part[(eqIdx + 1)..].Trim();
+            ReadOnlySpan<char> key = trimmedPart[..eqIdx].Trim();
+            ReadOnlySpan<char> val = trimmedPart[(eqIdx + 1)..].Trim();
 
-            if (string.Equals(key, "Host", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(key, "Server", StringComparison.OrdinalIgnoreCase))
+            if (key.Equals("Host", StringComparison.OrdinalIgnoreCase) ||
+                key.Equals("Server", StringComparison.OrdinalIgnoreCase))
             {
-                host = val;
+                host = val.ToString();
             }
-            else if (string.Equals(key, "Port", StringComparison.OrdinalIgnoreCase))
+            else if (key.Equals("Port", StringComparison.OrdinalIgnoreCase))
             {
-                port = val;
+                port = val.ToString();
             }
-            else if (string.Equals(key, "Database", StringComparison.OrdinalIgnoreCase))
+            else if (key.Equals("Database", StringComparison.OrdinalIgnoreCase) ||
+                     key.Equals("Db", StringComparison.OrdinalIgnoreCase))
             {
-                db = val;
+                db = val.ToString();
             }
         }
 
@@ -462,6 +527,57 @@ public sealed class StackServiceManager : IStackServiceManager
             return endpoint;
         }
 
-        return System.Text.RegularExpressions.Regex.Replace(trimmed, @"(?i)(password|pwd)\s*=\s*[^;]+", "$1=***");
+        return RedactPassword(trimmed);
+    }
+
+    /// <summary>
+    /// Redacts sensitive password or pwd parameters in raw connection strings without regular expressions.
+    /// </summary>
+    /// <param name="input">Raw connection string.</param>
+    /// <returns>Sanitized connection string with passwords masked as ***.</returns>
+    private static string RedactPassword(string input)
+    {
+        // WHAT: Redacts password or pwd values in connection strings without Regex or LINQ.
+        // WHY:  AGENTS.md Prime Directive 1 forbids Regex; ensures sensitive credentials are not logged or exposed.
+        // HOW:  Walks key-value tokens delimited by ';' and masks values for password or pwd keys.
+        StringBuilder sb = new(input.Length);
+        ReadOnlySpan<char> span = input.AsSpan();
+        bool first = true;
+
+        while (!span.IsEmpty)
+        {
+            int semiIdx = span.IndexOf(';');
+            ReadOnlySpan<char> part = semiIdx >= 0 ? span[..semiIdx] : span;
+            span = semiIdx >= 0 ? span[(semiIdx + 1)..] : [];
+
+            ReadOnlySpan<char> trimmedPart = part.Trim();
+            if (trimmedPart.IsEmpty)
+            {
+                continue;
+            }
+
+            if (!first)
+            {
+                sb.Append(';');
+            }
+            first = false;
+
+            int eqIdx = trimmedPart.IndexOf('=');
+            if (eqIdx > 0)
+            {
+                ReadOnlySpan<char> key = trimmedPart[..eqIdx].Trim();
+                if (key.Equals("password", StringComparison.OrdinalIgnoreCase) ||
+                    key.Equals("pwd", StringComparison.OrdinalIgnoreCase))
+                {
+                    sb.Append(key);
+                    sb.Append("=***");
+                    continue;
+                }
+            }
+
+            sb.Append(trimmedPart);
+        }
+
+        return sb.ToString();
     }
 }

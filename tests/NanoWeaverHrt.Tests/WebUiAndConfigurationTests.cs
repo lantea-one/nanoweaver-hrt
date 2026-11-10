@@ -357,6 +357,29 @@ public sealed class WebUiAndConfigurationTests : IClassFixture<WebApplicationFac
         Assert.Equal(ServiceHealthState.Healthy, pgInfo.Health);
         Assert.Contains("PostgreSQL", pgInfo.DisplayName);
 
+        // Test with mock duckdb repository
+        MockDuckDbConfigRepo mockDuckDbRepo = new();
+        StackServiceManager duckDbMgr = new(mockDuckDbRepo, config);
+        StackServiceInfo duckDbInfo = await duckDbMgr.PingServiceAsync("pg-duckdb");
+        Assert.Equal(ServiceHealthState.Healthy, duckDbInfo.Health);
+        Assert.Contains("DuckDB", duckDbInfo.DisplayName);
+
+        // Test with mock mysql repository
+        MockMySqlConfigRepo mockMySqlRepo = new();
+        StackServiceManager mySqlMgr = new(mockMySqlRepo, config);
+        StackServiceInfo mySqlInfo = await mySqlMgr.PingServiceAsync("pg-duckdb");
+        Assert.Equal(ServiceHealthState.Healthy, mySqlInfo.Health);
+        Assert.Contains("MySQL", mySqlInfo.DisplayName);
+
+        // Test SanitizeEndpoint key-value parsing and password masking
+        string sanitized = StackServiceManager.SanitizeEndpoint("Server=db.example.org;Port=3306;Database=weaver;Uid=admin;Password=supersecret;");
+        Assert.DoesNotContain("supersecret", sanitized);
+        Assert.Contains("db.example.org:3306/weaver", sanitized);
+
+        string fallbackSanitized = StackServiceManager.SanitizeEndpoint("uid=admin;password=secretpass;");
+        Assert.DoesNotContain("secretpass", fallbackSanitized);
+        Assert.Contains("password=***", fallbackSanitized);
+
         // Test simulation ping when offline with configs discovered (Local Mode branch)
         StackServiceInfo simInfo = await mgr.PingServiceAsync("simulation-engine");
         Assert.Contains("Local Mode Active", simInfo.StatusMessage);
@@ -1034,6 +1057,104 @@ public sealed class MockPostgresConfigRepo : IConfigurationRepository
             PeerSessionToken = null
         });
     }
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<ShareKeyRecord>> ListShareKeysAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<ShareKeyRecord>>([]);
+
+    /// <inheritdoc/>
+    public Task<bool> RevokeShareKeyAsync(string tokenId, CancellationToken ct = default) => Task.FromResult(false);
+}
+
+/// <summary>
+/// Mock repository returning DuckDB as the active backend to test DuckDB-specific stack inspection paths.
+/// </summary>
+public sealed class MockDuckDbConfigRepo : IConfigurationRepository
+{
+    /// <inheritdoc/>
+    public string ActiveBackendName => "DuckDB (Embedded)";
+
+    /// <inheritdoc/>
+    public Task InitializeAsync(CancellationToken ct = default) => Task.CompletedTask;
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<ConfigurationItem>> GetAllConfigurationsAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<ConfigurationItem>>([]);
+
+    /// <inheritdoc/>
+    public Task<string> GetValueAsync(string key, string defaultValue = "", CancellationToken ct = default) => Task.FromResult(defaultValue);
+
+    /// <inheritdoc/>
+    public Task SetDatabaseOverrideAsync(string key, string value, string description = "", CancellationToken ct = default) => Task.CompletedTask;
+
+    /// <inheritdoc/>
+    public Task RevertToDefaultAsync(string key, CancellationToken ct = default) => Task.CompletedTask;
+
+    /// <inheritdoc/>
+    public Task<ShareKeyRecord> CreateShareKeyAsync(string label, TimeSpan lifetime, string permissions = "FullCollaborator", CancellationToken ct = default) =>
+        Task.FromResult(new ShareKeyRecord
+        {
+            TokenId = "stub",
+            KeyToken = "stub",
+            Label = label,
+            CreatedAtUtc = DateTime.UtcNow,
+            ExpiresAtUtc = DateTime.UtcNow.Add(lifetime),
+            IsConsumed = false,
+            Permissions = permissions
+        });
+
+    /// <inheritdoc/>
+    public Task<ShareKeyConsumeResult> ConsumeShareKeyAsync(string keyToken, string remotePeerInfo, CancellationToken ct = default) =>
+        Task.FromResult(new ShareKeyConsumeResult { Success = false, Message = "stub" });
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<ShareKeyRecord>> ListShareKeysAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<ShareKeyRecord>>([]);
+
+    /// <inheritdoc/>
+    public Task<bool> RevokeShareKeyAsync(string tokenId, CancellationToken ct = default) => Task.FromResult(false);
+}
+
+/// <summary>
+/// Mock repository returning MySQL as the active backend to test MySQL-specific stack inspection paths.
+/// </summary>
+public sealed class MockMySqlConfigRepo : IConfigurationRepository
+{
+    /// <inheritdoc/>
+    public string ActiveBackendName => "MySQL (Percona)";
+
+    /// <inheritdoc/>
+    public Task InitializeAsync(CancellationToken ct = default) => Task.CompletedTask;
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<ConfigurationItem>> GetAllConfigurationsAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<ConfigurationItem>>([]);
+
+    /// <inheritdoc/>
+    public Task<string> GetValueAsync(string key, string defaultValue = "", CancellationToken ct = default)
+    {
+        if (key == "Storage:PostgresConnectionString") return Task.FromResult("Server=mysql-host;Port=3306;Database=weaver;Uid=app;Pwd=secret;");
+        return Task.FromResult(defaultValue);
+    }
+
+    /// <inheritdoc/>
+    public Task SetDatabaseOverrideAsync(string key, string value, string description = "", CancellationToken ct = default) => Task.CompletedTask;
+
+    /// <inheritdoc/>
+    public Task RevertToDefaultAsync(string key, CancellationToken ct = default) => Task.CompletedTask;
+
+    /// <inheritdoc/>
+    public Task<ShareKeyRecord> CreateShareKeyAsync(string label, TimeSpan lifetime, string permissions = "FullCollaborator", CancellationToken ct = default) =>
+        Task.FromResult(new ShareKeyRecord
+        {
+            TokenId = "stub",
+            KeyToken = "stub",
+            Label = label,
+            CreatedAtUtc = DateTime.UtcNow,
+            ExpiresAtUtc = DateTime.UtcNow.Add(lifetime),
+            IsConsumed = false,
+            Permissions = permissions
+        });
+
+    /// <inheritdoc/>
+    public Task<ShareKeyConsumeResult> ConsumeShareKeyAsync(string keyToken, string remotePeerInfo, CancellationToken ct = default) =>
+        Task.FromResult(new ShareKeyConsumeResult { Success = false, Message = "stub" });
 
     /// <inheritdoc/>
     public Task<IReadOnlyList<ShareKeyRecord>> ListShareKeysAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<ShareKeyRecord>>([]);

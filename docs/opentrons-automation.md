@@ -55,12 +55,23 @@ The protocol generator organizes deck labware according to standard ANSI/SLAS fo
 
 | Deck Slot (OT-2) | Deck Slot (Flex) | Labware Name | Purpose |
 |:---|:---|:---|:---|
-| **Slot 1** | **Slot D1** | `opentrons_96_aluminumblock_generic_pcr_strip_200ul` | Reaction Mastermix Tubes (Scaffold, 10× Folding Buffer, MgCl₂, Nuclease-Free H₂O) |
-| **Slot 2** | **Slot C1** | `nest_96_wellplate_200ul_flat` | Staple Oligonucleotide Source Plate (Pre-mixed or arrayed staples) |
+| **Slot 1** | **Slot D1** | `nest_12_reservoir_15ml` (Multi-channel) or `opentrons_96_aluminumblock_generic_pcr_strip_200ul` (Single-channel) | Reaction Mastermix Reagents (Channel A1: Master Mix, A2: Buffer, A3: Payload) |
+| **Slot 2** | **Slot C1** | `nest_96_wellplate_200ul_flat` | Staple Working Stock Plate (10 µM Staples, 1:10 from 100 µM Master) |
 | **Slot 3** | **Slot D2** | `opentrons_temperature_module_v2` (Optional) | `4°C` Post-synthesis product preservation block |
 | **Slot 4** | **Slot B2** | `opentrons_96_tiprack_20ul` / `opentrons_flex_96_tiprack_50ul` | Clean filter tip rack |
 | **Slot 7–11** | **Slot B1–C1** | `thermocyclerModule` / `flex_thermocycler` | On-deck PCR plate for automated thermal annealing |
 | **Slot 12** | **Fixed Trash** | `fixed_trash` | Contaminated tip disposal |
+
+> [!NOTE]
+> **8-Channel Reservoir Geometry & Stoichiometric Conservation**:
+> When an 8-channel multi-pipette (`p20_multi_gen2`, `p300_multi_gen2`, `flex_8channel_50`) is selected, Slot 1 dynamically loads `nest_12_reservoir_15ml`. The 9 mm nozzle spacing of 8-channel pipettes spans 8 rows simultaneously; loading the 12-channel reservoir allows all 8 tips to aspirate from channel A1 without colliding with 24-tube rack borders.
+> Volumetric stoichiometry is strictly conserved according to C1 × V1 = C2 × V2 against the 10 µM staple working stock plate:
+
+$$
+V_{\text{mastermix}} + V_{\text{staples}} = V_{\text{total}}
+$$
+
+> Ensuring `masterMixVolume + perWellStapleVolume` exactly equals `options.TotalReactionVolumeMicroliters` with zero volumetric drift.
 
 ```
 Opentrons OT-2 Deck Layout (Top View):

@@ -34,5 +34,9 @@
   "Nav.Stack": "Stack Orchestrator",
   "Nav.Config": "Node Configuration",
   "Nav.Users": "User Identity Registry",
-  "Nav.Peers": "Federation Peers"
+  "Nav.Peers": "Federation Peers",
+  "Tray.Show": "Show / Restore",
+  "Tray.Exit": "Quit",
+  "Tray.ActiveNodeFormat": "Active Node: {0}",
+  "Tray.NoActiveNode": "No Active Node"
 }

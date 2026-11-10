@@ -44,21 +44,30 @@ public sealed class FabricationService : IFabricationService
         // HOW:  Loops over the ReadOnlySpan of characters, skipping from '>' to '\n', and incrementing base counters.
         ReadOnlySpan<char> span = sequence.AsSpan();
         bool insideHeader = false;
+        bool atLineStart = true;
         for (int i = 0; i < span.Length; i++)
         {
             char rawCh = span[i];
-            if (insideHeader)
+            if (rawCh == '\r')
             {
-                if (rawCh == '\n')
-                {
-                    insideHeader = false;
-                }
                 continue;
             }
 
-            if (rawCh == '>')
+            if (rawCh == '\n')
             {
-                insideHeader = true;
+                insideHeader = false;
+                atLineStart = true;
+                continue;
+            }
+
+            if (atLineStart)
+            {
+                atLineStart = false;
+                insideHeader = rawCh == '>';
+            }
+
+            if (insideHeader)
+            {
                 continue;
             }
 
@@ -95,7 +104,15 @@ public sealed class FabricationService : IFabricationService
         string geometry,
         double targetKd)
     {
-        DnaOrigamiSample? matchedSample = _samples.FirstOrDefault(s => string.Equals(s.Id, sequenceOrSampleId, StringComparison.OrdinalIgnoreCase));
+        DnaOrigamiSample? matchedSample = null;
+        for (int i = 0; i < _samples.Count; i++)
+        {
+            if (string.Equals(_samples[i].Id, sequenceOrSampleId, StringComparison.OrdinalIgnoreCase))
+            {
+                matchedSample = _samples[i];
+                break;
+            }
+        }
         string targetTissue = matchedSample?.TargetTissue ?? (regimen == TherapeuticRegimen.MaleToFemale ? "Anterior Pituitary Gonadotrope (GnRH-R)" : "Steroidogenic Receptors (Pituitary/Adrenal)");
         string activeLigand = matchedSample?.ActiveLigand ?? (regimen == TherapeuticRegimen.MaleToFemale ? "17β-Estradiol" : "Testosterone Enanthate");
 
@@ -166,9 +183,21 @@ public sealed class FabricationService : IFabricationService
         // HOW:  Assembles equipment lists, pipetting tables, 7-step bench execution protocols, and gel QC instructions.
         DiyFabricationGuide diyGuide = GenerateDiyFabricationGuide(regimen, geometry, staples.Count);
 
-        // Compute deterministic SHA-256 fingerprint for the package definition
-        string signatureMaterial = $"{sequenceOrSampleId.Trim()}|{regimen}|{geometry}|{targetTissue}|{targetKd:F4}|{staples.Count}|{string.Join(',', staples.Select(s => s.Sequence))}";
-        byte[] hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(signatureMaterial));
+        // WHAT: Computes deterministic SHA-256 fingerprint for the package definition using streaming hash.
+        // WHY:  Avoids LINQ allocations (Select, string.Join) while preserving cryptographic reproducibility.
+        // HOW:  Streams prefix and staple sequences into IncrementalHash and exports hex string.
+        using IncrementalHash hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        string prefix = $"{sequenceOrSampleId.Trim()}|{regimen}|{geometry}|{targetTissue}|{targetKd:F4}|{staples.Count}|";
+        hasher.AppendData(Encoding.UTF8.GetBytes(prefix));
+        for (int i = 0; i < staples.Count; i++)
+        {
+            if (i > 0)
+            {
+                hasher.AppendData(","u8);
+            }
+            hasher.AppendData(Encoding.UTF8.GetBytes(staples[i].Sequence));
+        }
+        byte[] hashBytes = hasher.GetHashAndReset();
         string sha256 = Convert.ToHexString(hashBytes).ToLowerInvariant();
 
         return new FabricationPackage
@@ -392,17 +421,59 @@ public sealed class FabricationService : IFabricationService
     {
         List<StapleOligoRecord> staples = [];
 
-        string[] coreSequences =
-        [
-            "AGCGTCATTTACCGGATACCTTTCGATCGGATCC",
-            "TTCAGCGTTTGAGCGTAACCCAACTTGGCATGAG",
-            "CGATCGGATCCTTTACCGTAAGGCTTGCAATCAG",
-            "GCTAACGTTCGATAGCTTGGCATCCGATTTACCG",
-            "AATGCTAGGATCCGATCGTTTGACCGGATAAGCC",
-            "CCGATAGCTAACGTTTCGATAGCTTGGCATCCGA",
-            "TTGGCATCCGATTTACCGAGCGTCATTTACCGGA",
-            "TACCTTTCGATCGGATCCTTCAGCGTTTGAGCGT"
-        ];
+        // WHAT: Differentiates structural core crossover staples by chassis architecture.
+        // WHY:  Nanotube 6HB, Cuboid box, and Icosahedral cage have distinct lattice routing patterns and crossover offsets.
+        // HOW:  Selects canonical crossover sequences (32-37 nt) tailored to the geometry lattice geometry.
+        string[] coreSequences;
+        string geometryRolePrefix;
+
+        if (geometry.Contains("Cuboid", StringComparison.OrdinalIgnoreCase) ||
+            geometry.Contains("Box", StringComparison.OrdinalIgnoreCase))
+        {
+            coreSequences =
+            [
+                "GGATCCGATCGTTTGACCGGATAAGCCAATGCTA",
+                "ACCTTTCGATCGGATCCTTCAGCGTTTGAGCGTA",
+                "TGGCATCCGATTTACCGAGCGTCATTTACCGGAT",
+                "CGATAGCTAACGTTTCGATAGCTTGGCATCCGAT",
+                "TCAGCGTTTGAGCGTAACCCAACTTGGCATGAGC",
+                "CTAACGTTCGATAGCTTGGCATCCGATTTACCGT",
+                "GCGTCATTTACCGGATACCTTTCGATCGGATCCT",
+                "AAGGCTTGCAATCAGCGATCGGATCCTTTACCGT"
+            ];
+            geometryRolePrefix = "Cuboid Orthogonal 24-Helix Crossover";
+        }
+        else if (geometry.Contains("Cage", StringComparison.OrdinalIgnoreCase) ||
+                 geometry.Contains("Icosahedr", StringComparison.OrdinalIgnoreCase))
+        {
+            coreSequences =
+            [
+                "TTACCGTAAGGCTTGCAATCAGCGATCGGATCCTTT",
+                "TTTGAGCGTAACCCAACTTGGCATGAGCCGATAGCT",
+                "TCGATAGCTTGGCATCCGATTTACCGAGCGTCATTT",
+                "CGATCGTTTGACCGGATAAGCCAATGCTAGGATCCG",
+                "AACCCAACTTGGCATGAGCCGATAGCTAACGTTTCG",
+                "GATACCTTTCGATCGGATCCTTCAGCGTTTGAGCGT",
+                "GCTTGGCATCCGATTTACCGAGCGTCATTTACCGGA",
+                "TAAGCCAATGCTAGGATCCGATCGTTTGACCGGATA"
+            ];
+            geometryRolePrefix = "Icosahedral 5-Way Vertex Crossover";
+        }
+        else
+        {
+            coreSequences =
+            [
+                "AGCGTCATTTACCGGATACCTTTCGATCGGATCC",
+                "TTCAGCGTTTGAGCGTAACCCAACTTGGCATGAG",
+                "CGATCGGATCCTTTACCGTAAGGCTTGCAATCAG",
+                "GCTAACGTTCGATAGCTTGGCATCCGATTTACCG",
+                "AATGCTAGGATCCGATCGTTTGACCGGATAAGCC",
+                "CCGATAGCTAACGTTTCGATAGCTTGGCATCCGA",
+                "TTGGCATCCGATTTACCGAGCGTCATTTACCGGA",
+                "TACCTTTCGATCGGATCCTTCAGCGTTTGAGCGT"
+            ];
+            geometryRolePrefix = "Nanotube Cyclic 6-HB Crossover";
+        }
 
         // 1. Core structural crossover staples
         for (int i = 0; i < coreSequences.Length; i++)
@@ -419,18 +490,31 @@ public sealed class FabricationService : IFabricationService
                 MeltingTemperatureCelsius = tm,
                 GcPercentage = gc,
                 StockConcentrationMicromolar = 100.0,
-                FunctionalRole = $"Structural Crossover Helix {i + 1} to {(i + 1) % coreSequences.Length + 1}"
+                FunctionalRole = $"{geometryRolePrefix} #{i + 1}"
             });
         }
 
         // 2. Aptamer pocket functionalization staples
+        // WHAT: Preserves intact full-length aptamer core flanked by locus-specific scaffold anchors and Kd-tuned stem.
+        // WHY:  Truncating aptamers destroys ligand-binding hairpins; tuning stem clamp modulates target dissociation rate.
+        // HOW:  Selects full-length motif, modulates stem clamp based on targetKd tier, and appends distinct anchor pairs.
         string aptamerMotif = regimen == TherapeuticRegimen.MaleToFemale
-            ? "ATACCAGCTTATTCAATTGGGAGTGTGTGGTATAGTGGTGTCTTTGTTTGT" // 17β-Estradiol aptamer
-            : "CGAATGAGTTACGTACCTGTAGTGCTGTGGCATTTGTACGGTCAGCT";   // Testosterone aptamer
+            ? "ATACCAGCTTATTCAATTGGGAGTGTGTGGTATAGTGGTGTCTTTGTTTGT" // 17β-Estradiol aptamer (52 nt)
+            : "CGAATGAGTTACGTACCTGTAGTGCTGTGGCATTTGTACGGTCAGCT";   // Testosterone aptamer (48 nt)
+
+        (string stem5, string stem3) = targetKd switch
+        {
+            <= 3.0 => ("GCGCG", "CGCGC"),
+            >= 6.0 => ("ATATA", "TATAT"),
+            _ => ("GCCAT", "ATGGC")
+        };
+
+        string[] anchor5 = ["ACCGGA", "GGTAAC", "TAGCTT", "TGACCG"];
+        string[] anchor3 = ["TTCGAT", "CAACTT", "CCGATT", "ATAAGC"];
 
         for (int i = 0; i < 4; i++)
         {
-            string pocketSeq = $"TTTT{aptamerMotif[..(aptamerMotif.Length / 2)]}TTTT";
+            string pocketSeq = $"{anchor5[i]}{stem5}{aptamerMotif}{stem3}{anchor3[i]}";
             (int a, int t, int g, int c, double gc, _) = AnalyzeCoreSeq(pocketSeq);
             double tm = CalculateMeltingTemperature(a, t, g, c);
 
@@ -540,6 +624,21 @@ public sealed class FabricationService : IFabricationService
         string exportDirectory,
         CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(package);
+        ArgumentException.ThrowIfNullOrWhiteSpace(exportDirectory);
+
+        // WHAT: Enforces strict filename validation against path traversal vulnerabilities.
+        // WHY:  Untrusted package IDs containing path separators could overwrite arbitrary filesystem targets.
+        // HOW:  Validates that PackageId equals its standalone file name with no separators or relative traversal dots.
+        if (string.IsNullOrWhiteSpace(package.PackageId) ||
+            package.PackageId.Contains("..", StringComparison.Ordinal) ||
+            package.PackageId.Contains('/', StringComparison.Ordinal) ||
+            package.PackageId.Contains('\\', StringComparison.Ordinal) ||
+            Path.GetFileName(package.PackageId) != package.PackageId)
+        {
+            throw new ArgumentException("Invalid package ID containing path traversal characters.", nameof(package));
+        }
+
         Directory.CreateDirectory(exportDirectory);
         string fileName = $"{package.PackageId}.fabrication.json";
         string filePath = Path.Combine(exportDirectory, fileName);
@@ -550,13 +649,15 @@ public sealed class FabricationService : IFabricationService
             PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
         };
 
-        using (FileStream fs = new(filePath, FileMode.Create, FileAccess.Write, FileShare.None))
-        {
-            await JsonSerializer.SerializeAsync(fs, package, opts, ct);
-        }
+        // WHAT: Serializes the manifest to a byte buffer, writes directly to disk, and computes SHA-256 in one pass.
+        // WHY:  Avoids redundant disk I/O and zero-allocation double-reading of the newly serialized file.
+        // HOW:  Serializes to MemoryStream, persists buffer to disk, and hashes the in-memory bytes.
+        using MemoryStream ms = new();
+        await JsonSerializer.SerializeAsync(ms, package, opts, ct);
+        byte[] manifestBytes = ms.ToArray();
 
-        byte[] fileBytes = await File.ReadAllBytesAsync(filePath, ct);
-        byte[] hash = SHA256.HashData(fileBytes);
+        await File.WriteAllBytesAsync(filePath, manifestBytes, ct);
+        byte[] hash = SHA256.HashData(manifestBytes);
         string sha256 = Convert.ToHexString(hash).ToLowerInvariant();
 
         return (filePath, sha256);

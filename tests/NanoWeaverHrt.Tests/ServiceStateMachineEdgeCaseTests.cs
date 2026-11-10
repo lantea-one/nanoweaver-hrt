@@ -282,9 +282,15 @@ public sealed class ServiceStateMachineEdgeCaseTests : IDisposable
         Assert.Equal("pg-duckdb", storage.ServiceId);
 
         // 3. Peer mesh lookup (line 78)
+        ShareKeyRecord activeKey = await _configRepository.CreateShareKeyAsync("active-peer", TimeSpan.FromHours(1));
+        ShareKeyRecord consumedKey = await _configRepository.CreateShareKeyAsync("consumed-peer", TimeSpan.FromHours(1));
+        await _configRepository.ConsumeShareKeyAsync(consumedKey.KeyToken, "192.168.1.50");
+
         StackServiceInfo? peer = await manager.GetServiceByIdAsync("peer");
         Assert.NotNull(peer);
         Assert.Equal("peer-mesh", peer.ServiceId);
+        Assert.Contains("1 Active Share Links", peer.StatusMessage);
+        Assert.Contains("1 Connected Peers", peer.StatusMessage);
 
         // 4. Unknown service lookup fallback (line 79)
         StackServiceInfo? unknown = await manager.GetServiceByIdAsync("unknown-service-id");

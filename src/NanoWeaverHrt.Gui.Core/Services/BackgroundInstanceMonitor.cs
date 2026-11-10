@@ -227,7 +227,8 @@ public sealed class BackgroundInstanceMonitor : IBackgroundInstanceMonitor
                 _ => "Disconnected"
             };
 
-            summaries.Add($"{s.DisplayName}: {statusText} (CPU: {s.CpuUtilizationPercent:F1}%, GPU: {s.GpuUtilizationPercent:F1}%, Temp: {s.GpuTemperatureCelsius:F1}°C)");
+            string errorDetail = !string.IsNullOrWhiteSpace(s.LastErrorTitle) ? $" — {s.LastErrorTitle}" : string.Empty;
+            summaries.Add($"{s.DisplayName}: {statusText}{errorDetail} (CPU: {s.CpuUtilizationPercent:F1}%, GPU: {s.GpuUtilizationPercent:F1}%, Temp: {s.GpuTemperatureCelsius:F1}°C)");
 
             switch (s.State)
             {

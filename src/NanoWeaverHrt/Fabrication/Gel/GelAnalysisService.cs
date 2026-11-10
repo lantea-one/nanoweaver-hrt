@@ -59,14 +59,14 @@ public sealed class GelAnalysisService : IGelAnalysisService
         // HOW:  Segments lanes via column projection, extracts background-subtracted vertical profiles, detects peaks, and calibrates against ladder.
         ArgumentNullException.ThrowIfNull(request);
 
-        if (request.Width <= 0)
+        if (request.Width <= 0 || request.Width > 8192)
         {
-            throw new ArgumentOutOfRangeException(nameof(request.Width), "Width must be greater than zero.");
+            throw new ArgumentOutOfRangeException(nameof(request.Width), "Width must be between 1 and 8192.");
         }
 
-        if (request.Height <= 0)
+        if (request.Height <= 0 || request.Height > 8192)
         {
-            throw new ArgumentOutOfRangeException(nameof(request.Height), "Height must be greater than zero.");
+            throw new ArgumentOutOfRangeException(nameof(request.Height), "Height must be between 1 and 8192.");
         }
 
         if (request.ImageBytes == null || request.ImageBytes.Length == 0)
@@ -208,14 +208,14 @@ public sealed class GelAnalysisService : IGelAnalysisService
         // HOW:  Reads the entire stream into a rented byte buffer or MemoryStream respecting the CancellationToken.
         ArgumentNullException.ThrowIfNull(imageStream);
 
-        if (width <= 0)
+        if (width <= 0 || width > 8192)
         {
-            throw new ArgumentOutOfRangeException(nameof(width), "Width must be greater than zero.");
+            throw new ArgumentOutOfRangeException(nameof(width), "Width must be between 1 and 8192.");
         }
 
-        if (height <= 0)
+        if (height <= 0 || height > 8192)
         {
-            throw new ArgumentOutOfRangeException(nameof(height), "Height must be greater than zero.");
+            throw new ArgumentOutOfRangeException(nameof(height), "Height must be between 1 and 8192.");
         }
 
         if (expectedLanes <= 0 || expectedLanes > 24)
@@ -225,10 +225,36 @@ public sealed class GelAnalysisService : IGelAnalysisService
 
         ct.ThrowIfCancellationRequested();
 
+        long maxAllowedBytes = (long)width * height * 4;
+        if (imageStream.CanSeek && imageStream.Length > maxAllowedBytes)
+        {
+            throw new ArgumentException($"ImageStream length ({imageStream.Length} bytes) exceeds maximum supported buffer size ({maxAllowedBytes} bytes) for specified dimensions.", nameof(imageStream));
+        }
+
         byte[] imageBytes;
         {
             await using MemoryStream ms = new();
-            await imageStream.CopyToAsync(ms, ct).ConfigureAwait(false);
+            byte[] copyBuffer = ArrayPool<byte>.Shared.Rent(81920);
+            try
+            {
+                long totalBytesRead = 0;
+                int read;
+                while ((read = await imageStream.ReadAsync(copyBuffer.AsMemory(), ct).ConfigureAwait(false)) > 0)
+                {
+                    totalBytesRead += read;
+                    if (totalBytesRead > maxAllowedBytes)
+                    {
+                        throw new ArgumentException($"Image stream exceeded maximum allowed byte size of {maxAllowedBytes} bytes for specified dimensions.", nameof(imageStream));
+                    }
+
+                    await ms.WriteAsync(copyBuffer.AsMemory(0, read), ct).ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(copyBuffer);
+            }
+
             imageBytes = ms.ToArray();
         }
 

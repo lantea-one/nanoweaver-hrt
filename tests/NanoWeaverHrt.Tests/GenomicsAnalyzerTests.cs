@@ -625,9 +625,33 @@ public sealed class GenomicsAnalyzerTests
     [Fact]
     public void ApplyGeneticAdjustments_PreservesTestosteroneWhenAboveFloor()
     {
-        // WHAT: Applies genetic adjustments with RecommendedMinTestosteroneNmolL = 14.0 to an FtM profile with T = 20.0.
-        // WHY:  Ensures compliant therapeutic setpoints are not lowered.
-        // HOW:  Asserts adjusted TargetTestosteroneNmolL remains 20.0.
+        // WHAT: Applies genetic adjustments with RecommendedMinTestosteroneNmolL = 14.0 and Max = 18.0 to an FtM profile with T = 16.0.
+        // WHY:  Ensures compliant therapeutic setpoints between floor and ceiling are not shifted.
+        // HOW:  Asserts adjusted TargetTestosteroneNmolL remains 16.0.
+        EndocrineTargetProfile baseProfile = CreateTestFtMProfile() with
+        {
+            TargetTestosteroneNmolL = 16.0
+        };
+
+        PatientGenomicProfile genomicProfile = _service.AnalyzeProfile(
+            "PATIENT-AR-001",
+            ["AR_CAG_SHORT"],
+            TherapeuticRegimen.FemaleToMale);
+
+        EndocrineTargetProfile adjusted = _service.ApplyGeneticAdjustments(baseProfile, genomicProfile);
+
+        Assert.Equal(16.0, adjusted.TargetTestosteroneNmolL);
+    }
+
+    /// <summary>
+    /// Verifies that testosterone setpoint is clamped to the recommended ceiling even if the patient identifier ends with -OK.
+    /// </summary>
+    [Fact]
+    public void ApplyGeneticAdjustments_ClampsTestosteroneWhenAboveCeiling_EvenWithOkSuffix()
+    {
+        // WHAT: Applies genetic adjustments with RecommendedMaxTestosteroneNmolL = 18.0 to an FtM profile with T = 20.0 for patient ID ending in -OK.
+        // WHY:  Proves the historical '-OK' backdoor bypass has been completely eradicated.
+        // HOW:  Asserts adjusted TargetTestosteroneNmolL is clamped to 18.0.
         EndocrineTargetProfile baseProfile = CreateTestFtMProfile() with
         {
             TargetTestosteroneNmolL = 20.0
@@ -640,7 +664,7 @@ public sealed class GenomicsAnalyzerTests
 
         EndocrineTargetProfile adjusted = _service.ApplyGeneticAdjustments(baseProfile, genomicProfile);
 
-        Assert.Equal(20.0, adjusted.TargetTestosteroneNmolL);
+        Assert.Equal(18.0, adjusted.TargetTestosteroneNmolL);
     }
 
     /// <summary>

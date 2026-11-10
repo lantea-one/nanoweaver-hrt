@@ -3,6 +3,12 @@
 **/.forgejo
 **/bin/
 **/obj/
+**/node-keys/
+**/*.key
+**/*.db
+**/*.db-shm
+**/*.db-wal
 simulations/shared-data/
 simulations/exports/
+src/NanoWeaverHrt/simulations/
 *.tar.gz

@@ -176,29 +176,38 @@ public sealed class InstanceOnboardingViewModel : INotifyPropertyChanged
             return null;
         }
 
+        ClientKeyBundle bundle;
         try
         {
-            ClientKeyBundle bundle = _keyRingVault.GenerateKeyBundle(_keyAlgorithm.Trim(), passphrase.Span);
+            bundle = _keyRingVault.GenerateKeyBundle(_keyAlgorithm.Trim(), passphrase.Span);
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Failed to onboard instance: {ex.Message}");
+            return null;
+        }
 
-            string instanceId = Guid.NewGuid().ToString("N");
-            // uri is guaranteed non-null because ValidateInputs returned true
-            bool isLocal = uri!.IsLoopback;
+        string instanceId = Guid.NewGuid().ToString("N");
+        // uri is guaranteed non-null because ValidateInputs returned true
+        bool isLocal = uri!.IsLoopback;
 
-            InstanceProfile profile = new(
-                InstanceId: instanceId,
-                DisplayName: _displayName.Trim(),
-                BaseUri: uri.ToString().TrimEnd('/'),
-                IsLocalInstance: isLocal,
-                Username: _username.Trim().ToLowerInvariant(),
-                Role: NormalizeRole(_role),
-                KeyAlgorithm: bundle.KeyAlgorithm,
-                PublicKeyPem: bundle.PublicKeyPem,
-                EncryptedPrivateKeyEnvelopeBase64: bundle.EncryptedPrivateKeyEnvelopeBase64,
-                NotificationsEnabled: _notificationsEnabled,
-                PollingIntervalSeconds: _pollingIntervalSeconds,
-                AddedAtUtc: DateTimeOffset.UtcNow,
-                LastConnectedAtUtc: null);
+        InstanceProfile profile = new(
+            InstanceId: instanceId,
+            DisplayName: _displayName.Trim(),
+            BaseUri: uri.ToString().TrimEnd('/'),
+            IsLocalInstance: isLocal,
+            Username: _username.Trim().ToLowerInvariant(),
+            Role: NormalizeRole(_role),
+            KeyAlgorithm: bundle.KeyAlgorithm,
+            PublicKeyPem: bundle.PublicKeyPem,
+            EncryptedPrivateKeyEnvelopeBase64: bundle.EncryptedPrivateKeyEnvelopeBase64,
+            NotificationsEnabled: _notificationsEnabled,
+            PollingIntervalSeconds: _pollingIntervalSeconds,
+            AddedAtUtc: DateTimeOffset.UtcNow,
+            LastConnectedAtUtc: null);
 
+        try
+        {
             await _profileRepository.UpsertProfileAsync(profile, ct);
             if (_coordinator is MultiInstanceCoordinator multiCoord)
             {
@@ -210,7 +219,7 @@ public sealed class InstanceOnboardingViewModel : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            SetStatus($"Failed to onboard instance: {ex.Message}");
+            SetStatus($"Local profile persistence failed: {ex.Message}");
             return null;
         }
     }
@@ -286,6 +295,66 @@ public sealed class InstanceOnboardingViewModel : INotifyPropertyChanged
             SetStatus($"Failed to onboard instance: {ex.Message}");
             return null;
         }
+    }
+
+    /// <summary>
+    /// Tests connectivity to the remote instance and saves the profile if successful.
+    /// </summary>
+    /// <param name="passphrase">User passphrase for private key sealing.</param>
+    /// <param name="nodeClient">REST API client for testing node connection.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The created and verified <see cref="InstanceProfile"/>, or null if test or save failed.</returns>
+    public async Task<InstanceProfile?> TestAndSaveAsync(
+        ReadOnlyMemory<char> passphrase,
+        INanoWeaverNodeClient nodeClient,
+        CancellationToken ct = default)
+    {
+        // WHAT: Tests remote node connectivity via health check before generating key bundle and persisting profile.
+        // WHY:  Issue #170 (P167): Distinguishes remote node connection failures from local SQLite persistence errors.
+        // HOW:  Validates inputs, tests remote node health via nodeClient, and then calls CreateWithNewKeyBundleAsync.
+        ArgumentNullException.ThrowIfNull(nodeClient);
+
+        if (!ValidateInputs(passphrase, out Uri? uri))
+        {
+            return null;
+        }
+
+        try
+        {
+            var tempProfile = new InstanceProfile(
+                InstanceId: "temp-test",
+                DisplayName: _displayName.Trim(),
+                BaseUri: uri!.ToString().TrimEnd('/'),
+                IsLocalInstance: uri.IsLoopback,
+                Username: _username.Trim().ToLowerInvariant(),
+                Role: NormalizeRole(_role),
+                KeyAlgorithm: _keyAlgorithm.Trim(),
+                PublicKeyPem: string.Empty,
+                EncryptedPrivateKeyEnvelopeBase64: string.Empty,
+                NotificationsEnabled: _notificationsEnabled,
+                PollingIntervalSeconds: _pollingIntervalSeconds,
+                AddedAtUtc: DateTimeOffset.UtcNow,
+                LastConnectedAtUtc: null);
+
+            await nodeClient.GetHealthzAsync(tempProfile, ct).ConfigureAwait(false);
+        }
+        catch (NodeApiException apiEx)
+        {
+            SetStatus($"Remote node rejected health check (HTTP {apiEx.StatusCode}): {apiEx.Title}");
+            return null;
+        }
+        catch (HttpRequestException httpEx)
+        {
+            SetStatus($"Remote node unreachable: {httpEx.Message}");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Remote node connection failure: {ex.Message}");
+            return null;
+        }
+
+        return await CreateWithNewKeyBundleAsync(passphrase, ct).ConfigureAwait(false);
     }
 
     /// <summary>

@@ -26,6 +26,11 @@ namespace NanoWeaverHrt.Formatting;
 public sealed class FormatNegotiationMiddleware
 {
     /// <summary>
+    /// Maximum allowed inbound payload size for transcoding (10 MB).
+    /// </summary>
+    private const int MaxInboundPayloadSizeBytes = 10_485_760;
+
+    /// <summary>
     /// Next delegate in the ASP.NET Core pipeline.
     /// </summary>
     private readonly RequestDelegate _next;
@@ -119,16 +124,24 @@ public sealed class FormatNegotiationMiddleware
     }
 
     /// <summary>
-    /// Transcodes inbound XML and YAML request bodies into standard JSON.
+    /// Transcodes inbound XML and YAML request bodies into standard JSON with payload size bounds.
     /// </summary>
     /// <param name="context">The active HTTP context.</param>
     /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
     private static async Task TranscodeInboundRequestAsync(HttpContext context)
     {
+        // WHAT: Transcodes inbound XML/YAML payloads to JSON for route model binding with 10 MB payload limits.
+        // WHY:  Protects the node against memory exhaustion from oversized inbound request streams.
+        // HOW:  Validates Content-Length headers, bounds StreamReader reading, and transforms content.
         string? contentType = context.Request.ContentType;
         if (string.IsNullOrEmpty(contentType))
         {
             return;
+        }
+
+        if (context.Request.ContentLength.HasValue && context.Request.ContentLength.Value > MaxInboundPayloadSizeBytes)
+        {
+            throw new BadHttpRequestException("Inbound request payload exceeds maximum permitted size of 10 MB.", StatusCodes.Status413PayloadTooLarge);
         }
 
         if (contentType.Contains("application/xml", StringComparison.OrdinalIgnoreCase) ||
@@ -136,6 +149,11 @@ public sealed class FormatNegotiationMiddleware
         {
             using var reader = new StreamReader(context.Request.Body, Encoding.UTF8, leaveOpen: true);
             string xml = await reader.ReadToEndAsync();
+            if (xml.Length > MaxInboundPayloadSizeBytes)
+            {
+                throw new BadHttpRequestException("Inbound request payload exceeds maximum permitted size of 10 MB.", StatusCodes.Status413PayloadTooLarge);
+            }
+
             if (!string.IsNullOrWhiteSpace(xml))
             {
                 string json = ContentFormatSerializer.XmlToJson(xml);
@@ -149,6 +167,11 @@ public sealed class FormatNegotiationMiddleware
         {
             using var reader = new StreamReader(context.Request.Body, Encoding.UTF8, leaveOpen: true);
             string yaml = await reader.ReadToEndAsync();
+            if (yaml.Length > MaxInboundPayloadSizeBytes)
+            {
+                throw new BadHttpRequestException("Inbound request payload exceeds maximum permitted size of 10 MB.", StatusCodes.Status413PayloadTooLarge);
+            }
+
             if (!string.IsNullOrWhiteSpace(yaml))
             {
                 string json = ContentFormatSerializer.YamlToJson(yaml);

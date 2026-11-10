@@ -34,5 +34,9 @@
   "Nav.Stack": "Stack Orchestrator",
   "Nav.Config": "Node Configuration",
   "Nav.Users": "User Identity Registry",
-  "Nav.Peers": "Federation Peers"
+  "Nav.Peers": "Federation Peers",
+  "Tray.Show": "NanoWeaver HRT öffnen",
+  "Tray.Exit": "Beenden",
+  "Tray.ActiveNodeFormat": "Aktiver Knoten: {0}",
+  "Tray.NoActiveNode": "Kein aktiver Knoten"
 }

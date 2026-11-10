@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
+using System.Xml;
 using System.Xml.Linq;
 using NanoWeaverHrt.Swagger;
 using YamlDotNet.Serialization;
@@ -166,16 +167,27 @@ public static class ContentFormatSerializer
     }
 
     /// <summary>
-    /// Converts an XML string into a lower camelCase JSON string.
+    /// Converts an XML string into a lower camelCase JSON string with hardened security bounds.
     /// </summary>
     /// <param name="xml">The input XML document string.</param>
     /// <returns>A valid JSON string.</returns>
     public static string XmlToJson(string xml)
     {
-        // WHAT: Translates XML to JSON.
-        // WHY:  Allows incoming XML request bodies to be processed by standard ASP.NET model binders.
-        // HOW:  Parses XML into XDocument, recursively builds JSON via Utf8JsonWriter.
-        XDocument xDoc = XDocument.Parse(xml);
+        // WHAT: Translates XML to JSON with strict XML reader security settings.
+        // WHY:  Allows incoming XML request bodies to be processed by standard ASP.NET model binders while preventing XXE and billion-laughs DoS attacks.
+        // HOW:  Parses XML into XDocument via XmlReader with DTD processing prohibited and character limits enforced, then recursively builds JSON via Utf8JsonWriter.
+        var settings = new XmlReaderSettings
+        {
+            DtdProcessing = DtdProcessing.Prohibit,
+            XmlResolver = null,
+            MaxCharactersInDocument = 10_485_760,
+            MaxCharactersFromEntities = 1024
+        };
+
+        using var stringReader = new StringReader(xml);
+        using var xmlReader = XmlReader.Create(stringReader, settings);
+        XDocument xDoc = XDocument.Load(xmlReader);
+
         using var stream = new MemoryStream();
         using (var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
         {

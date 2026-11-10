@@ -179,6 +179,16 @@ public sealed class NodeSecretStore : INodeSecretStore
         return key;
     }
 
+    /// <inheritdoc/>
+    public byte[] GetNodeSigningMldsa65Key()
+    {
+        // WHAT: Loads or generates the persistent 32-byte ML-DSA-65 post-quantum signing seed.
+        // WHY:  Provides callers with the post-quantum asymmetric signing seed for local node verification.
+        // HOW:  Calls LoadOrCreateKeyFile using the node keys directory and node_signing_mldsa65.key.
+        (byte[] key, _) = LoadOrCreateKeyFile(NodeKeysDirectory, "node_signing_mldsa65.key");
+        return key;
+    }
+
     /// <summary>
     /// Resolves the directory that holds the key files from configuration, falling back to a derived path.
     /// </summary>
