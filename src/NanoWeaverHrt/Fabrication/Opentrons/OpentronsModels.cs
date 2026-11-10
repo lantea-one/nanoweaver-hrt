@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using NanoWeaverHrt.Endocrine;
 using NanoWeaverHrt.Swagger;
 
@@ -6,6 +7,7 @@ namespace NanoWeaverHrt.Fabrication.Opentrons;
 /// <summary>
 /// Supported Opentrons liquid handler robot models.
 /// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum OpentronsRobotModel
 {
     /// <summary>Standard benchtop Opentrons OT-2 robot.</summary>
@@ -18,6 +20,7 @@ public enum OpentronsRobotModel
 /// <summary>
 /// Supported pipette models for DNA origami stoichiometric dispensing.
 /// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum OpentronsPipetteModel
 {
     /// <summary>OT-2 Single-channel 20 µL pipette (Gen2).</summary>
@@ -45,6 +48,7 @@ public enum OpentronsPipetteModel
 /// <summary>
 /// Supported labware plate types for source staple libraries and destination assemblies.
 /// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum OpentronsPlateType
 {
     /// <summary>NEST 96-well PCR plate 100 µL full skirt.</summary>
@@ -66,12 +70,15 @@ public enum OpentronsPlateType
 public sealed record OpentronsProtocolOptions
 {
     /// <summary>Target liquid handler robot model.</summary>
+    [JsonConverter(typeof(JsonStringEnumConverter))]
     public OpentronsRobotModel RobotModel { get; init; } = OpentronsRobotModel.OT2;
 
     /// <summary>Primary pipette model for staple transfer.</summary>
+    [JsonConverter(typeof(JsonStringEnumConverter))]
     public OpentronsPipetteModel PipetteModel { get; init; } = OpentronsPipetteModel.P20_Single_Gen2;
 
     /// <summary>Labware format for staple source plates.</summary>
+    [JsonConverter(typeof(JsonStringEnumConverter))]
     public OpentronsPlateType SourcePlateType { get; init; } = OpentronsPlateType.Nest96WellPcr;
 
     /// <summary>Whether to integrate the on-deck Temperature Module set to 4°C during assembly.</summary>
@@ -88,6 +95,9 @@ public sealed record OpentronsProtocolOptions
 
     /// <summary>Staple excess molar ratio over scaffold (default: 10.0 for 10:1 excess).</summary>
     public double StapleMolarExcessRatio { get; init; } = 10.0;
+
+    /// <summary>Whether to include an automated enzymatic CpG methylation (M.SssI) pre-treatment step for TLR9-reactive scaffolds.</summary>
+    public bool IncludeCpGMethylationStage { get; init; } = false;
 }
 
 /// <summary>
@@ -126,6 +136,7 @@ public sealed record GenerateOpentronsScriptRequest : IExamplesProvider<Generate
     public required string SequenceOrSampleId { get; init; }
 
     /// <summary>Target endocrine regimen.</summary>
+    [JsonConverter(typeof(JsonStringEnumConverter))]
     public TherapeuticRegimen Regimen { get; init; } = TherapeuticRegimen.MaleToFemale;
 
     /// <summary>Nanocarrier geometric lattice (e.g., Nanotube, Cuboid, Cage).</summary>

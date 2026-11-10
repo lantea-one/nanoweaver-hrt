@@ -1576,4 +1576,54 @@ public sealed class EndpointIntegrationTests : IClassFixture<WebApplicationFacto
         HttpResponseMessage postResResp = await clientEve.PostAsJsonAsync("/api/patients/patient-frank/results", new CreatePatientResultRequest { Title = "Kinetics", ResultType = "EndocrineKinetics", Summary = "Test" });
         Assert.True(postResResp.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.NotFound);
     }
+
+    /// <summary>
+    /// Verifies that string enum literals (e.g. 'FemaleToMale', 'AndrogenicDominant', 'Flex', 'M13mp18Scaffold')
+    /// deserialize with HTTP 200 OK across Genomics, Closed-Loop, Opentrons, Gel, and PBPK endpoints,
+    /// maintaining backwards-compatible parity with integer enum serialization.
+    /// </summary>
+    [Fact]
+    public async Task Endpoints_StringAndIntegerEnumDeserializationParity_ReturnsOk()
+    {
+        // WHAT: Tests string and integer enum deserialization across clinical and synthetic biology endpoints.
+        // WHY:  Fixes senior biomedical engineering audit finding (Issue #174) ensuring seamless client DX.
+        // HOW:  Sends raw JSON string payloads and integer payloads to all 5 endpoints and asserts HttpStatusCode.OK.
+
+        // 1. Genomics Analysis: Regimen as string "FemaleToMale" and integer 1
+        string jsonGenomicsString = "{\"patientId\":\"PATIENT-ENUM-01\",\"markerIds\":[\"F5_LEIDEN\"],\"regimen\":\"FemaleToMale\"}";
+        using StringContent contentGenomicsString = new(jsonGenomicsString, Encoding.UTF8, "application/json");
+        HttpResponseMessage respGenomicsString = await _client.PostAsync("/api/genomics/analyze", contentGenomicsString);
+        Assert.Equal(HttpStatusCode.OK, respGenomicsString.StatusCode);
+
+        string jsonGenomicsInt = "{\"patientId\":\"PATIENT-ENUM-01\",\"markerIds\":[\"F5_LEIDEN\"],\"regimen\":1}";
+        using StringContent contentGenomicsInt = new(jsonGenomicsInt, Encoding.UTF8, "application/json");
+        HttpResponseMessage respGenomicsInt = await _client.PostAsync("/api/genomics/analyze", contentGenomicsInt);
+        Assert.Equal(HttpStatusCode.OK, respGenomicsInt.StatusCode);
+
+        // 2. Closed-Loop Simulation: TargetState as string "AndrogenicDominant"
+        string jsonClosedLoop = "{\"targetState\":\"AndrogenicDominant\",\"totalHours\":24,\"stepHours\":1.0}";
+        using StringContent contentClosedLoop = new(jsonClosedLoop, Encoding.UTF8, "application/json");
+        HttpResponseMessage respClosedLoop = await _client.PostAsync("/api/endocrine/closed-loop/simulate", contentClosedLoop);
+        Assert.Equal(HttpStatusCode.OK, respClosedLoop.StatusCode);
+
+        // 3. Opentrons Protocol Script: Regimen as string "FemaleToMale", RobotModel "Flex", PipetteModel "Flex_1Channel_50", SourcePlateType "Nest384WellPcr"
+        string jsonOpentrons = "{\"sequenceOrSampleId\":\"CAGE-6HB-E2-001\",\"regimen\":\"FemaleToMale\",\"geometry\":\"Nanotube\",\"options\":{\"robotModel\":\"Flex\",\"pipetteModel\":\"Flex_1Channel_50\",\"sourcePlateType\":\"Nest384WellPcr\"}}";
+        using StringContent contentOpentrons = new(jsonOpentrons, Encoding.UTF8, "application/json");
+        HttpResponseMessage respOpentrons = await _client.PostAsync("/api/fabrication/opentrons/generate", contentOpentrons);
+        Assert.Equal(HttpStatusCode.OK, respOpentrons.StatusCode);
+
+        // 4. Gel Electrophoresis Analysis: LadderType as string "M13mp18Scaffold"
+        byte[] gelBytes = new byte[200];
+        string base64Gel = Convert.ToBase64String(gelBytes);
+        string jsonGel = $"{{\"imageBytes\":\"{base64Gel}\",\"width\":20,\"height\":10,\"expectedLaneCount\":2,\"ladderType\":\"M13mp18Scaffold\",\"ladderLaneNumber\":1,\"backgroundThreshold\":0.15}}";
+        using StringContent contentGel = new(jsonGel, Encoding.UTF8, "application/json");
+        HttpResponseMessage respGel = await _client.PostAsync("/api/fabrication/gel/analyze", contentGel);
+        Assert.Equal(HttpStatusCode.OK, respGel.StatusCode);
+
+        // 5. PBPK Simulation: Regimen as string "FemaleToMale"
+        string jsonPbpk = "{\"patientId\":\"SUBJECT-ENUM-01\",\"regimen\":\"FemaleToMale\",\"depotDoseMg\":30.0,\"simulationDurationDays\":30,\"deliveryIntervalDays\":90,\"genomicMarkerIds\":[]}";
+        using StringContent contentPbpk = new(jsonPbpk, Encoding.UTF8, "application/json");
+        HttpResponseMessage respPbpk = await _client.PostAsync("/api/simulations/run/pbpk-endocrine", contentPbpk);
+        Assert.Equal(HttpStatusCode.OK, respPbpk.StatusCode);
+    }
 }

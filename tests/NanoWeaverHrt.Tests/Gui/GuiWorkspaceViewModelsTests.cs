@@ -106,6 +106,9 @@ public sealed class GuiWorkspaceViewModelsTests
         RecommendedDosingIntervalDays = 180,
         ClinicalFeasibilityVerdict = "Feasible",
         OrganBiodistributionSummary = "Summary",
+        TotalNanocarrierMassMg = 25.0,
+        SerumNucleaseHalfLifeHours = 120.0,
+        DepotExhaustionDay = 411,
         DailyKinetics = []
     };
 

@@ -354,6 +354,8 @@ else
 
                 <div class="mt-3 p-2 font-mono sim-code-preview">
                     <strong>Biodistribution:</strong> @_pbpkResult.OrganBiodistributionSummary
+                    <br />
+                    <strong>Formulation Dry Mass:</strong> @_pbpkResult.TotalNanocarrierMassMg.ToString("F1") mg | <strong>Serum Nuclease t1/2:</strong> @_pbpkResult.SerumNucleaseHalfLifeHours.ToString("F1") h | <strong>Depot Exhaustion:</strong> Day @_pbpkResult.DepotExhaustionDay
                 </div>
 
                 <!-- Daily Kinetics Trajectory Table -->

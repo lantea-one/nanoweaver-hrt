@@ -296,6 +296,9 @@ public sealed class SimulationCampaignServiceTests
 
         Assert.Equal(90, result.RecommendedDosingIntervalDays);
         Assert.True(result.AverageSteadyStateEstradiolPmolL <= 480.0);
+        Assert.Equal(25.0, result.TotalNanocarrierMassMg);
+        Assert.True(result.SerumNucleaseHalfLifeHours >= 72.0 && result.SerumNucleaseHalfLifeHours <= 168.0);
+        Assert.True(result.DepotExhaustionDay > 0);
         Assert.All(result.DailyKinetics, pt => Assert.True(pt.EstradiolPmolL <= 480.0));
     }
 

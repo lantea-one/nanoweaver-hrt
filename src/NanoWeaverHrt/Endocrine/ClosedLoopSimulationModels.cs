@@ -65,6 +65,7 @@ public sealed record ClosedLoopSimulationRequest : IExamplesProvider<ClosedLoopS
     /// </summary>
     [Description("Target operational toggle state.")]
     [JsonPropertyName("targetState")]
+    [JsonConverter(typeof(JsonStringEnumConverter))]
     public ToggleState TargetState { get; init; } = ToggleState.EstrogenicDominant;
 
     /// <summary>

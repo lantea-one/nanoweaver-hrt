@@ -31,6 +31,7 @@ public sealed record PbpkSimulationRequest : IExamplesProvider<PbpkSimulationReq
     /// </summary>
     [Description("Target therapeutic regimen (MaleToFemale or FemaleToMale).")]
     [JsonPropertyName("regimen")]
+    [JsonConverter(typeof(JsonStringEnumConverter))]
     public TherapeuticRegimen Regimen { get; set; } = TherapeuticRegimen.MaleToFemale;
 
     /// <summary>
@@ -223,6 +224,27 @@ public sealed record PbpkEndocrineSimulationResult : IExamplesProvider<PbpkEndoc
     public required string OrganBiodistributionSummary { get; init; }
 
     /// <summary>
+    /// Total calculated dry nanocarrier formulation mass (scaffold and staple oligos) in milligrams required to sustain the therapeutic horizon.
+    /// </summary>
+    [Description("Total dry nanocarrier formulation mass in milligrams required for depot delivery.")]
+    [JsonPropertyName("totalNanocarrierMassMg")]
+    public required double TotalNanocarrierMassMg { get; init; }
+
+    /// <summary>
+    /// Estimated in-vivo serum nuclease degradation half-life in hours for passivated DNA origami carriers (Dietz/Shih benchmark: ~72 to 168 hours).
+    /// </summary>
+    [Description("Predicted in-vivo serum nuclease degradation half-life in hours.")]
+    [JsonPropertyName("serumNucleaseHalfLifeHours")]
+    public required double SerumNucleaseHalfLifeHours { get; init; }
+
+    /// <summary>
+    /// Projected depot exhaustion day when remaining unreleased nanocarrier reservoir drops below 5.0% of initial mass.
+    /// </summary>
+    [Description("Projected depot exhaustion day (when unreleased reserve falls below 5%).")]
+    [JsonPropertyName("depotExhaustionDay")]
+    public required int DepotExhaustionDay { get; init; }
+
+    /// <summary>
     /// Daily multi-trace kinetics data points over the full simulation horizon.
     /// </summary>
     [Description("Daily multi-trace kinetics data points.")]
@@ -248,6 +270,9 @@ public sealed record PbpkEndocrineSimulationResult : IExamplesProvider<PbpkEndoc
         RecommendedDosingIntervalDays = 180,
         ClinicalFeasibilityVerdict = "Feasible as Semi-Annual Subcutaneous Depot (25 mg every 180 days)",
         OrganBiodistributionSummary = "Depot: 52% (Day 90) | Central Plasma: 18% | Pituitary Gonadotropes: 14% | Hepatic Clearance: 11% | Spleen/RES: 5%",
+        TotalNanocarrierMassMg = 25.0,
+        SerumNucleaseHalfLifeHours = 120.0,
+        DepotExhaustionDay = 411,
         DailyKinetics = [
             new() { Day = 1, EstradiolPmolL = 220.0, TestosteroneNmolL = 14.5, GonadotropinLhIuL = 6.2, DepotRemainingPercent = 99.5, CentralSerumConcentrationNm = 0.4 },
             new() { Day = 30, EstradiolPmolL = 545.0, TestosteroneNmolL = 1.3, GonadotropinLhIuL = 2.1, DepotRemainingPercent = 84.0, CentralSerumConcentrationNm = 2.1 },

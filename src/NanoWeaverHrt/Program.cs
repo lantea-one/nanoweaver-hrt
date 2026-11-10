@@ -5508,6 +5508,7 @@ public sealed record GenomicAnalysisRequest : IExamplesProvider<GenomicAnalysisR
     /// </summary>
     [Description("Active therapeutic regimen (MaleToFemale or FemaleToMale).")]
     [JsonPropertyName("regimen")]
+    [JsonConverter(typeof(JsonStringEnumConverter))]
     public TherapeuticRegimen Regimen { get; init; } = TherapeuticRegimen.MaleToFemale;
 
     /// <summary>

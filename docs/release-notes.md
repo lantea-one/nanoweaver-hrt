@@ -4,6 +4,24 @@
 
 ---
 
+## Post-Release Clinical Audit & Wet-Lab Remediations (Forgejo Issues #174, #175, #176) (2026-11-10)
+
+Resolves clinical audit findings identified during wet-lab automation and systems biology integration:
+* **Minimal API DTO Enum Deserialization Parity (Forgejo #174)**:
+  - Added `[JsonConverter(typeof(JsonStringEnumConverter))]` directly to enum definitions (`TherapeuticRegimen`, `ToggleState`, `HormoneType`, `TargetTissueType`, `OpentronsRobotModel`, `OpentronsPipetteModel`, `OpentronsPlateType`, `GelLadderType`) and clinical request DTO properties (`GenomicAnalysisRequest.Regimen`, `ClosedLoopSimulationRequest.TargetState`, `GenerateOpentronsScriptRequest.Regimen`, `OpentronsProtocolOptions`, `GelAnalysisRequest.LadderType`, `PbpkSimulationRequest.Regimen`).
+  - Supports both string literals (e.g. `"FemaleToMale"`, `"AndrogenicDominant"`, `"Flex"`, `"M13mp18Scaffold"`) and backward-compatible integer literals with HTTP 200 OK across all endpoints.
+* **PBPK In-Vivo Nuclease Biodegradation & Stoichiometric Mass Bounds (Forgejo #175)**:
+  - Enhanced Campaign 4 PBPK multi-compartment engine (`PbpkEndocrineSimulationResult`) with explicit in-vivo serum nuclease cleavage kinetics (`SerumNucleaseHalfLifeHours` parameterized between 72.0 and 168.0 hours based on Dietz/Shih literature benchmarks for passivated DNA origami).
+  - Calculated total dry nanocarrier formulation mass in milligrams (`TotalNanocarrierMassMg`) required for sustained steady-state turnover (50–100 µg/day E2, 5–7 mg/day T).
+  - Modeled subcutaneous depot exhaustion day (`DepotExhaustionDay`) based on first-order reservoir depletion.
+  - Clarified lifelong translation feasibility advisory in `ClinicalFeasibilityVerdict`, explicitly noting that exogenously loaded nanocarrier depots operate as sustained semi-annual depots, whereas singular permanent efficacy requires coupling with endogenous genetic toggle switch reprogramming.
+* **Automated Wet-Lab Enzymatic CpG Methylation (M.SssI) in Opentrons Protocols (Forgejo #176)**:
+  - Added `IncludeCpGMethylationStage` to `OpentronsProtocolOptions`.
+  - Updated `OpentronsProtocolGenerator` to automatically detect high unmethylated CpG dinucleotide density (&gt;= 3.0%) in scaffold sequences or explicit option requests.
+  - Synthesizes automated Protocol API v2 liquid handling commands to dispense M.SssI methyltransferase and S-adenosylmethionine (SAM) cofactor from cold storage vessels to assembly wells, commands the on-deck Thermocycler or Temperature Module to hold 37°C for 120 minutes (enzymatic methylation) followed by 65°C for 20 minutes (heat inactivation) and 4°C hold before staple addition, and incorporates methylation hold duration into estimated run time.
+
+---
+
 ## v2026.11.10.1 — Sovereign Production Release: Complete End-to-End Verification, CI/CD Pipeline Green, Cross-Platform Multi-Target Packaging & Trust Anchors (2026-11-10)
 
 Official code-complete production release of NanoWeaver HRT. Unifies sovereign molecular dynamics simulation environments (oxDNA 2.4 and LAMMPS), zero-allocation SIMD trajectory streaming (.xyz, .dcd, .dump), multi-engine persistence (SQLite, PostgreSQL, DuckDB, MySQL) with versioned migrations 001–011, post-quantum ML-DSA-65 and classical Ed25519 PKI identity, 100% Client REST SDK parity (70/70 operations), sovereign dark-mode Blazor Interactive Server UI with 18-language community localization, Avalonia UI 11 / .NET 10 cross-platform desktop and mobile clients (Android and iOS/iPadOS lifecycle hosts with automated biometric vault zeroization), and 16 cryptographically signed standalone binary packages verified against the sovereign root CA.

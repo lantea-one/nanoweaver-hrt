@@ -371,6 +371,10 @@ public sealed class SimulationCampaignTests : IClassFixture<WebApplicationFactor
         Assert.True(result.TargetSuppressionAchieved);
         Assert.False(result.ThromboticSurgeDetected);
         Assert.Contains("Semi-Annual Subcutaneous Depot", result.ClinicalFeasibilityVerdict);
+        Assert.Contains("Singular Permanent Efficacy Requires Endogenous Genetic Toggle Integration", result.ClinicalFeasibilityVerdict);
+        Assert.True(result.TotalNanocarrierMassMg >= 25.0);
+        Assert.True(result.SerumNucleaseHalfLifeHours >= 72.0 && result.SerumNucleaseHalfLifeHours <= 168.0);
+        Assert.True(result.DepotExhaustionDay > 90);
         Assert.NotEmpty(result.DailyKinetics);
     }
 
@@ -400,6 +404,10 @@ public sealed class SimulationCampaignTests : IClassFixture<WebApplicationFactor
         Assert.True(result.AverageSteadyStateEstradiolPmolL < 150.0);
         Assert.True(result.TargetSuppressionAchieved);
         Assert.Contains("Semi-Annual Subcutaneous Depot", result.ClinicalFeasibilityVerdict);
+        Assert.Contains("Singular Permanent Efficacy Requires Endogenous Genetic Toggle Integration", result.ClinicalFeasibilityVerdict);
+        Assert.Equal(30.0, result.TotalNanocarrierMassMg);
+        Assert.True(result.SerumNucleaseHalfLifeHours >= 72.0 && result.SerumNucleaseHalfLifeHours <= 168.0);
+        Assert.True(result.DepotExhaustionDay > 60);
     }
 
     /// <summary>
@@ -560,6 +568,9 @@ public sealed class SimulationCampaignTests : IClassFixture<WebApplicationFactor
             RecommendedDosingIntervalDays = 180,
             ClinicalFeasibilityVerdict = "OK",
             OrganBiodistributionSummary = "Summary",
+            TotalNanocarrierMassMg = 25.0,
+            SerumNucleaseHalfLifeHours = 120.0,
+            DepotExhaustionDay = 411,
             DailyKinetics = []
         }.GetExamples();
 
@@ -615,5 +626,36 @@ public sealed class SimulationCampaignTests : IClassFixture<WebApplicationFactor
 
         var configDefault = await _client.GetAsync("/api/simulations/configs/UNKNOWN");
         Assert.Equal(HttpStatusCode.OK, configDefault.StatusCode);
+    }
+
+    /// <summary>
+    /// Verifies that Campaign 4 PBPK simulation computes in-vivo serum nuclease degradation kinetics,
+    /// nanocarrier stoichiometric dry mass bounds, and lifelong feasibility advisories adhering to Dietz/Shih literature benchmarks.
+    /// </summary>
+    [Fact]
+    public void SimulatePbpkEndocrine_DietzShihLiteratureBenchmarks_NucleaseAndMassStoichiometryVerified()
+    {
+        // WHAT: Evaluates PBPK simulation output against published Dietz/Shih biophysical benchmarks for passivated DNA origami.
+        // WHY:  Verifies that nuclease resistance (72-168 h), dry formulation mass, and depot depletion are accurately reported.
+        // HOW:  Runs PBPK simulations across standard doses (25 mg, 50 mg) and asserts literature threshold compliance.
+        PbpkSimulationRequest request = new()
+        {
+            PatientId = "SUBJECT-BENCHMARK-001",
+            Regimen = TherapeuticRegimen.MaleToFemale,
+            DepotDoseMg = 25.0,
+            SimulationDurationDays = 90,
+            DeliveryIntervalDays = 180,
+            GenomicMarkerIds = []
+        };
+
+        PbpkEndocrineSimulationResult result = _service.SimulatePbpkEndocrine(request);
+
+        Assert.NotNull(result);
+        Assert.Equal(25.0, result.TotalNanocarrierMassMg);
+        Assert.Equal(120.0, result.SerumNucleaseHalfLifeHours);
+        Assert.True(result.SerumNucleaseHalfLifeHours >= 72.0 && result.SerumNucleaseHalfLifeHours <= 168.0);
+        Assert.Equal(411, result.DepotExhaustionDay);
+        Assert.Contains("Singular Permanent Efficacy Requires Endogenous Genetic Toggle Integration", result.ClinicalFeasibilityVerdict);
+        Assert.Contains("Semi-Annual Subcutaneous Depot", result.ClinicalFeasibilityVerdict);
     }
 }

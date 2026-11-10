@@ -57,10 +57,15 @@ public sealed class OpentronsProtocolGenerator : IOpentronsProtocolGenerator
         // HOW:  Calculates ceiling of staple count over wells per plate.
         int sourcePlatesRequired = stapleCount == 0 ? 0 : (int)Math.Ceiling((double)stapleCount / wellsPerPlate);
 
+        // WHAT: Evaluates whether automated enzymatic CpG methylation is required.
+        // WHY:  Scaffolds with >= 3.0% CpG density or explicit protocol options require M.SssI pre-treatment to evade TLR9 immunity.
+        // HOW:  Calls RequiresCpGMethylation checking options and scaffold sequence.
+        bool requiresMethylation = RequiresCpGMethylation(package, options);
+
         // WHAT: Calculates required tip rack count based on tip consumption.
         // WHY:  Every transfer requires a sterile tip to eliminate staple cross-contamination.
-        // HOW:  Multi-channel consumes 8 tips per column; single-channel consumes 1 tip per staple.
-        int tipsUsed = isMultiChannel ? (((stapleCount + 7) / 8) * 8) : stapleCount;
+        // HOW:  Multi-channel consumes 8 tips per column; single-channel consumes 1 tip per staple, plus 2 tips for M.SssI/SAM when methylated.
+        int tipsUsed = (isMultiChannel ? (((stapleCount + 7) / 8) * 8) : stapleCount) + (requiresMethylation ? 2 : 0);
         int tipRacksRequired = Math.Max(1, (int)Math.Ceiling((double)tipsUsed / 96.0));
 
         // WHAT: Allocates deck slots sequentially according to robot platform constraints.
@@ -80,8 +85,8 @@ public sealed class OpentronsProtocolGenerator : IOpentronsProtocolGenerator
 
         // WHAT: Computes estimated run duration in minutes.
         // WHY:  Allows operators to schedule robot availability and manage time-critical reagents.
-        // HOW:  Combines pipetting cycle duration with thermal annealing ramp stages.
-        double estimatedDurationMinutes = EstimateRunDuration(package, options, isMultiChannel, stapleCount);
+        // HOW:  Combines pipetting cycle duration with thermal annealing ramp stages and methylation incubation.
+        double estimatedDurationMinutes = EstimateRunDuration(package, options, isMultiChannel, stapleCount, requiresMethylation);
 
         // WHAT: Computes scheduled transfer operations accounting for multi-step volume splitting.
         // WHY:  Aliquots exceeding pipette capacity require multiple aspiration/dispense cycles.
@@ -107,7 +112,8 @@ public sealed class OpentronsProtocolGenerator : IOpentronsProtocolGenerator
             stapleVolume,
             masterMixVolume,
             wellsPerPlate,
-            maxPipetteVolume);
+            maxPipetteVolume,
+            requiresMethylation);
 
         // WHAT: Computes deterministic SHA-256 hash of the generated Python script.
         // WHY:  Guarantees cryptographic provenance and tamper-evidence for laboratory verification.
@@ -301,13 +307,19 @@ public sealed class OpentronsProtocolGenerator : IOpentronsProtocolGenerator
     /// <param name="options">Protocol options with robot and module settings.</param>
     /// <param name="isMultiChannel">Whether a multi-channel pipette is utilized.</param>
     /// <param name="stapleCount">Total number of staple oligos.</param>
+    /// <param name="requiresMethylation">Whether the automated CpG methylation pre-treatment stage is included.</param>
     /// <returns>Estimated run duration in minutes rounded to 1 decimal place.</returns>
-    private static double EstimateRunDuration(FabricationPackage package, OpentronsProtocolOptions options, bool isMultiChannel, int stapleCount)
+    private static double EstimateRunDuration(FabricationPackage package, OpentronsProtocolOptions options, bool isMultiChannel, int stapleCount, bool requiresMethylation)
     {
         // WHAT: Computes estimated run duration in minutes based on pipetting operations and thermal ramp.
         // WHY:  Informs wet-lab operators of expected robot occupation time and scheduling.
         // HOW:  Combines setup time, per-transfer pipetting time, thermocycler hold times, and thermal transitions.
         double pipettingMinutes = 0.5;
+
+        if (requiresMethylation)
+        {
+            pipettingMinutes += 0.5;
+        }
 
         if (stapleCount > 0)
         {
@@ -323,6 +335,12 @@ public sealed class OpentronsProtocolGenerator : IOpentronsProtocolGenerator
         }
 
         double thermalMinutes = 0.0;
+        if (requiresMethylation)
+        {
+            // M.SssI incubation at 37°C for 120 min + heat inactivation at 65°C for 20 min
+            thermalMinutes += 140.0;
+        }
+
         if (options.UseThermocyclerModule)
         {
             IReadOnlyList<AnnealingRampStep> schedule = package.AnnealingSchedule;
@@ -342,6 +360,37 @@ public sealed class OpentronsProtocolGenerator : IOpentronsProtocolGenerator
     }
 
     /// <summary>
+    /// Determines whether automated enzymatic CpG methylation is required based on explicit protocol options
+    /// or high unmethylated CpG dinucleotide density (&gt;= 3.0%) in the scaffold sequence.
+    /// </summary>
+    /// <param name="package">The fabrication package containing the scaffold backbone.</param>
+    /// <param name="options">Protocol options with explicit flags.</param>
+    /// <returns><see langword="true"/> if the enzymatic methylation pre-treatment stage must be scheduled; otherwise <see langword="false"/>.</returns>
+    private static bool RequiresCpGMethylation(FabricationPackage package, OpentronsProtocolOptions options)
+    {
+        // WHAT: Evaluates whether the scaffold requires enzymatic M.SssI CpG methylation.
+        // WHY:  Scaffolds with >= 3.0% CpG density or patients flagged with TLR9 reactivity trigger immune clearance unless methylated.
+        // HOW:  Checks options.IncludeCpGMethylationStage first; if false, scans package.ScaffoldBackbone for CpG frequency.
+        if (options.IncludeCpGMethylationStage)
+        {
+            return true;
+        }
+
+        ReadOnlySpan<char> scaffoldSpan = package.ScaffoldBackbone.AsSpan();
+        Genomics.FastaSequenceScanner.ScanUtf16(scaffoldSpan, out int nucleotideCount, out int cpgCount, out _);
+        if (nucleotideCount > 1)
+        {
+            double cpgDensityPercent = (double)(cpgCount * 2) / nucleotideCount * 100.0;
+            if (cpgDensityPercent >= 3.0)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Constructs the Python Protocol API v2 script string with exact 4-space indentation and formatting.
     /// </summary>
     /// <param name="package">Fabrication package containing staple designs and thermal ramps.</param>
@@ -357,6 +406,7 @@ public sealed class OpentronsProtocolGenerator : IOpentronsProtocolGenerator
     /// <param name="masterMixVolume">Master mix volume in microliters.</param>
     /// <param name="wellsPerPlate">Wells per source plate (96 or 384).</param>
     /// <param name="maxPipetteVolume">Maximum pipette volume capacity in microliters.</param>
+    /// <param name="requiresMethylation">Whether to synthesize automated M.SssI CpG methylation steps.</param>
     /// <returns>Syntactically valid Python Protocol API v2 script text.</returns>
     private static string BuildPythonScript(
         FabricationPackage package,
@@ -371,7 +421,8 @@ public sealed class OpentronsProtocolGenerator : IOpentronsProtocolGenerator
         double stapleVolume,
         double masterMixVolume,
         int wellsPerPlate,
-        double maxPipetteVolume)
+        double maxPipetteVolume,
+        bool requiresMethylation)
     {
         // WHAT: Assembles the complete Python script text adhering strictly to PEP-8 and Opentrons Protocol API v2.
         // WHY:  Ensures flawless parsing by Python AST and execution on physical OT-2 / Flex robots.
@@ -468,12 +519,22 @@ public sealed class OpentronsProtocolGenerator : IOpentronsProtocolGenerator
             sb.AppendLine("    master_mix_source = reagent_reservoir['A1']");
             sb.AppendLine("    buffer_source = reagent_reservoir['A2']");
             sb.AppendLine("    payload_source = reagent_reservoir['A3']");
+            if (requiresMethylation)
+            {
+                sb.AppendLine("    msssi_source = reagent_reservoir['A4']");
+                sb.AppendLine("    sam_source = reagent_reservoir['A5']");
+            }
             sb.AppendLine("    master_mix_tube = master_mix_source");
         }
         else
         {
             sb.AppendLine($"    reagent_rack = protocol.load_labware('opentrons_24_tuberack_generic_2ml_screwcap', '{deck.MasterMixSlot}', label='Reagent Tube Rack')");
             sb.AppendLine("    master_mix_tube = reagent_rack['A1']");
+            if (requiresMethylation)
+            {
+                sb.AppendLine("    msssi_tube = reagent_rack['A2']");
+                sb.AppendLine("    sam_tube = reagent_rack['A3']");
+            }
         }
         sb.AppendLine();
 
@@ -513,6 +574,55 @@ public sealed class OpentronsProtocolGenerator : IOpentronsProtocolGenerator
         }
         sb.AppendLine("    pipette.drop_tip()");
         sb.AppendLine();
+
+        if (requiresMethylation)
+        {
+            const double enzymeVol = 2.0;
+            string enzymeSource = isMultiChannel ? "msssi_source" : "msssi_tube";
+            string samSource = isMultiChannel ? "sam_source" : "sam_tube";
+
+            sb.AppendLine("    # -------------------------------------------------------------------------");
+            sb.AppendLine("    # 6a. Enzymatic CpG Methylation Pre-Treatment (M.SssI + SAM Cofactor)");
+            sb.AppendLine("    # -------------------------------------------------------------------------");
+            sb.AppendLine("    protocol.comment('Dispensing M.SssI methyltransferase and SAM cofactor for TLR9 evasion...')");
+            sb.AppendLine("    pipette.pick_up_tip()");
+            sb.AppendLine($"    pipette.aspirate({enzymeVol.ToString("F1", CultureInfo.InvariantCulture)}, {enzymeSource})");
+            sb.AppendLine($"    pipette.dispense({enzymeVol.ToString("F1", CultureInfo.InvariantCulture)}, dest_well)");
+            sb.AppendLine("    pipette.drop_tip()");
+            sb.AppendLine();
+            sb.AppendLine("    pipette.pick_up_tip()");
+            sb.AppendLine($"    pipette.aspirate({enzymeVol.ToString("F1", CultureInfo.InvariantCulture)}, {samSource})");
+            sb.AppendLine($"    pipette.dispense({enzymeVol.ToString("F1", CultureInfo.InvariantCulture)}, dest_well)");
+            sb.AppendLine("    pipette.drop_tip()");
+            sb.AppendLine();
+            sb.AppendLine("    protocol.comment('Incubating scaffold at 37°C for 120 min for enzymatic CpG methylation...')");
+            if (options.UseThermocyclerModule)
+            {
+                sb.AppendLine("    tc_mod.close_lid()");
+                sb.AppendLine("    tc_mod.set_lid_temperature(temperature=105)");
+                sb.AppendLine("    tc_mod.set_block_temperature(temperature=37, hold_time_minutes=120)");
+                sb.AppendLine("    protocol.comment('Heat-inactivating M.SssI methyltransferase at 65°C for 20 min...')");
+                sb.AppendLine("    tc_mod.set_block_temperature(temperature=65, hold_time_minutes=20)");
+                sb.AppendLine("    tc_mod.deactivate_lid()");
+                sb.AppendLine("    tc_mod.open_lid()");
+                sb.AppendLine("    tc_mod.set_block_temperature(temperature=4)");
+            }
+            else if (options.UseTemperatureModule)
+            {
+                sb.AppendLine("    temp_mod.set_temperature(celsius=37)");
+                sb.AppendLine("    protocol.delay(minutes=120, msg='Incubating scaffold with M.SssI at 37°C')");
+                sb.AppendLine("    protocol.comment('Heat-inactivating M.SssI methyltransferase at 65°C for 20 min...')");
+                sb.AppendLine("    temp_mod.set_temperature(celsius=65)");
+                sb.AppendLine("    protocol.delay(minutes=20, msg='Heat-inactivating M.SssI methyltransferase at 65°C')");
+                sb.AppendLine("    temp_mod.set_temperature(celsius=4)");
+            }
+            else
+            {
+                sb.AppendLine("    protocol.comment('Incubate reaction vessel at 37°C for 120 min, then heat-inactivate at 65°C for 20 min.')");
+            }
+            sb.AppendLine("    protocol.comment('CpG methylation pre-treatment complete. Ready for staple oligo addition.')");
+            sb.AppendLine();
+        }
 
         // 7. Staple Transfers
         sb.AppendLine("    # -------------------------------------------------------------------------");

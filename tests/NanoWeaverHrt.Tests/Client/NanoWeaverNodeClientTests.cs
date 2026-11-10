@@ -3781,6 +3781,9 @@ public sealed class NanoWeaverNodeClientTests : IDisposable
             RecommendedDosingIntervalDays = 180,
             ClinicalFeasibilityVerdict = "OK",
             OrganBiodistributionSummary = "Summary",
+            TotalNanocarrierMassMg = 25.0,
+            SerumNucleaseHalfLifeHours = 120.0,
+            DepotExhaustionDay = 411,
             DailyKinetics = []
         }.GetExamples();
         _httpHandler.SetResponse("/api/simulations/run/pbpk-endocrine", HttpStatusCode.OK, JsonSerializer.Serialize(pbpkExample));

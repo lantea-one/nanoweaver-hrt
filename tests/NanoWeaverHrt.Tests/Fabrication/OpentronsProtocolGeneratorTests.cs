@@ -772,4 +772,145 @@ public sealed class OpentronsProtocolGeneratorTests
         Assert.Contains("pipette.aspirate(20.0, master_mix_tube)", result.PythonScript);
         Assert.Contains("pipette.aspirate(16.0, master_mix_tube)", result.PythonScript);
     }
+
+    /// <summary>
+    /// Verifies that <see cref="OpentronsProtocolGenerator.GenerateProtocol"/> synthesizes automated
+    /// M.SssI CpG methyltransferase and SAM dispensing with thermocycler incubation when requested.
+    /// </summary>
+    [Fact]
+    public void GenerateProtocol_IncludeCpGMethylationStage_SynthesizesMsssiAndSamWithThermocycler()
+    {
+        // WHAT: Tests protocol generation when IncludeCpGMethylationStage is explicitly enabled with on-deck Thermocycler.
+        // WHY:  Verifies automated liquid handling for enzymatic CpG methylation to evade TLR9 endosomal recognition.
+        // HOW:  Asserts Python AST compiles and generated script dispenses M.SssI/SAM and holds 37°C for 120 min and 65°C for 20 min.
+        OpentronsProtocolGenerator generator = new();
+        FabricationPackage package = CreateTestPackage(10);
+        OpentronsProtocolOptions options = new()
+        {
+            IncludeCpGMethylationStage = true,
+            UseThermocyclerModule = true,
+            PipetteModel = OpentronsPipetteModel.P20_Single_Gen2
+        };
+
+        OpentronsProtocolResult result = generator.GenerateProtocol(package, options);
+
+        AssertPythonAstCompiles(result.PythonScript);
+        Assert.Contains("msssi_tube = reagent_rack['A2']", result.PythonScript);
+        Assert.Contains("sam_tube = reagent_rack['A3']", result.PythonScript);
+        Assert.Contains("Dispensing M.SssI methyltransferase and SAM cofactor for TLR9 evasion...", result.PythonScript);
+        Assert.Contains("tc_mod.set_block_temperature(temperature=37, hold_time_minutes=120)", result.PythonScript);
+        Assert.Contains("tc_mod.set_block_temperature(temperature=65, hold_time_minutes=20)", result.PythonScript);
+        Assert.True(result.EstimatedRunDurationMinutes >= 140.0);
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="OpentronsProtocolGenerator.GenerateProtocol"/> automatically triggers
+    /// enzymatic CpG methylation when the scaffold sequence exhibits high CpG dinucleotide density (>= 3.0%).
+    /// </summary>
+    [Fact]
+    public void GenerateProtocol_HighCpgScaffoldSequence_AutomaticallyEnablesCpGMethylation()
+    {
+        // WHAT: Tests protocol generation when scaffold contains high CpG density (> 3.0%) without explicit option flag.
+        // WHY:  Guarantees autonomous immunogenicity shielding for unmethylated CpG-rich synthetic scaffolds.
+        // HOW:  Assigns repetitive CG sequence to ScaffoldBackbone and validates that M.SssI dispensing is synthesized.
+        OpentronsProtocolGenerator generator = new();
+        FabricationPackage basePackage = CreateTestPackage(8);
+        FabricationPackage highCpgPackage = basePackage with
+        {
+            ScaffoldBackbone = "CGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCG"
+        };
+        OpentronsProtocolOptions options = new()
+        {
+            IncludeCpGMethylationStage = false,
+            UseThermocyclerModule = true
+        };
+
+        OpentronsProtocolResult result = generator.GenerateProtocol(highCpgPackage, options);
+
+        AssertPythonAstCompiles(result.PythonScript);
+        Assert.Contains("msssi_tube", result.PythonScript);
+        Assert.Contains("sam_tube", result.PythonScript);
+        Assert.Contains("tc_mod.set_block_temperature(temperature=37, hold_time_minutes=120)", result.PythonScript);
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="OpentronsProtocolGenerator.GenerateProtocol"/> synthesizes temperature module
+    /// delay commands when CpG methylation is performed without an on-deck thermocycler.
+    /// </summary>
+    [Fact]
+    public void GenerateProtocol_IncludeCpGMethylationStage_WithTemperatureModule_SynthesizesDelays()
+    {
+        // WHAT: Tests CpG methylation protocol synthesis using Temperature Module instead of Thermocycler.
+        // WHY:  Permits benchtop enzymatic incubation on robots lacking integrated thermocyclers.
+        // HOW:  Asserts Python AST compiles and script commands temp_mod.set_temperature and protocol.delay.
+        OpentronsProtocolGenerator generator = new();
+        FabricationPackage package = CreateTestPackage(6);
+        OpentronsProtocolOptions options = new()
+        {
+            IncludeCpGMethylationStage = true,
+            UseThermocyclerModule = false,
+            UseTemperatureModule = true
+        };
+
+        OpentronsProtocolResult result = generator.GenerateProtocol(package, options);
+
+        AssertPythonAstCompiles(result.PythonScript);
+        Assert.Contains("temp_mod.set_temperature(celsius=37)", result.PythonScript);
+        Assert.Contains("protocol.delay(minutes=120", result.PythonScript);
+        Assert.Contains("temp_mod.set_temperature(celsius=65)", result.PythonScript);
+        Assert.Contains("protocol.delay(minutes=20", result.PythonScript);
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="OpentronsProtocolGenerator.GenerateProtocol"/> schedules reservoir sources
+    /// when multi-channel pipettes and automated CpG methylation are configured.
+    /// </summary>
+    [Fact]
+    public void GenerateProtocol_IncludeCpGMethylationStage_WithMultiChannel_SynthesizesReservoirSources()
+    {
+        // WHAT: Tests CpG methylation with 8-channel multi-channel pipette and 12-channel reservoir.
+        // WHY:  Ensures proper reservoir well address mapping (A4, A5) for liquid handler reagents.
+        // HOW:  Asserts Python AST compiles and script maps msssi_source to A4 and sam_source to A5.
+        OpentronsProtocolGenerator generator = new();
+        FabricationPackage package = CreateTestPackage(16);
+        OpentronsProtocolOptions options = new()
+        {
+            IncludeCpGMethylationStage = true,
+            PipetteModel = OpentronsPipetteModel.P20_Multi_Gen2,
+            UseThermocyclerModule = true
+        };
+
+        OpentronsProtocolResult result = generator.GenerateProtocol(package, options);
+
+        AssertPythonAstCompiles(result.PythonScript);
+        Assert.Contains("msssi_source = reagent_reservoir['A4']", result.PythonScript);
+        Assert.Contains("sam_source = reagent_reservoir['A5']", result.PythonScript);
+        Assert.Contains("pipette.aspirate(2.0, msssi_source)", result.PythonScript);
+        Assert.Contains("pipette.aspirate(2.0, sam_source)", result.PythonScript);
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="OpentronsProtocolGenerator.GenerateProtocol"/> emits operator instructions
+    /// when CpG methylation is requested without on-deck thermal modules.
+    /// </summary>
+    [Fact]
+    public void GenerateProtocol_IncludeCpGMethylationStage_WithoutModules_SynthesizesManualIncubationComment()
+    {
+        // WHAT: Tests CpG methylation fallback when neither Thermocycler nor Temperature Module is mounted.
+        // WHY:  Provides explicit operator instructions to perform off-deck 37°C/65°C incubation.
+        // HOW:  Asserts Python AST compiles and script emits manual incubation comment.
+        OpentronsProtocolGenerator generator = new();
+        FabricationPackage package = CreateTestPackage(4);
+        OpentronsProtocolOptions options = new()
+        {
+            IncludeCpGMethylationStage = true,
+            UseThermocyclerModule = false,
+            UseTemperatureModule = false
+        };
+
+        OpentronsProtocolResult result = generator.GenerateProtocol(package, options);
+
+        AssertPythonAstCompiles(result.PythonScript);
+        Assert.Contains("Incubate reaction vessel at 37°C for 120 min, then heat-inactivate at 65°C for 20 min.", result.PythonScript);
+    }
 }

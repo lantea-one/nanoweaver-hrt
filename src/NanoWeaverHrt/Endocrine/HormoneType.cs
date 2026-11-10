@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace NanoWeaverHrt.Endocrine;
 
 /// <summary>
@@ -9,6 +11,7 @@ namespace NanoWeaverHrt.Endocrine;
 /// instruct cells how to develop, metabolize, and maintain sexual characteristics.
 /// </para>
 /// </remarks>
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum HormoneType
 {
     /// <summary>
@@ -44,6 +47,7 @@ public enum HormoneType
 /// or Testosterone-dominant regulatory state.
 /// </para>
 /// </remarks>
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum ToggleState
 {
     /// <summary>
@@ -74,6 +78,7 @@ public enum ToggleState
 /// endocrine signaling (Female-to-Male / FtM).
 /// </para>
 /// </remarks>
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum TherapeuticRegimen
 {
     /// <summary>
@@ -103,6 +108,7 @@ public enum TherapeuticRegimen
 /// surface aptamers that home in on specific cell types in the body, releasing or sequestering hormones only where intended.
 /// </para>
 /// </remarks>
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum TargetTissueType
 {
     /// <summary>

@@ -750,6 +750,9 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
             RecommendedDosingIntervalDays = 180,
             ClinicalFeasibilityVerdict = "OK",
             OrganBiodistributionSummary = "Summary",
+            TotalNanocarrierMassMg = 25.0,
+            SerumNucleaseHalfLifeHours = 120.0,
+            DepotExhaustionDay = 411,
             DailyKinetics = []
         }.GetExamples();
         innerMock.Setup(i => i.RunPbpkSimulationAsync(profile, "explicit_token", samplePbpkReq, It.IsAny<CancellationToken>())).ReturnsAsync(samplePbpkRes);

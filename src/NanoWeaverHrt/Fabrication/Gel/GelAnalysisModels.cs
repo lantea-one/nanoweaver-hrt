@@ -8,6 +8,7 @@ namespace NanoWeaverHrt.Fabrication.Gel;
 /// <summary>
 /// Supported DNA ladder standards for agarose gel electrophoresis densitometry and base pair size calibration.
 /// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum GelLadderType
 {
     /// <summary>
@@ -177,6 +178,7 @@ public sealed record GelAnalysisRequest : IExamplesProvider<GelAnalysisRequest>
     /// </summary>
     [Description("DNA molecular weight ladder type used for base pair calibration.")]
     [JsonPropertyName("ladderType")]
+    [JsonConverter(typeof(JsonStringEnumConverter))]
     public GelLadderType LadderType { get; init; } = GelLadderType.OneKbDnaLadder;
 
     /// <summary>
