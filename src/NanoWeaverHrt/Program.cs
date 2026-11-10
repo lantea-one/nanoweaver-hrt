@@ -139,6 +139,7 @@ public class Program
         builder.Services.AddSingleton<IUserProfileRepository, UserProfileRepository>();
         builder.Services.AddSingleton<IPatientDnaRepository, PatientDnaRepository>();
         builder.Services.AddSingleton<IDepotFormulationRepository, DepotFormulationRepository>();
+        builder.Services.AddSingleton<ITimeReleaseDepotService, TimeReleaseDepotService>();
         builder.Services.AddSingleton<IAssetIntegrityService, AssetIntegrityService>();
         builder.Services.AddSingleton<ISubjectAccessRepository, SubjectAccessRepository>();
         builder.Services.AddSingleton<ISubjectAccessService, SubjectAccessService>();
