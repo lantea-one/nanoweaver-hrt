@@ -141,7 +141,14 @@ if [[ -n "${CA_CERT_FILE}" && -f "${CA_CERT_FILE}" ]]; then
     echo ">> Using supplied Root CA certificate: ${CA_CERT_FILE}"
     cp "${CA_CERT_FILE}" "${ROOT_CA_CERT}"
 elif [[ -f "${ROOT_CERT_PUB}" && -f "${ROOT_CA_KEY}" ]]; then
-    cp "${ROOT_CERT_PUB}" "${ROOT_CA_CERT}"
+    PUB_FROM_ROOT_CERT="$(openssl x509 -in "${ROOT_CERT_PUB}" -noout -pubkey 2>/dev/null || true)"
+    PUB_FROM_ROOT_KEY="$(openssl pkey -in "${ROOT_CA_KEY}" -pubout 2>/dev/null || true)"
+    if [[ -n "${PUB_FROM_ROOT_CERT}" && "${PUB_FROM_ROOT_CERT}" == "${PUB_FROM_ROOT_KEY}" ]]; then
+        cp "${ROOT_CERT_PUB}" "${ROOT_CA_CERT}"
+    else
+        echo ">> Local Root CA key in ${ROOT_CA_KEY} does not match ${ROOT_CERT_PUB}. Resetting stale Root CA key..."
+        rm -f "${ROOT_CA_KEY}" "${ROOT_CA_CERT}"
+    fi
 fi
 
 if [[ ! -f "${ROOT_CA_KEY}" || ! -f "${ROOT_CA_CERT}" ]]; then

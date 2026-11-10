@@ -125,7 +125,7 @@ public sealed class AcceleratorBenchmarkServiceTests : IDisposable
     }
 
     /// <summary>
-    /// Verifies that <see cref="DefaultAcceleratorTelemetryProvider"/> falls back to default values when environment is cleared.
+    /// Verifies that <see cref="DefaultAcceleratorTelemetryProvider"/> falls back to default values when environment is cleared and hardware probing bypassed.
     /// </summary>
     [Fact]
     public void DefaultAcceleratorTelemetryProvider_FallsBackToDefaults_WhenEnvironmentEmpty()
@@ -136,7 +136,7 @@ public sealed class AcceleratorBenchmarkServiceTests : IDisposable
         Environment.SetEnvironmentVariable("ACCELERATOR_TEMPERATURE_C", null);
         Environment.SetEnvironmentVariable("ACCELERATOR_POWER_WATTS", null);
 
-        DefaultAcceleratorTelemetryProvider provider = new();
+        DefaultAcceleratorTelemetryProvider provider = new(null);
 
         Assert.Equal("Intel Arc A770 Discrete GPU (OpenCL / SYCL)", provider.DeviceName);
         Assert.Equal("31.0.101.4952", provider.DriverVersion);
@@ -153,7 +153,7 @@ public sealed class AcceleratorBenchmarkServiceTests : IDisposable
         Environment.SetEnvironmentVariable("ACCELERATOR_TEMPERATURE_C", "not_a_number");
         Environment.SetEnvironmentVariable("ACCELERATOR_POWER_WATTS", "invalid_watts");
 
-        DefaultAcceleratorTelemetryProvider provider = new();
+        DefaultAcceleratorTelemetryProvider provider = new(null);
 
         Assert.Equal(48.5, provider.TemperatureCelsius);
         Assert.Equal(75.0, provider.PowerUsageWatts);
