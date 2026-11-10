@@ -17,7 +17,7 @@
          2. CI ref name (GITHUB_REF_NAME, FORGEJO_REF_NAME, CI_COMMIT_REF_NAME)
          3. Active git release branch name extracted directly from .git/HEAD
          4. Baseline CalVer fallback -->
-    <DefaultCalVerVersion>2026.11.10.1</DefaultCalVerVersion>
+    <DefaultCalVerVersion>2026.11.10.2</DefaultCalVerVersion>
 
     <DerivedVersion Condition="'$(DerivedVersion)' == '' and '$(PACKAGE_VERSION)' != ''">$(PACKAGE_VERSION)</DerivedVersion>
 

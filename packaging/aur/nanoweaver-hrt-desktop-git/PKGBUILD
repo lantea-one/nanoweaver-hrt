@@ -1,6 +1,6 @@
 # Maintainer: Nanoweaver HRT Project Contributors <admin@lantea.one>
 pkgname=nanoweaver-hrt-desktop-git
-pkgver=2026.11.10.1
+pkgver=2026.11.10.2
 pkgrel=1
 pkgdesc="Decentralized Synthetic Biology & DNA Origami Research Platform (Git)"
 arch=('x86_64' 'aarch64')

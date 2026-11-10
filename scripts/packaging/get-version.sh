@@ -68,4 +68,4 @@ if command -v git &>/dev/null && git -C "${ROOT_DIR}" rev-parse --is-inside-work
 fi
 
 # Absolute baseline fallback
-echo "2026.11.10.1"
+echo "2026.11.10.2"

@@ -1,5 +1,5 @@
 pkgname = nanoweaver-hrt-desktop-git
-pkgver = 2026.11.10.1
+pkgver = 2026.11.10.2
 pkgrel = 1
 pkgdesc = Decentralized Synthetic Biology & DNA Origami Research Platform (Git)
 url = https://git.lantea.one/lantea-one/nanoweaver-hrt

@@ -4,9 +4,9 @@
 
 ---
 
-## Post-Release Clinical Audit & Wet-Lab Remediations (Forgejo Issues #174, #175, #176) (2026-11-10)
+## v2026.11.10.2 — Sovereign Clinical Audit & Wet-Lab Protocol Automation Release: Enum Deserialization Parity, In-Vivo Nuclease Degradation Kinetics, and Enzymatic CpG Methylation Protocols (2026-11-10)
 
-Resolves clinical audit findings identified during wet-lab automation and systems biology integration:
+Resolves clinical audit findings identified during wet-lab automation and systems biology integration (Forgejo Issues #174, #175, #176):
 * **Minimal API DTO Enum Deserialization Parity (Forgejo #174)**:
   - Added `[JsonConverter(typeof(JsonStringEnumConverter))]` directly to enum definitions (`TherapeuticRegimen`, `ToggleState`, `HormoneType`, `TargetTissueType`, `OpentronsRobotModel`, `OpentronsPipetteModel`, `OpentronsPlateType`, `GelLadderType`) and clinical request DTO properties (`GenomicAnalysisRequest.Regimen`, `ClosedLoopSimulationRequest.TargetState`, `GenerateOpentronsScriptRequest.Regimen`, `OpentronsProtocolOptions`, `GelAnalysisRequest.LadderType`, `PbpkSimulationRequest.Regimen`).
   - Supports both string literals (e.g. `"FemaleToMale"`, `"AndrogenicDominant"`, `"Flex"`, `"M13mp18Scaffold"`) and backward-compatible integer literals with HTTP 200 OK across all endpoints.
