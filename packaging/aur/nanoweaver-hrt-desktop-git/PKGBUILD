@@ -1,6 +1,6 @@
 # Maintainer: Nanoweaver HRT Project Contributors <admin@lantea.one>
 pkgname=nanoweaver-hrt-desktop-git
-pkgver=2026.11.09.4
+pkgver=2026.11.10.1
 pkgrel=1
 pkgdesc="Decentralized Synthetic Biology & DNA Origami Research Platform (Git)"
 arch=('x86_64' 'aarch64')
@@ -15,7 +15,17 @@ sha256sums=('SKIP')
 
 pkgver() {
     cd "${srcdir}/nanoweaver-hrt"
-    git describe --long --tags 2>/dev/null | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g' || echo "2026.11.09.4.r0.g$(git rev-parse --short HEAD)"
+    if [ -x scripts/packaging/get-version.sh ]; then
+        local ver
+        ver="$(./scripts/packaging/get-version.sh 2>/dev/null || echo "2026.11.10.1")"
+        local count
+        count="$(git rev-list --count HEAD 2>/dev/null || echo "0")"
+        local hash
+        hash="$(git rev-parse --short HEAD 2>/dev/null || echo "0000000")"
+        echo "${ver}.r${count}.g${hash}"
+    else
+        git describe --long --tags 2>/dev/null | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g' || echo "2026.11.10.1.r0.g$(git rev-parse --short HEAD)"
+    fi
 }
 
 build() {

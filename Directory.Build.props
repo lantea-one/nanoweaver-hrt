@@ -12,8 +12,29 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1900</WarningsNotAsErrors>
     <ErrorOnDuplicatePublishOutputFiles>false</ErrorOnDuplicatePublishOutputFiles>
-    <Version>2026.11.09.4</Version>
-    <AssemblyVersion>2026.11.09.4</AssemblyVersion>
-    <FileVersion>2026.11.09.4</FileVersion>
+    <!-- CalVer dynamic version resolution:
+         1. Explicit PACKAGE_VERSION environment variable
+         2. CI ref name (GITHUB_REF_NAME, FORGEJO_REF_NAME, CI_COMMIT_REF_NAME)
+         3. Active git release branch name extracted directly from .git/HEAD
+         4. Baseline CalVer fallback -->
+    <DefaultCalVerVersion>2026.11.10.1</DefaultCalVerVersion>
+
+    <DerivedVersion Condition="'$(DerivedVersion)' == '' and '$(PACKAGE_VERSION)' != ''">$(PACKAGE_VERSION)</DerivedVersion>
+
+    <CiRefName Condition="'$(CiRefName)' == ''">$(GITHUB_REF_NAME)</CiRefName>
+    <CiRefName Condition="'$(CiRefName)' == ''">$(FORGEJO_REF_NAME)</CiRefName>
+    <CiRefName Condition="'$(CiRefName)' == ''">$(CI_COMMIT_REF_NAME)</CiRefName>
+    <DerivedVersion Condition="'$(DerivedVersion)' == '' and '$(CiRefName)' != ''">$([System.Text.RegularExpressions.Regex]::Match('$(CiRefName)', '(?:release/)?v?(\d+\.\d+\.\d+(?:\.\d+)?)').Groups[1].Value)</DerivedVersion>
+
+    <GitHeadPath>$(MSBuildThisFileDirectory).git/HEAD</GitHeadPath>
+    <GitHeadContent Condition="'$(DerivedVersion)' == '' and Exists('$(GitHeadPath)')">$([System.IO.File]::ReadAllText('$(GitHeadPath)').Trim())</GitHeadContent>
+    <DerivedVersion Condition="'$(DerivedVersion)' == '' and '$(GitHeadContent)' != ''">$([System.Text.RegularExpressions.Regex]::Match('$(GitHeadContent)', 'refs/heads/(?:release/)?v?(\d+\.\d+\.\d+(?:\.\d+)?)').Groups[1].Value)</DerivedVersion>
+
+    <DerivedVersion Condition="'$(DerivedVersion)' == ''">$(DefaultCalVerVersion)</DerivedVersion>
+    <DerivedVersion Condition="$(DerivedVersion.StartsWith('v'))">$(DerivedVersion.Substring(1))</DerivedVersion>
+
+    <Version>$(DerivedVersion)</Version>
+    <AssemblyVersion>$(DerivedVersion)</AssemblyVersion>
+    <FileVersion>$(DerivedVersion)</FileVersion>
   </PropertyGroup>
 </Project>

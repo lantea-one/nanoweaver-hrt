@@ -4,6 +4,25 @@
 
 ---
 
+## v2026.11.10.1 — Sovereign Production Release: Complete End-to-End Verification, CI/CD Pipeline Green, Cross-Platform Multi-Target Packaging & Trust Anchors (2026-11-10)
+
+Official code-complete production release of NanoWeaver HRT. Unifies sovereign molecular dynamics simulation environments (oxDNA 2.4 and LAMMPS), zero-allocation SIMD trajectory streaming (.xyz, .dcd, .dump), multi-engine persistence (SQLite, PostgreSQL, DuckDB, MySQL) with versioned migrations 001–011, post-quantum ML-DSA-65 and classical Ed25519 PKI identity, 100% Client REST SDK parity (70/70 operations), sovereign dark-mode Blazor Interactive Server UI with 18-language community localization, Avalonia UI 11 / .NET 10 cross-platform desktop and mobile clients (Android and iOS/iPadOS lifecycle hosts with automated biometric vault zeroization), and 16 cryptographically signed standalone binary packages verified against the sovereign root CA.
+
+### Highlights
+* **CI/CD Pipeline Green Status & Host Telemetry Isolation**:
+  - Isolated `/sys/class/drm` sysfs hardware device probing during default fallback tests, guaranteeing deterministic test execution across bare-metal and container CI runners.
+  - Aligned local PKI staging keys with committed trust anchor certificates in `docs/assets/keys/`, eliminating signature mismatch errors during CMS signing.
+  - Added `--fix-missing` to package installations in `docker/simulation/Dockerfile.simulation` to guard against transient upstream mirror synchronization drops.
+  - Resolved `NETSDK1152` duplicate publish outputs by isolating executable project references.
+* **Master Cross-Platform Packaging Pipeline**:
+  - Automated continuous release publishing across 16 platform packages spanning Linux (.deb, .rpm, .pkg.tar.zst, Gentoo ebuild, AppImage), macOS (.dmg, .app.tar.gz), Windows (PE32+ installer .exe, .msix, portable binary), and Mobile (Android .apk, iOS/iPadOS .ipa).
+  - Generated dual detached X.509 CMS (`.p7s`) and OpenPGP (`.asc`, `.sig`) signatures accompanied by SHA-256 manifests.
+* **100.00% Line & Branch Code Coverage & Un-Excluded Ratchet**:
+  - Enforced 100.00% line and branch coverage across all developer-authored C# and Razor assemblies.
+  - Maintained 0 uncovered lines on the downward-only compiler-generated state machine ratchet baseline across 1,898 tests.
+
+---
+
 ## v2026.11.09.6 — Code-Complete Milestone: GUI Core 70-SDK ViewModel Parity, 18-Language Desktop Localizer Integration, Mobile Android & iOS Platform Lifecycle Hosts, Full Test Suite & End-to-End Verification (2026-11-09)
 
 Code-complete milestone release resolving Work Packages P166–P170 (Forgejo Issues #169–#173), completing 100% SDK method parity across `NanoWeaverHrt.Gui.Core` (`NodeAdministrationViewModel`, `PatientClinicalWorkspaceViewModel`, `FederationAndDatasetWorkspaceViewModel`, and `MainShellViewModel` child property exposure), integrating dynamic 18-language localization with `IWeaverLocalizer` across all community resource files (`strings.*.json`) and `DesktopTrayIconController.BuildMenuItems()`, supporting automated right-to-left layout directionality for Arabic (`WeaverLanguage.Arabic`), establishing deterministic Android `MainActivity` and iOS/iPadOS `AppDelegate` platform lifecycle hosts with automated background biometric vault locking, preserving structured error diagnostics across `BackgroundInstanceMonitor` and `InstanceOnboardingViewModel.TestAndSaveAsync`, implementing comprehensive unit test suites in `GuiPhase4WorkspaceViewModelsTests`, `MobilePlatformLifecycleTests`, and `DesktopLocalizationAndDiagnosticsTests`, and achieving clean 8-gate `./scripts/verify-all.sh` verification.

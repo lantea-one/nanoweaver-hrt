@@ -259,7 +259,30 @@ cd ../../..
 
 ---
 
-## 5. Directory Structure Overview
+## 5. Sovereign Branching Strategy & Dynamic CalVer Versioning
+
+NanoWeaver HRT uses Calendar Versioning (**CalVer**) in the format `YYYY.MM.DD.N` (e.g., `2026.11.10.1`), synchronized across all native platform packaging manifests, .NET 10 assembly properties, and container registries.
+
+### Branching Model
+- **`main`**: The primary authoritative tracking trunk. All verified feature PRs, bugfixes, and atomic work packages land on `main` following 100% pre-flight gate verification (`./scripts/verify-all.sh`).
+- **`release/vYYYY.MM.DD.N`**: Dedicated release branches cut from `main` to stage, finalize, and archive milestone releases (e.g. `release/v2026.11.10.1`).
+
+### Zero-Touch Dynamic Version Derivation
+Engineers and contributors **never manually update individual version strings** across packaging scripts, manifests, or project files. The system automatically derives the active version through hierarchical inspection:
+
+1. **Active Release Branch**: If working on `release/v2026.11.10.1` or `release/2026.11.10.1`, the version `2026.11.10.1` is automatically parsed by both MSBuild (`Directory.Build.props`) and packaging scripts (`scripts/packaging/get-version.sh`).
+2. **Git Release Tags**: If checked out on tag `v2026.11.10.1`, the tag is automatically resolved as the version.
+3. **CI/CD Environment**: On Forgejo Actions or GitHub Actions, `GITHUB_REF_NAME` or `FORGEJO_REF_NAME` is dynamically detected.
+4. **Baseline Fallback**: When on `main` without an active release branch, the version safely falls back to `<DefaultCalVerVersion>` in `Directory.Build.props`.
+
+To inspect the currently resolved version from any shell or automation script:
+```bash
+./scripts/packaging/get-version.sh
+```
+
+---
+
+## 6. Directory Structure Overview
 
 ```
 nanoweaver-hrt/

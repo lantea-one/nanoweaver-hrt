@@ -44,10 +44,15 @@ API_BASE="https://${REGISTRY}/api/v1/repos/${GITHUB_REPOSITORY}"
 AUTH_HEADER="Authorization: token ${FORGEJO_TOKEN}"
 
 # WHAT: Determine target release tag, title, and pre-release status.
-# WHY:  Main branch pushes update a rolling 'nightly' release; version tags mint immutable releases.
-# HOW:  Inspect GITHUB_REF pattern for refs/tags/v*.
+# WHY:  Main branch pushes update a rolling 'nightly' release; version tags and release branches mint immutable releases.
+# HOW:  Inspect GITHUB_REF pattern for tags (refs/tags/v*) or release branches (refs/heads/release/*).
 if [[ "${GITHUB_REF}" =~ ^refs/tags/v ]]; then
     TAG_NAME="${GITHUB_REF#refs/tags/}"
+    RELEASE_TITLE="NanoWeaver HRT ${TAG_NAME}"
+    IS_PRERELEASE="false"
+elif [[ "${GITHUB_REF}" =~ refs/heads/release/v?([0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?) ]]; then
+    RESOLVED_VERSION="$("${ROOT_DIR}/scripts/packaging/get-version.sh")"
+    TAG_NAME="v${RESOLVED_VERSION}"
     RELEASE_TITLE="NanoWeaver HRT ${TAG_NAME}"
     IS_PRERELEASE="false"
 else

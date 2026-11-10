@@ -28,10 +28,10 @@ for arg in "$@"; do
     esac
 done
 
-PACKAGE_VERSION="${PACKAGE_VERSION:-${GITHUB_REF_NAME:-}}"
-if [ -z "${PACKAGE_VERSION}" ] || [ "${PACKAGE_VERSION}" = "main" ]; then
-    PACKAGE_VERSION="$(git describe --tags --exact-match 2>/dev/null || echo "2026.11.09.4")"
-fi
+# WHAT: Dynamically resolve CalVer release version from branch name, tags, or CI ref.
+# WHY:  Engineers cutting release branches should never need to manually update individual files.
+# HOW:  Calls scripts/packaging/get-version.sh.
+PACKAGE_VERSION="${PACKAGE_VERSION:-$("${ROOT_DIR}/scripts/packaging/get-version.sh")}"
 PACKAGE_VERSION="${PACKAGE_VERSION#v}"
 
 echo "=== NanoWeaver HRT Mobile Packaging Engine ==="

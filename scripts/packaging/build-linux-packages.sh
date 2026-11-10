@@ -5,10 +5,10 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 OUTPUT_DIR="${ROOT_DIR}/artifacts/packages/linux"
 mkdir -p "${OUTPUT_DIR}"
 
-PACKAGE_VERSION="${PACKAGE_VERSION:-${GITHUB_REF_NAME:-}}"
-if [ -z "${PACKAGE_VERSION}" ] || [ "${PACKAGE_VERSION}" = "main" ]; then
-    PACKAGE_VERSION="$(git describe --tags --exact-match 2>/dev/null || echo "2026.11.09.4")"
-fi
+# WHAT: Dynamically resolve CalVer release version from branch name, tags, or CI ref.
+# WHY:  Engineers cutting release branches should never need to manually update individual files.
+# HOW:  Calls scripts/packaging/get-version.sh.
+PACKAGE_VERSION="${PACKAGE_VERSION:-$("${ROOT_DIR}/scripts/packaging/get-version.sh")}"
 PACKAGE_VERSION="${PACKAGE_VERSION#v}"
 
 if [ -z "${XDG_RUNTIME_DIR:-}" ] || [ ! -d "${XDG_RUNTIME_DIR}" ]; then
@@ -320,7 +320,7 @@ rootfs = sys.argv[1]
 out_path = sys.argv[2]
 arch = sys.argv[3]
 name = 'nanoweaver-hrt-desktop'
-version = sys.argv[4] if len(sys.argv) > 4 else '2026.11.09.4'
+version = sys.argv[4] if len(sys.argv) > 4 else '2026.11.10.1'
 release = '1'
 
 def build_rpm(rootfs, out_path, name, version, release, arch):

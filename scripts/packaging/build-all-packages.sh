@@ -17,10 +17,16 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PACKAGES_DIR="${ROOT_DIR}/artifacts/packages"
 
+# WHAT: Dynamically resolve CalVer release version from branch name, tags, or CI ref.
+# WHY:  Eliminates the need for engineers to manually synchronize versions across files.
+# HOW:  Calls scripts/packaging/get-version.sh and exports PACKAGE_VERSION for child tools.
+export PACKAGE_VERSION="${PACKAGE_VERSION:-$("${ROOT_DIR}/scripts/packaging/get-version.sh")}"
+
 echo "=============================================================================="
 echo ">> NanoWeaver HRT Master Cross-Platform Packaging Runner"
 echo "   Root Directory:     ${ROOT_DIR}"
 echo "   Packages Directory: ${PACKAGES_DIR}"
+echo "   Package Version:    ${PACKAGE_VERSION}"
 echo "=============================================================================="
 
 # WHAT: Detect CI runners or explicit packaging flags to allow deterministic stub generation.

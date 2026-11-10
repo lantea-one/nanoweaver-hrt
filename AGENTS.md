@@ -60,10 +60,16 @@
       ```
     - Never push or finalize if any of the 8 verification steps fail.
 
-11. **Sovereign Forgejo Git Remote Enforcement**:
-    - Never commit, push, or mirror to GitHub.
+11. **Sovereign Forgejo Git Remote Enforcement & Dynamic CalVer Branching**:
+    - Never commit, push, or mirror to GitHub. Downstream GitHub mirrors are automated.
     - Only commit and push directly to the authoritative sovereign Forgejo remote (`origin` on `git.lantea.one`).
-    - Keep all changes strictly on the default tracking branch (`main`).
+    - **Branching Model**:
+      - Feature development and atomic work packages land strictly on the default tracking branch (`main`).
+      - Production and milestone releases are cut to dedicated versioned release branches: `release/vYYYY.MM.DD.N` (e.g. `release/v2026.11.10.1`) and tagged `vYYYY.MM.DD.N`.
+    - **Dynamic CalVer Versioning Law**:
+      - Engineers must never manually update individual version strings across project files, manifests, and packaging scripts.
+      - Versioning is resolved dynamically from the active release branch name (`release/vYYYY.MM.DD.N` -> `YYYY.MM.DD.N`), git tag (`vYYYY.MM.DD.N`), or CI environment ref (`PACKAGE_VERSION`, `GITHUB_REF_NAME`, `FORGEJO_REF_NAME`) via `scripts/packaging/get-version.sh` and evaluation properties in `Directory.Build.props`.
+      - Baseline fallback is maintained centrally via `<DefaultCalVerVersion>` in `Directory.Build.props`.
 
 12. **Asymmetric PKI Identity, Role Gating, and Idle Session Expiration**:
     - Passwords are never stored in the database. Authentication is strictly public-key challenge-response PKI (Ed25519, ML-DSA-65).

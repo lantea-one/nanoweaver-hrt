@@ -2,7 +2,7 @@ name: Build, Test & Publish Trajectory Parser to GHCR
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "release/**" ]
     tags: [ "v*" ]
   pull_request:
     branches: [ "main" ]
@@ -199,7 +199,7 @@ jobs:
           context: .
           file: docker/web/Dockerfile.web
           platforms: linux/amd64
-          push: ${{ github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
+          push: ${{ github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/tags/v')) }}
           tags: |
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/nanoweaver-hrt-web:latest
           cache-from: type=gha
@@ -219,7 +219,7 @@ jobs:
           context: .
           file: docker/simulation/Dockerfile.simulation
           platforms: linux/amd64
-          push: ${{ github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
+          push: ${{ github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/tags/v')) }}
           tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/nanoweaver-hrt-simulation:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -300,12 +300,12 @@ jobs:
         # WHAT: Publishes standalone executables and release packages directly to GitHub Releases.
         # WHY:  Provides users direct .exe, .dmg, .deb, and mobile package downloads without zip archives.
         # HOW:  Uses softprops/action-gh-release to create/update rolling 'nightly' release or tag-based releases.
-        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/tags/v'))
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'nightly' }}
-          name: ${{ startsWith(github.ref, 'refs/tags/v') && format('NanoWeaver HRT {0}', github.ref_name) || 'NanoWeaver HRT Continuous Rolling Release (Nightly)' }}
-          prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+          tag_name: ${{ (startsWith(github.ref, 'refs/tags/v') && github.ref_name) || (startsWith(github.ref, 'refs/heads/release/') && format('v{0}', replace(replace(github.ref_name, 'release/', ''), 'v', ''))) || 'nightly' }}
+          name: ${{ (startsWith(github.ref, 'refs/tags/v') && format('NanoWeaver HRT {0}', github.ref_name)) || (startsWith(github.ref, 'refs/heads/release/') && format('NanoWeaver HRT v{0}', replace(replace(github.ref_name, 'release/', ''), 'v', ''))) || 'NanoWeaver HRT Continuous Rolling Release (Nightly)' }}
+          prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') && !startsWith(github.ref, 'refs/heads/release/') }}
           draft: false
           target_commitish: main
           files: |

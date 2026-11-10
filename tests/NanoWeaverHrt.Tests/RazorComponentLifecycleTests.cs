@@ -88,6 +88,8 @@ public sealed class RazorComponentLifecycleTests : IDisposable
                 ["TRAJECTORY_INCOMING_DIR"] = _tempDir,
                 ["TRAJECTORY_EXPORT_DIR"] = Path.Combine(_tempDir, "exports"),
                 ["TRAJECTORY_PARQUET_DIR"] = Path.Combine(_tempDir, "parquet"),
+                ["SQLITE_DATABASE_PATH"] = Path.Combine(_tempDir, "weaver_test.db"),
+                ["Storage:SqlitePath"] = Path.Combine(_tempDir, "weaver_test.db"),
                 ["POSTGRES_CONNECTION_STRING"] = string.Empty
             })
             .Build();
