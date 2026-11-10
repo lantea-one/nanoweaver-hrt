@@ -296,6 +296,20 @@ jobs:
             docs/assets/keys/*
           if-no-files-found: error
 
+      - name: Compute Release Metadata
+        id: release-meta
+        run: |
+          VERSION="$("${GITHUB_WORKSPACE}/scripts/packaging/get-version.sh")"
+          if [[ "${GITHUB_REF}" =~ ^refs/tags/v ]] || [[ "${GITHUB_REF}" =~ refs/heads/release/ ]]; then
+            echo "tag_name=v${VERSION}" >> "$GITHUB_OUTPUT"
+            echo "release_name=NanoWeaver HRT v${VERSION}" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag_name=nightly" >> "$GITHUB_OUTPUT"
+            echo "release_name=NanoWeaver HRT Continuous Rolling Release (Nightly)" >> "$GITHUB_OUTPUT"
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Publish Direct Binary Release Assets
         # WHAT: Publishes standalone executables and release packages directly to GitHub Releases.
         # WHY:  Provides users direct .exe, .dmg, .deb, and mobile package downloads without zip archives.
@@ -303,9 +317,9 @@ jobs:
         if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/tags/v'))
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ (startsWith(github.ref, 'refs/tags/v') && github.ref_name) || (startsWith(github.ref, 'refs/heads/release/') && format('v{0}', replace(replace(github.ref_name, 'release/', ''), 'v', ''))) || 'nightly' }}
-          name: ${{ (startsWith(github.ref, 'refs/tags/v') && format('NanoWeaver HRT {0}', github.ref_name)) || (startsWith(github.ref, 'refs/heads/release/') && format('NanoWeaver HRT v{0}', replace(replace(github.ref_name, 'release/', ''), 'v', ''))) || 'NanoWeaver HRT Continuous Rolling Release (Nightly)' }}
-          prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') && !startsWith(github.ref, 'refs/heads/release/') }}
+          tag_name: ${{ steps.release-meta.outputs.tag_name }}
+          name: ${{ steps.release-meta.outputs.release_name }}
+          prerelease: ${{ steps.release-meta.outputs.prerelease == 'true' }}
           draft: false
           target_commitish: main
           files: |
