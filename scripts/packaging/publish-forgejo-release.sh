@@ -157,6 +157,12 @@ print(json.dumps(data))
 fi
 
 if [[ -z "${RELEASE_ID}" ]]; then
+    # Concurrent race guard: check if another runner (e.g., tag push) just created it
+    EXISTING_RESP="$(curl -s -H "${AUTH_HEADER}" "${API_BASE}/releases/tags/${TAG_NAME}" || true)"
+    RELEASE_ID="$(python3 -c "import json, sys; data = json.loads(sys.argv[1]); print(data.get('id', ''))" "${EXISTING_RESP}" 2>/dev/null || true)"
+fi
+
+if [[ -z "${RELEASE_ID}" ]]; then
     echo "ERROR: Failed to obtain or create Forgejo release ID. Response:" >&2
     echo "${CREATE_RESP:-${EXISTING_BODY}}" >&2
     exit 1
