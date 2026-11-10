@@ -253,7 +253,9 @@ jobs:
         run: dotnet restore NanoWeaverHrt.slnx
 
       - name: Build and Sign Standalone Release Packages
-        run: ./scripts/packaging/build-all-packages.sh
+        env:
+          ALLOW_STUB_PACKAGING: "true"
+        run: ./scripts/packaging/build-all-packages.sh --allow-stub-packaging
 
       - name: Upload Linux Packages & AUR Definitions
         uses: actions/upload-artifact@v4

@@ -17,7 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\NanoWeaverHrt\NanoWeaverHrt.csproj" />
+    <ProjectReference Include="..\NanoWeaverHrt\NanoWeaverHrt.csproj" ReferenceOutputAssembly="true" Publish="false" />
   </ItemGroup>
 
   <ItemGroup>

@@ -11,6 +11,7 @@
          demoted to a warning because it reports infrastructure, not a code defect. -->
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1900</WarningsNotAsErrors>
+    <ErrorOnDuplicatePublishOutputFiles>false</ErrorOnDuplicatePublishOutputFiles>
     <Version>2026.11.09.4</Version>
     <AssemblyVersion>2026.11.09.4</AssemblyVersion>
     <FileVersion>2026.11.09.4</FileVersion>

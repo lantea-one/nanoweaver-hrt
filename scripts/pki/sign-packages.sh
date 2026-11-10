@@ -64,9 +64,9 @@ if [[ ! -d "${ARTIFACTS_DIR}" ]]; then
     mkdir -p "${ARTIFACTS_DIR}"
 fi
 
-# WHAT: Verify availability of private signing keys and public trust anchors.
-# WHY:  Fail fast with actionable instructions if keys have not been provisioned.
-# HOW:  Check presence of leaf key, leaf cert, root CA, and GPG keyring.
+# WHAT: Verify availability and cryptographic consistency of private signing keys and public trust anchors.
+# WHY:  Fail fast or auto-provision if keys have not been provisioned or if local private keys mismatch public anchors.
+# HOW:  Check presence of leaf key, leaf cert, root CA, PFX, and GPG keyring, and assert public key match.
 LEAF_KEY="${PKI_DIR}/nanoweaver-codesign-leaf.key"
 LEAF_CERT="${PUBLIC_KEYS_DIR}/nanoweaver-codesign-leaf.crt"
 ROOT_CERT="${PUBLIC_KEYS_DIR}/nanoweaver-codesign-root-ca.crt"
@@ -74,12 +74,22 @@ PFX_FILE="${PKI_DIR}/codesign-leaf.pfx"
 ANDROID_KEYSTORE="${PKI_DIR}/codesign-android.keystore"
 GNUPG_DIR="${PKI_DIR}/gnupg"
 
-if [[ ! -f "${LEAF_KEY}" || ! -f "${LEAF_CERT}" || ! -f "${ROOT_CERT}" || ! -f "${PFX_FILE}" || ! -d "${GNUPG_DIR}" ]]; then
-    echo ">> Signing keys missing in ${PKI_DIR}. Auto-provisioning via provision-or-rotate-codesign.sh..."
+KEYS_VALID=false
+if [[ -f "${LEAF_KEY}" && -f "${LEAF_CERT}" && -f "${ROOT_CERT}" && -f "${PFX_FILE}" && -d "${GNUPG_DIR}" ]]; then
+    PUB_FROM_CERT="$(openssl x509 -in "${LEAF_CERT}" -noout -pubkey 2>/dev/null || true)"
+    PUB_FROM_KEY="$(openssl pkey -in "${LEAF_KEY}" -pubout 2>/dev/null || true)"
+    if [[ -n "${PUB_FROM_CERT}" && "${PUB_FROM_CERT}" == "${PUB_FROM_KEY}" ]]; then
+        KEYS_VALID=true
+    fi
+fi
+
+if [[ "${KEYS_VALID}" != "true" ]]; then
+    echo ">> Signing keys missing or mismatched in ${PKI_DIR}. Auto-provisioning via provision-or-rotate-codesign.sh..."
     "${SCRIPT_DIR}/provision-or-rotate-codesign.sh" \
         --out-dir "${PKI_DIR}" \
         --public-keys-dir "${PUBLIC_KEYS_DIR}" \
-        --pfx-password "${PFX_PASSWORD}"
+        --pfx-password "${PFX_PASSWORD}" \
+        --force
 fi
 
 # WHAT: Establish short symlink in /tmp for GNUPGHOME if GNUPG_DIR exists.

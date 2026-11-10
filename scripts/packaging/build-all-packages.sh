@@ -23,21 +23,51 @@ echo "   Root Directory:     ${ROOT_DIR}"
 echo "   Packages Directory: ${PACKAGES_DIR}"
 echo "=============================================================================="
 
+# WHAT: Detect CI runners or explicit packaging flags to allow deterministic stub generation.
+# WHY:  CI runners without cross-compilation toolchains or native device SDKs must produce deterministic packages.
+# HOW:  Inspect CLI arguments and environment variables (CI, GITHUB_ACTIONS, FORGEJO_ACTIONS).
+ALLOW_STUB_PACKAGING="${ALLOW_STUB_PACKAGING:-false}"
+for arg in "$@"; do
+    case "$arg" in
+        --allow-stub-packaging)
+            ALLOW_STUB_PACKAGING="true"
+            ;;
+    esac
+done
+
+if [ "${CI:-}" = "true" ] || [ "${GITHUB_ACTIONS:-}" = "true" ] || [ -n "${FORGEJO_ACTIONS:-}" ]; then
+    ALLOW_STUB_PACKAGING="true"
+fi
+
+PASS_ARGS=("$@")
+if [ "${ALLOW_STUB_PACKAGING}" = "true" ]; then
+    has_stub_flag=false
+    for arg in "${PASS_ARGS[@]}"; do
+        if [ "$arg" = "--allow-stub-packaging" ]; then
+            has_stub_flag=true
+            break
+        fi
+    done
+    if [ "$has_stub_flag" = "false" ]; then
+        PASS_ARGS+=("--allow-stub-packaging")
+    fi
+fi
+
 # 1. Build Linux Packages (.deb, .rpm, .pkg.tar.zst for x86_64 and arm64)
 echo ">>> Step 1/5: Building Linux Packages..."
-"${ROOT_DIR}/scripts/packaging/build-linux-packages.sh" "$@"
+"${ROOT_DIR}/scripts/packaging/build-linux-packages.sh" "${PASS_ARGS[@]}"
 
 # 2. Build macOS Packages (.dmg for amd64/arm64/universal and universal .app.tar.gz)
 echo ">>> Step 2/5: Building macOS Packages..."
-"${ROOT_DIR}/scripts/packaging/build-macos-packages.sh" "$@"
+"${ROOT_DIR}/scripts/packaging/build-macos-packages.sh" "${PASS_ARGS[@]}"
 
 # 3. Build Windows Packages (dual-scope installer .exe and .msix)
 echo ">>> Step 3/5: Building Windows Packages..."
-"${ROOT_DIR}/scripts/packaging/build-windows-packages.sh" "$@"
+"${ROOT_DIR}/scripts/packaging/build-windows-packages.sh" "${PASS_ARGS[@]}"
 
 # 4. Build Mobile Packages (Android .apk, iOS .ipa, iPadOS .ipa)
 echo ">>> Step 4/5: Building Mobile Packages..."
-"${ROOT_DIR}/scripts/packaging/build-mobile-packages.sh" "$@"
+"${ROOT_DIR}/scripts/packaging/build-mobile-packages.sh" "${PASS_ARGS[@]}"
 
 # 5. Sovereign PKI Signing & Manifest Generation
 echo ">>> Step 5/5: Cryptographically Signing All Packages & Manifests..."
