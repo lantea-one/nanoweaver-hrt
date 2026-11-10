@@ -745,20 +745,20 @@ public sealed class DatabaseMigrationRunnerTests
     [Fact]
     public async Task ApplyPendingMigrationsAsync_AllDefaultMigrations_AppliesSuccessfullyOnRealSqliteAndIsIdempotent()
     {
-        // WHAT: Executes the complete default migration chain (Migration001 through Migration012) on SQLite.
+        // WHAT: Executes the complete default migration chain (Migration001 through Migration013) on SQLite.
         // WHY:  Fulfills Issue #99 (P96): Guarantees end-to-end schema creation without DDL syntax or dependency errors.
-        // HOW:  Runs ApplyPendingMigrationsAsync once (asserts 12 applied), checks versions, and runs again (asserts 0 applied).
+        // HOW:  Runs ApplyPendingMigrationsAsync once (asserts 13 applied), checks versions, and runs again (asserts 0 applied).
         await using var conn = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:");
         await conn.OpenAsync();
 
         using DatabaseMigrationRunner runner = new();
 
         int firstPass = await runner.ApplyPendingMigrationsAsync(conn, "sqlite");
-        Assert.Equal(12, firstPass);
+        Assert.Equal(13, firstPass);
 
         IReadOnlyList<long> applied = await runner.GetAppliedVersionsAsync(conn, "sqlite");
-        Assert.Equal(12, applied.Count);
-        for (long i = 1; i <= 12; i++)
+        Assert.Equal(13, applied.Count);
+        for (long i = 1; i <= 13; i++)
         {
             Assert.Contains(i, applied);
         }
@@ -780,11 +780,11 @@ public sealed class DatabaseMigrationRunnerTests
     [InlineData("mariadb")]
     public void AllRegisteredMigrations_GenerateNonEmptySql_AcrossAllSupportedDialects(string dialect)
     {
-        // WHAT: Validates GetSql for all 12 migrations against every engine dialect.
+        // WHAT: Validates GetSql for all 13 migrations against every engine dialect.
         // WHY:  Fulfills Issue #99 (P96): Ensures DDL migrations produce valid SQL and data-only migrations handle dialects safely.
         // HOW:  Instantiates DatabaseMigrationRunner, iterates through RegisteredMigrations, and asserts non-null SQL.
         using DatabaseMigrationRunner runner = new();
-        Assert.Equal(12, runner.RegisteredMigrations.Count);
+        Assert.Equal(13, runner.RegisteredMigrations.Count);
 
         foreach (IDatabaseMigration migration in runner.RegisteredMigrations)
         {

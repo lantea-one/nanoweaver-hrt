@@ -10,7 +10,7 @@ using Xunit;
 namespace NanoWeaverHrt.Tests.Database;
 
 /// <summary>
-/// Unit tests verifying multi-engine SQL dialect generation and execution of all 12 database migrations
+/// Unit tests verifying multi-engine SQL dialect generation and execution of all 13 database migrations
 /// across SQLite, PostgreSQL, DuckDB, and MySQL / MariaDB backends.
 /// </summary>
 public sealed class MultiEngineMigrationTests : IDisposable
@@ -58,16 +58,16 @@ public sealed class MultiEngineMigrationTests : IDisposable
     }
 
     /// <summary>
-    /// Verifies that all 12 database migrations emit valid, non-null SQL across all four supported dialects:
+    /// Verifies that all 13 database migrations emit valid, non-null SQL across all four supported dialects:
     /// SQLite, PostgreSQL, DuckDB, and MySQL / MariaDB.
     /// </summary>
     [Fact]
-    public void GetSql_All12Migrations_ReturnExpectedSqlAcrossAllDialects()
+    public void GetSql_All13Migrations_ReturnExpectedSqlAcrossAllDialects()
     {
         DatabaseMigrationRunner runner = new(protector: _protector);
         string[] dialects = ["sqlite", "postgresql", "duckdb", "mysql", "mariadb"];
 
-        Assert.Equal(12, runner.RegisteredMigrations.Count);
+        Assert.Equal(13, runner.RegisteredMigrations.Count);
 
         foreach (IDatabaseMigration migration in runner.RegisteredMigrations)
         {
@@ -98,22 +98,22 @@ public sealed class MultiEngineMigrationTests : IDisposable
     }
 
     /// <summary>
-    /// Verifies that <see cref="DatabaseMigrationRunner.ApplyPendingMigrationsAsync"/> executes all 12 migrations cleanly
+    /// Verifies that <see cref="DatabaseMigrationRunner.ApplyPendingMigrationsAsync"/> executes all 13 migrations cleanly
     /// on an in-memory SQLite database and is fully idempotent on subsequent calls.
     /// </summary>
     [Fact]
-    public async Task ApplyPendingMigrationsAsync_InMemorySqlite_ExecutesAll12MigrationsCleanly()
+    public async Task ApplyPendingMigrationsAsync_InMemorySqlite_ExecutesAll13MigrationsCleanly()
     {
         DatabaseMigrationRunner runner = new(protector: _protector);
         await using SqliteConnection connection = new("Data Source=:memory:;Mode=Memory;Cache=Shared");
         await connection.OpenAsync();
 
         int applied = await runner.ApplyPendingMigrationsAsync(connection, "sqlite");
-        Assert.Equal(12, applied);
+        Assert.Equal(13, applied);
 
         IReadOnlyList<long> versions = await runner.GetAppliedVersionsAsync(connection, "sqlite");
-        Assert.Equal(12, versions.Count);
-        for (int i = 1; i <= 12; i++)
+        Assert.Equal(13, versions.Count);
+        for (int i = 1; i <= 13; i++)
         {
             Assert.Contains(i, versions);
         }
@@ -124,11 +124,11 @@ public sealed class MultiEngineMigrationTests : IDisposable
     }
 
     /// <summary>
-    /// Verifies that <see cref="DatabaseMigrationRunner.ApplyPendingMigrationsAsync"/> executes all 12 migrations cleanly
+    /// Verifies that <see cref="DatabaseMigrationRunner.ApplyPendingMigrationsAsync"/> executes all 13 migrations cleanly
     /// on an in-process DuckDB database and is fully idempotent on subsequent calls.
     /// </summary>
     [Fact]
-    public async Task ApplyPendingMigrationsAsync_InProcessDuckDb_ExecutesAll12MigrationsCleanly()
+    public async Task ApplyPendingMigrationsAsync_InProcessDuckDb_ExecutesAll13MigrationsCleanly()
     {
         DatabaseMigrationRunner runner = new(protector: _protector);
         string dbPath = Path.Combine(_tempDir, "duck_migrations.duckdb");
@@ -136,11 +136,11 @@ public sealed class MultiEngineMigrationTests : IDisposable
         await connection.OpenAsync();
 
         int applied = await runner.ApplyPendingMigrationsAsync(connection, "duckdb");
-        Assert.Equal(12, applied);
+        Assert.Equal(13, applied);
 
         IReadOnlyList<long> versions = await runner.GetAppliedVersionsAsync(connection, "duckdb");
-        Assert.Equal(12, versions.Count);
-        for (int i = 1; i <= 12; i++)
+        Assert.Equal(13, versions.Count);
+        for (int i = 1; i <= 13; i++)
         {
             Assert.Contains(i, versions);
         }
