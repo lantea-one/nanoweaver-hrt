@@ -73,6 +73,44 @@ flowchart TD
 
 ---
 
+## Semi-Annual (180-Day) Subcutaneous Depot Dosing & Stoichiometric Clearance Mass Calibration
+
+Clinical translation of twice-yearly outpatient administration requires distinct carrier mass calibrations between masculinizing (androgenic) and feminizing (estrogenic) regimens due to fundamental differences in systemic metabolic clearance volumes (850 L/day for testosterone vs. 500 L/day for 17β-estradiol):
+
+### 1. Masculinizing (FtM) Depot Mass Calibration
+* **Systemic Clearance Rate**: ~850 L/day.
+* **Target Serum Concentration**: 15.0 to 30.0 nmol/L (430 to 865 ng/dL, mean target setpoint ~20.0 nmol/L).
+* **Daily In-Vivo Delivery Rate**:
+
+$$\text{Daily Dose Rate} = 20.0\text{ nmol/L} \times 850\text{ L/day} \times 288.42\text{ g/mol} \times 10^{-6}\text{ mg/ng} \approx 5.7\text{ mg/day}$$
+
+* **Initial Loaded Formulation Mass**:
+  At a steady-state bioresorbable matrix erosion rate of 0.55%/day (PLGA-PEG-PLGA triblock copolymer):
+
+$$\text{Initial Loaded Mass} = \frac{5.7\text{ mg/day}}{0.0055/\text{day}} \approx 1000\text{ to }1050\text{ mg}$$
+
+*Note: Initial depots formulated with low mass (e.g. 50 mg) yield sub-therapeutic serum testosterone levels (0.79 nmol/L). Clinicians must prescribe 1000 to 1050 mg initial loaded mass for adult FtM therapeutic regimens.*
+
+### 2. Feminizing (MtF) Depot Mass Calibration
+* **Systemic Clearance Rate**: ~500 L/day.
+* **Target Serum Concentration**: 400.0 to 700.0 pmol/L (110 to 190 pg/mL, mean target setpoint ~550 pmol/L).
+* **Daily In-Vivo Delivery Rate**:
+
+$$\text{Daily Dose Rate} = 550.0\text{ pmol/L} \times 500\text{ L/day} \times 272.38\text{ g/mol} \times 10^{-9}\text{ mg/pg} \approx 0.075\text{ to }0.088\text{ mg/day (75 to 88 µg/day)}$$
+
+* **Initial Loaded Formulation Mass**:
+  At a 0.55%/day matrix erosion rate:
+
+$$\text{Initial Loaded Mass} = \frac{0.088\text{ mg/day}}{0.0055/\text{day}} \approx 16.0\text{ to }20.0\text{ mg}$$
+
+*Note: Overloading feminizing depots (> 30 mg) elutes > 165 µg/day, elevating serum estradiol above the 700 pmol/L safety ceiling and increasing thrombotic vulnerability. Formulating 16 to 20 mg maintains steady physiological female ranges (450 to 550 pmol/L).*
+
+### 3. Pharmacogenomic Setpoint Adjustments
+* **UGT2B17 Null Deletion (*2/*2)**: Patients with impaired glucuronidation experience 0.60x androgen clearance; clinicians should down-titrate initial FtM depot mass to ~630 mg to prevent supraphysiological testosterone stacking.
+* **Factor V Leiden (rs6025)**: Caps peak estradiol setpoint strictly to ≤ 500 pmol/L with guaranteed burst suppression (≤ 5.0% at Day 7).
+
+---
+
 ## Pharmacogenomics & Genetic Predisposition Screening
 
 Standard endocrinology models assume "cis-typical" reference physiology. In real-world patient populations, however, single nucleotide polymorphisms (SNPs) and copy-number variations dramatically alter steroid clearance, receptor sensitivity, and thrombotic vulnerability.

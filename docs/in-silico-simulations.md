@@ -90,6 +90,10 @@ where *n* ≈ 0.50 to 0.70 represents anomalous transport combining thermo-respo
      - **MtF Feminizing**: 50 to 100 µg/day bio-identical 17β-estradiol (target: 400 to 700 pmol/L) with pituitary gonadotropin suppression (LH < 1.0 IU/L, FSH < 1.5 IU/L).
      - **FtM Masculinizing**: 5.0 to 7.0 mg/day bioactive testosterone (target: 15.0 to 30.0 nmol/L).
   3. **Phase III (Days 151–180: Terminal Reserve Taper)**: Controlled depletion down to ~5% reserve, triggering clinical re-dosing prompts before systemic levels crash.
+* **Clinical Loading Mass Guidelines**:
+  - **Masculinizing (FtM)**: Requires **1000 to 1050 mg initial formulation mass** to match adult male systemic clearance (~850 L/day) and deliver 5.0 to 7.0 mg/day (sustaining 15.0 to 30.0 nmol/L).
+  - **Feminizing (MtF)**: Requires **16.0 to 20.0 mg initial formulation mass** to match adult female systemic clearance (~500 L/day) and deliver 50 to 100 µg/day (sustaining 400 to 700 pmol/L).
+  - **Pharmacogenomics**: Down-titrate FtM initial mass to ~630 mg in *UGT2B17* deletion carriers (0.60x clearance) to avoid androgen stacking.
 * **Target Metric**: Time in Target Range (TTR) ≥ 95.0% across 180 days.
 
 ---
