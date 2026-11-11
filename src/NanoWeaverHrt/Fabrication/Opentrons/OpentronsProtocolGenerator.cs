@@ -64,8 +64,10 @@ public sealed class OpentronsProtocolGenerator : IOpentronsProtocolGenerator
 
         // WHAT: Calculates required tip rack count based on tip consumption.
         // WHY:  Every transfer requires a sterile tip to eliminate staple cross-contamination.
-        // HOW:  Multi-channel consumes 8 tips per column; single-channel consumes 1 tip per staple, plus 2 tips for M.SssI/SAM when methylated.
-        int tipsUsed = (isMultiChannel ? (((stapleCount + 7) / 8) * 8) : stapleCount) + (requiresMethylation ? 2 : 0);
+        // HOW:  Multi-channel consumes 8 tips per column; single-channel consumes 1 tip per staple, plus 2 tips for M.SssI/SAM when methylated, plus 1 tip for hydrogel encapsulation.
+        int tipsUsed = (isMultiChannel ? (((stapleCount + 7) / 8) * 8) : stapleCount)
+            + (requiresMethylation ? 2 : 0)
+            + (options.IncludeHydrogelDepotStage ? 1 : 0);
         int tipRacksRequired = Math.Max(1, (int)Math.Ceiling((double)tipsUsed / 96.0));
 
         // WHAT: Allocates deck slots sequentially according to robot platform constraints.
@@ -321,6 +323,11 @@ public sealed class OpentronsProtocolGenerator : IOpentronsProtocolGenerator
             pipettingMinutes += 0.5;
         }
 
+        if (options.IncludeHydrogelDepotStage)
+        {
+            pipettingMinutes += 0.5;
+        }
+
         if (stapleCount > 0)
         {
             if (isMultiChannel)
@@ -339,6 +346,12 @@ public sealed class OpentronsProtocolGenerator : IOpentronsProtocolGenerator
         {
             // M.SssI incubation at 37°C for 120 min + heat inactivation at 65°C for 20 min
             thermalMinutes += 140.0;
+        }
+
+        if (options.IncludeHydrogelDepotStage)
+        {
+            // Hydrogel sol-to-gel matrix stabilization / incubation step (+20 min)
+            thermalMinutes += 20.0;
         }
 
         if (options.UseThermocyclerModule)
@@ -524,6 +537,11 @@ public sealed class OpentronsProtocolGenerator : IOpentronsProtocolGenerator
                 sb.AppendLine("    msssi_source = reagent_reservoir['A4']");
                 sb.AppendLine("    sam_source = reagent_reservoir['A5']");
             }
+            if (options.IncludeHydrogelDepotStage)
+            {
+                string hydrogelWell = requiresMethylation ? "A6" : "A4";
+                sb.AppendLine($"    hydrogel_source = reagent_reservoir['{hydrogelWell}']");
+            }
             sb.AppendLine("    master_mix_tube = master_mix_source");
         }
         else
@@ -534,6 +552,11 @@ public sealed class OpentronsProtocolGenerator : IOpentronsProtocolGenerator
             {
                 sb.AppendLine("    msssi_tube = reagent_rack['A2']");
                 sb.AppendLine("    sam_tube = reagent_rack['A3']");
+            }
+            if (options.IncludeHydrogelDepotStage)
+            {
+                string hydrogelWell = requiresMethylation ? "A4" : "A2";
+                sb.AppendLine($"    hydrogel_tube = reagent_rack['{hydrogelWell}']");
             }
         }
         sb.AppendLine();
@@ -751,6 +774,62 @@ public sealed class OpentronsProtocolGenerator : IOpentronsProtocolGenerator
         else
         {
             sb.AppendLine("    protocol.comment('Staple dispensing completed. Retrieve reaction vessel for incubation.')");
+        }
+
+        if (options.IncludeHydrogelDepotStage)
+        {
+            // WHAT: Synthesizes automated hydrogel encapsulation stage for sustained depot delivery.
+            // WHY:  Encapsulates folded DNA origami nanocarriers in thermosensitive hydrogel precursor at 4°C followed by 37°C sol-to-gel matrix stabilization.
+            // HOW:  Lowers pipetting flow rate for viscous polymer handling, executes gentle 3-cycle mixing, and orchestrates thermal module ramps or delays.
+            double hydrogelVolume = Math.Max(1.0, Math.Round(Math.Min(maxPipetteVolume, options.TotalReactionVolumeMicroliters * 0.5), 1));
+            double mixVolume = Math.Max(1.0, Math.Round(Math.Min(maxPipetteVolume, hydrogelVolume * 0.8), 1));
+            string hydrogelSource = isMultiChannel ? "hydrogel_source" : "hydrogel_tube";
+
+            sb.AppendLine();
+            sb.AppendLine("    # -------------------------------------------------------------------------");
+            sb.AppendLine("    # 9. Automated Hydrogel Encapsulation for Long-Acting Depot Formulation");
+            sb.AppendLine("    # -------------------------------------------------------------------------");
+            sb.AppendLine("    protocol.comment('Initiating automated hydrogel precursor encapsulation for sustained time-release depot...')");
+
+            if (options.UseTemperatureModule)
+            {
+                sb.AppendLine("    temp_mod.set_temperature(celsius=4)");
+            }
+            else if (options.UseThermocyclerModule)
+            {
+                sb.AppendLine("    tc_mod.set_block_temperature(temperature=4)");
+            }
+            else
+            {
+                sb.AppendLine("    protocol.comment('Ensure reaction vessel is maintained at 4°C for sol-phase polymer precursor stability.')");
+            }
+
+            sb.AppendLine("    pipette.pick_up_tip()");
+            sb.AppendLine($"    pipette.aspirate({hydrogelVolume.ToString("F1", CultureInfo.InvariantCulture)}, {hydrogelSource}, flow_rate=25)");
+            sb.AppendLine($"    pipette.dispense({hydrogelVolume.ToString("F1", CultureInfo.InvariantCulture)}, dest_well)");
+            sb.AppendLine($"    pipette.mix(3, {mixVolume.ToString("F1", CultureInfo.InvariantCulture)}, dest_well)");
+            sb.AppendLine("    pipette.drop_tip()");
+            sb.AppendLine();
+
+            sb.AppendLine("    protocol.comment('Hydrogel precursor dispensed and mixed with nanocarriers. Commencing sol-to-gel stabilization...')");
+            if (options.UseThermocyclerModule)
+            {
+                sb.AppendLine("    tc_mod.close_lid()");
+                sb.AppendLine("    tc_mod.set_block_temperature(temperature=37, hold_time_minutes=20)");
+                sb.AppendLine("    tc_mod.open_lid()");
+                sb.AppendLine("    tc_mod.set_block_temperature(temperature=4)");
+            }
+            else if (options.UseTemperatureModule)
+            {
+                sb.AppendLine("    temp_mod.set_temperature(celsius=37)");
+                sb.AppendLine("    protocol.delay(minutes=20, msg='Depot sol-to-gel matrix polymerization at 37°C')");
+                sb.AppendLine("    temp_mod.set_temperature(celsius=4)");
+            }
+            else
+            {
+                sb.AppendLine("    protocol.comment('Transfer reaction vessel or sterile delivery vial to 37°C incubator for 20 minutes for sol-to-gel matrix polymerization.')");
+            }
+            sb.AppendLine("    protocol.comment('Hydrogel encapsulation and depot formulation complete.')");
         }
 
         return sb.ToString();

@@ -98,6 +98,12 @@ public sealed record OpentronsProtocolOptions
 
     /// <summary>Whether to include an automated enzymatic CpG methylation (M.SssI) pre-treatment step for TLR9-reactive scaffolds.</summary>
     public bool IncludeCpGMethylationStage { get; init; } = false;
+
+    /// <summary>
+    /// Whether to include an automated hydrogel encapsulation stage (e.g. PEG-PLGA sol-to-gel polymer precursor dispensing)
+    /// for sustained subcutaneous long-acting depot formulation.
+    /// </summary>
+    public bool IncludeHydrogelDepotStage { get; init; } = false;
 }
 
 /// <summary>

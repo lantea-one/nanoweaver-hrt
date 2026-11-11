@@ -913,4 +913,182 @@ public sealed class OpentronsProtocolGeneratorTests
         AssertPythonAstCompiles(result.PythonScript);
         Assert.Contains("Incubate reaction vessel at 37°C for 120 min, then heat-inactivate at 65°C for 20 min.", result.PythonScript);
     }
+
+    /// <summary>
+    /// Verifies that <see cref="OpentronsProtocolGenerator.GenerateProtocol"/> synthesizes automated hydrogel encapsulation
+    /// liquid handling commands and 37°C delay when configured with a single-channel pipette and on-deck Temperature Module.
+    /// </summary>
+    [Fact]
+    public void GenerateProtocol_IncludeHydrogelDepotStage_WithTemperatureModule_SingleChannel_SynthesizesAutomatedCommands()
+    {
+        // WHAT: Tests hydrogel encapsulation stage with single-channel pipette and on-deck Temperature Module.
+        // WHY:  Ensures polymer precursor tube mapping (A2 without methylation), 4°C sol-phase hold, reduced flow rate aspirate, gentle mix, and 37°C gel delay.
+        // HOW:  Asserts Python AST compiles and script contains expected Protocol API v2 calls.
+        OpentronsProtocolGenerator generator = new();
+        FabricationPackage package = CreateTestPackage(8);
+        OpentronsProtocolOptions options = new()
+        {
+            IncludeHydrogelDepotStage = true,
+            IncludeCpGMethylationStage = false,
+            PipetteModel = OpentronsPipetteModel.P20_Single_Gen2,
+            UseTemperatureModule = true,
+            UseThermocyclerModule = false
+        };
+
+        OpentronsProtocolResult result = generator.GenerateProtocol(package, options);
+
+        AssertPythonAstCompiles(result.PythonScript);
+        Assert.Contains("hydrogel_tube = reagent_rack['A2']", result.PythonScript);
+        Assert.Contains("temp_mod.set_temperature(celsius=4)", result.PythonScript);
+        Assert.Contains("flow_rate=25", result.PythonScript);
+        Assert.Contains("pipette.mix(3,", result.PythonScript);
+        Assert.Contains("temp_mod.set_temperature(celsius=37)", result.PythonScript);
+        Assert.Contains("protocol.delay(minutes=20, msg='Depot sol-to-gel matrix polymerization at 37°C')", result.PythonScript);
+        Assert.True(result.EstimatedRunDurationMinutes >= 20.0);
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="OpentronsProtocolGenerator.GenerateProtocol"/> synthesizes automated hydrogel encapsulation
+    /// and thermocycler sol-to-gel incubation when configured with an on-deck Thermocycler Module.
+    /// </summary>
+    [Fact]
+    public void GenerateProtocol_IncludeHydrogelDepotStage_WithThermocycler_SingleChannel_SynthesizesAutomatedCommands()
+    {
+        // WHAT: Tests hydrogel encapsulation stage with on-deck Thermocycler Module.
+        // WHY:  Ensures thermocycler block temperature set to 4°C, precursor dispensing, lid closing, and 37°C hold.
+        // HOW:  Asserts Python AST compiles and script contains tc_mod commands.
+        OpentronsProtocolGenerator generator = new();
+        FabricationPackage package = CreateTestPackage(8);
+        OpentronsProtocolOptions options = new()
+        {
+            IncludeHydrogelDepotStage = true,
+            IncludeCpGMethylationStage = false,
+            PipetteModel = OpentronsPipetteModel.P20_Single_Gen2,
+            UseThermocyclerModule = true,
+            UseTemperatureModule = false
+        };
+
+        OpentronsProtocolResult result = generator.GenerateProtocol(package, options);
+
+        AssertPythonAstCompiles(result.PythonScript);
+        Assert.Contains("tc_mod.set_block_temperature(temperature=4)", result.PythonScript);
+        Assert.Contains("flow_rate=25", result.PythonScript);
+        Assert.Contains("pipette.mix(3,", result.PythonScript);
+        Assert.Contains("tc_mod.close_lid()", result.PythonScript);
+        Assert.Contains("tc_mod.set_block_temperature(temperature=37, hold_time_minutes=20)", result.PythonScript);
+        Assert.Contains("tc_mod.open_lid()", result.PythonScript);
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="OpentronsProtocolGenerator.GenerateProtocol"/> synthesizes manual incubator instructions
+    /// for hydrogel encapsulation when no on-deck thermal modules are enabled.
+    /// </summary>
+    [Fact]
+    public void GenerateProtocol_IncludeHydrogelDepotStage_WithoutModules_SingleChannel_SynthesizesManualInstructions()
+    {
+        // WHAT: Tests hydrogel encapsulation fallback when neither Thermocycler nor Temperature Module is configured.
+        // WHY:  Provides explicit operator instructions for maintaining 4°C sol-phase and transferring to a 37°C off-deck incubator.
+        // HOW:  Asserts Python AST compiles and script contains manual comment instructions.
+        OpentronsProtocolGenerator generator = new();
+        FabricationPackage package = CreateTestPackage(4);
+        OpentronsProtocolOptions options = new()
+        {
+            IncludeHydrogelDepotStage = true,
+            IncludeCpGMethylationStage = false,
+            PipetteModel = OpentronsPipetteModel.P20_Single_Gen2,
+            UseThermocyclerModule = false,
+            UseTemperatureModule = false
+        };
+
+        OpentronsProtocolResult result = generator.GenerateProtocol(package, options);
+
+        AssertPythonAstCompiles(result.PythonScript);
+        Assert.Contains("Ensure reaction vessel is maintained at 4°C for sol-phase polymer precursor stability.", result.PythonScript);
+        Assert.Contains("Transfer reaction vessel or sterile delivery vial to 37°C incubator for 20 minutes for sol-to-gel matrix polymerization.", result.PythonScript);
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="OpentronsProtocolGenerator.GenerateProtocol"/> routes hydrogel precursor to reservoir well A4
+    /// when using an 8-channel multi-channel pipette without CpG methylation.
+    /// </summary>
+    [Fact]
+    public void GenerateProtocol_IncludeHydrogelDepotStage_WithMultiChannel_WithoutMethylation_SynthesizesReservoirA4()
+    {
+        // WHAT: Tests hydrogel precursor addressing in 12-channel reservoir without methylation reagents.
+        // WHY:  Positions hydrogel precursor in well A4 directly following buffer and payload.
+        // HOW:  Asserts Python AST compiles and script maps hydrogel_source to reagent_reservoir['A4'].
+        OpentronsProtocolGenerator generator = new();
+        FabricationPackage package = CreateTestPackage(16);
+        OpentronsProtocolOptions options = new()
+        {
+            IncludeHydrogelDepotStage = true,
+            IncludeCpGMethylationStage = false,
+            PipetteModel = OpentronsPipetteModel.P20_Multi_Gen2,
+            UseTemperatureModule = true
+        };
+
+        OpentronsProtocolResult result = generator.GenerateProtocol(package, options);
+
+        AssertPythonAstCompiles(result.PythonScript);
+        Assert.Contains("hydrogel_source = reagent_reservoir['A4']", result.PythonScript);
+        Assert.Contains("pipette.aspirate(20.0, hydrogel_source, flow_rate=25)", result.PythonScript);
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="OpentronsProtocolGenerator.GenerateProtocol"/> routes hydrogel precursor to reservoir well A6
+    /// when using an 8-channel multi-channel pipette with automated CpG methylation.
+    /// </summary>
+    [Fact]
+    public void GenerateProtocol_IncludeHydrogelDepotStage_WithMultiChannel_WithMethylation_SynthesizesReservoirA6()
+    {
+        // WHAT: Tests hydrogel precursor addressing in 12-channel reservoir when methylation reagents occupy A4 and A5.
+        // WHY:  Positions hydrogel precursor in well A6 after msssi_source (A4) and sam_source (A5).
+        // HOW:  Asserts Python AST compiles and script maps hydrogel_source to reagent_reservoir['A6'].
+        OpentronsProtocolGenerator generator = new();
+        FabricationPackage package = CreateTestPackage(16);
+        OpentronsProtocolOptions options = new()
+        {
+            IncludeHydrogelDepotStage = true,
+            IncludeCpGMethylationStage = true,
+            PipetteModel = OpentronsPipetteModel.P20_Multi_Gen2,
+            UseTemperatureModule = true
+        };
+
+        OpentronsProtocolResult result = generator.GenerateProtocol(package, options);
+
+        AssertPythonAstCompiles(result.PythonScript);
+        Assert.Contains("msssi_source = reagent_reservoir['A4']", result.PythonScript);
+        Assert.Contains("sam_source = reagent_reservoir['A5']", result.PythonScript);
+        Assert.Contains("hydrogel_source = reagent_reservoir['A6']", result.PythonScript);
+        Assert.Contains("pipette.aspirate(20.0, hydrogel_source, flow_rate=25)", result.PythonScript);
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="OpentronsProtocolGenerator.GenerateProtocol"/> routes hydrogel precursor to tube rack well A4
+    /// when using a single-channel pipette with automated CpG methylation.
+    /// </summary>
+    [Fact]
+    public void GenerateProtocol_IncludeHydrogelDepotStage_WithSingleChannel_WithMethylation_SynthesizesRackA4()
+    {
+        // WHAT: Tests hydrogel precursor addressing in 24-tube rack when methylation reagents occupy A2 and A3.
+        // WHY:  Positions hydrogel precursor in tube A4 after master mix (A1), msssi (A2), and sam (A3).
+        // HOW:  Asserts Python AST compiles and script maps hydrogel_tube to reagent_rack['A4'].
+        OpentronsProtocolGenerator generator = new();
+        FabricationPackage package = CreateTestPackage(8);
+        OpentronsProtocolOptions options = new()
+        {
+            IncludeHydrogelDepotStage = true,
+            IncludeCpGMethylationStage = true,
+            PipetteModel = OpentronsPipetteModel.P20_Single_Gen2,
+            UseTemperatureModule = true
+        };
+
+        OpentronsProtocolResult result = generator.GenerateProtocol(package, options);
+
+        AssertPythonAstCompiles(result.PythonScript);
+        Assert.Contains("msssi_tube = reagent_rack['A2']", result.PythonScript);
+        Assert.Contains("sam_tube = reagent_rack['A3']", result.PythonScript);
+        Assert.Contains("hydrogel_tube = reagent_rack['A4']", result.PythonScript);
+        Assert.Contains("pipette.aspirate(20.0, hydrogel_tube, flow_rate=25)", result.PythonScript);
+    }
 }

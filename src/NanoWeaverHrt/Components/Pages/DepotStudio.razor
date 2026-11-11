@@ -1,0 +1,519 @@
+@page "/depot-studio"
+@using System.Globalization
+@using System.Text
+@using NanoWeaverHrt.Endocrine
+@using NanoWeaverHrt.Localization
+@inject ITimeReleaseDepotService DepotService
+@inject IWeaverLocalizer Localizer
+
+<section class="card panel" role="region" aria-label="180-Day Depot Studio Header">
+    <div class="panel-header">
+        <div>
+            <h2>180-Day Semi-Annual Time-Release Depot Studio</h2>
+            <p class="panel-desc">Sovereign Pharmacokinetic Modeling &bull; Zero-Order Nanocarrier Elution &bull; Subcutaneous Matrix Kinetics &bull; HPG Axis Suppression</p>
+        </div>
+        <div class="status-indicator">
+            <span class="status-indicator-dot dot-green" aria-hidden="true"></span>
+            <span class="font-mono text-accent">180-DAY DEPOT ENGINE ACTIVE</span>
+        </div>
+    </div>
+</section>
+
+<!-- Interactive Parameter Configuration Workstation -->
+<section class="card panel mt-3" role="region" aria-label="Depot Formulation Parameter Configuration">
+    <div class="panel-header">
+        <div>
+            <h3>Depot Formulation &amp; Biomaterial Parameters</h3>
+            <p class="subtext">Configure polymer matrix carrier, loaded hormone mass, and nominal erosion degradation rate for 6-month sustained delivery.</p>
+        </div>
+    </div>
+
+    <div class="telemetry-grid mt-3">
+        <!-- Regimen Selection -->
+        <div class="form-group">
+            <label class="form-label" for="select-regimen">Therapeutic Regimen</label>
+            <select id="select-regimen" class="form-control" value="@_selectedRegimen" @onchange="HandleRegimenChanged" aria-label="Target Therapeutic Regimen">
+                <option value="@TherapeuticRegimen.MaleToFemale">Feminizing HRT (E2 Dominant)</option>
+                <option value="@TherapeuticRegimen.FemaleToMale">Masculinizing HRT (T Dominant)</option>
+            </select>
+            <span class="form-hint">Governs physiological target setpoints and HPG feedback.</span>
+        </div>
+
+        <!-- Polymer Matrix Type -->
+        <div class="form-group">
+            <label class="form-label" for="select-matrix">Polymer Matrix Carrier</label>
+            <select id="select-matrix" class="form-control" @bind="_selectedMatrix" aria-label="Biocompatible Polymer Matrix Composition">
+                <option value="@PolymerMatrixType.PlgaPegPlga">PLGA-PEG-PLGA Triblock Hydrogel</option>
+                <option value="@PolymerMatrixType.AlginateChitosan">Alginate-Chitosan Complex</option>
+                <option value="@PolymerMatrixType.CyclodextrinScaffold">Cyclodextrin Porous Scaffold</option>
+                <option value="@PolymerMatrixType.CrosslinkedHydrogel">Covalently Crosslinked PEG/Methacrylate</option>
+            </select>
+            <span class="form-hint">Defines matrix pore diffusion and erosion mechanics.</span>
+        </div>
+
+        <!-- Initial Payload Mass (mg) -->
+        <div class="form-group">
+            <label class="form-label" for="input-initial-mass">Initial Nanocarrier Mass (mg)</label>
+            <input id="input-initial-mass" type="number" class="form-control font-mono" @bind="_initialMassMg" step="0.5" min="1.0" max="200.0" aria-label="Initial Nanocarrier Mass in milligrams" />
+            <span class="form-hint">Total hormone payload loaded into the subcutaneous depot (default 18.0 mg).</span>
+        </div>
+
+        <!-- Daily Erosion Degradation Rate (%/day) -->
+        <div class="form-group">
+            <label class="form-label" for="input-erosion-rate">Nominal Daily Erosion Rate (%/day)</label>
+            <input id="input-erosion-rate" type="number" class="form-control font-mono" @bind="_dailyErosionRatePercent" step="0.05" min="0.1" max="5.0" aria-label="Nominal Daily Erosion Rate in percent per day" />
+            <span class="form-hint">Hydrolytic matrix degradation rate governing steady-state elution (default 0.55%/day).</span>
+        </div>
+    </div>
+
+    <div class="d-flex align-items-center gap-2 mt-4">
+        <button id="btn-run-depot-simulation" class="btn btn-primary" @onclick="RunSimulation" aria-label="Execute 180-Day Depot Kinetic Simulation">
+            <span>⚡</span> Run 180-Day Simulation
+        </button>
+        <button id="btn-reset-depot-defaults" class="btn btn-outline" @onclick="ResetDefaults" aria-label="Reset Formulation Parameters to Clinical Defaults">
+            Reset Defaults
+        </button>
+    </div>
+</section>
+
+@if (_simulationResult != null)
+{
+    var verdict = GetClinicalVerdict();
+
+    <!-- Clinical Performance Verdict Banner -->
+    <section class="card panel mt-4" role="region" aria-label="Clinical Verdict and Performance Summary">
+        <div class="panel-header">
+            <div>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge @verdict.BadgeClass">@verdict.Label</span>
+                    <span class="badge badge-outline font-mono">180-DAY HORIZON</span>
+                </div>
+                <p class="mt-2 text-main">@verdict.Explanation</p>
+            </div>
+        </div>
+
+        <!-- Key Clinical Metrics Grid -->
+        <div class="telemetry-grid mt-3">
+            <!-- Time In Target Range (TTR %) -->
+            <div class="card stat-card">
+                <div class="stat-label">TIME IN TARGET RANGE</div>
+                <div class="stat-value font-mono @(_simulationResult.TimeInTargetRangePercent >= 95.0 ? "text-success" : "text-danger")">
+                    @_simulationResult.TimeInTargetRangePercent.ToString("F1")%
+                </div>
+                <div class="stat-sub">Clinical Benchmark: &ge; 95.0%</div>
+            </div>
+
+            <!-- Burst Phase Release Fraction -->
+            <div class="card stat-card">
+                <div class="stat-label">PHASE I BURST FRACTION</div>
+                <div class="stat-value font-mono @(_simulationResult.BurstSuppressed ? "text-success" : "text-danger")">
+                    @((_simulationResult.Day7BurstFraction * 100.0).ToString("F2"))%
+                </div>
+                <div class="stat-sub">Day 7 Threshold: &le; 5.00%</div>
+            </div>
+
+            <!-- Steady-State Daily Release Rate -->
+            <div class="card stat-card">
+                <div class="stat-label">STEADY-STATE RATE</div>
+                <div class="stat-value font-mono text-accent">
+                    @_simulationResult.AverageDailyReleaseMg.ToString("F3") <small class="text-muted">mg/day</small>
+                </div>
+                <div class="stat-sub">Phase II Plateau Mean Delivery</div>
+            </div>
+
+            <!-- Terminal Depletion / Re-Dosing Day -->
+            <div class="card stat-card">
+                <div class="stat-label">TERMINAL RE-DOSING DAY</div>
+                <div class="stat-value font-mono @(_simulationResult.ReDosingAlertDay > 0 ? "text-accent" : "text-success")">
+                    @(_simulationResult.ReDosingAlertDay > 0 ? $"Day {_simulationResult.ReDosingAlertDay}" : "Day 180")
+                </div>
+                <div class="stat-sub">Reserve: @((_simulationResult.TerminalReserveFraction * 100.0).ToString("F1"))% remaining</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Semi-Annual Re-Dosing Countdown Widget -->
+    <section class="card panel mt-4" role="region" aria-label="Semi-Annual Re-Dosing Countdown Widget">
+        <div class="panel-header">
+            <div>
+                <h3>Semi-Annual Re-Dosing Countdown &amp; Payload Depletion</h3>
+                <p class="subtext">Monitors continuous depot payload consumption across the 180-day cycle to forecast next scheduled clinical administration.</p>
+            </div>
+            <div class="badge @(_simulationResult.ReDosingAlertDay > 0 ? "badge-warning" : "badge-outline") font-mono">
+                @(_simulationResult.ReDosingAlertDay > 0 ? $"ALERT AT DAY {_simulationResult.ReDosingAlertDay}" : "FULL 180-DAY COVERAGE")
+            </div>
+        </div>
+
+        <div class="mt-3">
+            <div class="d-flex justify-content-between font-mono subtext mb-1">
+                <span>Day 0 (Depot Implantation)</span>
+                <span>Day @(_simulationResult.ReDosingAlertDay > 0 ? _simulationResult.ReDosingAlertDay : 180) (Re-Dosing Horizon)</span>
+                <span>Day 180 (Cycle Complete)</span>
+            </div>
+            <progress class="w-100" value="@(_simulationResult.ReDosingAlertDay > 0 ? _simulationResult.ReDosingAlertDay : 180)" max="180" aria-label="180-day depot countdown progress"></progress>
+        </div>
+
+        <div class="telemetry-grid mt-3">
+            <div class="card stat-card">
+                <div class="stat-label">RE-DOSING COUNTDOWN</div>
+                <div class="stat-value font-mono text-accent">
+                    @(_simulationResult.ReDosingAlertDay > 0 ? $"{_simulationResult.ReDosingAlertDay} Days" : "180 Days")
+                </div>
+                <div class="stat-sub">Autonomous Schedule Threshold</div>
+            </div>
+            <div class="card stat-card">
+                <div class="stat-label">FINAL RESERVE MASS</div>
+                <div class="stat-value font-mono">
+                    @(_simulationResult.Points[^1].RemainingReserveMg.ToString("F2")) <small class="text-muted">mg</small>
+                </div>
+                <div class="stat-sub">Of initial @_initialMassMg.ToString("F1") mg payload</div>
+            </div>
+            <div class="card stat-card">
+                <div class="stat-label">LH SUPPRESSION</div>
+                <div class="stat-value font-mono @(_simulationResult.LhSuppressionAchieved ? "text-success" : "text-danger")">
+                    @(_simulationResult.LhSuppressionAchieved ? "ACHIEVED (< 1.0 IU/L)" : "UNSUPPRESSED")
+                </div>
+                <div class="stat-sub">Final LH: @_simulationResult.FinalLhIuL.ToString("F2") IU/L</div>
+            </div>
+            <div class="card stat-card">
+                <div class="stat-label">FSH SUPPRESSION</div>
+                <div class="stat-value font-mono @(_simulationResult.FshSuppressionAchieved ? "text-success" : "text-danger")">
+                    @(_simulationResult.FshSuppressionAchieved ? "ACHIEVED (< 1.5 IU/L)" : "UNSUPPRESSED")
+                </div>
+                <div class="stat-sub">Final FSH: @_simulationResult.FinalFshIuL.ToString("F2") IU/L</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 180-Day Multi-Phase Trajectory Visualization -->
+    <section class="card panel mt-4" role="region" aria-label="180-Day Pharmacokinetic Multi-Phase Trajectory Chart">
+        <div class="panel-header">
+            <div>
+                <h3>180-Day Multi-Phase Elution &amp; Depletion Trajectory</h3>
+                <p class="subtext">Phase I Burst Suppression (Days 1–7) &bull; Phase II Zero-Order Steady-State Plateau (Days 8–150) &bull; Phase III First-Order Terminal Taper (Days 151–180)</p>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <span class="badge badge-accent font-mono">CYAN: CUMULATIVE RELEASE</span>
+                <span class="badge badge-outline font-mono">AMBER: REMAINING RESERVE</span>
+            </div>
+        </div>
+
+        <div class="chart-container mt-3">
+            <svg viewBox="0 0 720 240" class="w-100" role="img" aria-label="180-Day Depot Release Trajectory Graph">
+                <title>180-Day Depot Release Trajectory</title>
+                <desc>Displays cumulative payload fraction eluted and remaining unreleased payload reserve across 180 simulation days.</desc>
+
+                <!-- Phase Division Shading -->
+                <!-- Phase I: Days 1 to 7 -->
+                <rect x="50" y="30" width="25" height="170" fill="rgba(0, 210, 255, 0.05)" />
+                <!-- Phase II: Days 8 to 150 -->
+                <rect x="75" y="30" width="508" height="170" fill="rgba(16, 185, 129, 0.04)" />
+                <!-- Phase III: Days 151 to 180 -->
+                <rect x="583" y="30" width="107" height="170" fill="rgba(245, 158, 11, 0.05)" />
+
+                <!-- Gridlines -->
+                <line x1="50" y1="40" x2="690" y2="40" stroke="#1f2d42" stroke-dasharray="2,2" />
+                <line x1="50" y1="80" x2="690" y2="80" stroke="#1f2d42" stroke-dasharray="2,2" />
+                <line x1="50" y1="120" x2="690" y2="120" stroke="#1f2d42" stroke-dasharray="2,2" />
+                <line x1="50" y1="160" x2="690" y2="160" stroke="#1f2d42" stroke-dasharray="2,2" />
+                <line x1="50" y1="200" x2="690" y2="200" stroke="#334155" />
+                <line x1="50" y1="200" x2="50" y2="30" stroke="#334155" />
+
+                <!-- Phase Divider Vertical Lines -->
+                <line x1="75" y1="30" x2="75" y2="200" stroke="#00f2fe" stroke-dasharray="3,3" />
+                <line x1="583" y1="30" x2="583" y2="200" stroke="#f59e0b" stroke-dasharray="3,3" />
+
+                <!-- Trajectory Curve: Cumulative Release Fraction (Cyan) -->
+                <path d="@GetCumulativeReleasePath()" fill="none" stroke="#00f2fe" stroke-width="2.5" />
+
+                <!-- Trajectory Curve: Remaining Payload Reserve (Amber) -->
+                <path d="@GetRemainingReservePath()" fill="none" stroke="#f59e0b" stroke-width="2" stroke-dasharray="4,2" />
+
+                <!-- Phase Labels -->
+                <text x="52" y="24" fill="#00d2ff" font-size="9" font-family="monospace">Phase I (0-7d)</text>
+                <text x="280" y="24" fill="#10b981" font-size="9" font-family="monospace">Phase II: Steady-State Plateau (8-150d)</text>
+                <text x="585" y="24" fill="#f59e0b" font-size="9" font-family="monospace">Phase III (151-180d)</text>
+
+                <!-- Axis Labels -->
+                <text x="15" y="44" fill="#8b949e" font-size="9" font-family="monospace">100%</text>
+                <text x="20" y="124" fill="#8b949e" font-size="9" font-family="monospace">50%</text>
+                <text x="25" y="204" fill="#8b949e" font-size="9" font-family="monospace">0%</text>
+
+                <text x="50" y="216" fill="#8b949e" font-size="9" font-family="monospace">Day 0</text>
+                <text x="75" y="228" fill="#00d2ff" font-size="9" font-family="monospace">Day 7</text>
+                <text x="210" y="216" fill="#8b949e" font-size="9" font-family="monospace">Day 45</text>
+                <text x="365" y="216" fill="#8b949e" font-size="9" font-family="monospace">Day 90</text>
+                <text x="515" y="216" fill="#8b949e" font-size="9" font-family="monospace">Day 135</text>
+                <text x="583" y="228" fill="#f59e0b" font-size="9" font-family="monospace">Day 150</text>
+                <text x="670" y="216" fill="#8b949e" font-size="9" font-family="monospace">Day 180</text>
+            </svg>
+        </div>
+
+        <!-- Milestone Trajectory Data Table -->
+        <div class="table-container mt-4">
+            <table class="data-table">
+                <caption class="sr-only">180-Day Semi-Annual Depot Clinical Milestone Timepoints</caption>
+                <thead>
+                    <tr>
+                        <th scope="col">Day</th>
+                        <th scope="col">Phase</th>
+                        <th scope="col">Cumulative Release</th>
+                        <th scope="col">Daily Delivery (mg/day)</th>
+                        <th scope="col">Reserve Mass (mg)</th>
+                        <th scope="col">17β-Estradiol</th>
+                        <th scope="col">Testosterone</th>
+                        <th scope="col">LH (IU/L)</th>
+                        <th scope="col">FSH (IU/L)</th>
+                        <th scope="col">Clinical Target</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (TimeReleaseDailyPoint pt in GetMilestonePoints())
+                    {
+                        <tr>
+                            <td class="font-mono">Day @pt.Day</td>
+                            <td class="subtext">@pt.Phase</td>
+                            <td class="font-mono text-accent">@((pt.CumulativeFraction * 100.0).ToString("F2"))%</td>
+                            <td class="font-mono">@pt.DailyReleaseMg.ToString("F3")</td>
+                            <td class="font-mono">@pt.RemainingReserveMg.ToString("F2")</td>
+                            <td class="font-mono">@pt.EstradiolPmolL.ToString("F1") <small>pmol/L</small></td>
+                            <td class="font-mono">@pt.TestosteroneNmolL.ToString("F2") <small>nmol/L</small></td>
+                            <td class="font-mono @(pt.LhIuL < 1.0 ? "text-success" : "")">@pt.LhIuL.ToString("F2")</td>
+                            <td class="font-mono @(pt.FshIuL < 1.5 ? "text-success" : "")">@pt.FshIuL.ToString("F2")</td>
+                            <td>
+                                <span class="badge @(pt.InTargetRange ? "badge-success" : "badge-outline")">
+                                    @(pt.InTargetRange ? "IN RANGE" : "OUT OF RANGE")
+                                </span>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+}
+
+@code {
+    /// <summary>
+    /// Currently selected therapeutic endocrine regimen.
+    /// </summary>
+    private TherapeuticRegimen _selectedRegimen = TherapeuticRegimen.MaleToFemale;
+
+    /// <summary>
+    /// Currently selected polymer matrix carrier type.
+    /// </summary>
+    private PolymerMatrixType _selectedMatrix = PolymerMatrixType.PlgaPegPlga;
+
+    /// <summary>
+    /// Initial loaded nanocarrier payload mass in milligrams.
+    /// </summary>
+    private double _initialMassMg = 16.0;
+
+    /// <summary>
+    /// Nominal daily polymer matrix erosion degradation rate in percent per day.
+    /// </summary>
+    private double _dailyErosionRatePercent = 0.55;
+
+    /// <summary>
+    /// Result of the most recent 180-day time-release depot simulation.
+    /// </summary>
+    private TimeReleaseSimulationResult? _simulationResult;
+
+    /// <summary>
+    /// Initializes component state and executes the default baseline simulation.
+    /// </summary>
+    protected override void OnInitialized()
+    {
+        // WHAT: Dispatches baseline 180-day depot simulation on component initialization.
+        // WHY:  Ensures that clinical metrics and trajectory visualization render immediately for wet-lab operators.
+        // HOW:  Invokes RunSimulation with initial defaults.
+        RunSimulation();
+    }
+
+    /// <summary>
+    /// Executes the 180-day time-release depot kinetic simulation using configured parameters.
+    /// </summary>
+    private void RunSimulation()
+    {
+        // WHAT: Constructs simulation parameters and invokes computational time-release depot engine.
+        // WHY:  Calculates multi-phase elution, HPG feedback suppression, and semi-annual re-dosing alert day.
+        // HOW:  Sets up TimeReleaseDepotParameters matching selected regimen setpoints and invokes DepotService.Simulate180DayDepot.
+        double initialE2 = _selectedRegimen == TherapeuticRegimen.MaleToFemale ? 120.0 : 450.0;
+        double initialT = _selectedRegimen == TherapeuticRegimen.MaleToFemale ? 18.0 : 1.5;
+        double targetE2 = _selectedRegimen == TherapeuticRegimen.MaleToFemale ? 550.0 : 100.0;
+        double targetT = _selectedRegimen == TherapeuticRegimen.MaleToFemale ? 1.2 : 20.0;
+
+        TimeReleaseDepotParameters parameters = new()
+        {
+            Regimen = _selectedRegimen,
+            MatrixType = _selectedMatrix,
+            KineticsModel = ReleaseKineticsModel.KorsmeyerPeppas,
+            InitialPayloadMassMg = Math.Max(1.0, _initialMassMg),
+            TargetHorizonDays = 180,
+            ClearanceMultiplier = 1.0,
+            InitialEstradiolPmolL = initialE2,
+            InitialTestosteroneNmolL = initialT,
+            InitialLhIuL = 6.5,
+            InitialFshIuL = 5.0,
+            TargetEstradiolPmolL = targetE2,
+            TargetTestosteroneNmolL = targetT
+        };
+
+        _simulationResult = DepotService.Simulate180DayDepot(parameters);
+    }
+
+    /// <summary>
+    /// Resets all formulation parameters to standard clinical defaults and re-runs the simulation.
+    /// </summary>
+    private void ResetDefaults()
+    {
+        // WHAT: Restores formulation configuration inputs to pristine clinical defaults.
+        // WHY:  Permits wet-lab operators to quickly discard parameter explorations and resume standard protocols.
+        // HOW:  Reassigns fields and dispatches RunSimulation.
+        _selectedRegimen = TherapeuticRegimen.MaleToFemale;
+        _selectedMatrix = PolymerMatrixType.PlgaPegPlga;
+        _initialMassMg = 16.0;
+        _dailyErosionRatePercent = 0.55;
+        RunSimulation();
+    }
+
+    /// <summary>
+    /// Handles changes in therapeutic regimen selection, updating default physiological setpoints.
+    /// </summary>
+    /// <param name="e">Change event args containing the selected enum string.</param>
+    private void HandleRegimenChanged(ChangeEventArgs e)
+    {
+        // WHAT: Synchronizes selected therapeutic regimen and re-executes depot kinetics.
+        // WHY:  Different endocrine regimens require distinct baseline and target sex steroid thresholds.
+        // HOW:  Parses enum value from event string and invokes RunSimulation.
+        if (Enum.TryParse(e.Value?.ToString(), out TherapeuticRegimen regimen))
+        {
+            _selectedRegimen = regimen;
+            RunSimulation();
+        }
+    }
+
+    /// <summary>
+    /// Evaluates the overall clinical verdict based on TTR, burst fraction, and gonadotropin suppression.
+    /// </summary>
+    /// <returns>A tuple containing the clinical status label, CSS badge class, and detailed explanation.</returns>
+    private (string Label, string BadgeClass, string Explanation) GetClinicalVerdict()
+    {
+        // WHAT: Evaluates comprehensive clinical criteria for semi-annual depot efficacy.
+        // WHY:  Guarantees patient safety by checking TTR >= 95%, burst <= 5%, and LH/FSH gonadotropin suppression.
+        // HOW:  Inspects simulation metrics against international Endocrine Society guidelines.
+        if (_simulationResult == null)
+        {
+            return ("PENDING", "badge-outline", "Simulation pending execution.");
+        }
+
+        bool ttrPassed = _simulationResult.TimeInTargetRangePercent >= 95.0;
+        bool burstPassed = _simulationResult.BurstSuppressed;
+        bool lhPassed = _simulationResult.LhSuppressionAchieved;
+        bool fshPassed = _simulationResult.FshSuppressionAchieved;
+
+        if (ttrPassed && burstPassed && lhPassed && fshPassed)
+        {
+            return (
+                "OPTIMAL CLINICAL EFFICACY",
+                "badge-success",
+                "Formulation satisfies all therapeutic standards: TTR >= 95%, Day 7 burst <= 5.0%, and full HPG axis gonadotropin suppression (LH < 1.0 IU/L, FSH < 1.5 IU/L)."
+            );
+        }
+        else if (burstPassed && ttrPassed)
+        {
+            return (
+                "ACCEPTABLE (MONITOR GONADOTROPINS)",
+                "badge-warning",
+                "Acceptable time in target range and burst suppression achieved, but pituitary LH/FSH suppression is borderline."
+            );
+        }
+        else
+        {
+            return (
+                "SUBOPTIMAL FORMULATION",
+                "badge-danger",
+                "Formulation fails clinical thresholds. Adjust polymer matrix composition, loaded mass, or daily erosion degradation rate."
+            );
+        }
+    }
+
+    /// <summary>
+    /// Builds the SVG path definition for the cumulative release fraction trajectory.
+    /// </summary>
+    /// <returns>SVG path string command attribute (e.g. 'M 50 200 L 53 198 ...').</returns>
+    private string GetCumulativeReleasePath()
+    {
+        // WHAT: Maps daily trajectory simulation points to SVG canvas pixel coordinates.
+        // WHY:  Enables responsive vector visualization of the 180-day multi-phase elution curve.
+        // HOW:  Iterates over points, projecting day (0..180) to X (50..690) and fraction (0..1) to Y (200..40).
+        if (_simulationResult == null || _simulationResult.Points.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        StringBuilder sb = new();
+        for (int i = 0; i < _simulationResult.Points.Count; i++)
+        {
+            TimeReleaseDailyPoint pt = _simulationResult.Points[i];
+            double x = 50.0 + (pt.Day / 180.0) * 640.0;
+            double y = 200.0 - (pt.CumulativeFraction * 160.0);
+            char cmd = i == 0 ? 'M' : 'L';
+            sb.Append(CultureInfo.InvariantCulture, $"{cmd} {x:F1} {y:F1} ");
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Builds the SVG path definition for the remaining reserve trajectory.
+    /// </summary>
+    /// <returns>SVG path string command attribute for remaining reserve mass.</returns>
+    private string GetRemainingReservePath()
+    {
+        // WHAT: Maps remaining reserve fraction to SVG canvas pixel coordinates.
+        // WHY:  Visualizes payload depletion down to the Phase III terminal taper.
+        // HOW:  Projects day to X (50..690) and remaining reserve fraction (1..0) to Y (40..200).
+        if (_simulationResult == null || _simulationResult.Points.Count == 0 || _initialMassMg <= 0.0)
+        {
+            return string.Empty;
+        }
+
+        StringBuilder sb = new();
+        for (int i = 0; i < _simulationResult.Points.Count; i++)
+        {
+            TimeReleaseDailyPoint pt = _simulationResult.Points[i];
+            double fraction = pt.RemainingReserveMg / _initialMassMg;
+            double x = 50.0 + (pt.Day / 180.0) * 640.0;
+            double y = 200.0 - (fraction * 160.0);
+            char cmd = i == 0 ? 'M' : 'L';
+            sb.Append(CultureInfo.InvariantCulture, $"{cmd} {x:F1} {y:F1} ");
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Retrieves a filtered subset of daily trajectory points for tabular clinical review.
+    /// </summary>
+    /// <returns>Collection of milestone trajectory points.</returns>
+    private IEnumerable<TimeReleaseDailyPoint> GetMilestonePoints()
+    {
+        // WHAT: Filters simulation points to key clinical milestone days.
+        // WHY:  Provides a concise tabular overview of Day 0, Day 7, Day 30, Day 60, Day 90, Day 120, Day 150, Day 180.
+        // HOW:  Yields points matching milestone day thresholds and the final simulation day.
+        if (_simulationResult == null)
+        {
+            yield break;
+        }
+
+        int[] milestoneDays = [0, 7, 30, 60, 90, 120, 150, 180];
+        foreach (int day in milestoneDays)
+        {
+            if (day < _simulationResult.Points.Count)
+            {
+                yield return _simulationResult.Points[day];
+            }
+        }
+    }
+}
