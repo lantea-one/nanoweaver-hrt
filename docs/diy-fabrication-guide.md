@@ -170,6 +170,24 @@ If spin filters are unavailable, you can purify without columns:
 
 ---
 
+## 6. Semi-Annual Subcutaneous Depot Formulation & Sol-Gel Encapsulation
+
+Transitioning from weekly injections or daily topicals to twice-yearly outpatient administration requires encapsulating folded nanocarriers into a **thermo-responsive, bioresorbable hydrogel matrix**.
+
+### Chemistry & Phase Transition Mechanics
+* **Polymer System**: Poly(lactic-co-glycolic acid)-poly(ethylene glycol) (PLGA-PEG-PLGA triblock copolymer, 20% to 25% w/v) or cross-linked alginate-chitosan.
+* **Sol-to-Gel Thermal Transition**:
+  * **Chilled Sol Phase (4°C to 20°C)**: Low-viscosity injectable liquid easily flowing through a fine 23G to 25G needle.
+  * **Physiological Gel Phase (37°C)**: Upon subcutaneous injection, the polymer spontaneously self-assembles into a physical gel matrix through hydrophobic PLGA block aggregation, trapping nanocarriers inside nanoscale pores.
+
+### Encapsulation Recipe
+1. **Precursor Dissolution**: Dissolve 250 mg sterile PLGA-PEG-PLGA in 1.0 mL chilled 1x PBS (4°C) with gentle rotation overnight (DO NOT VORTEX).
+2. **Nanocarrier Incorporation**: Gently resuspend 25 to 50 mg purified, passivated DNA origami nanocarriers into the chilled hydrogel precursor.
+3. **Viscosity-Controlled Pipetting**: Using pre-chilled pipette tips, aspirate slowly (25 µL/s) to prevent shear stress or air bubble introduction.
+4. **Storage & Administration**: Fill sterile delivery syringes at 4°C. Maintain on cold ice packs until subcutaneous injection into abdominal adipose tissue, where physiological body heat sets the solid depot within 3 to 5 minutes.
+
+---
+
 ## Next Steps
 * Walk through the end-to-end software pipeline in [**Guided DNA Workflow Wizard**](workflow-wizard.md).
 * Review endocrine setpoints in [**Endocrine Hub & Pharmacodynamics**](endocrine-hub.md).

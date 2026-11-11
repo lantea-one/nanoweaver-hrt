@@ -1179,6 +1179,76 @@ Exports runnable oxDNA or LAMMPS input deck scripts formatted for GPU/SYCL hardw
 
 ---
 
+## 9b. Semi-Annual Time-Release Nanocarrier Depot Endpoints
+
+### `POST /api/depots/formulations`
+Creates and persists a patient-specific subcutaneous time-release depot configuration and optional baseline schedule points.
+
+* **Method**: `POST`
+* **Role Requirement**: `Administrator` or `Researcher` with subject access
+* **Request Headers**: `Content-Type: application/json`
+* **Request Payload**:
+  ```json
+  {
+    "patientId": "SUBJECT-001",
+    "regimen": "FemaleToMale",
+    "polymerMatrixType": "PlgaPegPlga",
+    "initialNanocarrierMassMg": 50.0,
+    "dailyErosionRatePercent": 0.55,
+    "releaseKineticsModel": "KorsmeyerPeppas",
+    "targetHorizonDays": 180
+  }
+  ```
+* **Response Status**: `201 Created`
+* **Response Payload (JSON)** — `DepotFormulationResponse`:
+  ```json
+  {
+    "formulation": {
+      "depotId": "depot-d5b8c9e0",
+      "patientId": "SUBJECT-001",
+      "regimen": "FemaleToMale",
+      "polymerMatrixType": "PlgaPegPlga",
+      "initialNanocarrierMassMg": 50.0,
+      "dailyErosionRatePercent": 0.55,
+      "releaseKineticsModel": "KorsmeyerPeppas",
+      "targetHorizonDays": 180,
+      "createdAtUtc": "2026-11-10T18:00:00+00:00"
+    },
+    "schedule": []
+  }
+  ```
+
+### `GET /api/depots/formulations/{patientId}`
+Retrieves all persisted depot configurations and associated 180-day timepoint schedules for the specified patient.
+
+* **Method**: `GET`
+* **Role Requirement**: `Administrator`, `Researcher` with subject access, or self `Patient`
+* **Response Status**: `200 OK`
+* **Response Payload**: `IReadOnlyList<DepotFormulationResponse>`
+
+### `POST /api/depots/simulate-release`
+Executes an in-silico 180-day multi-phase time-release depot simulation (burst suppression, Korsmeyer-Peppas plateau, and terminal depletion).
+
+* **Method**: `POST`
+* **Role Requirement**: `Administrator` or `Researcher`
+* **Request Payload**:
+  ```json
+  {
+    "regimen": "MaleToFemale",
+    "matrixType": "PlgaPegPlga",
+    "kineticsModel": "KorsmeyerPeppas",
+    "initialNanocarrierMassMg": 30.0,
+    "dailyErosionRatePercent": 0.55,
+    "horizonDays": 180,
+    "clearanceMultiplier": 1.0,
+    "targetDailyDoseMg": 0.08
+  }
+  ```
+* **Response Status**: `200 OK`
+* **Response Payload (JSON)**: `TimeReleaseSimulationResult` containing 180-day daily trajectory, TTR %, burst fraction, and clinical feasibility verdict.
+
+---
+
 ## 10. Post-Quantum Cryptography & Regulatory Compliance
 
 ### `GET /api/compliance/status`

@@ -320,7 +320,7 @@ rootfs = sys.argv[1]
 out_path = sys.argv[2]
 arch = sys.argv[3]
 name = 'nanoweaver-hrt-desktop'
-version = sys.argv[4] if len(sys.argv) > 4 else '2026.11.10.2'
+version = sys.argv[4] if len(sys.argv) > 4 else '2026.11.10.3'
 release = '1'
 
 def build_rpm(rootfs, out_path, name, version, release, arch):

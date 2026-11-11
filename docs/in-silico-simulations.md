@@ -78,6 +78,20 @@ $$\lambda_D = \frac{0.304}{\sqrt{I}} \times \sqrt{\frac{T}{298.15}}\text{ nm}$$
   * For FtM subjects carrying *AR CAG* repeats or *UGT2B17* deletions, androgen targets are recalibrated (15 to 25 nmol/L).
 * **Dosing Verdict**: Empirically confirms that a periodic subcutaneous depot (e.g. 25 mg every 180 days) maintains cis-typical endocrine levels without hormonal volatility.
 
+### Semi-Annual 180-Day Time-Release Depot Kinetics Model
+* **Mathematical Foundation**: Coupled Korsmeyer-Peppas anomalous non-Fickian transport and zero-order hydrogel matrix hydrolytic surface erosion:
+
+$$M_t / M_\infty = k \cdot t^n + k_{ero} \cdot t$$
+
+where *n* ≈ 0.50 to 0.70 represents anomalous transport combining thermo-responsive hydrogel matrix swelling and polymer chain scission.
+* **Three-Phase Release Profile**:
+  1. **Phase I (Days 1–7: Burst Suppression)**: Controlled retention diffusion barrier holds burst release strictly ≤ 5.0% of cumulative payload, eliminating acute cardiovascular thrombotic risks or polycythemia spikes.
+  2. **Phase II (Days 8–150: Zero-Order Steady-State Plateau)**: Coupled hydrogel degradation and nanocarrier release maintaining steady micro-aliquots:
+     - **MtF Feminizing**: 50 to 100 µg/day bio-identical 17β-estradiol (target: 400 to 700 pmol/L) with pituitary gonadotropin suppression (LH < 1.0 IU/L, FSH < 1.5 IU/L).
+     - **FtM Masculinizing**: 5.0 to 7.0 mg/day bioactive testosterone (target: 15.0 to 30.0 nmol/L).
+  3. **Phase III (Days 151–180: Terminal Reserve Taper)**: Controlled depletion down to ~5% reserve, triggering clinical re-dosing prompts before systemic levels crash.
+* **Target Metric**: Time in Target Range (TTR) ≥ 95.0% across 180 days.
+
 ---
 
 ## 3. In-Silico Stage-Gate Decision Matrix

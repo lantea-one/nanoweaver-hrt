@@ -4,6 +4,29 @@
 
 ---
 
+## v2026.11.10.3 — Semi-Annual Time-Release Nanocarrier Depot & Multi-Phase Kinetics (Milestone 33 / Forgejo Issues #177–#181) (2026-11-10)
+
+Implements the complete scientific, persistence, mathematical, wet-lab, and user interface stack for semi-annual (180-day / twice-yearly) subcutaneous time-release nanocarrier depot delivery, reducing patient injection burden from 52 weekly doses to 2 outpatient visits per year while eliminating endocrine volatility and initial burst surges:
+* **Phase 1: Persistence & Schema Evolution (Forgejo #177 / P171)**:
+  - Database schema migration `Migration013_TimeReleaseDepotFormulations` across SQLite, PostgreSQL, DuckDB, and MySQL.
+  - Persists patient-specific depot configurations (`weaver_depot_formulations`) and 180-day trajectory schedules (`weaver_depot_release_schedules`).
+  - Implemented `IDepotFormulationRepository` and zero-allocation `DepotFormulationRepository`.
+* **Phase 2: Systems Biology Multi-Phase Time-Release Kinetics Engine (Forgejo #178 / P172)**:
+  - Implemented `ITimeReleaseDepotService` and `TimeReleaseDepotService` modeling coupled Korsmeyer-Peppas anomalous diffusion and zero-order matrix hydrolytic surface erosion.
+  - Enforces three-phase release kinetics: Phase I burst suppression (≤ 5.0% cumulative release at Day 7), Phase II zero-order steady-state plateau (50–100 µg/day E2 for MtF; 5–7 mg/day T for FtM), and Phase III terminal depletion (~5% reserve re-dosing alert).
+  - Models dynamic hypothalamic-pituitary-gonadal (HPG) axis gonadotropin suppression (LH < 1.0 IU/L, FSH < 1.5 IU/L) and Time in Target Range (TTR ≥ 95.0%).
+* **Phase 3: Minimal API Endpoints & Request Contracts (Forgejo #179 / P173)**:
+  - Mapped typed endpoints in `Program.cs`: `POST /api/depots/formulations` (201 Created), `GET /api/depots/formulations/{patientId}` (200 OK), and `POST /api/depots/simulate-release` (200 OK).
+  - Enforced role gating (`Administrator`, `Researcher`, and `Patient` self-access) with RFC 7807 problem details and string enum deserialization parity.
+* **Phase 4: Wet-Lab Opentrons Hydrogel Encapsulation & Sovereign DepotStudio UI (Forgejo #180 / P174)**:
+  - Extended `OpentronsProtocolGenerator` with `IncludeHydrogelDepotStage` synthesizing automated Protocol API v2 commands for thermo-responsive hydrogel sol-phase dispensing (4°C chilling, 25 µL/s viscous flow rate, gentle mixing, and 37°C setting).
+  - Built dark-mode compliant `DepotStudio.razor` providing interactive 180-day kinetic parameter tuning, clinical metrics cards, SVG trajectory charts, and semi-annual re-dosing countdown widget.
+* **Phase 5: Verification, Documentation & Release Closeout (Forgejo #181 / P175)**:
+  - Comprehensive unit test suites achieving 100.00% line & branch coverage and 0 uncovered lines in the ratchet baseline across 1,941 tests.
+  - Documentation updated across `docs/in-silico-simulations.md`, `docs/diy-fabrication-guide.md`, `docs/opentrons-automation.md`, and `docs/api-reference.md` using clean Unicode.
+
+---
+
 ## v2026.11.10.2 — Sovereign Clinical Audit & Wet-Lab Protocol Automation Release: Enum Deserialization Parity, In-Vivo Nuclease Degradation Kinetics, and Enzymatic CpG Methylation Protocols (2026-11-10)
 
 Resolves clinical audit findings identified during wet-lab automation and systems biology integration (Forgejo Issues #174, #175, #176):

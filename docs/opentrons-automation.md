@@ -304,3 +304,17 @@ The Opentrons automation engine is embedded directly into **Stage 5 (Wet-Lab Aut
 ## 10. Opentrons Multi-Step Volume Splitting & Thermal Ramp Rate Controllers
 - **Multi-Step Volume Splitting**: Opentrons pipetting protocols automatically calculate and split large volume transfers (exceeding pipette tip capacity) across multiple sequential aspirations and dispenses.
 - **Thermal Ramp Rate Controllers**: Precise thermal cycling protocols incorporate programmable peltier ramp rate controllers (`0.1°C/min` to `1.0°C/min`) to ensure defect-free structural annealing of DNA origami nanocarriers.
+
+---
+
+## 11. Automated Hydrogel Depot Microencapsulation Stage
+
+When `IncludeHydrogelDepotStage` is enabled in `OpentronsProtocolOptions`, the generator synthesizes dedicated liquid-handling commands for automated encapsulation of assembled nanocarriers into semi-annual bioresorbable depots:
+
+1. **Active 4°C Thermal Stabilization**:
+   - Commands the on-deck Temperature Module to maintain 4°C, preserving low-viscosity sol-phase behavior of the PLGA-PEG-PLGA or alginate copolymer matrix.
+2. **Viscous Liquid Aspiration Dynamics**:
+   - Reduces pipette aspiration flow rates to 25 µL/s with a 2.0-second post-aspiration dwell to prevent cavitation, air bubble entrapment, and volume inaccuracies with viscous polymers.
+3. **Gentle Multi-Cycle Mixing & Setting**:
+   - Dispenses the polymer precursor directly into the nanocarrier destination well and executes a 3-cycle gentle trituration (`mix(3, 30, dest_well)`).
+   - If a Thermocycler is configured, ramps block temperature to 37°C to verify sol-to-gel setting kinetics before refrigerated storage at 4°C.
