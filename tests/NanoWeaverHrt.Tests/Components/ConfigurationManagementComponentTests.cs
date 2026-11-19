@@ -16,7 +16,7 @@ namespace NanoWeaverHrt.Tests.Components;
 /// Unit and component interaction tests verifying administrative access gating, database precedence overrides,
 /// empty share-key state verification, and single-use peer key creation and revocation in <see cref="ConfigurationManagement"/>.
 /// </summary>
-public sealed class ConfigurationManagementComponentTests : TestContext
+public sealed class ConfigurationManagementComponentTests : BunitContext
 {
     /// <summary>
     /// Mock configuration repository supplying settings and share-key operations.
@@ -46,7 +46,7 @@ public sealed class ConfigurationManagementComponentTests : TestContext
     {
         // WHAT: Sets up mock repository state for configuration items and single-use share keys.
         // WHY:  Allows deterministic testing of Administrator access gating, override mutations, and key lifecycles.
-        // HOW:  Registers singleton mocks and UserSessionState in bUnit TestContext.Services.
+        // HOW:  Registers singleton mocks and UserSessionState in bUnit BunitContext.Services.
         JSInterop.Mode = JSRuntimeMode.Loose;
 
         _configurations = new List<ConfigurationItem>
@@ -124,7 +124,7 @@ public sealed class ConfigurationManagementComponentTests : TestContext
         // WHAT: Tests access gating for anonymous unauthenticated visitors.
         // WHY:  System configurations and cluster topology must never be accessible without authentication.
         // HOW:  Renders ConfigurationManagement with empty session state and asserts warning alert.
-        IRenderedComponent<ConfigurationManagement> cut = RenderComponent<ConfigurationManagement>();
+        IRenderedComponent<ConfigurationManagement> cut = Render<ConfigurationManagement>();
 
         var alert = cut.Find(".alert-warning");
         Assert.Contains("Authentication Required", alert.TextContent);
@@ -148,7 +148,7 @@ public sealed class ConfigurationManagementComponentTests : TestContext
             PublicKeyBase64 = "MIIB_res_key"
         });
 
-        IRenderedComponent<ConfigurationManagement> cut = RenderComponent<ConfigurationManagement>();
+        IRenderedComponent<ConfigurationManagement> cut = Render<ConfigurationManagement>();
 
         var alert = cut.Find(".alert-danger");
         Assert.Contains("Access Denied", alert.TextContent);
@@ -173,7 +173,7 @@ public sealed class ConfigurationManagementComponentTests : TestContext
             PublicKeyBase64 = "MIIB_admin_key"
         });
 
-        IRenderedComponent<ConfigurationManagement> cut = RenderComponent<ConfigurationManagement>();
+        IRenderedComponent<ConfigurationManagement> cut = Render<ConfigurationManagement>();
 
         Assert.Contains("BACKEND: SQLite (In-Memory)", cut.Markup);
         Assert.Contains("Database Precedence", cut.Markup);
@@ -198,7 +198,7 @@ public sealed class ConfigurationManagementComponentTests : TestContext
             PublicKeyBase64 = "MIIB_admin_key"
         });
 
-        IRenderedComponent<ConfigurationManagement> cut = RenderComponent<ConfigurationManagement>();
+        IRenderedComponent<ConfigurationManagement> cut = Render<ConfigurationManagement>();
 
         Assert.Contains("No share links have been generated yet", cut.Markup);
         Assert.DoesNotContain("Demo Collaborator", cut.Markup);
@@ -222,7 +222,7 @@ public sealed class ConfigurationManagementComponentTests : TestContext
             PublicKeyBase64 = "MIIB_admin_key"
         });
 
-        IRenderedComponent<ConfigurationManagement> cut = RenderComponent<ConfigurationManagement>();
+        IRenderedComponent<ConfigurationManagement> cut = Render<ConfigurationManagement>();
 
         // 1. Generate key
         var createBtn = cut.FindAll("button").First(b => b.TextContent.Contains("Generate Single-Use Share Link"));
@@ -266,7 +266,7 @@ public sealed class ConfigurationManagementComponentTests : TestContext
             PublicKeyBase64 = "MIIB_admin_key"
         });
 
-        IRenderedComponent<ConfigurationManagement> cut = RenderComponent<ConfigurationManagement>();
+        IRenderedComponent<ConfigurationManagement> cut = Render<ConfigurationManagement>();
 
         var saveBtn = cut.FindAll("button").First(b => b.TextContent.Contains("Save DB"));
         await cut.InvokeAsync(() => saveBtn.Click());

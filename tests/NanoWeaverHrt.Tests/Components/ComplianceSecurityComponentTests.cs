@@ -20,7 +20,7 @@ namespace NanoWeaverHrt.Tests.Components;
 /// Unit and component interaction tests verifying the post-quantum compliance and cryptographic
 /// ledger dashboard in <see cref="ComplianceSecurity"/>.
 /// </summary>
-public sealed class ComplianceSecurityComponentTests : TestContext
+public sealed class ComplianceSecurityComponentTests : BunitContext
 {
     /// <summary>
     /// Mock compliance audit service managing ledger status, verification, and HIPAA de-identification.
@@ -50,7 +50,7 @@ public sealed class ComplianceSecurityComponentTests : TestContext
     {
         // WHAT: Prepares mock responses for compliance status, audit records, and key management.
         // WHY:  Permits testing UI renders, ledger checks, de-identification, and crypto-shredding deterministically.
-        // HOW:  Registers singleton mocks and UserSessionState in bUnit's TestContext.Services.
+        // HOW:  Registers singleton mocks and UserSessionState in bUnit's BunitContext.Services.
         JSInterop.Mode = JSRuntimeMode.Loose;
 
         _complianceMock
@@ -132,7 +132,7 @@ public sealed class ComplianceSecurityComponentTests : TestContext
         // WHAT: Tests component initial render and telemetry dashboard display.
         // WHY:  Ensures operators see current encryption, audit integrity, and record counts.
         // HOW:  Renders component and asserts markup contains expected algorithm badges and audit entries.
-        IRenderedComponent<ComplianceSecurity> cut = RenderComponent<ComplianceSecurity>();
+        IRenderedComponent<ComplianceSecurity> cut = Render<ComplianceSecurity>();
 
         Assert.Contains("NIST FIPS 203 &amp; 204 Lattice Cryptography", cut.Markup);
         Assert.Contains("OPTIMAL", cut.Markup);
@@ -152,7 +152,7 @@ public sealed class ComplianceSecurityComponentTests : TestContext
         // WHAT: Tests ledger integrity verification user interaction in ComplianceSecurity.
         // WHY:  Enforces FDA 21 CFR Part 11 audit verification visibility.
         // HOW:  Clicks Verify Ledger button and asserts alert message matches verification result.
-        IRenderedComponent<ComplianceSecurity> cut = RenderComponent<ComplianceSecurity>();
+        IRenderedComponent<ComplianceSecurity> cut = Render<ComplianceSecurity>();
 
         var verifyBtn = cut.FindAll("button").First(b => b.TextContent.Contains("Verify"));
         await cut.InvokeAsync(() => verifyBtn.Click());
@@ -172,7 +172,7 @@ public sealed class ComplianceSecurityComponentTests : TestContext
         // WHAT: Tests de-identification workflow in ComplianceSecurity.
         // WHY:  Validates HIPAA § 164.514 direct identifier stripping before downstream processing.
         // HOW:  Clicks De-Identify button and verifies pseudonym alert display and stripped count.
-        IRenderedComponent<ComplianceSecurity> cut = RenderComponent<ComplianceSecurity>();
+        IRenderedComponent<ComplianceSecurity> cut = Render<ComplianceSecurity>();
 
         var deIdBtn = cut.FindAll("button").First(b => b.TextContent.Contains("De-Identify"));
         await cut.InvokeAsync(() => deIdBtn.Click());
@@ -207,7 +207,7 @@ public sealed class ComplianceSecurityComponentTests : TestContext
             PublicKeyBase64 = "MIIB..."
         });
 
-        IRenderedComponent<ComplianceSecurity> cut = RenderComponent<ComplianceSecurity>();
+        IRenderedComponent<ComplianceSecurity> cut = Render<ComplianceSecurity>();
 
         // Trigger de-identification first so _targetShredSubjectId is populated
         var deIdBtn = cut.FindAll("button").First(b => b.TextContent.Contains("De-Identify"));
@@ -238,7 +238,7 @@ public sealed class ComplianceSecurityComponentTests : TestContext
         // WHAT: Tests validation when target subject ID is empty.
         // WHY:  Prevents issuing crypto-shred requests without a target identifier.
         // HOW:  Clicks crypto-shred without populating subject ID and verifies warning alert.
-        IRenderedComponent<ComplianceSecurity> cut = RenderComponent<ComplianceSecurity>();
+        IRenderedComponent<ComplianceSecurity> cut = Render<ComplianceSecurity>();
 
         var shredBtn = cut.FindAll("button").First(b => b.TextContent.Contains("Crypto-Shred"));
         await cut.InvokeAsync(() => shredBtn.Click());
@@ -261,7 +261,7 @@ public sealed class ComplianceSecurityComponentTests : TestContext
             .Setup(k => k.CryptoShredSubjectKeyAsync(It.IsAny<string>(), default))
             .ReturnsAsync(SubjectErasureOutcome.AlreadyErased);
 
-        IRenderedComponent<ComplianceSecurity> cut = RenderComponent<ComplianceSecurity>();
+        IRenderedComponent<ComplianceSecurity> cut = Render<ComplianceSecurity>();
 
         // Trigger de-identification to populate target ID
         var deIdBtn = cut.FindAll("button").First(b => b.TextContent.Contains("De-Identify"));

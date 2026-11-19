@@ -20,7 +20,7 @@ namespace NanoWeaverHrt.Tests;
 /// Unit tests verifying route guarding, first-launch setup lockout, session restoration,
 /// telemetry latching, client-side idle tracking, and sign-out in <see cref="MainLayout"/>.
 /// </summary>
-public sealed class MainLayoutComponentTests : TestContext
+public sealed class MainLayoutComponentTests : BunitContext
 {
     /// <summary>
     /// Mock configuration repository supplying active database and accelerator backend settings.
@@ -106,7 +106,7 @@ public sealed class MainLayoutComponentTests : TestContext
 
         JSInterop.Setup<string?>("weaverGetSessionToken").SetResult(null);
 
-        IRenderedComponent<MainLayout> cut = RenderComponent<MainLayout>(p => p
+        IRenderedComponent<MainLayout> cut = Render<MainLayout>(p => p
             .Add(l => l.Body, builder =>
             {
                 if (nav.Uri.Contains("compliance"))
@@ -138,7 +138,7 @@ public sealed class MainLayoutComponentTests : TestContext
 
         JSInterop.Setup<string?>("weaverGetSessionToken").SetResult(null);
 
-        IRenderedComponent<MainLayout> cut = RenderComponent<MainLayout>(p => p
+        IRenderedComponent<MainLayout> cut = Render<MainLayout>(p => p
             .Add(l => l.Body, builder => builder.AddMarkupContent(0, "<div id=\"login-form\">Login Page</div>")));
 
         Assert.NotNull(cut.Find("#login-form"));
@@ -159,7 +159,7 @@ public sealed class MainLayoutComponentTests : TestContext
         // HOW:  Configures weaverGetSessionToken to throw JSException and renders MainLayout.
         JSInterop.Setup<string?>("weaverGetSessionToken").SetException(new JSException("Circuit disconnected"));
 
-        IRenderedComponent<MainLayout> cut = RenderComponent<MainLayout>();
+        IRenderedComponent<MainLayout> cut = Render<MainLayout>();
         Assert.NotNull(cut);
         Assert.False(_sessionState.IsAuthenticated);
     }
@@ -179,7 +179,7 @@ public sealed class MainLayoutComponentTests : TestContext
         NavigationManager nav = Services.GetRequiredService<NavigationManager>();
         nav.NavigateTo("http://localhost/");
 
-        IRenderedComponent<MainLayout> cut = RenderComponent<MainLayout>(p => p
+        IRenderedComponent<MainLayout> cut = Render<MainLayout>(p => p
             .Add(l => l.Body, builder => builder.AddMarkupContent(0, "<div id=\"setup-form\">Setup Wizard</div>")));
 
         Assert.Equal("http://localhost/setup", nav.Uri);
@@ -207,7 +207,7 @@ public sealed class MainLayoutComponentTests : TestContext
 
         JSInterop.SetupVoid("weaverRegisterIdleWatcher", It.IsAny<object>(), It.IsAny<int>()).SetVoidResult();
 
-        IRenderedComponent<MainLayout> cut = RenderComponent<MainLayout>(p => p
+        IRenderedComponent<MainLayout> cut = Render<MainLayout>(p => p
             .Add(l => l.Body, builder => builder.AddMarkupContent(0, "<div id=\"dashboard-body\">Welcome</div>")));
 
         Assert.NotNull(cut.Find("#dashboard-body"));
@@ -244,7 +244,7 @@ public sealed class MainLayoutComponentTests : TestContext
         _authMock.Setup(m => m.ValidateTokenAsync("valid-researcher-jwt"))
             .ReturnsAsync((true, _researcherUser, null));
 
-        IRenderedComponent<MainLayout> cut = RenderComponent<MainLayout>(p => p
+        IRenderedComponent<MainLayout> cut = Render<MainLayout>(p => p
             .Add(l => l.Body, builder => builder.AddMarkupContent(0, "<div id=\"studio\">Studio</div>")));
 
         Assert.NotNull(cut.Find(".sub-navbar"));
@@ -269,7 +269,7 @@ public sealed class MainLayoutComponentTests : TestContext
         _authMock.Setup(m => m.ValidateTokenAsync("invalid-expired-jwt"))
             .ReturnsAsync((false, null, "Signature expired"));
 
-        RenderComponent<MainLayout>();
+        Render<MainLayout>();
 
         Assert.False(_sessionState.IsAuthenticated);
         Assert.Equal("http://localhost/login", nav.Uri);
@@ -291,7 +291,7 @@ public sealed class MainLayoutComponentTests : TestContext
         JSInterop.Setup<string?>("weaverGetSessionToken")
             .SetException(new JSException("Browser storage quota exceeded"));
 
-        RenderComponent<MainLayout>();
+        Render<MainLayout>();
 
         Assert.False(_sessionState.IsAuthenticated);
         Assert.Equal("http://localhost/login", nav.Uri);
@@ -310,7 +310,7 @@ public sealed class MainLayoutComponentTests : TestContext
         _sessionState.SetUser(_adminUser);
         JSInterop.Setup<string?>("weaverGetSessionToken").SetResult("active-token");
 
-        IRenderedComponent<MainLayout> cut = RenderComponent<MainLayout>();
+        IRenderedComponent<MainLayout> cut = Render<MainLayout>();
         await cut.Instance.RecordActivity();
 
         _activityMock.Verify(m => m.RecordActivity("active-token"), Times.Once);
@@ -329,7 +329,7 @@ public sealed class MainLayoutComponentTests : TestContext
         _sessionState.SetUser(_adminUser);
         JSInterop.Setup<string?>("weaverGetSessionToken").SetResult(null);
 
-        IRenderedComponent<MainLayout> cut = RenderComponent<MainLayout>();
+        IRenderedComponent<MainLayout> cut = Render<MainLayout>();
         await cut.Instance.RecordActivity();
 
         _activityMock.Verify(m => m.RecordActivity(It.IsAny<string>()), Times.Never);
@@ -344,7 +344,7 @@ public sealed class MainLayoutComponentTests : TestContext
         // WHAT: Tests idle timeout guard when no session is active.
         // WHY:  Prevents redundant revocation calls when circuit is already unauthenticated.
         // HOW:  Calls OnUserIdleTimeout with unauthenticated session and asserts no interactions.
-        IRenderedComponent<MainLayout> cut = RenderComponent<MainLayout>();
+        IRenderedComponent<MainLayout> cut = Render<MainLayout>();
         await cut.Instance.OnUserIdleTimeout();
 
         _activityMock.Verify(m => m.Revoke(It.IsAny<string>()), Times.Never);
@@ -365,7 +365,7 @@ public sealed class MainLayoutComponentTests : TestContext
         JSInterop.SetupVoid("weaverClearSession").SetVoidResult();
 
         NavigationManager nav = Services.GetRequiredService<NavigationManager>();
-        IRenderedComponent<MainLayout> cut = RenderComponent<MainLayout>();
+        IRenderedComponent<MainLayout> cut = Render<MainLayout>();
 
         await cut.Instance.OnUserIdleTimeout();
 
@@ -389,7 +389,7 @@ public sealed class MainLayoutComponentTests : TestContext
         JSInterop.SetupVoid("weaverClearSession").SetException(new JSException("Circuit disconnected"));
 
         NavigationManager nav = Services.GetRequiredService<NavigationManager>();
-        IRenderedComponent<MainLayout> cut = RenderComponent<MainLayout>();
+        IRenderedComponent<MainLayout> cut = Render<MainLayout>();
 
         await cut.Instance.OnUserIdleTimeout();
 
@@ -414,7 +414,7 @@ public sealed class MainLayoutComponentTests : TestContext
         NavigationManager nav = Services.GetRequiredService<NavigationManager>();
         nav.NavigateTo("http://localhost/");
 
-        IRenderedComponent<MainLayout> cut = RenderComponent<MainLayout>();
+        IRenderedComponent<MainLayout> cut = Render<MainLayout>();
 
         var signOutBtn = cut.Find("button.btn-outline.text-muted");
         await signOutBtn.ClickAsync(new MouseEventArgs());
@@ -441,7 +441,7 @@ public sealed class MainLayoutComponentTests : TestContext
         NavigationManager nav = Services.GetRequiredService<NavigationManager>();
         nav.NavigateTo("http://localhost/");
 
-        IRenderedComponent<MainLayout> cut = RenderComponent<MainLayout>();
+        IRenderedComponent<MainLayout> cut = Render<MainLayout>();
 
         var signOutBtn = cut.Find("button.btn-outline.text-muted");
         await signOutBtn.ClickAsync(new MouseEventArgs());
@@ -464,7 +464,7 @@ public sealed class MainLayoutComponentTests : TestContext
         NavigationManager nav = Services.GetRequiredService<NavigationManager>();
         nav.NavigateTo("http://localhost/setup");
 
-        IRenderedComponent<MainLayout> cut = RenderComponent<MainLayout>(p => p
+        IRenderedComponent<MainLayout> cut = Render<MainLayout>(p => p
             .Add(l => l.Body, builder => builder.AddMarkupContent(0, "<div id=\"content\">Setup</div>")));
 
         // Simulate setup completion and admin sign-in
@@ -495,7 +495,7 @@ public sealed class MainLayoutComponentTests : TestContext
         NavigationManager nav = Services.GetRequiredService<NavigationManager>();
         nav.NavigateTo("http://localhost/");
 
-        IRenderedComponent<MainLayout> cut = RenderComponent<MainLayout>();
+        IRenderedComponent<MainLayout> cut = Render<MainLayout>();
 
         // Trigger sign out on session state directly
         _sessionState.SignOut();
@@ -517,7 +517,7 @@ public sealed class MainLayoutComponentTests : TestContext
         // HOW:  Renders with authenticated session, clears user via dispatcher, and asserts unregister.
         _sessionState.SetUser(_adminUser);
 
-        IRenderedComponent<MainLayout> cut = RenderComponent<MainLayout>();
+        IRenderedComponent<MainLayout> cut = Render<MainLayout>();
 
         await cut.InvokeAsync(() => _sessionState.SignOut());
 
@@ -536,7 +536,7 @@ public sealed class MainLayoutComponentTests : TestContext
         _sessionState.SetUser(_adminUser);
         JSInterop.SetupVoid("weaverUnregisterIdleWatcher").SetException(new JSException("Circuit dead"));
 
-        IRenderedComponent<MainLayout> cut = RenderComponent<MainLayout>();
+        IRenderedComponent<MainLayout> cut = Render<MainLayout>();
 
         await cut.InvokeAsync(() => _sessionState.SignOut());
 
@@ -556,7 +556,7 @@ public sealed class MainLayoutComponentTests : TestContext
         JSInterop.SetupVoid("weaverRegisterIdleWatcher", It.IsAny<object>(), It.IsAny<int>())
             .SetException(new JSException("Prerendering"));
 
-        IRenderedComponent<MainLayout> cut = RenderComponent<MainLayout>();
+        IRenderedComponent<MainLayout> cut = Render<MainLayout>();
         Assert.NotNull(cut);
     }
 
@@ -570,7 +570,7 @@ public sealed class MainLayoutComponentTests : TestContext
         // WHY:  Prevents memory leaks from lingering timer instances or event handlers.
         // HOW:  Renders MainLayout, calls Dispose, and asserts clean execution.
         _sessionState.SetUser(_adminUser);
-        IRenderedComponent<MainLayout> cut = RenderComponent<MainLayout>();
+        IRenderedComponent<MainLayout> cut = Render<MainLayout>();
 
         cut.Instance.Dispose();
         Assert.NotNull(cut.Instance);
@@ -586,7 +586,7 @@ public sealed class MainLayoutComponentTests : TestContext
         // WHY:  Ensures node telemetry values (heap, GC collections, uptime) format properly.
         // HOW:  Invokes UpdateTelemetry via reflection and asserts field values.
         _sessionState.SetUser(_adminUser);
-        IRenderedComponent<MainLayout> cut = RenderComponent<MainLayout>();
+        IRenderedComponent<MainLayout> cut = Render<MainLayout>();
 
         MethodInfo? updateMethod = typeof(MainLayout).GetMethod("UpdateTelemetry", BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.NotNull(updateMethod);
@@ -606,7 +606,7 @@ public sealed class MainLayoutComponentTests : TestContext
         // WHY:  Ensures that selecting a different language immediately translates navigation labels.
         // HOW:  Renders MainLayout authenticated, verifies default English label, changes selection to Spanish, and verifies Spanish text.
         _sessionState.SetUser(_adminUser);
-        IRenderedComponent<MainLayout> cut = RenderComponent<MainLayout>();
+        IRenderedComponent<MainLayout> cut = Render<MainLayout>();
 
         var endocrineLink = cut.Find("a[href='/endocrine']");
         Assert.Contains("Endocrine Hub", endocrineLink.TextContent);
@@ -630,7 +630,7 @@ public sealed class MainLayoutComponentTests : TestContext
         // WHY:  Guarantees that selecting Arabic activates RTL layout across the entire UI shell.
         // HOW:  Renders MainLayout, checks initial dir="ltr", switches to "ar-SA", checks dir="rtl", switches to "en-US", checks dir="ltr".
         _sessionState.SetUser(_adminUser);
-        IRenderedComponent<MainLayout> cut = RenderComponent<MainLayout>();
+        IRenderedComponent<MainLayout> cut = Render<MainLayout>();
 
         var layoutWrapper = cut.Find(".layout-wrapper");
         Assert.Equal("ltr", layoutWrapper.GetAttribute("dir"));
@@ -667,7 +667,7 @@ public sealed class MainLayoutComponentTests : TestContext
         JSInterop.Setup<string?>("weaverGetSessionToken")
             .SetException(new JSException("Token retrieval failed"));
 
-        IRenderedComponent<MainLayout> cut = RenderComponent<MainLayout>();
+        IRenderedComponent<MainLayout> cut = Render<MainLayout>();
 
         // Calling RecordActivity should catch token exception and return null safely
         await cut.Instance.RecordActivity();
@@ -696,7 +696,7 @@ public sealed class MainLayoutComponentTests : TestContext
         await Task.Delay(10);
 
         NavigationManager nav = Services.GetRequiredService<NavigationManager>();
-        IRenderedComponent<MainLayout> cut = RenderComponent<MainLayout>();
+        IRenderedComponent<MainLayout> cut = Render<MainLayout>();
 
         cut.Instance.HandleTelemetryTimerTick();
         await Task.Delay(50);
@@ -714,7 +714,7 @@ public sealed class MainLayoutComponentTests : TestContext
         // HOW:  Renders unauthenticated (ShellVisible false), ticks; then logs in (ShellVisible true) and ticks.
         NavigationManager nav = Services.GetRequiredService<NavigationManager>();
         nav.NavigateTo("/login");
-        IRenderedComponent<MainLayout> cut = RenderComponent<MainLayout>();
+        IRenderedComponent<MainLayout> cut = Render<MainLayout>();
 
         // 1. Unauthenticated / login page: ShellVisible is false, returns early
         cut.Instance.HandleTelemetryTimerTick();

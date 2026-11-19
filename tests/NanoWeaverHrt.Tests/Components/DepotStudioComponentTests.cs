@@ -15,7 +15,7 @@ namespace NanoWeaverHrt.Tests.Components;
 /// simulation execution dispatch, clinical metric displays (TTR %, burst phase, steady-state rate, re-dosing alert),
 /// longitudinal serum assay calibration, observed SVG markers, safety alerts, and reset actions.
 /// </summary>
-public sealed class DepotStudioComponentTests : TestContext
+public sealed class DepotStudioComponentTests : BunitContext
 {
     /// <summary>
     /// Thread-safe localizer service for UI text.
@@ -49,7 +49,7 @@ public sealed class DepotStudioComponentTests : TestContext
     {
         // WHAT: Configures dependency injection container for bUnit component testing.
         // WHY:  DepotStudio depends on ITimeReleaseDepotService, IDepotCalibrationService, repositories, and IWeaverLocalizer.
-        // HOW:  Registers real computational services and mocked repositories into TestContext.Services.
+        // HOW:  Registers real computational services and mocked repositories into BunitContext.Services.
         _calibrationService = new DepotCalibrationService(_depotService);
 
         _depotRepoMock
@@ -80,7 +80,7 @@ public sealed class DepotStudioComponentTests : TestContext
         // WHAT: Renders DepotStudio and inspects initial DOM structure.
         // WHY:  Guarantees that clinicians receive immediate visual feedback and default 180-day simulation metrics upon loading the page.
         // HOW:  Renders component and asserts on header, inputs, buttons, metric cards, SVG chart, and longitudinal calibration panel.
-        IRenderedComponent<DepotStudio> cut = RenderComponent<DepotStudio>();
+        IRenderedComponent<DepotStudio> cut = Render<DepotStudio>();
 
         Assert.Contains("180-Day Semi-Annual Time-Release Depot Studio", cut.Markup);
         Assert.NotNull(cut.Find("#select-regimen"));
@@ -114,7 +114,7 @@ public sealed class DepotStudioComponentTests : TestContext
         // WHAT: Changes initial mass and triggers the simulation button.
         // WHY:  Ensures interactive parameter explorations trigger computational re-evaluations accurately.
         // HOW:  Changes input values, clicks the execute button, and verifies updated markup values.
-        IRenderedComponent<DepotStudio> cut = RenderComponent<DepotStudio>();
+        IRenderedComponent<DepotStudio> cut = Render<DepotStudio>();
 
         cut.Find("#input-initial-mass").Change("25.0");
         cut.Find("#btn-run-depot-simulation").Click();
@@ -131,7 +131,7 @@ public sealed class DepotStudioComponentTests : TestContext
         // WHAT: Selects FemaleToMale in regimen dropdown and then switches back to MaleToFemale.
         // WHY:  Verifies that switching between estrogenic and androgenic therapies updates default loaded mass (1050.0 mg FtM, 16.0 mg MtF).
         // HOW:  Fires change event on #select-regimen for both regimens using fresh cut.Find queries.
-        IRenderedComponent<DepotStudio> cut = RenderComponent<DepotStudio>();
+        IRenderedComponent<DepotStudio> cut = Render<DepotStudio>();
 
         cut.Find("#select-regimen").Change(TherapeuticRegimen.FemaleToMale.ToString());
         Assert.Contains("1050.0 mg", cut.Markup);
@@ -151,7 +151,7 @@ public sealed class DepotStudioComponentTests : TestContext
         // WHAT: Modifies input values and then clicks the reset defaults button.
         // WHY:  Allows clinicians to restore standard baseline values with a single action.
         // HOW:  Alters mass input, clicks reset button, and verifies fields reset to 16.0 mg.
-        IRenderedComponent<DepotStudio> cut = RenderComponent<DepotStudio>();
+        IRenderedComponent<DepotStudio> cut = Render<DepotStudio>();
 
         cut.Find("#input-initial-mass").Change("50.0");
         cut.Find("#btn-reset-depot-defaults").Click();
@@ -168,7 +168,7 @@ public sealed class DepotStudioComponentTests : TestContext
         // WHAT: Sets initial mass to an extremely low value (1.0 mg) causing premature depletion and inadequate TTR.
         // WHY:  Ensures that dangerous or ineffective depot formulations are flagged with warning/danger indicators.
         // HOW:  Sets initial mass to 1.0, clicks run, and asserts on suboptimal verdict text.
-        IRenderedComponent<DepotStudio> cut = RenderComponent<DepotStudio>();
+        IRenderedComponent<DepotStudio> cut = Render<DepotStudio>();
 
         cut.Find("#input-initial-mass").Change("1.0");
         cut.Find("#btn-run-depot-simulation").Click();
@@ -187,7 +187,7 @@ public sealed class DepotStudioComponentTests : TestContext
         // WHY:  Verifies assay recording, SVG marker projection, recalibrated curve overlay, safety alert callouts, and input validation.
         // HOW:  Uses fresh cut.Find(...) queries after each dispatch to test validation error, MtF optimal calibration,
         //       FtM critical hematocrit alert, and Clear Assays reset.
-        IRenderedComponent<DepotStudio> cut = RenderComponent<DepotStudio>();
+        IRenderedComponent<DepotStudio> cut = Render<DepotStudio>();
 
         // 1. Invalid day triggers validation banner
         cut.Find("#input-assay-day").Change("0");

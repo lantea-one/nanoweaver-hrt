@@ -21,7 +21,7 @@ namespace NanoWeaverHrt.Tests.Components;
 /// Unit and component interaction tests verifying the Trajectory Browser page,
 /// interactive DuckDB analytical query drawer, preset SQL templates, and results table in <see cref="TrajectoryBrowser"/>.
 /// </summary>
-public sealed class TrajectoryBrowserTests : TestContext
+public sealed class TrajectoryBrowserTests : BunitContext
 {
     /// <summary>
     /// Mock dataset manager providing fake discovered trajectories and exports.
@@ -121,7 +121,7 @@ public sealed class TrajectoryBrowserTests : TestContext
         // WHAT: Renders the TrajectoryBrowser page and checks presence of analytical drawer elements.
         // WHY:  Ensures researchers are immediately presented with accessible analytical SQL controls.
         // HOW:  Renders component and asserts existence of dataset select, preset select, query textarea, and run button.
-        IRenderedComponent<TrajectoryBrowser> cut = RenderComponent<TrajectoryBrowser>();
+        IRenderedComponent<TrajectoryBrowser> cut = Render<TrajectoryBrowser>();
 
         Assert.NotNull(cut.Find("#analytics-section"));
         Assert.NotNull(cut.Find("#dataset-select"));
@@ -140,7 +140,7 @@ public sealed class TrajectoryBrowserTests : TestContext
         // WHAT: Clicks the query drawer toggle button twice.
         // WHY:  Verifies responsive collapsible drawer behavior.
         // HOW:  Finds toggle button, clicks to hide drawer, asserts absence, clicks again, asserts presence.
-        IRenderedComponent<TrajectoryBrowser> cut = RenderComponent<TrajectoryBrowser>();
+        IRenderedComponent<TrajectoryBrowser> cut = Render<TrajectoryBrowser>();
 
         Assert.NotEmpty(cut.FindAll(".query-drawer"));
 
@@ -164,7 +164,7 @@ public sealed class TrajectoryBrowserTests : TestContext
         // WHAT: Triggers change events on the preset dropdown with different template keys.
         // WHY:  Ensures researchers can quickly select pre-built analytical query templates.
         // HOW:  Dispatches change events for bbox, density, and region, asserting textarea updates.
-        IRenderedComponent<TrajectoryBrowser> cut = RenderComponent<TrajectoryBrowser>();
+        IRenderedComponent<TrajectoryBrowser> cut = Render<TrajectoryBrowser>();
 
         var presetSelect = cut.Find("#preset-select");
 
@@ -192,7 +192,7 @@ public sealed class TrajectoryBrowserTests : TestContext
         // WHAT: Executes an analytical query against the sample dataset and inspects the result table.
         // WHY:  Validates interactive SQL execution in the Blazor UI.
         // HOW:  Sets query text, clicks run button, re-queries DOM for #analytics-results-table, asserts cell content.
-        IRenderedComponent<TrajectoryBrowser> cut = RenderComponent<TrajectoryBrowser>();
+        IRenderedComponent<TrajectoryBrowser> cut = Render<TrajectoryBrowser>();
 
         var textarea = cut.Find("#sql-query-input");
         textarea.Change("SELECT 42 AS val, 'scaffold' AS bead_type;");
@@ -217,7 +217,7 @@ public sealed class TrajectoryBrowserTests : TestContext
         // WHAT: Clears query input and triggers execution.
         // WHY:  Verifies client-side validation guard against empty queries.
         // HOW:  Sets textarea to whitespace, clicks run button, asserts presence of error message.
-        IRenderedComponent<TrajectoryBrowser> cut = RenderComponent<TrajectoryBrowser>();
+        IRenderedComponent<TrajectoryBrowser> cut = Render<TrajectoryBrowser>();
 
         var textarea = cut.Find("#sql-query-input");
         textarea.Change("   ");
@@ -239,7 +239,7 @@ public sealed class TrajectoryBrowserTests : TestContext
         // WHAT: Executes a valid query, then clicks Clear Results.
         // WHY:  Ensures researchers can reset the analytical display.
         // HOW:  Runs query, asserts results box appears, clicks clear button, asserts results box disappears.
-        IRenderedComponent<TrajectoryBrowser> cut = RenderComponent<TrajectoryBrowser>();
+        IRenderedComponent<TrajectoryBrowser> cut = Render<TrajectoryBrowser>();
 
         var textarea = cut.Find("#sql-query-input");
         textarea.Change("SELECT 1 AS num;");
@@ -280,7 +280,7 @@ public sealed class TrajectoryBrowserTests : TestContext
             });
         Services.AddSingleton<NanoWeaverHrt.Federation.ITrajectoryFederationService>(fedMock.Object);
 
-        IRenderedComponent<TrajectoryBrowser> cut = RenderComponent<TrajectoryBrowser>();
+        IRenderedComponent<TrajectoryBrowser> cut = Render<TrajectoryBrowser>();
         Assert.Contains("node-1", cut.Markup);
     }
 
@@ -319,7 +319,7 @@ public sealed class TrajectoryBrowserTests : TestContext
             });
         Services.AddSingleton<NanoWeaverHrt.Federation.ITrajectoryFederationService>(fedMock.Object);
 
-        IRenderedComponent<TrajectoryBrowser> cut = RenderComponent<TrajectoryBrowser>();
+        IRenderedComponent<TrajectoryBrowser> cut = Render<TrajectoryBrowser>();
 
         var buildBtn = cut.Find("#btn-build-swarm-manifest");
         await cut.InvokeAsync(() => buildBtn.Click());
@@ -369,7 +369,7 @@ public sealed class TrajectoryBrowserTests : TestContext
             .ReturnsAsync(isValid);
         Services.AddSingleton<NanoWeaverHrt.Federation.ITrajectoryFederationService>(fedMock.Object);
 
-        IRenderedComponent<TrajectoryBrowser> cut = RenderComponent<TrajectoryBrowser>();
+        IRenderedComponent<TrajectoryBrowser> cut = Render<TrajectoryBrowser>();
 
         var buildBtn = cut.Find("#btn-build-swarm-manifest");
         await cut.InvokeAsync(() => buildBtn.Click());

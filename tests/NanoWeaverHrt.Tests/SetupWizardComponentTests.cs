@@ -19,7 +19,7 @@ namespace NanoWeaverHrt.Tests;
 /// Unit tests verifying master administrator provisioning, asymmetric key generation,
 /// public key upload parsing, and lock-in behavior in <see cref="SetupWizard"/>.
 /// </summary>
-public sealed class SetupWizardComponentTests : TestContext
+public sealed class SetupWizardComponentTests : BunitContext
 {
     /// <summary>
     /// Mock authentication service managing identity provisioning and setup validation.
@@ -88,7 +88,7 @@ public sealed class SetupWizardComponentTests : TestContext
         // HOW:  Sets IsSetupRequiredAsync to false, renders SetupWizard, and asserts banner and hidden stepper.
         _authMock.Setup(m => m.IsSetupRequiredAsync()).ReturnsAsync(false);
 
-        IRenderedComponent<SetupWizard> cut = RenderComponent<SetupWizard>();
+        IRenderedComponent<SetupWizard> cut = Render<SetupWizard>();
 
         var alert = cut.Find(".alert-info");
         Assert.Contains("System Initialized:", alert.TextContent);
@@ -110,7 +110,7 @@ public sealed class SetupWizardComponentTests : TestContext
         // HOW:  Sets username to empty string, clicks Next, and asserts validation message.
         _authMock.Setup(m => m.IsSetupRequiredAsync()).ReturnsAsync(true);
 
-        IRenderedComponent<SetupWizard> cut = RenderComponent<SetupWizard>();
+        IRenderedComponent<SetupWizard> cut = Render<SetupWizard>();
         var usernameInput = cut.Find("#adminUsername");
         usernameInput.Change("   ");
 
@@ -135,7 +135,7 @@ public sealed class SetupWizardComponentTests : TestContext
         // HOW:  Sets username and access gate, clicks Next, and verifies Step 2 is active.
         _authMock.Setup(m => m.IsSetupRequiredAsync()).ReturnsAsync(true);
 
-        IRenderedComponent<SetupWizard> cut = RenderComponent<SetupWizard>();
+        IRenderedComponent<SetupWizard> cut = Render<SetupWizard>();
         cut.Find("#adminUsername").Change("sovereign-lead");
         cut.Find("#accessGate").Change(AccessGate.Web.ToString());
 
@@ -157,7 +157,7 @@ public sealed class SetupWizardComponentTests : TestContext
         // HOW:  Advances to Step 2, clicks Next without generating keys, and asserts error.
         _authMock.Setup(m => m.IsSetupRequiredAsync()).ReturnsAsync(true);
 
-        IRenderedComponent<SetupWizard> cut = RenderComponent<SetupWizard>();
+        IRenderedComponent<SetupWizard> cut = Render<SetupWizard>();
         await cut.Find("button.btn-primary").ClickAsync(new MouseEventArgs());
 
         var nextBtn = cut.FindAll("button.btn-primary")[0];
@@ -180,7 +180,7 @@ public sealed class SetupWizardComponentTests : TestContext
         JSInterop.Setup<GeneratedKeyBundle>("weaverGenerateKeyBundle", _ => true)
             .SetResult(CreateBundle("-----BEGIN PRIVATE KEY-----\nED25519-PRIV\n-----END PRIVATE KEY-----", "-----BEGIN PUBLIC KEY-----\nED25519-PUB\n-----END PUBLIC KEY-----", "ED25519PUBKEYBASE64STRING1234567890=="));
 
-        IRenderedComponent<SetupWizard> cut = RenderComponent<SetupWizard>();
+        IRenderedComponent<SetupWizard> cut = Render<SetupWizard>();
         await cut.Find("button.btn-primary").ClickAsync(new MouseEventArgs());
 
         var generateBtn = cut.Find("button.btn-secondary");
@@ -204,7 +204,7 @@ public sealed class SetupWizardComponentTests : TestContext
         JSInterop.Setup<GeneratedKeyBundle>("weaverGenerateKeyBundle", _ => true)
             .SetResult(CreateBundle("-----BEGIN ENCRYPTED PRIVATE KEY-----\nMLDSA-PRIV\n-----END ENCRYPTED PRIVATE KEY-----", "-----BEGIN PUBLIC KEY-----\nMLDSA-PUB\n-----END PUBLIC KEY-----", "MLDSA65PUBKEYBASE64STRING1234567890=="));
 
-        IRenderedComponent<SetupWizard> cut = RenderComponent<SetupWizard>();
+        IRenderedComponent<SetupWizard> cut = Render<SetupWizard>();
         await cut.Find("button.btn-primary").ClickAsync(new MouseEventArgs());
 
         cut.Find("#keyAlgo").Change(KeyAlgorithm.MlDsa65.ToString());
@@ -231,7 +231,7 @@ public sealed class SetupWizardComponentTests : TestContext
         JSInterop.Setup<GeneratedKeyBundle>("weaverGenerateKeyBundle", _ => true)
             .SetException(new InvalidOperationException("Entropy pool exhausted."));
 
-        IRenderedComponent<SetupWizard> cut = RenderComponent<SetupWizard>();
+        IRenderedComponent<SetupWizard> cut = Render<SetupWizard>();
         await cut.Find("button.btn-primary").ClickAsync(new MouseEventArgs());
 
         var generateBtn = cut.Find("button.btn-secondary");
@@ -254,7 +254,7 @@ public sealed class SetupWizardComponentTests : TestContext
         JSInterop.Setup<GeneratedKeyBundle>("weaverGenerateKeyBundle", _ => true)
             .SetResult(CreateBundle("priv", "pub", "pub-b64"));
 
-        IRenderedComponent<SetupWizard> cut = RenderComponent<SetupWizard>();
+        IRenderedComponent<SetupWizard> cut = Render<SetupWizard>();
         await cut.Find("button.btn-primary").ClickAsync(new MouseEventArgs());
 
         await cut.Find("button.btn-secondary").ClickAsync(new MouseEventArgs());
@@ -282,7 +282,7 @@ public sealed class SetupWizardComponentTests : TestContext
         JSInterop.Setup<bool>("weaverDownloadBlob", "administrator_private_key.pem", "priv-pem-content", "application/x-pem-file")
             .SetResult(true);
 
-        IRenderedComponent<SetupWizard> cut = RenderComponent<SetupWizard>();
+        IRenderedComponent<SetupWizard> cut = Render<SetupWizard>();
         await cut.Find("button.btn-primary").ClickAsync(new MouseEventArgs());
         await cut.Find("button.btn-secondary").ClickAsync(new MouseEventArgs());
 
@@ -312,7 +312,7 @@ public sealed class SetupWizardComponentTests : TestContext
         JSInterop.Setup<bool>("weaverDownloadBlob", "administrator_private_key.pem", "priv-pem-content", "application/x-pem-file")
             .SetResult(false);
 
-        IRenderedComponent<SetupWizard> cut = RenderComponent<SetupWizard>();
+        IRenderedComponent<SetupWizard> cut = Render<SetupWizard>();
         await cut.Find("button.btn-primary").ClickAsync(new MouseEventArgs());
         await cut.Find("button.btn-secondary").ClickAsync(new MouseEventArgs());
 
@@ -339,7 +339,7 @@ public sealed class SetupWizardComponentTests : TestContext
         JSInterop.Setup<bool>("weaverDownloadBlob", "administrator_private_key.pem", "priv-pem-content", "application/x-pem-file")
             .SetException(new JSException("DOM exception"));
 
-        IRenderedComponent<SetupWizard> cut = RenderComponent<SetupWizard>();
+        IRenderedComponent<SetupWizard> cut = Render<SetupWizard>();
         await cut.Find("button.btn-primary").ClickAsync(new MouseEventArgs());
         await cut.Find("button.btn-secondary").ClickAsync(new MouseEventArgs());
 
@@ -365,7 +365,7 @@ public sealed class SetupWizardComponentTests : TestContext
 
         JSInterop.SetupVoid("weaverCopyText", "priv-pem-content").SetVoidResult();
 
-        IRenderedComponent<SetupWizard> cut = RenderComponent<SetupWizard>();
+        IRenderedComponent<SetupWizard> cut = Render<SetupWizard>();
         await cut.Find("button.btn-primary").ClickAsync(new MouseEventArgs());
         await cut.Find("button.btn-secondary").ClickAsync(new MouseEventArgs());
 
@@ -395,7 +395,7 @@ public sealed class SetupWizardComponentTests : TestContext
         JSInterop.SetupVoid("weaverCopyText", "priv-pem-content")
             .SetException(new JSException("Clipboard permission denied"));
 
-        IRenderedComponent<SetupWizard> cut = RenderComponent<SetupWizard>();
+        IRenderedComponent<SetupWizard> cut = Render<SetupWizard>();
         await cut.Find("button.btn-primary").ClickAsync(new MouseEventArgs());
         await cut.Find("button.btn-secondary").ClickAsync(new MouseEventArgs());
 
@@ -417,7 +417,7 @@ public sealed class SetupWizardComponentTests : TestContext
         // HOW:  Switches to Option 1 tab, leaves textarea empty, clicks Next, and asserts error.
         _authMock.Setup(m => m.IsSetupRequiredAsync()).ReturnsAsync(true);
 
-        IRenderedComponent<SetupWizard> cut = RenderComponent<SetupWizard>();
+        IRenderedComponent<SetupWizard> cut = Render<SetupWizard>();
         await cut.Find("button.btn-primary").ClickAsync(new MouseEventArgs());
 
         var tabBtns = cut.FindAll("button.tab-btn");
@@ -449,7 +449,7 @@ public sealed class SetupWizardComponentTests : TestContext
         // HOW:  Uploads text content to InputFile and verifies custom public key textarea content.
         _authMock.Setup(m => m.IsSetupRequiredAsync()).ReturnsAsync(true);
 
-        IRenderedComponent<SetupWizard> cut = RenderComponent<SetupWizard>();
+        IRenderedComponent<SetupWizard> cut = Render<SetupWizard>();
         await cut.Find("button.btn-primary").ClickAsync(new MouseEventArgs());
 
         var tabBtns = cut.FindAll("button.tab-btn");
@@ -485,7 +485,7 @@ public sealed class SetupWizardComponentTests : TestContext
         // HOW:  Uploads a binary payload exceeding 65536 bytes and asserts error alert.
         _authMock.Setup(m => m.IsSetupRequiredAsync()).ReturnsAsync(true);
 
-        IRenderedComponent<SetupWizard> cut = RenderComponent<SetupWizard>();
+        IRenderedComponent<SetupWizard> cut = Render<SetupWizard>();
         await cut.Find("button.btn-primary").ClickAsync(new MouseEventArgs());
 
         var tabBtns = cut.FindAll("button.tab-btn");
@@ -523,7 +523,7 @@ public sealed class SetupWizardComponentTests : TestContext
         JSInterop.Setup<GeneratedKeyBundle>("weaverGenerateKeyBundle", _ => true)
             .SetResult(CreateBundle("priv", "pub", "pub-b64-value"));
 
-        IRenderedComponent<SetupWizard> cut = RenderComponent<SetupWizard>();
+        IRenderedComponent<SetupWizard> cut = Render<SetupWizard>();
         await cut.Find("button.btn-primary").ClickAsync(new MouseEventArgs());
 
         // Back from Step 2 to Step 1
@@ -565,7 +565,7 @@ public sealed class SetupWizardComponentTests : TestContext
         JSInterop.Setup<GeneratedKeyBundle>("weaverGenerateKeyBundle", _ => true)
             .SetResult(CreateBundle("priv", "pub", "123456789012345678901234567890"));
 
-        IRenderedComponent<SetupWizard> cut = RenderComponent<SetupWizard>();
+        IRenderedComponent<SetupWizard> cut = Render<SetupWizard>();
         await cut.Find("button.btn-primary").ClickAsync(new MouseEventArgs());
         await cut.Find("button.btn-secondary").ClickAsync(new MouseEventArgs());
         cut.Find("#backupConfirm").Change(true);
@@ -575,7 +575,7 @@ public sealed class SetupWizardComponentTests : TestContext
         Assert.Equal("123456789012...901234567890", fingerprintValue.TextContent.Trim());
 
         // Test 2: Custom key <= 24 chars
-        IRenderedComponent<SetupWizard> cut2 = RenderComponent<SetupWizard>();
+        IRenderedComponent<SetupWizard> cut2 = Render<SetupWizard>();
         await cut2.Find("button.btn-primary").ClickAsync(new MouseEventArgs());
         var tabBtns = cut2.FindAll("button.tab-btn");
         await tabBtns[1].ClickAsync(new MouseEventArgs());
@@ -586,7 +586,7 @@ public sealed class SetupWizardComponentTests : TestContext
         Assert.Equal("short-pubkey-1234", fingerprintValue2.TextContent.Trim());
 
         // Test 3: Generated option before key generation produces "N/A"
-        IRenderedComponent<SetupWizard> cut3 = RenderComponent<SetupWizard>();
+        IRenderedComponent<SetupWizard> cut3 = Render<SetupWizard>();
         MethodInfo? getFingerprintMethod = typeof(SetupWizard).GetMethod("GetFingerprint", BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.NotNull(getFingerprintMethod);
         string emptyGeneratedFingerprint = (string)getFingerprintMethod.Invoke(cut3.Instance, null)!;
@@ -620,7 +620,7 @@ public sealed class SetupWizardComponentTests : TestContext
 
         JSInterop.SetupVoid("weaverSetSession", "master-admin-bearer-token").SetVoidResult();
 
-        IRenderedComponent<SetupWizard> cut = RenderComponent<SetupWizard>();
+        IRenderedComponent<SetupWizard> cut = Render<SetupWizard>();
         await cut.Find("button.btn-primary").ClickAsync(new MouseEventArgs());
         await cut.Find("button.btn-secondary").ClickAsync(new MouseEventArgs());
         cut.Find("#backupConfirm").Change(true);
@@ -660,7 +660,7 @@ public sealed class SetupWizardComponentTests : TestContext
         JSInterop.SetupVoid("weaverSetSession", "master-admin-bearer-token")
             .SetException(new JSException("LocalStorage quota exceeded"));
 
-        IRenderedComponent<SetupWizard> cut = RenderComponent<SetupWizard>();
+        IRenderedComponent<SetupWizard> cut = Render<SetupWizard>();
         await cut.Find("button.btn-primary").ClickAsync(new MouseEventArgs());
         await cut.Find("button.btn-secondary").ClickAsync(new MouseEventArgs());
         cut.Find("#backupConfirm").Change(true);
@@ -694,7 +694,7 @@ public sealed class SetupWizardComponentTests : TestContext
 
         JSInterop.SetupVoid("weaverSetSession", "token-opt1").SetVoidResult();
 
-        IRenderedComponent<SetupWizard> cut = RenderComponent<SetupWizard>();
+        IRenderedComponent<SetupWizard> cut = Render<SetupWizard>();
         await cut.Find("button.btn-primary").ClickAsync(new MouseEventArgs());
 
         var tabBtns = cut.FindAll("button.tab-btn");
@@ -734,7 +734,7 @@ public sealed class SetupWizardComponentTests : TestContext
         _authMock.Setup(m => m.CompleteInitialSetupAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<KeyAlgorithm>(), It.IsAny<AccessGate>()))
             .Throws(new InvalidOperationException("Master administrator conflict."));
 
-        IRenderedComponent<SetupWizard> cut = RenderComponent<SetupWizard>();
+        IRenderedComponent<SetupWizard> cut = Render<SetupWizard>();
         await cut.Find("button.btn-primary").ClickAsync(new MouseEventArgs());
         await cut.Find("button.btn-secondary").ClickAsync(new MouseEventArgs());
         cut.Find("#backupConfirm").Change(true);
@@ -759,7 +759,7 @@ public sealed class SetupWizardComponentTests : TestContext
         // HOW:  Uses reflection to invoke DownloadPrivateKey and CopyPrivateKey when _generatedBundle is null.
         _authMock.Setup(m => m.IsSetupRequiredAsync()).ReturnsAsync(true);
 
-        IRenderedComponent<SetupWizard> cut = RenderComponent<SetupWizard>();
+        IRenderedComponent<SetupWizard> cut = Render<SetupWizard>();
         SetupWizard instance = cut.Instance;
 
         MethodInfo? downloadMethod = typeof(SetupWizard).GetMethod("DownloadPrivateKey", BindingFlags.NonPublic | BindingFlags.Instance);

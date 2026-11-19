@@ -17,7 +17,7 @@ namespace NanoWeaverHrt.Tests.Components;
 /// Unit and component interaction tests for <see cref="StackServices"/> verifying stack service topology,
 /// diagnostic connectivity probing, and the hardware accelerator qualification benchmark card.
 /// </summary>
-public sealed class StackServicesTests : TestContext
+public sealed class StackServicesTests : BunitContext
 {
     /// <summary>
     /// Mock stack service manager providing service health and configuration decks.
@@ -122,7 +122,7 @@ public sealed class StackServicesTests : TestContext
             .Setup(b => b.GetLatestReportAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync((AcceleratorBenchmarkReport?)null);
 
-        IRenderedComponent<StackServices> cut = RenderComponent<StackServices>();
+        IRenderedComponent<StackServices> cut = Render<StackServices>();
 
         var emptyState = cut.Find(".accelerator-benchmark-card .empty-state");
         Assert.Contains("No accelerator benchmark report is currently available.", emptyState.TextContent);
@@ -145,7 +145,7 @@ public sealed class StackServicesTests : TestContext
             .Setup(b => b.GetLatestReportAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(_sampleGoReport);
 
-        IRenderedComponent<StackServices> cut = RenderComponent<StackServices>();
+        IRenderedComponent<StackServices> cut = Render<StackServices>();
 
         Assert.Contains("Intel Arc A770 Graphics", cut.Find(".benchmark-device-name").TextContent);
         Assert.Contains("24.1.0-opencl", cut.Find(".benchmark-driver-version").TextContent);
@@ -182,7 +182,7 @@ public sealed class StackServicesTests : TestContext
             .Setup(b => b.GetLatestReportAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(marginalReport);
 
-        IRenderedComponent<StackServices> cutMarginal = RenderComponent<StackServices>();
+        IRenderedComponent<StackServices> cutMarginal = Render<StackServices>();
         var marginalBadge = cutMarginal.Find(".benchmark-readiness-badge");
         Assert.Contains("badge-amber", marginalBadge.ClassName);
         Assert.Contains("Marginal", marginalBadge.TextContent);
@@ -197,7 +197,7 @@ public sealed class StackServicesTests : TestContext
             .Setup(b => b.GetLatestReportAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(insufficientReport);
 
-        IRenderedComponent<StackServices> cutInsufficient = RenderComponent<StackServices>();
+        IRenderedComponent<StackServices> cutInsufficient = Render<StackServices>();
         var insufficientBadge = cutInsufficient.Find(".benchmark-readiness-badge");
         Assert.Contains("badge-red", insufficientBadge.ClassName);
         Assert.Contains("Insufficient", insufficientBadge.TextContent);
@@ -220,7 +220,7 @@ public sealed class StackServicesTests : TestContext
             .Setup(b => b.RunBenchmarkAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(_sampleGoReport);
 
-        IRenderedComponent<StackServices> cut = RenderComponent<StackServices>();
+        IRenderedComponent<StackServices> cut = Render<StackServices>();
 
         // Verify initially empty
         Assert.NotNull(cut.Find(".accelerator-benchmark-card .empty-state"));
@@ -248,7 +248,7 @@ public sealed class StackServicesTests : TestContext
             .Setup(b => b.GetLatestReportAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync((AcceleratorBenchmarkReport?)null);
 
-        IRenderedComponent<StackServices> cut = RenderComponent<StackServices>();
+        IRenderedComponent<StackServices> cut = Render<StackServices>();
 
         var pingButton = cut.Find(".service-card button");
         await cut.InvokeAsync(() => pingButton.Click());
@@ -269,7 +269,7 @@ public sealed class StackServicesTests : TestContext
             .Setup(b => b.GetLatestReportAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync((AcceleratorBenchmarkReport?)null);
 
-        IRenderedComponent<StackServices> cut = RenderComponent<StackServices>();
+        IRenderedComponent<StackServices> cut = Render<StackServices>();
 
         var refreshButton = cut.Find(".services-container > .panel-header .actions button");
         await cut.InvokeAsync(() => refreshButton.Click());
@@ -319,7 +319,7 @@ public sealed class StackServicesTests : TestContext
             .Setup(b => b.GetLatestReportAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync((AcceleratorBenchmarkReport?)null);
 
-        IRenderedComponent<StackServices> cut = RenderComponent<StackServices>();
+        IRenderedComponent<StackServices> cut = Render<StackServices>();
 
         var cards = cut.FindAll(".service-card");
         Assert.Contains("border-offline", cards[0].ClassName);

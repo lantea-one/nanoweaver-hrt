@@ -17,7 +17,7 @@ namespace NanoWeaverHrt.Tests.Components;
 /// Unit and integration tests for <see cref="LanguageSelector"/> verifying dropdown rendering,
 /// language tag resolution, JS persistence interop, first-render cookie restoration, and reactive change callbacks.
 /// </summary>
-public sealed class LanguageSelectorTests : TestContext
+public sealed class LanguageSelectorTests : BunitContext
 {
     /// <summary>
     /// Localization service provider supporting community translations.
@@ -45,7 +45,7 @@ public sealed class LanguageSelectorTests : TestContext
         // WHAT: Tests DOM output of LanguageSelector component.
         // WHY:  Ensures all supported languages are exposed to clinicians and researchers in the dropdown.
         // HOW:  Renders component and asserts on container, icon, dropdown element, and option count.
-        IRenderedComponent<LanguageSelector> cut = RenderComponent<LanguageSelector>();
+        IRenderedComponent<LanguageSelector> cut = Render<LanguageSelector>();
 
         Assert.NotNull(cut.Find(".language-selector-container"));
         Assert.NotNull(cut.Find(".language-selector-icon"));
@@ -74,7 +74,7 @@ public sealed class LanguageSelectorTests : TestContext
         // WHAT: Tests language parameter binding to select element.
         // WHY:  Dropdown must reflect the currently active language passed down from the master layout.
         // HOW:  Renders component with CurrentLanguage = Spanish and verifies tag is 'es-ES'.
-        IRenderedComponent<LanguageSelector> cut = RenderComponent<LanguageSelector>(parameters => parameters
+        IRenderedComponent<LanguageSelector> cut = Render<LanguageSelector>(parameters => parameters
             .Add(p => p.CurrentLanguage, WeaverLanguage.Spanish));
 
         var select = cut.Find("select.language-dropdown");
@@ -92,7 +92,7 @@ public sealed class LanguageSelectorTests : TestContext
         // WHY:  Selecting a new language must persist to cookies and inform the parent layout.
         // HOW:  Renders component with callback capture, changes select value to 'de-DE', and verifies invocations.
         WeaverLanguage? changedLang = null;
-        IRenderedComponent<LanguageSelector> cut = RenderComponent<LanguageSelector>(parameters => parameters
+        IRenderedComponent<LanguageSelector> cut = Render<LanguageSelector>(parameters => parameters
             .Add(p => p.CurrentLanguage, WeaverLanguage.English)
             .Add(p => p.OnLanguageChanged, EventCallback.Factory.Create<WeaverLanguage>(this, lang => changedLang = lang)));
 
@@ -114,7 +114,7 @@ public sealed class LanguageSelectorTests : TestContext
         // WHY:  Robustness against unexpected browser event payloads.
         // HOW:  Invokes HandleSelectionChangedAsync directly with null and unknown values.
         WeaverLanguage? changedLang = null;
-        IRenderedComponent<LanguageSelector> cut = RenderComponent<LanguageSelector>(parameters => parameters
+        IRenderedComponent<LanguageSelector> cut = Render<LanguageSelector>(parameters => parameters
             .Add(p => p.CurrentLanguage, WeaverLanguage.French)
             .Add(p => p.OnLanguageChanged, EventCallback.Factory.Create<WeaverLanguage>(this, lang => changedLang = lang)));
 
@@ -138,7 +138,7 @@ public sealed class LanguageSelectorTests : TestContext
         JSInterop.SetupVoid("weaverSetLanguage", _ => true)
             .SetException(new JSException("Storage quota exceeded"));
 
-        IRenderedComponent<LanguageSelector> cut = RenderComponent<LanguageSelector>();
+        IRenderedComponent<LanguageSelector> cut = Render<LanguageSelector>();
 
         Exception? caught = null;
         try
@@ -166,7 +166,7 @@ public sealed class LanguageSelectorTests : TestContext
         JSInterop.Setup<string?>("weaverGetLanguage").SetResult("fr-FR");
 
         WeaverLanguage? captured = null;
-        IRenderedComponent<LanguageSelector> cut = RenderComponent<LanguageSelector>(parameters => parameters
+        IRenderedComponent<LanguageSelector> cut = Render<LanguageSelector>(parameters => parameters
             .Add(p => p.CurrentLanguage, WeaverLanguage.English)
             .Add(p => p.OnLanguageChanged, EventCallback.Factory.Create<WeaverLanguage>(this, lang => captured = lang)));
 
@@ -186,7 +186,7 @@ public sealed class LanguageSelectorTests : TestContext
         JSInterop.Setup<string?>("weaverGetLanguage").SetResult("en-US");
 
         bool callbackFired = false;
-        IRenderedComponent<LanguageSelector> cut = RenderComponent<LanguageSelector>(parameters => parameters
+        IRenderedComponent<LanguageSelector> cut = Render<LanguageSelector>(parameters => parameters
             .Add(p => p.CurrentLanguage, WeaverLanguage.English)
             .Add(p => p.OnLanguageChanged, EventCallback.Factory.Create<WeaverLanguage>(this, _ => callbackFired = true)));
 
@@ -206,7 +206,7 @@ public sealed class LanguageSelectorTests : TestContext
         JSInterop.Setup<string?>("weaverGetLanguage").SetResult("   ");
 
         bool callbackFired = false;
-        IRenderedComponent<LanguageSelector> cut = RenderComponent<LanguageSelector>(parameters => parameters
+        IRenderedComponent<LanguageSelector> cut = Render<LanguageSelector>(parameters => parameters
             .Add(p => p.CurrentLanguage, WeaverLanguage.German)
             .Add(p => p.OnLanguageChanged, EventCallback.Factory.Create<WeaverLanguage>(this, _ => callbackFired = true)));
 
@@ -229,7 +229,7 @@ public sealed class LanguageSelectorTests : TestContext
         Exception? caught = null;
         try
         {
-            RenderComponent<LanguageSelector>(parameters => parameters
+            Render<LanguageSelector>(parameters => parameters
                 .Add(p => p.CurrentLanguage, WeaverLanguage.Italian));
         }
         catch (Exception ex)
@@ -255,7 +255,7 @@ public sealed class LanguageSelectorTests : TestContext
         // WHAT: Tests right-to-left layout direction and indicator rendering when Arabic is active.
         // WHY:  Ensures bidirectional script support renders properly for Arabic speakers.
         // HOW:  Renders component with CurrentLanguage = Arabic, asserts dir="rtl" on container and select, and finds .rtl-indicator.
-        IRenderedComponent<LanguageSelector> cut = RenderComponent<LanguageSelector>(parameters => parameters
+        IRenderedComponent<LanguageSelector> cut = Render<LanguageSelector>(parameters => parameters
             .Add(p => p.CurrentLanguage, WeaverLanguage.Arabic));
 
         var container = cut.Find(".language-selector-container");
@@ -281,7 +281,7 @@ public sealed class LanguageSelectorTests : TestContext
         // WHAT: Tests left-to-right layout direction and indicator omission for LTR languages.
         // WHY:  Ensures standard LTR script rendering for non-bidirectional community languages.
         // HOW:  Renders component with CurrentLanguage = English, asserts dir="ltr" and verifies .rtl-indicator is absent.
-        IRenderedComponent<LanguageSelector> cut = RenderComponent<LanguageSelector>(parameters => parameters
+        IRenderedComponent<LanguageSelector> cut = Render<LanguageSelector>(parameters => parameters
             .Add(p => p.CurrentLanguage, WeaverLanguage.English));
 
         var container = cut.Find(".language-selector-container");
@@ -307,7 +307,7 @@ public sealed class LanguageSelectorTests : TestContext
         // WHAT: Tests select value binding and script direction across all 18 supported community languages.
         // WHY:  Guarantees 100% complete coverage across the entire language matrix.
         // HOW:  Renders LanguageSelector with the specified language, resolving info from localizer and validating DOM attributes.
-        IRenderedComponent<LanguageSelector> cut = RenderComponent<LanguageSelector>(parameters => parameters
+        IRenderedComponent<LanguageSelector> cut = Render<LanguageSelector>(parameters => parameters
             .Add(p => p.CurrentLanguage, language));
 
         WeaverLanguageInfo info = _localizer.GetSupportedLanguages().First(l => l.Code == language);
@@ -344,7 +344,7 @@ public sealed class LanguageSelectorTests : TestContext
         WeaverLanguageInfo targetInfo = _localizer.GetSupportedLanguages().First(l => l.Code == targetLanguage);
         WeaverLanguage? captured = null;
 
-        IRenderedComponent<LanguageSelector> cut = RenderComponent<LanguageSelector>(parameters => parameters
+        IRenderedComponent<LanguageSelector> cut = Render<LanguageSelector>(parameters => parameters
             .Add(p => p.CurrentLanguage, WeaverLanguage.English)
             .Add(p => p.OnLanguageChanged, EventCallback.Factory.Create<WeaverLanguage>(this, lang => captured = lang)));
 
@@ -365,7 +365,7 @@ public sealed class LanguageSelectorTests : TestContext
         // WHAT: Tests fallback behavior when CurrentLanguage is an unmapped or invalid enum value.
         // WHY:  Prevents exceptions if an invalid integer cast is assigned to CurrentLanguage parameter.
         // HOW:  Renders component with (WeaverLanguage)999 and verifies select value is 'en-US'.
-        IRenderedComponent<LanguageSelector> cut = RenderComponent<LanguageSelector>(parameters => parameters
+        IRenderedComponent<LanguageSelector> cut = Render<LanguageSelector>(parameters => parameters
             .Add(p => p.CurrentLanguage, (WeaverLanguage)999));
 
         var select = cut.Find("select.language-dropdown");
@@ -384,7 +384,7 @@ public sealed class LanguageSelectorTests : TestContext
         // HOW:  Mocks weaverGetLanguage returning 'ar-SA', renders component without OnLanguageChanged, and asserts Arabic state.
         JSInterop.Setup<string?>("weaverGetLanguage").SetResult("ar-SA");
 
-        IRenderedComponent<LanguageSelector> cut = RenderComponent<LanguageSelector>(parameters => parameters
+        IRenderedComponent<LanguageSelector> cut = Render<LanguageSelector>(parameters => parameters
             .Add(p => p.CurrentLanguage, WeaverLanguage.English));
 
         Assert.Equal(WeaverLanguage.Arabic, cut.Instance.CurrentLanguage);
@@ -402,12 +402,12 @@ public sealed class LanguageSelectorTests : TestContext
         // HOW:  Renders component once, triggers re-render via SetParametersAndRender, and verifies invoke count.
         JSInterop.Setup<string?>("weaverGetLanguage").SetResult("de-DE");
 
-        IRenderedComponent<LanguageSelector> cut = RenderComponent<LanguageSelector>(parameters => parameters
+        IRenderedComponent<LanguageSelector> cut = Render<LanguageSelector>(parameters => parameters
             .Add(p => p.CurrentLanguage, WeaverLanguage.English));
 
         Assert.Equal(WeaverLanguage.German, cut.Instance.CurrentLanguage);
 
-        cut.SetParametersAndRender(parameters => parameters
+        cut.Render(parameters => parameters
             .Add(p => p.CurrentLanguage, WeaverLanguage.German));
 
         // weaverGetLanguage should only have been called once on first render
@@ -423,7 +423,7 @@ public sealed class LanguageSelectorTests : TestContext
         // WHAT: Tests HandleSelectionChangedAsync when parent has no event delegate bound.
         // WHY:  Component must update internal state and storage without throwing NullReferenceException.
         // HOW:  Renders component without OnLanguageChanged, calls HandleSelectionChangedAsync, and asserts state.
-        IRenderedComponent<LanguageSelector> cut = RenderComponent<LanguageSelector>(parameters => parameters
+        IRenderedComponent<LanguageSelector> cut = Render<LanguageSelector>(parameters => parameters
             .Add(p => p.CurrentLanguage, WeaverLanguage.English));
 
         await cut.InvokeAsync(() => cut.Instance.HandleSelectionChangedAsync(new ChangeEventArgs { Value = "ja-JP" }));

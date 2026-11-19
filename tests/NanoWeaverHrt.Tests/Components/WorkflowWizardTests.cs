@@ -28,7 +28,7 @@ namespace NanoWeaverHrt.Tests.Components;
 /// Unit and component interaction tests verifying the Opentrons liquid handler automation UI,
 /// robot and pipette option controls, deck layout summaries, and Python protocol preview modal in <see cref="WorkflowWizard"/>.
 /// </summary>
-public sealed class WorkflowWizardTests : TestContext
+public sealed class WorkflowWizardTests : BunitContext
 {
     /// <summary>
     /// Mock configuration repository supplying export directory paths.
@@ -82,7 +82,7 @@ public sealed class WorkflowWizardTests : TestContext
         // WHAT: Verifies Opentrons UI visibility across Stage 5 and Stage 6.
         // WHY:  Fulfills work package requirement to offer automation during stoichiometry (Stage 5) and manifest export (Stage 6).
         // HOW:  Transitions stepper to step 5 and step 6, checking presence of the .opentrons-section card in the DOM.
-        IRenderedComponent<WorkflowWizard> cut = RenderComponent<WorkflowWizard>();
+        IRenderedComponent<WorkflowWizard> cut = Render<WorkflowWizard>();
 
         await cut.InvokeAsync(() => cut.Instance.SetStep(5));
         Assert.NotEmpty(cut.FindAll(".opentrons-section"));
@@ -108,7 +108,7 @@ public sealed class WorkflowWizardTests : TestContext
         // WHAT: Tests reactive recalculation of deck slot and tip rack summaries upon option changes.
         // WHY:  Operators require live visual feedback on required labware, deck slots, and runtime.
         // HOW:  Renders stage 5, changes robot model from OT-2 to Flex, changes plate to 384-well, and asserts updated text.
-        IRenderedComponent<WorkflowWizard> cut = RenderComponent<WorkflowWizard>();
+        IRenderedComponent<WorkflowWizard> cut = Render<WorkflowWizard>();
         await cut.InvokeAsync(() => cut.Instance.SetStep(5));
 
         // Initial default is OT-2 (11 slots capacity)
@@ -150,7 +150,7 @@ public sealed class WorkflowWizardTests : TestContext
         // WHAT: Tests modal lifecycle and Python protocol script rendering.
         // WHY:  Guarantees operators can preview, inspect, and dismiss the generated automation protocol.
         // HOW:  Asserts modal is hidden initially, clicks generate button, asserts modal visibility and script content, then clicks close.
-        IRenderedComponent<WorkflowWizard> cut = RenderComponent<WorkflowWizard>();
+        IRenderedComponent<WorkflowWizard> cut = Render<WorkflowWizard>();
         await cut.InvokeAsync(() => cut.Instance.SetStep(6));
 
         // Modal should initially be closed
@@ -188,7 +188,7 @@ public sealed class WorkflowWizardTests : TestContext
         // WHAT: Tests keyboard accessibility invariant (Escape key closes modal).
         // WHY:  WCAG 2.1 compliance requires accessible keyboard dismiss triggers for modal dialogs.
         // HOW:  Opens modal, dispatches onkeydown event with Key = "Escape", and asserts modal closure.
-        IRenderedComponent<WorkflowWizard> cut = RenderComponent<WorkflowWizard>();
+        IRenderedComponent<WorkflowWizard> cut = Render<WorkflowWizard>();
         await cut.InvokeAsync(() => cut.Instance.SetStep(5));
 
         cut.Find("#wizard-stage5-btn-generate-opentrons").Click();
@@ -211,7 +211,7 @@ public sealed class WorkflowWizardTests : TestContext
         // WHAT: Tests client-side interop dispatch for protocol download and clipboard copy.
         // WHY:  Validates that operator download and copy actions bridge smoothly to browser helpers.
         // HOW:  Opens modal, clicks download button to trigger weaverDownloadBlob, clicks copy button to trigger weaverCopyText.
-        IRenderedComponent<WorkflowWizard> cut = RenderComponent<WorkflowWizard>();
+        IRenderedComponent<WorkflowWizard> cut = Render<WorkflowWizard>();
         await cut.InvokeAsync(() => cut.Instance.SetStep(6));
 
         cut.Find("#wizard-stage6-btn-generate-opentrons").Click();
@@ -242,7 +242,7 @@ public sealed class WorkflowWizardTests : TestContext
         // WHAT: Validates automatic pipette model reconciliation when switching between OT-2 and Flex.
         // WHY:  OT-2 pipettes cannot be used on Flex and vice versa.
         // HOW:  Invokes SetOpentronsRobot and verifies that PipetteModel adjusts to compatible defaults.
-        IRenderedComponent<WorkflowWizard> cut = RenderComponent<WorkflowWizard>();
+        IRenderedComponent<WorkflowWizard> cut = Render<WorkflowWizard>();
 
         // Default: OT-2 with P20 Single
         Assert.Equal(OpentronsRobotModel.OT2, cut.Instance.ActiveOpentronsOptions.RobotModel);
@@ -271,7 +271,7 @@ public sealed class WorkflowWizardTests : TestContext
         var nav = Services.GetRequiredService<NavigationManager>();
         nav.NavigateTo("http://localhost/wizard?step=5");
 
-        IRenderedComponent<WorkflowWizard> cut = RenderComponent<WorkflowWizard>();
+        IRenderedComponent<WorkflowWizard> cut = Render<WorkflowWizard>();
 
         Assert.Equal(5, cut.Instance.CurrentStep);
         Assert.NotEmpty(cut.FindAll(".opentrons-section"));
@@ -287,7 +287,7 @@ public sealed class WorkflowWizardTests : TestContext
         // WHAT: Verifies the Stage 6 Agarose Gel Electrophoresis densitometry section.
         // WHY:  Fulfills work package requirement to display nanocarrier band metrics and folding quality status.
         // HOW:  Mounts WorkflowWizard, advances to Stage 6, checks DOM elements, clicks inspect button, and asserts metrics.
-        IRenderedComponent<WorkflowWizard> cut = RenderComponent<WorkflowWizard>();
+        IRenderedComponent<WorkflowWizard> cut = Render<WorkflowWizard>();
 
         await cut.InvokeAsync(() => cut.Instance.SetStep(6));
 
@@ -317,7 +317,7 @@ public sealed class WorkflowWizardTests : TestContext
         // WHAT: Tests end-to-end execution of Stages 3, 4, and 5 in WorkflowWizard.
         // WHY:  Ensures real domain campaign service, trajectory stream parser, and Parquet writer execute deterministically.
         // HOW:  Transitions through stages 3, 4, 5, clicks action buttons, and verifies console output and JS interop invocations.
-        IRenderedComponent<WorkflowWizard> cut = RenderComponent<WorkflowWizard>();
+        IRenderedComponent<WorkflowWizard> cut = Render<WorkflowWizard>();
 
         // Step 3: Simulation execution
         await cut.InvokeAsync(() => cut.Instance.SetStep(3));

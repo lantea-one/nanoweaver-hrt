@@ -15,7 +15,7 @@ namespace NanoWeaverHrt.Tests;
 /// Unit tests verifying rendering, DOM masking, asymmetric challenge-response sign-in,
 /// and session lifecycle interactions in <see cref="Login"/>.
 /// </summary>
-public sealed class LoginComponentTests : TestContext
+public sealed class LoginComponentTests : BunitContext
 {
     /// <summary>
     /// Shared test user account representing an authenticated administrator.
@@ -57,7 +57,7 @@ public sealed class LoginComponentTests : TestContext
 
         JSInterop.SetupVoid("weaverBindKeyFileInput", "keyFileUpload", "privKeyPem").SetVoidResult();
 
-        IRenderedComponent<Login> cut = RenderComponent<Login>();
+        IRenderedComponent<Login> cut = Render<Login>();
 
         var warningAlert = cut.Find(".alert-warning");
         Assert.Contains("Your session has expired due to inactivity", warningAlert.TextContent);
@@ -86,7 +86,7 @@ public sealed class LoginComponentTests : TestContext
 
         JSInterop.SetupVoid("weaverBindKeyFileInput", "keyFileUpload", "privKeyPem").SetVoidResult();
 
-        IRenderedComponent<Login> cut = RenderComponent<Login>();
+        IRenderedComponent<Login> cut = Render<Login>();
 
         Assert.Empty(cut.FindAll(".alert-warning"));
         Assert.Empty(cut.FindAll(".alert-danger"));
@@ -104,7 +104,7 @@ public sealed class LoginComponentTests : TestContext
         // HOW:  Clicks mask toggle button and asserts 'is-masked' CSS class and button text.
         JSInterop.SetupVoid("weaverBindKeyFileInput", "keyFileUpload", "privKeyPem").SetVoidResult();
 
-        IRenderedComponent<Login> cut = RenderComponent<Login>();
+        IRenderedComponent<Login> cut = Render<Login>();
         var textarea = cut.Find("#privKeyPem");
         Assert.Contains("is-masked", textarea.ClassName);
 
@@ -137,7 +137,7 @@ public sealed class LoginComponentTests : TestContext
         JSInterop.Setup<Login.WeaverSignInResult>("weaverSignIn")
             .SetResult(new Login.WeaverSignInResult(false, "Cryptographic signature verification failed.", null, null));
 
-        IRenderedComponent<Login> cut = RenderComponent<Login>();
+        IRenderedComponent<Login> cut = Render<Login>();
         var submitBtn = cut.Find("#loginSubmitBtn");
         await submitBtn.ClickAsync(new MouseEventArgs());
 
@@ -161,7 +161,7 @@ public sealed class LoginComponentTests : TestContext
         JSInterop.Setup<Login.WeaverSignInResult>("weaverSignIn")
             .SetResult(new Login.WeaverSignInResult(false, null, null, null));
 
-        IRenderedComponent<Login> cut = RenderComponent<Login>();
+        IRenderedComponent<Login> cut = Render<Login>();
         var submitBtn = cut.Find("#loginSubmitBtn");
         await submitBtn.ClickAsync(new MouseEventArgs());
 
@@ -182,7 +182,7 @@ public sealed class LoginComponentTests : TestContext
         JSInterop.Setup<Login.WeaverSignInResult>("weaverSignIn")
             .SetResult(new Login.WeaverSignInResult(true, null, "tok", null));
 
-        IRenderedComponent<Login> cut = RenderComponent<Login>();
+        IRenderedComponent<Login> cut = Render<Login>();
         var submitBtn = cut.Find("#loginSubmitBtn");
         await submitBtn.ClickAsync(new MouseEventArgs());
 
@@ -203,7 +203,7 @@ public sealed class LoginComponentTests : TestContext
         JSInterop.Setup<Login.WeaverSignInResult>("weaverSignIn")
             .SetException(new JSException("Circuit disconnected."));
 
-        IRenderedComponent<Login> cut = RenderComponent<Login>();
+        IRenderedComponent<Login> cut = Render<Login>();
         var submitBtn = cut.Find("#loginSubmitBtn");
         await submitBtn.ClickAsync(new MouseEventArgs());
 
@@ -224,7 +224,7 @@ public sealed class LoginComponentTests : TestContext
         JSInterop.Setup<Login.WeaverSignInResult>("weaverSignIn")
             .SetResult(new Login.WeaverSignInResult(true, null, "valid-token", _testUser));
 
-        IRenderedComponent<Login> cut = RenderComponent<Login>();
+        IRenderedComponent<Login> cut = Render<Login>();
         var submitBtn = cut.Find("#loginSubmitBtn");
         await submitBtn.ClickAsync(new MouseEventArgs());
 
@@ -251,7 +251,7 @@ public sealed class LoginComponentTests : TestContext
 
         JSInterop.SetupVoid("weaverClearSession").SetVoidResult();
 
-        IRenderedComponent<Login> cut = RenderComponent<Login>();
+        IRenderedComponent<Login> cut = Render<Login>();
 
         var infoAlert = cut.Find(".alert-info");
         Assert.Contains("Currently signed in as", infoAlert.TextContent);
@@ -283,7 +283,7 @@ public sealed class LoginComponentTests : TestContext
         JSInterop.SetupVoid("weaverClearSession")
             .SetException(new JSException("Browser storage quota error."));
 
-        IRenderedComponent<Login> cut = RenderComponent<Login>();
+        IRenderedComponent<Login> cut = Render<Login>();
         var signOutBtn = cut.Find("button.btn-outline");
         await signOutBtn.ClickAsync(new MouseEventArgs());
 
@@ -305,7 +305,7 @@ public sealed class LoginComponentTests : TestContext
         JSInterop.SetupVoid("weaverBindKeyFileInput", "keyFileUpload", "privKeyPem")
             .SetException(new JSException("DOM element not attached."));
 
-        IRenderedComponent<Login> cut = RenderComponent<Login>();
+        IRenderedComponent<Login> cut = Render<Login>();
         Assert.NotNull(cut);
     }
 }

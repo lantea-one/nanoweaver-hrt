@@ -27,7 +27,7 @@ namespace NanoWeaverHrt.Tests;
 /// and access delegation in <see cref="CohortManagementModal"/>, <see cref="UserManagement"/>,
 /// and <see cref="DnaManagementPage"/>.
 /// </summary>
-public sealed class CohortManagementComponentTests : TestContext
+public sealed class CohortManagementComponentTests : BunitContext
 {
     /// <summary>
     /// Mock subject access evaluation and lifecycle service.
@@ -192,13 +192,13 @@ public sealed class CohortManagementComponentTests : TestContext
             }]);
 
         // 1. Initial render closed
-        var cut = RenderComponent<CohortManagementModal>(parameters => parameters
+        var cut = Render<CohortManagementModal>(parameters => parameters
             .Add(p => p.IsOpen, false));
 
         Assert.Empty(cut.Markup.Trim());
 
         // 2. Open modal
-        await cut.InvokeAsync(() => cut.SetParametersAndRender(parameters => parameters
+        await cut.InvokeAsync(() => cut.Render(parameters => parameters
             .Add(p => p.IsOpen, true)));
 
         Assert.Contains("Research Cohorts &amp; Patient Groups", cut.Markup);
@@ -346,7 +346,7 @@ public sealed class CohortManagementComponentTests : TestContext
 
         // 7. Close modal
         bool closed = false;
-        await cut.InvokeAsync(() => cut.SetParametersAndRender(parameters => parameters
+        await cut.InvokeAsync(() => cut.Render(parameters => parameters
             .Add(p => p.IsOpenChanged, EventCallback.Factory.Create<bool>(this, val => closed = !val))));
 
         var closeBtn = cut.FindAll("button").First(b => b.TextContent.Trim() == "Close");
@@ -395,7 +395,7 @@ public sealed class CohortManagementComponentTests : TestContext
         _accessRepoMock.Setup(r => r.ListGroupMemberUsernamesAsync(_testGroup.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync([_patientAlice.Username]);
 
-        var cut = RenderComponent<CohortManagementModal>(parameters => parameters
+        var cut = Render<CohortManagementModal>(parameters => parameters
             .Add(p => p.IsOpen, true));
 
         // Wait for async load to finish
@@ -447,7 +447,7 @@ public sealed class CohortManagementComponentTests : TestContext
         _accessRepoMock.Setup(r => r.ListGroupGrantsAsync(null, _researcherUser.Username, It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
 
-        var cut = RenderComponent<UserManagement>();
+        var cut = Render<UserManagement>();
 
         Assert.Contains("SOVEREIGN USER MANAGEMENT", cut.Markup);
         Assert.Contains("👥 Manage Cohorts", cut.Markup);
@@ -555,7 +555,7 @@ public sealed class CohortManagementComponentTests : TestContext
         _dnaRepoMock.Setup(d => d.GetResultsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
 
-        var cut = RenderComponent<DnaManagementPage>();
+        var cut = Render<DnaManagementPage>();
 
         Assert.Contains("Patient DNA &amp; Sequence Imports", cut.Markup);
         Assert.Contains("👥 Manage Cohorts", cut.Markup);
@@ -614,7 +614,7 @@ public sealed class CohortManagementComponentTests : TestContext
         _dnaRepoMock.Setup(d => d.GetResultsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
 
-        var cut = RenderComponent<DnaManagementPage>();
+        var cut = Render<DnaManagementPage>();
 
         Assert.Contains("No Patient Access Assigned", cut.Markup);
         Assert.Contains("Please contact an Administrator to be granted access", cut.Markup);

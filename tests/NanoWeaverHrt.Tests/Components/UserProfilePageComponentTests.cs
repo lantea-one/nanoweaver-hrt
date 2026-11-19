@@ -17,7 +17,7 @@ namespace NanoWeaverHrt.Tests.Components;
 /// Unit and component interaction tests verifying role-based access gating, researcher patient grants,
 /// self-profile access, and demographic rendering in <see cref="UserProfilePage"/>.
 /// </summary>
-public sealed class UserProfilePageComponentTests : TestContext
+public sealed class UserProfilePageComponentTests : BunitContext
 {
     /// <summary>
     /// Mock user profile repository returning profile data, addresses, and contacts.
@@ -57,7 +57,7 @@ public sealed class UserProfilePageComponentTests : TestContext
     {
         // WHAT: Prepares mock responses for UserProfileRepository, UserRepository, and SubjectAccessService.
         // WHY:  Permits testing access boundaries and profile rendering across Admin, Researcher, and Patient roles.
-        // HOW:  Sets up default returns and registers mocks in bUnit TestContext.Services.
+        // HOW:  Sets up default returns and registers mocks in bUnit BunitContext.Services.
         JSInterop.Mode = JSRuntimeMode.Loose;
 
         _patientAccount = new UserAccount
@@ -136,7 +136,7 @@ public sealed class UserProfilePageComponentTests : TestContext
         // WHAT: Tests access gating for anonymous unauthenticated visitors.
         // WHY:  Ensures protected health information is never rendered without an active session.
         // HOW:  Renders UserProfilePage with empty session state and asserts authentication required message.
-        IRenderedComponent<UserProfilePage> cut = RenderComponent<UserProfilePage>();
+        IRenderedComponent<UserProfilePage> cut = Render<UserProfilePage>();
 
         var alert = cut.Find(".alert-warning");
         Assert.Contains("Authentication Required", alert.TextContent);
@@ -154,7 +154,7 @@ public sealed class UserProfilePageComponentTests : TestContext
         // HOW:  Sets SessionState.CurrentUser to patient_alex, renders page without parameters, asserts profile details.
         _sessionState.SetUser(_patientAccount);
 
-        IRenderedComponent<UserProfilePage> cut = RenderComponent<UserProfilePage>();
+        IRenderedComponent<UserProfilePage> cut = Render<UserProfilePage>();
 
         Assert.Contains("Alex", cut.Markup);
         Assert.Contains("patient_alex", cut.Markup);
@@ -180,7 +180,7 @@ public sealed class UserProfilePageComponentTests : TestContext
             PublicKeyBase64 = "MIIB_admin_key"
         });
 
-        IRenderedComponent<UserProfilePage> cut = RenderComponent<UserProfilePage>(parameters =>
+        IRenderedComponent<UserProfilePage> cut = Render<UserProfilePage>(parameters =>
             parameters.Add(p => p.TargetUsername, "patient_alex"));
 
         Assert.Contains("Alex", cut.Markup);
@@ -209,7 +209,7 @@ public sealed class UserProfilePageComponentTests : TestContext
             .Setup(a => a.EvaluateAccessAsync("dr_researcher", UserRole.Researcher, "patient_alex", SubjectAccessLevel.ReadAccess, default))
             .ReturnsAsync(SubjectAccessResult.Allowed(SubjectAccessLevel.ReadAccess));
 
-        IRenderedComponent<UserProfilePage> cut = RenderComponent<UserProfilePage>(parameters =>
+        IRenderedComponent<UserProfilePage> cut = Render<UserProfilePage>(parameters =>
             parameters.Add(p => p.TargetUsername, "patient_alex"));
 
         Assert.Contains("Alex", cut.Markup);
@@ -238,7 +238,7 @@ public sealed class UserProfilePageComponentTests : TestContext
             .Setup(a => a.EvaluateAccessAsync("dr_unauthorized", UserRole.Researcher, "patient_alex", SubjectAccessLevel.ReadAccess, default))
             .ReturnsAsync(SubjectAccessResult.Denied());
 
-        IRenderedComponent<UserProfilePage> cut = RenderComponent<UserProfilePage>(parameters =>
+        IRenderedComponent<UserProfilePage> cut = Render<UserProfilePage>(parameters =>
             parameters.Add(p => p.TargetUsername, "patient_alex"));
 
         var alert = cut.Find(".alert-danger");
@@ -263,7 +263,7 @@ public sealed class UserProfilePageComponentTests : TestContext
             PublicKeyBase64 = "MIIB_other_key"
         });
 
-        IRenderedComponent<UserProfilePage> cut = RenderComponent<UserProfilePage>(parameters =>
+        IRenderedComponent<UserProfilePage> cut = Render<UserProfilePage>(parameters =>
             parameters.Add(p => p.TargetUsername, "patient_alex"));
 
         var alert = cut.Find(".alert-danger");
@@ -291,7 +291,7 @@ public sealed class UserProfilePageComponentTests : TestContext
             .Setup(u => u.GetUserAsync("unknown_user", default))
             .ReturnsAsync((UserAccount?)null);
 
-        IRenderedComponent<UserProfilePage> cut = RenderComponent<UserProfilePage>(parameters =>
+        IRenderedComponent<UserProfilePage> cut = Render<UserProfilePage>(parameters =>
             parameters.Add(p => p.TargetUsername, "unknown_user"));
 
         var alert = cut.Find(".alert-danger");

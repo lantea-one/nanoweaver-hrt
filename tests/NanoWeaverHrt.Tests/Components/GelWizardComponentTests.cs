@@ -29,7 +29,7 @@ namespace NanoWeaverHrt.Tests.Components;
 /// <strong>How it works:</strong> Registers mock services in the bUnit test context, renders <see cref="WorkflowWizard"/>, navigates to Stage 6, and asserts DOM element values and CSS badges.
 /// </para>
 /// </remarks>
-public class GelWizardComponentTests : TestContext
+public class GelWizardComponentTests : BunitContext
 {
     /// <summary>
     /// Verifies that Stage 6 renders acceptable gel electrophoresis results and quality badges correctly.
@@ -87,7 +87,7 @@ public class GelWizardComponentTests : TestContext
         Services.AddSingleton<ISimulationCampaignService, SimulationCampaignService>();
         Services.AddSingleton<IOpentronsProtocolGenerator, OpentronsProtocolGenerator>();
 
-        var cut = RenderComponent<WorkflowWizard>();
+        var cut = Render<WorkflowWizard>();
         cut.InvokeAsync(() => cut.Instance.SetStep(6));
 
         Assert.Contains("88.5%", cut.Markup);
@@ -149,7 +149,7 @@ public class GelWizardComponentTests : TestContext
         Services.AddSingleton<ISimulationCampaignService, SimulationCampaignService>();
         Services.AddSingleton<IOpentronsProtocolGenerator, OpentronsProtocolGenerator>();
 
-        var cut = RenderComponent<WorkflowWizard>();
+        var cut = Render<WorkflowWizard>();
         cut.InvokeAsync(() => cut.Instance.SetStep(6));
 
         Assert.Contains("42.0%", cut.Markup);
