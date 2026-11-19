@@ -9,6 +9,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
+  XDG_RUNTIME_DIR: /tmp
 
 permissions:
   contents: read
@@ -117,7 +118,7 @@ jobs:
           python3 - << 'EOF'
           import glob, re, sys
 
-          files = sorted(set(glob.glob('docs/**/*.md', recursive=True) + glob.glob('docs/*.md') + ['README.md']))
+          files = sorted(set(glob.glob('docs/**/*.md', recursive=True) + glob.glob('docs/*.md') + ['README.md', 'AGENTS.md', 'CONTRIBUTING.md', 'CODING_STANDARDS.md', 'DISCLAIMER.md']))
           violations = []
           inline_display_violations = []
 
@@ -186,6 +187,22 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Resolve CalVer Package Version
+        id: calver
+        run: |
+          echo "version=$(./scripts/packaging/get-version.sh)" >> "$GITHUB_OUTPUT"
+
+      - name: Extract Web Docker Image Metadata
+        id: meta-web
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/nanoweaver-hrt-web
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ steps.calver.outputs.version }},enable=${{ startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/heads/release/') }}
+            type=ref,event=pr
+
       - name: Build and Push Web Container Image
         # WHAT: Build this image for linux/amd64 only, never the runner's native architecture.
         # WHY:  This workflow mirrors the Forgejo pipeline, and the images it publishes must match
@@ -193,17 +210,29 @@ jobs:
         #       simulation image depends on the amd64-only Intel GPU runtime. The .NET base images
         #       here are multi-arch, so without a pin this image would follow whatever architecture
         #       GitHub's runner happens to be, and a mirror could silently diverge from its source.
-        # HOW:  Pass an explicit single-platform list to docker/build-push-action.
+        # HOW:  Pass an explicit single-platform list and provenance: false to docker/build-push-action.
         uses: docker/build-push-action@v5
         with:
           context: .
           file: docker/web/Dockerfile.web
           platforms: linux/amd64
+          provenance: false
           push: ${{ github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/tags/v')) }}
-          tags: |
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/nanoweaver-hrt-web:latest
+          tags: ${{ steps.meta-web.outputs.tags }}
+          labels: ${{ steps.meta-web.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Extract Simulation Docker Image Metadata
+        id: meta-simulation
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/nanoweaver-hrt-simulation
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ steps.calver.outputs.version }},enable=${{ startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/heads/release/') }}
+            type=ref,event=pr
 
       - name: Build and Push Simulation Container Image
         # WHAT: Build this image for linux/amd64 only, never the runner's native architecture.
@@ -213,14 +242,16 @@ jobs:
         #       runner this image dies inside apt. ubuntu-latest is amd64 today, so this builds
         #       natively; the pin states the dependency explicitly so the mirror stays correct and
         #       matches the Forgejo image even if GitHub's default runner architecture changes.
-        # HOW:  Pass an explicit single-platform list to docker/build-push-action.
+        # HOW:  Pass an explicit single-platform list and provenance: false to docker/build-push-action.
         uses: docker/build-push-action@v5
         with:
           context: .
           file: docker/simulation/Dockerfile.simulation
           platforms: linux/amd64
+          provenance: false
           push: ${{ github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/tags/v')) }}
-          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/nanoweaver-hrt-simulation:latest
+          tags: ${{ steps.meta-simulation.outputs.tags }}
+          labels: ${{ steps.meta-simulation.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

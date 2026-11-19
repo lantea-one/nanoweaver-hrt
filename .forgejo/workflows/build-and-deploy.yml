@@ -117,7 +117,7 @@ jobs:
           python3 - << 'EOF'
           import glob, re, sys
 
-          files = sorted(set(glob.glob('docs/**/*.md', recursive=True) + glob.glob('docs/*.md') + ['README.md']))
+          files = sorted(set(glob.glob('docs/**/*.md', recursive=True) + glob.glob('docs/*.md') + ['README.md', 'AGENTS.md', 'CONTRIBUTING.md', 'CODING_STANDARDS.md', 'DISCLAIMER.md']))
           violations = []
           inline_display_violations = []
 
