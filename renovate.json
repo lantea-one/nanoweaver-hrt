@@ -22,6 +22,40 @@
         "coverlet.collector"
       ],
       "allowedVersions": "<7.0.0"
+    },
+    {
+      "description": "Hold xunit.runner.visualstudio at v2 series while xunit remains on 2.x",
+      "matchPackageNames": [
+        "xunit.runner.visualstudio"
+      ],
+      "allowedVersions": "<3.0.0"
+    },
+    {
+      "description": "Pin Ubuntu simulation base image to 24.04 LTS for Intel GPU noble apt repository",
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "ubuntu"
+      ],
+      "allowedVersions": "24.04"
+    },
+    {
+      "description": "Pin Node.js CI runtime to active Node 24 LTS",
+      "matchPackageNames": [
+        "node"
+      ],
+      "allowedVersions": "24"
+    },
+    {
+      "description": "Keep Forgejo Actions upload-artifact on v3 for Forgejo runner artifact API compatibility",
+      "matchFileNames": [
+        ".forgejo/workflows/**"
+      ],
+      "matchPackageNames": [
+        "actions/upload-artifact"
+      ],
+      "allowedVersions": "<4.0.0"
     }
   ]
 }
