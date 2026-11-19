@@ -95,15 +95,22 @@ public sealed class DepotStudioComponentTests : TestContext
     [Fact]
     public void DepotStudio_HandleRegimenChanged_ReExecutesSimulationWithNewRegimen()
     {
-        // WHAT: Selects FemaleToMale in regimen dropdown.
-        // WHY:  Verifies that switching between estrogenic and androgenic therapies recalculates HPG feedback targets.
-        // HOW:  Fires change event on #select-regimen and checks that testosterone targets are evaluated.
+        // WHAT: Selects FemaleToMale in regimen dropdown and then switches back to MaleToFemale.
+        // WHY:  Verifies that switching between estrogenic and androgenic therapies updates default loaded mass (1050.0 mg FtM, 16.0 mg MtF) and recalculates HPG feedback targets.
+        // HOW:  Fires change event on #select-regimen for both regimens and asserts updated payload mass and clinical efficacy verdict.
         IRenderedComponent<DepotStudio> cut = RenderComponent<DepotStudio>();
 
         var regimenSelect = cut.Find("#select-regimen");
         regimenSelect.Change(TherapeuticRegimen.FemaleToMale.ToString());
 
-        Assert.Contains("FemaleToMale", cut.Markup);
+        Assert.Contains("1050.0 mg", cut.Markup);
+        Assert.Contains("OPTIMAL CLINICAL EFFICACY", cut.Markup);
+
+        regimenSelect = cut.Find("#select-regimen");
+        regimenSelect.Change(TherapeuticRegimen.MaleToFemale.ToString());
+
+        Assert.Contains("16.0 mg", cut.Markup);
+        Assert.Contains("OPTIMAL CLINICAL EFFICACY", cut.Markup);
     }
 
     /// <summary>

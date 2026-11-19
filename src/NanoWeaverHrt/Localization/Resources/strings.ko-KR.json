@@ -38,5 +38,14 @@
   "Tray.Show": "NanoWeaver HRT 열기",
   "Tray.Exit": "종료",
   "Tray.ActiveNodeFormat": "활성 노드: {0}",
-  "Tray.NoActiveNode": "활성 노드 없음"
+  "Tray.NoActiveNode": "활성 노드 없음",
+  "Nav.GuidedWizard": "가이드 DNA 마법사",
+  "Nav.StackServices": "스택 서비스",
+  "Nav.ConfigAndPeers": "구성 및 피어",
+  "Nav.TrajectoryBrowser": "궤적 브라우저",
+  "Nav.DepotStudio": "180일 데포 스튜디오",
+  "Nav.UserManagement": "사용자 관리",
+  "Nav.DnaAndImports": "DNA 및 가져오기",
+  "Nav.MyProfile": "내 프로필",
+  "Nav.SignOut": "로그아웃"
 }

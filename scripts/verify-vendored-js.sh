@@ -69,11 +69,19 @@ for js_file in "${LIB_DIR}"/*.js "${LIB_DIR}"/*.mjs; do
     fi
 done
 
-# 2. Check that App.razor contains no external CDN script tags
-if grep -E '<script[^>]+src=["'\''"]https?://' "${APP_RAZOR}" > /dev/null 2>&1; then
-    echo "ERROR: External CDN <script> tag detected in ${APP_RAZOR}! NanoWeaverHrt enforces a strict Zero-CDN policy."
-    exit 1
-fi
+# 2. Check that App.razor and wwwroot/index.html contain no external CDN script or stylesheet/font tags
+INDEX_HTML="${ROOT_DIR}/src/NanoWeaverHrt/wwwroot/index.html"
+for html_target in "${APP_RAZOR}" "${INDEX_HTML}"; do
+    [ -f "${html_target}" ] || continue
+    if grep -E '<script[^>]+src=["'\''"]https?://' "${html_target}" > /dev/null 2>&1; then
+        echo "ERROR: External CDN <script> tag detected in ${html_target}! NanoWeaverHrt enforces a strict Zero-CDN policy."
+        exit 1
+    fi
+    if grep -E '<link[^>]+href=["'\''"]https?://' "${html_target}" > /dev/null 2>&1; then
+        echo "ERROR: External CDN <link> stylesheet/font tag detected in ${html_target}! NanoWeaverHrt enforces a strict Zero-CDN policy."
+        exit 1
+    fi
+done
 
 echo "✓ File hashes, SRI integrity, and Zero-CDN policy verified."
 

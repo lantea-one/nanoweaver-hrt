@@ -38,5 +38,14 @@
   "Tray.Show": "NanoWeaver HRT を開く",
   "Tray.Exit": "終了",
   "Tray.ActiveNodeFormat": "アクティブノード: {0}",
-  "Tray.NoActiveNode": "アクティブなノードがありません"
+  "Tray.NoActiveNode": "アクティブなノードがありません",
+  "Nav.GuidedWizard": "DNAガイドウィザード",
+  "Nav.StackServices": "スタックサービス",
+  "Nav.ConfigAndPeers": "設定とピア",
+  "Nav.TrajectoryBrowser": "トラジェクトリブラウザ",
+  "Nav.DepotStudio": "180日デポスタジオ",
+  "Nav.UserManagement": "ユーザー管理",
+  "Nav.DnaAndImports": "DNAとインポート",
+  "Nav.MyProfile": "マイプロフィール",
+  "Nav.SignOut": "サインアウト"
 }

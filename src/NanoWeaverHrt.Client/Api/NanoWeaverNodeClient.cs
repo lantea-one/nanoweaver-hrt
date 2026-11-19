@@ -3635,6 +3635,102 @@ public sealed class NanoWeaverNodeClient : INanoWeaverNodeClient
         return package ?? throw new InvalidOperationException("Endpoint returned empty or null patient DNA package payload.");
     }
 
+    /// <inheritdoc/>
+    public async Task<DepotFormulationResponse> CreateDepotFormulationAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CreateDepotFormulationRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/depots/formulations to persist a semi-annual time-release depot formulation.
+        // WHY:  Issue #183 (P177): Provides full Client SDK parity for Milestone 33 time-release depot management.
+        // HOW:  Validates inputs, posts serialized JSON payload with Bearer token, and deserializes DepotFormulationResponse.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/depots/formulations");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        DepotFormulationResponse? result = await resp.Content.ReadFromJsonAsync<DepotFormulationResponse>(JsonOptions, ct);
+        return result ?? throw new InvalidOperationException("Endpoint returned empty or null depot formulation payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<DepotFormulationResponse>> GetDepotFormulationsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string patientId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/depots/formulations/{patientId} to retrieve patient depot formulations and schedules.
+        // WHY:  Issue #183 (P177): Enables desktop and mobile clients to inspect active and historical patient depots.
+        // HOW:  Validates inputs, sends authenticated GET request, and deserializes list of DepotFormulationResponse.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(patientId);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/depots/formulations/{Uri.EscapeDataString(patientId)}");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        List<DepotFormulationResponse>? list = await resp.Content.ReadFromJsonAsync<List<DepotFormulationResponse>>(JsonOptions, ct);
+        return (IReadOnlyList<DepotFormulationResponse>?)list ?? [];
+    }
+
+    /// <inheritdoc/>
+    public async Task<TimeReleaseSimulationResult> SimulateDepotReleaseAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        SimulateDepotReleaseRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/depots/simulate-release to execute a 180-day multi-phase depot simulation.
+        // WHY:  Issue #183 (P177): Permits client applications to evaluate burst suppression, TTR, and gonadotropin suppression remotely.
+        // HOW:  Validates inputs, posts serialized JSON payload with Bearer token, and deserializes TimeReleaseSimulationResult.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/depots/simulate-release");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        TimeReleaseSimulationResult? result = await resp.Content.ReadFromJsonAsync<TimeReleaseSimulationResult>(JsonOptions, ct);
+        return result ?? throw new InvalidOperationException("Endpoint returned empty or null depot release simulation payload.");
+    }
+
     /// <summary>
     /// Validates that an instance base URI is absolute and enforces HTTPS for remote non-loopback endpoints.
     /// </summary>

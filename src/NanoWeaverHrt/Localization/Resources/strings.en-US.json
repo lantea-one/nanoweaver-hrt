@@ -38,5 +38,14 @@
   "Tray.Show": "Show / Restore",
   "Tray.Exit": "Quit",
   "Tray.ActiveNodeFormat": "Active Node: {0}",
-  "Tray.NoActiveNode": "No Active Node"
+  "Tray.NoActiveNode": "No Active Node",
+  "Nav.GuidedWizard": "Guided DNA Wizard",
+  "Nav.StackServices": "Stack Services",
+  "Nav.ConfigAndPeers": "Configuration & Peers",
+  "Nav.TrajectoryBrowser": "Trajectory Browser",
+  "Nav.DepotStudio": "180-Day Depot Studio",
+  "Nav.UserManagement": "User Management",
+  "Nav.DnaAndImports": "DNA & Imports",
+  "Nav.MyProfile": "My Profile",
+  "Nav.SignOut": "Sign Out"
 }

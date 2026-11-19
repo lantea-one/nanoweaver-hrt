@@ -1955,5 +1955,27 @@ public sealed class EndpointIntegrationTests : IClassFixture<WebApplicationFacto
         // 18. GET formulations with invalid identifier format -> 400 Bad Request
         HttpResponseMessage invalidGetResp = await _client.GetAsync("/api/depots/formulations/bad*id");
         Assert.Equal(HttpStatusCode.BadRequest, invalidGetResp.StatusCode);
+
+        // 19. POST /api/depots/simulate-release forwards DailyErosionRatePercent
+        HttpResponseMessage slowSimResp = await _client.PostAsJsonAsync("/api/depots/simulate-release", new SimulateDepotReleaseRequest
+        {
+            InitialNanocarrierMassMg = 16.0,
+            HorizonDays = 180,
+            DailyErosionRatePercent = 0.30
+        });
+        Assert.Equal(HttpStatusCode.OK, slowSimResp.StatusCode);
+        TimeReleaseSimulationResult? slowSimResult = await slowSimResp.Content.ReadFromJsonAsync<TimeReleaseSimulationResult>();
+        Assert.NotNull(slowSimResult);
+
+        HttpResponseMessage fastSimResp = await _client.PostAsJsonAsync("/api/depots/simulate-release", new SimulateDepotReleaseRequest
+        {
+            InitialNanocarrierMassMg = 16.0,
+            HorizonDays = 180,
+            DailyErosionRatePercent = 0.90
+        });
+        Assert.Equal(HttpStatusCode.OK, fastSimResp.StatusCode);
+        TimeReleaseSimulationResult? fastSimResult = await fastSimResp.Content.ReadFromJsonAsync<TimeReleaseSimulationResult>();
+        Assert.NotNull(fastSimResult);
+        Assert.True(fastSimResult.AverageDailyReleaseMg > slowSimResult.AverageDailyReleaseMg);
     }
 }

@@ -27,6 +27,12 @@ public interface ITimeReleaseDepotService
     /// <param name="matrix">The polymer matrix carrier type.</param>
     /// <param name="initialMassMg">The initial payload mass loaded into the depot in milligrams.</param>
     /// <param name="clearanceMultiplier">The patient-specific pharmacogenomic clearance multiplier.</param>
+    /// <param name="dailyErosionRatePercent">The baseline daily hydrogel erosion rate percentage per day (default 0.55%/day).</param>
     /// <returns>The calculated instantaneous daily release rate in milligrams per day (mg/day).</returns>
-    double CalculateInstantaneousDailyRelease(double day, PolymerMatrixType matrix, double initialMassMg, double clearanceMultiplier);
+    double CalculateInstantaneousDailyRelease(
+        double day,
+        PolymerMatrixType matrix,
+        double initialMassMg,
+        double clearanceMultiplier,
+        double dailyErosionRatePercent = 0.55);
 }

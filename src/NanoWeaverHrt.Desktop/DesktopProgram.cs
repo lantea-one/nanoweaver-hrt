@@ -148,7 +148,8 @@ public static class DesktopProgram
 
         if (args[0] is "--version" or "-v" or "version")
         {
-            await outWriter.WriteLineAsync("NanoWeaver HRT Desktop 2026.11.04.10").ConfigureAwait(false);
+            string calVer = typeof(DesktopProgram).Assembly.GetName().Version!.ToString(); // Assembly.GetName().Version is always populated by MSBuild AssemblyVersion
+            await outWriter.WriteLineAsync($"NanoWeaver HRT Desktop {calVer}").ConfigureAwait(false);
             return 0;
         }
 
@@ -219,8 +220,9 @@ public static class DesktopProgram
         IPlatformProcessRunner processRunner = runner ?? new SystemPlatformProcessRunner();
         var sink = new DesktopNativeNotificationSink(processRunner);
         var tray = new DesktopTrayIconController();
+        string calVer = typeof(DesktopProgram).Assembly.GetName().Version!.ToString(); // Assembly.GetName().Version is always populated by MSBuild AssemblyVersion
 
-        writer.WriteLine("NanoWeaver HRT Desktop Platform Head v2026.11.04.10-sovereign [Verified]");
+        writer.WriteLine($"NanoWeaver HRT Desktop Platform Head v{calVer}-sovereign [Verified]");
         writer.WriteLine($"  OS Platform:     {RuntimeInformation.OSDescription}");
         writer.WriteLine($"  Architecture:    {RuntimeInformation.ProcessArchitecture}");
         writer.WriteLine($"  NotificationSink: {sink.GetType().Name} (Initialized)");

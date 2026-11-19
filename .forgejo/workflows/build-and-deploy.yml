@@ -12,16 +12,13 @@ env:
 
 jobs:
   build-test-and-publish:
-    # WHAT: Run on the archlinux-multi-platform pool, not the plain `archlinux` pool.
-    # WHY:  `archlinux` also resolves to aesir, the one aarch64 runner, and whichever machine
-    #       claimed the job decided the images' architecture. That is how run 18 came to build
-    #       arm64 and die inside apt on the amd64-only Intel GPU repo. Every host behind
-    #       archlinux-multi-platform is amd64, so the pinned linux/amd64 images build natively
-    #       here with no emulation cost. Those hosts additionally carry qemu-user-static and
-    #       qemu-user-static-binfmt, which is what will let this job cross-build arm64 images
-    #       later without needing aesir.
-    # HOW:  Select the amd64-only runner label.
-    runs-on: archlinux-multi-platform
+    # WHAT: Run on the containerized amd64 asgard-ci runner.
+    # WHY:  All shared organization runners have been migrated to containerized runners supporting
+    #       public GitHub Actions for SDK provisioning. Running on asgard-ci guarantees native
+    #       linux/amd64 container execution and avoids scheduling heavy builds on arm64 (aesir-ci)
+    #       or small-task runners (vidar-ci).
+    # HOW:  Select the asgard-ci containerized runner label and provision SDKs via setup actions.
+    runs-on: asgard-ci
     permissions:
       contents: read
       packages: write
@@ -29,6 +26,16 @@ jobs:
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4
+
+      - name: Setup .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
 
       - name: Restore Dependencies
         run: dotnet restore NanoWeaverHrt.slnx
@@ -265,15 +272,27 @@ jobs:
 
   build-and-publish-gui-artifacts:
     # WHAT: Builds, signs, and attaches standalone desktop and mobile application packages.
-    # WHY:  Enforces P34 multi-platform packaging pipeline across Linux, macOS, Windows, and Mobile.
-    # HOW:  Runs scripts/packaging/build-all-packages.sh, uploads discrete artifact bundles,
+    # WHY:  Enforces P34 multi-platform packaging pipeline across Linux, macOS, Windows, and Mobile
+    #       on the containerized amd64 heimdall-ci runner.
+    # HOW:  Provisions .NET 10 and Node.js 24 SDKs via public GitHub Actions, runs
+    #       scripts/packaging/build-all-packages.sh, uploads discrete artifact bundles,
     #       and attaches direct binary downloads to Forgejo continuous and tagged releases.
-    runs-on: archlinux-multi-platform
+    runs-on: heimdall-ci
     permissions:
       contents: write
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4
+
+      - name: Setup .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
 
       - name: Restore Dependencies
         # WHAT: Restores all NuGet packages and dependencies across the multi-project solution.

@@ -108,7 +108,7 @@ flowchart TD
 ### 9. Standalone Multi-Platform Desktop & Mobile Applications
 - **Cross-Platform Native Clients**: Dedicated platform heads for Linux (`x86_64` / `arm64`), macOS (Universal Apple Silicon & Intel), Windows (`win-x64`), Android, iOS, and iPadOS sharing 100% of ViewModels and client SDK logic.
 - **Client Key Vault & 15-Minute Inactivity Lock**: Private keys (Ed25519 & ML-DSA-65) reside strictly within client AES-256-GCM encrypted vaults, with background tray monitoring, notification badging, and automated session zeroization on idle inactivity.
-- **Direct Portable Executables & Sovereign Code Signing**: Release packages across Windows (direct portable `nanoweaver-hrt-desktop-portable-x64.exe` / `NanoWeaverHrt.exe`, dual-scope `nanoweaver-hrt-desktop-installer.exe`, and `NanoWeaverHrt.msix`), ArchLinux (`.pkg.tar.zst` and AUR), Debian/Ubuntu (`.deb`), Fedora (`.rpm`), macOS (`NanoWeaverHrt.dmg`), and Mobile (`.apk`, `.ipa`), signed with the sovereign X.509 `id-kp-codeSigning` Root CA and 90-day short-lived leaf certificates. See [**Desktop & Mobile Applications Guide**](docs/desktop-and-mobile-gui.md) and [**Release v2026.10.29.2**](https://git.lantea.one/lantea-one/nanoweaver-hrt/releases/tag/v2026.10.29.2).
+- **Direct Portable Executables & Sovereign Code Signing**: Release packages across Windows (direct portable `nanoweaver-hrt-desktop-portable-x64.exe` / `NanoWeaverHrt.exe`, dual-scope `nanoweaver-hrt-desktop-installer.exe`, and `NanoWeaverHrt.msix`), ArchLinux (`.pkg.tar.zst` and AUR), Debian/Ubuntu (`.deb`), Fedora (`.rpm`), macOS (`NanoWeaverHrt.dmg`), and Mobile (`.apk`, `.ipa`), signed with the sovereign X.509 `id-kp-codeSigning` Root CA and 90-day short-lived leaf certificates. See [**Desktop & Mobile Applications Guide**](docs/desktop-and-mobile-gui.md) and [**Release v2026.11.10.3**](https://git.lantea.one/lantea-one/nanoweaver-hrt/releases/tag/v2026.11.10.3).
 
 ---
 
@@ -169,7 +169,7 @@ Deploy to a public VPS, research lab server, or homelab with production TLS 1.3 
 
 | Port | Service | Default stack | Public overlays (Caddy / Nginx / Cloudflare) |
 | :--- | :--- | :--- | :--- |
-| `5000` | Sovereign Web UI & REST API (`weaver-parser`) | `0.0.0.0:5000` for local access | `127.0.0.1:5000` - proxy-only, never exposed directly |
+| `5000` | Sovereign Web UI & REST API (`weaver-parser`) | `127.0.0.1:5000` for local loopback access | `127.0.0.1:5000` - proxy-only, never exposed directly |
 | `8080` | Simulation job daemon (`weaver-simulation`) | `127.0.0.1:8080` for local inspection | **Not published** - internal compose network only |
 | `5432` | PostgreSQL / pg_duckdb (`weaver-pg-duckdb`, infra overlay) | `127.0.0.1:5432` for local tooling | `127.0.0.1:5432` - never exposed to the network |
 
@@ -198,21 +198,24 @@ A published Docker port is installed as a NAT rule that host `ufw` and `firewall
 ## 📊 Sovereign Web Dashboard (`http://localhost:5000`)
 
 The embedded dashboard provides:
-- **Endocrine Toggle Hub (`/` & `/endocrine`):** One-click switching between **`Male-to-Female (MtF / E2 Dominant)`** and **`Female-to-Male (FtM / T Dominant)`** regimens, with real-time patient setpoints for target E2, T, and aptamer Kd.
+- **Guided DNA Origami Workflow Wizard (`/`):** 6-stage interactive engineering pipeline covering patient genomics & pharmacogenomic screening, scaffold & aptamer design, closed-loop kinetics, molecular simulation, wet-lab protocol & gel QC, and regulatory sign-off.
+- **Stack Services & Hardware Telemetry (`/services`):** Live operational health, accelerator benchmarking, and zero-allocation GC telemetry across Generation 0, 1, and 2 collections.
+- **Configuration & Sovereign Peering (`/configuration`):** Multi-engine database configuration (`SQLite`, `PostgreSQL`, `DuckDB`, `MySQL`), single-use share keys, and trusted peer key registry (`weaver_peer_keys`).
+- **Trajectory Browser & Sovereign Data Exchange (`/trajectories`):** Live zero-allocation `System.IO.Pipelines` trajectory parsing, DuckDB Parquet analytics, and cryptographically signed `.tar.gz` dataset export/import.
+- **Endocrine Toggle Hub (`/endocrine`):** One-click switching between **`Male-to-Female (MtF / E2 Dominant)`** and **`Female-to-Male (FtM / T Dominant)`** regimens, pharmacogenomic allele recalibration (*Factor V Leiden*, *Prothrombin G20210A*, *COMT*, *CYP1B1\*3*, *UGT2B17*, *AR CAG*, *TLR9*), and 72-hour stabilization curves.
 - **In-Silico Simulation Studio (`/simulations`):** Interactive execution and visualization of the 4 predictive biophysical campaigns (serum stability, aptamer gating PMF, steroid cavity retention, and 90-day PBPK kinetics) with stage-gate Go / No-Go decision matrix.
-- **Pharmacogenomics Screening (`/genomics`):** Screening panel for high-impact thrombotic and metabolic alleles (*Factor V Leiden*, *Prothrombin G20210A*, *COMT*, *CYP1B1\*3*, *UGT2B17*, *AR CAG*, *TLR9*) with automated kinetic recalibration and severity alerts.
-- **Regulatory & Cryptography Center (`/compliance`):** Real-time ledger verification, NIST ML-KEM/ML-DSA keypair inspection, HIPAA Safe Harbor de-identification, and GDPR crypto-shredding.
-- **In-Silico Docking Telemetry:** Live trajectory analysis reporting binding occupancy ratios (0.0 to 1.0), average pocket contacts per frame, and thermodynamic stability classifications.
-- **Zero-Allocation Telemetry:** Real-time monitoring of GC Generation 0, 1, and 2 collections to ensure the zero-allocation invariant is maintained during continuous trajectory processing.
-- **Cryptographic Dataset Export & Import (`/datasets`):** Package simulation trajectories into compressed `.tar.gz` bundles paired with an immutable `provenance.manifest.json` featuring SHA-256 and ML-DSA-65 post-quantum signature validation.
+- **180-Day Semi-Annual Time-Release Depot Studio (`/depot-studio`):** Multi-phase Korsmeyer-Peppas and zero-order polymer hydrogel erosion modeling, burst suppression verification, HPG axis gonadotropin suppression, and 180-day re-dosing countdown.
+- **Regulatory & Cryptography Center (`/compliance`):** Real-time 21 CFR Part 11 hash-chained audit ledger verification, NIST ML-KEM-768 / ML-DSA-65 post-quantum key inspection, HIPAA Safe Harbor de-identification, and GDPR Article 17 crypto-shredding.
+- **User Identity, DNA Vault & Profile Management (`/users`, `/dna`, `/profile`):** Asymmetric PKI user administration, tiered subject access and cohort group management, patient Digital DNA blueprints, and demographic profiles.
 
 ---
 
 ## 📚 Documentation & Interactive Wiki
 
-Comprehensive documentation, biomedical engineering primers, architectural diagrams, screenshots, and step-by-step example workflows are available in the repository's [**`docs/`**](docs/) directory and automatically deployed as an interactive wiki via GitHub Pages:
+Comprehensive documentation, biomedical engineering primers, architectural diagrams, screenshots, and step-by-step example workflows are available in the repository's [**`docs/`**](docs/) directory and automatically deployed as an interactive wiki via Forgejo Pages (and mirrored to GitHub Pages):
 
-* **[Live Documentation Portal](https://lantea-one.github.io/nanoweaver-hrt/)** (GitHub Pages)
+* **[Sovereign Live Documentation Portal](https://lantea-one.pages.lantea.one/nanoweaver-hrt/)** (Forgejo Pages — Authoritative)
+* **[Mirror Documentation Portal](https://lantea-one.github.io/nanoweaver-hrt/)** (GitHub Pages Mirror)
 * **[Scientific Abstract](docs/abstract.md)**: Formal peer-reviewed abstract, biophysical gating mechanisms, zero-allocation pipeline specifications, and stage-gate verification matrix.
 * **[Getting Started & Deployment Guide](docs/getting-started.md)**: Local .NET 10 setup and Docker GPU overrides (Intel Arc, NVIDIA, AMD).
 * **[Desktop & Mobile Applications Guide](docs/desktop-and-mobile-gui.md)**: Native desktop and mobile GUI apps (Avalonia UI 11 / .NET 10), direct portable `.exe`, packaging, and 90-day sovereign code signing.
@@ -228,7 +231,7 @@ Comprehensive documentation, biomedical engineering primers, architectural diagr
 * **[Post-Quantum Cryptography & Regulatory Compliance](docs/compliance-and-security.md)**: NIST FIPS 203 (ML-KEM-768), FIPS 204 (ML-DSA-65), HIPAA Safe Harbor, GDPR Article 17 crypto-shredding, and FDA 21 CFR Part 11 audit trails.
 * **[Vendored JavaScript Subsystem & SRI Integrity](docs/vendored-javascript.md)**: Subresource Integrity (SRI) dynamic hashing, zero external CDNs, and browser crypto test vectors.
 * **[REST API Reference & Test Harness](docs/api-reference.md)**: Programmatic minimal endpoints, JSON schemas, and test execution.
-* **[Release Notes & Architecture Evolution](docs/release-notes.md)**: Chronological changelog across platform releases (v2026.10.29.1, v2026.10.29.2).
+* **[Release Notes & Architecture Evolution](docs/release-notes.md)**: Chronological changelog across platform releases (`v2026.10.29.1` through `v2026.11.10.3`).
 * **[Scientific Research & Legal Disclaimer](docs/disclaimer.md)**: Formal scientific research scope, medical non-advice, and BSL-1 biosafety declarations.
 
 ---

@@ -38,5 +38,14 @@
   "Tray.Show": "Abrir NanoWeaver HRT",
   "Tray.Exit": "Salir",
   "Tray.ActiveNodeFormat": "Nodo activo: {0}",
-  "Tray.NoActiveNode": "Ningún nodo activo"
+  "Tray.NoActiveNode": "Ningún nodo activo",
+  "Nav.GuidedWizard": "Asistente Guiado de ADN",
+  "Nav.StackServices": "Servicios de la Pila",
+  "Nav.ConfigAndPeers": "Configuración y Pares",
+  "Nav.TrajectoryBrowser": "Explorador de Trayectorias",
+  "Nav.DepotStudio": "Estudio de Depósito 180 Días",
+  "Nav.UserManagement": "Gestión de Usuarios",
+  "Nav.DnaAndImports": "ADN e Importaciones",
+  "Nav.MyProfile": "Mi Perfil",
+  "Nav.SignOut": "Cerrar Sesión"
 }

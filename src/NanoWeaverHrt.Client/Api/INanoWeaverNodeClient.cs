@@ -1548,4 +1548,46 @@ public interface INanoWeaverNodeClient
         string? geometry,
         double? targetKd,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Creates and persists a semi-annual time-release depot formulation via POST /api/depots/formulations.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="request">Depot formulation parameters and optional initial release schedule points.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The created depot formulation and persisted release schedule.</returns>
+    Task<DepotFormulationResponse> CreateDepotFormulationAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CreateDepotFormulationRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Retrieves all time-release depot formulations and schedules for a patient via GET /api/depots/formulations/{patientId}.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="patientId">Target patient identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>List of depot formulations and release schedules for the patient.</returns>
+    Task<IReadOnlyList<DepotFormulationResponse>> GetDepotFormulationsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string patientId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Simulates a 180-day multi-phase time-release depot elution trajectory via POST /api/depots/simulate-release.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="request">Simulation parameters including regimen, polymer matrix, erosion rate, and clearance scaling.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Multi-phase time-release depot simulation trajectory and clinical summary metrics.</returns>
+    Task<TimeReleaseSimulationResult> SimulateDepotReleaseAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        SimulateDepotReleaseRequest request,
+        CancellationToken ct = default);
 }

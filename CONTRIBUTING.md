@@ -68,6 +68,7 @@ nanoweaver-hrt/
 │   │   ├── Security/              # Ed25519, ML-DSA-65 PKI, role gating & session management
 │   │   ├── Services/              # Trajectory parsers, federation, endocrine & gel engines
 │   │   └── Program.cs             # DI configuration & minimal API endpoint mappings
+│   ├── NanoWeaverHrt.Client/      # Zero-allocation REST API SDK & AES-256-GCM key vault
 │   ├── NanoWeaverHrt.Gui.Core/    # Shared MVVM ViewModels & 18-language localization
 │   ├── NanoWeaverHrt.Desktop/     # Avalonia UI 11 desktop app & system tray controller
 │   └── NanoWeaverHrt.Mobile/      # Avalonia mobile app & hardware biometric vaults (Android/iOS)

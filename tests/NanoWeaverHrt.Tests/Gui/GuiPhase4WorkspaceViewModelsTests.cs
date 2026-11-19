@@ -1568,4 +1568,72 @@ public sealed class GuiPhase4WorkspaceViewModelsTests
         Assert.Same(customPatient, customShell.PatientClinicalWorkspace);
         Assert.Same(customFed, customShell.FederationAndDatasetWorkspace);
     }
+
+    /// <summary>
+    /// Verifies nominal and exception paths for Milestone 33 time-release depot operations on <see cref="PatientClinicalWorkspaceViewModel"/>.
+    /// </summary>
+    [Fact]
+    public async Task PatientClinicalWorkspaceViewModel_DepotFormulationAndSimulation_CoversAllBranches()
+    {
+        // WHAT: Tests CreateDepotFormulationAsync, GetDepotFormulationsAsync, and SimulateDepotReleaseAsync on PatientClinicalWorkspaceViewModel.
+        // WHY:  Issue #184 (P178): Guarantees 100.00% line and branch coverage on the 3 new GUI Core depot methods.
+        // HOW:  Mocks INanoWeaverNodeClient, verifies argument guards, nominal execution, and error propagation.
+        var clientMock = new Mock<INanoWeaverNodeClient>();
+        InstanceProfile profile = CreateProfile("inst-depot-1");
+        var vm = new PatientClinicalWorkspaceViewModel(clientMock.Object)
+        {
+            ActiveProfile = profile,
+            ActiveBearerToken = "token-depot"
+        };
+
+        // 1. CreateDepotFormulationAsync
+        await Assert.ThrowsAsync<ArgumentNullException>(() => vm.CreateDepotFormulationAsync(null!));
+        var createReq = new CreateDepotFormulationRequest().GetExamples();
+        var sampleResp = new DepotFormulationResponse().GetExamples();
+        clientMock.Setup(c => c.CreateDepotFormulationAsync(profile, "token-depot", createReq, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(sampleResp);
+
+        DepotFormulationResponse created = await vm.CreateDepotFormulationAsync(createReq);
+        Assert.Same(sampleResp, created);
+        Assert.False(vm.IsBusy);
+        Assert.Null(vm.ErrorMessage);
+
+        clientMock.Setup(c => c.CreateDepotFormulationAsync(profile, "token-depot", createReq, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Create depot failed"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.CreateDepotFormulationAsync(createReq));
+        Assert.Equal("Create depot failed", vm.ErrorMessage);
+
+        // 2. GetDepotFormulationsAsync
+        await Assert.ThrowsAsync<ArgumentException>(() => vm.GetDepotFormulationsAsync(""));
+        IReadOnlyList<DepotFormulationResponse> listResp = [sampleResp];
+        clientMock.Setup(c => c.GetDepotFormulationsAsync(profile, "token-depot", "patient-01", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(listResp);
+
+        IReadOnlyList<DepotFormulationResponse> fetched = await vm.GetDepotFormulationsAsync("patient-01");
+        Assert.Same(listResp, fetched);
+        Assert.False(vm.IsBusy);
+        Assert.Null(vm.ErrorMessage);
+
+        clientMock.Setup(c => c.GetDepotFormulationsAsync(profile, "token-depot", "patient-01", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Get depots failed"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.GetDepotFormulationsAsync("patient-01"));
+        Assert.Equal("Get depots failed", vm.ErrorMessage);
+
+        // 3. SimulateDepotReleaseAsync
+        await Assert.ThrowsAsync<ArgumentNullException>(() => vm.SimulateDepotReleaseAsync(null!));
+        var simReq = new SimulateDepotReleaseRequest().GetExamples();
+        var simResp = new TimeReleaseSimulationResult().GetExamples();
+        clientMock.Setup(c => c.SimulateDepotReleaseAsync(profile, "token-depot", simReq, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(simResp);
+
+        TimeReleaseSimulationResult simulated = await vm.SimulateDepotReleaseAsync(simReq);
+        Assert.Same(simResp, simulated);
+        Assert.False(vm.IsBusy);
+        Assert.Null(vm.ErrorMessage);
+
+        clientMock.Setup(c => c.SimulateDepotReleaseAsync(profile, "token-depot", simReq, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Simulate depot failed"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.SimulateDepotReleaseAsync(simReq));
+        Assert.Equal("Simulate depot failed", vm.ErrorMessage);
+    }
 }

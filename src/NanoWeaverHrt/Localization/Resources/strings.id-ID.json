@@ -38,5 +38,14 @@
   "Tray.Show": "Buka NanoWeaver HRT",
   "Tray.Exit": "Keluar",
   "Tray.ActiveNodeFormat": "Node Aktif: {0}",
-  "Tray.NoActiveNode": "Tidak Ada Node Aktif"
+  "Tray.NoActiveNode": "Tidak Ada Node Aktif",
+  "Nav.GuidedWizard": "Panduan DNA Terpadu",
+  "Nav.StackServices": "Layanan Stack",
+  "Nav.ConfigAndPeers": "Konfigurasi & Rekan",
+  "Nav.TrajectoryBrowser": "PerambanLintasan",
+  "Nav.DepotStudio": "Studio Depot 180 Hari",
+  "Nav.UserManagement": "Manajemen Pengguna",
+  "Nav.DnaAndImports": "DNA & Impor",
+  "Nav.MyProfile": "Profil Saya",
+  "Nav.SignOut": "Keluar"
 }

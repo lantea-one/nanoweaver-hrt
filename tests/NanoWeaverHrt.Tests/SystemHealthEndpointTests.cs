@@ -332,7 +332,7 @@ public sealed class SystemHealthEndpointTests : IClassFixture<WebApplicationFact
         Assert.Equal("Healthy", result.Status);
         Assert.False(result.AuthenticatedSession);
         Assert.False(result.SetupRequired);
-        Assert.Equal("1.0.0", result.Version);
+        Assert.Equal(typeof(Program).Assembly.GetName().Version!.ToString(), result.Version);
         Assert.False(string.IsNullOrWhiteSpace(result.Uptime));
         Assert.True(result.UptimeSeconds >= 0);
         Assert.Contains("Authenticate with a valid session token", result.Description);

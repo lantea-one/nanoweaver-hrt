@@ -38,5 +38,14 @@
   "Tray.Show": "Öppna NanoWeaver HRT",
   "Tray.Exit": "Avsluta",
   "Tray.ActiveNodeFormat": "Aktiv nod: {0}",
-  "Tray.NoActiveNode": "Ingen aktiv nod"
+  "Tray.NoActiveNode": "Ingen aktiv nod",
+  "Nav.GuidedWizard": "Guidad DNA-guide",
+  "Nav.StackServices": "Stacktjänster",
+  "Nav.ConfigAndPeers": "Konfiguration & Noder",
+  "Nav.TrajectoryBrowser": "Trajektoriebläddrare",
+  "Nav.DepotStudio": "180-dagars Depåstudio",
+  "Nav.UserManagement": "Användarhantering",
+  "Nav.DnaAndImports": "DNA & Importer",
+  "Nav.MyProfile": "Min Profil",
+  "Nav.SignOut": "Logga ut"
 }

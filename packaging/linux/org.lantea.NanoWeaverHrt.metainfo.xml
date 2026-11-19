@@ -26,7 +26,7 @@
   <url type="bugtracker">https://git.lantea.one/lantea-one/nanoweaver-hrt/issues</url>
   <content_rating type="oars-1.1"/>
   <releases>
-    <release version="2026.11.04.10" date="2026-11-04">
+    <release version="2026.11.10.3" date="2026-11-04">
       <description>
         <p>Code-complete milestone: Total 100% Client REST SDK Parity (simulation campaigns: serum stability, aptamer gating, payload leakage, PBPK endocrine, web challenge signature authentication, and cluster healthz liveness probe).</p>
       </description>

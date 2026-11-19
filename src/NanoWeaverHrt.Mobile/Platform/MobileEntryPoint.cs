@@ -25,9 +25,9 @@ public static class MobileEntryPoint
     public const string SovereignAppDisplayName = "NanoWeaver HRT";
 
     /// <summary>
-    /// Current sovereign semantic release version.
+    /// Current sovereign semantic release version resolved dynamically from assembly metadata.
     /// </summary>
-    public const string SovereignAppVersion = "2026.11.04.10";
+    public static string SovereignAppVersion => typeof(MobileEntryPoint).Assembly.GetName().Version!.ToString(); // Assembly.GetName().Version is always populated by MSBuild AssemblyVersion
 
     /// <summary>
     /// Synchronized lock guarding thread-safe access to the static biometric vault.

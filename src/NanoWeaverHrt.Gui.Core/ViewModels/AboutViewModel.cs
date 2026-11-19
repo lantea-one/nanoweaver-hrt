@@ -28,9 +28,9 @@ public sealed class AboutViewModel : INotifyPropertyChanged
     public string AppName => "NanoWeaver HRT";
 
     /// <summary>
-    /// Gets the application version tag.
+    /// Gets the application version tag resolved dynamically from compiled assembly metadata.
     /// </summary>
-    public string Version => "2026.11.04.10-sovereign";
+    public string Version => $"{typeof(AboutViewModel).Assembly.GetName().Version!}-sovereign"; // Assembly.GetName().Version is always populated by MSBuild AssemblyVersion
 
     /// <summary>
     /// Gets the project description string.

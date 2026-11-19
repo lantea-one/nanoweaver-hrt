@@ -21,11 +21,6 @@ namespace NanoWeaverHrt.Endocrine;
 public sealed class TimeReleaseDepotService : ITimeReleaseDepotService
 {
     /// <summary>
-    /// Nominal daily payload fractional elution rate during the zero-order steady-state plateau.
-    /// </summary>
-    private const double BasePlateauFractionPerDay = 0.0055;
-
-    /// <summary>
     /// Duration of Phase I burst suppression in days.
     /// </summary>
     private const int BurstSuppressionDays = 7;
@@ -324,10 +319,15 @@ public sealed class TimeReleaseDepotService : ITimeReleaseDepotService
     }
 
     /// <inheritdoc/>
-    public double CalculateInstantaneousDailyRelease(double day, PolymerMatrixType matrix, double initialMassMg, double clearanceMultiplier)
+    public double CalculateInstantaneousDailyRelease(
+        double day,
+        PolymerMatrixType matrix,
+        double initialMassMg,
+        double clearanceMultiplier,
+        double dailyErosionRatePercent = 0.55)
     {
-        // WHAT: Validates mass and pharmacogenomic clearance multiplier.
-        // WHY:  Non-positive mass cannot elute drug; clearance multiplier must fall within physiological genomic bounds.
+        // WHAT: Validates mass, pharmacogenomic clearance multiplier, and daily erosion rate percentage.
+        // WHY:  Non-positive mass cannot elute drug; clearance multiplier and erosion rate must fall within physical bounds.
         // HOW:  Throws ArgumentOutOfRangeException if out of range.
         if (initialMassMg <= 0.0)
         {
@@ -339,12 +339,18 @@ public sealed class TimeReleaseDepotService : ITimeReleaseDepotService
             throw new ArgumentOutOfRangeException(nameof(clearanceMultiplier), "ClearanceMultiplier must be between 0.1 and 5.0.");
         }
 
+        if (dailyErosionRatePercent <= 0.0 || dailyErosionRatePercent > 100.0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(dailyErosionRatePercent), "Daily erosion rate percent must be between 0.0 (exclusive) and 100.0.");
+        }
+
         if (day <= 0.0)
         {
             return 0.0;
         }
 
         (double n, double matrixScale) = GetMatrixProperties(matrix);
+        double basePlateauFraction = dailyErosionRatePercent / 100.0;
 
         // WHAT: Computes pharmacogenomic clearance adaptation factor.
         // WHY:  Aptamer-gated DNA origami nanocarriers adapt micro-release to patient metabolizer phenotype.
@@ -353,20 +359,20 @@ public sealed class TimeReleaseDepotService : ITimeReleaseDepotService
 
         // WHAT: Calculates the daily release rate fraction across the three biophysical phases.
         // WHY:  Enforces Phase I burst suppression (<= 5% on Day 7), Phase II zero-order plateau, and Phase III terminal taper.
-        // HOW:  Piecewise biophysical function with continuous phase boundaries.
+        // HOW:  Piecewise biophysical function with continuous phase boundaries scaled by basePlateauFraction.
         double dailyFraction;
         if (day <= BurstSuppressionDays)
         {
-            dailyFraction = BasePlateauFractionPerDay * (0.35 + 0.65 * (day / BurstSuppressionDays)) * matrixScale;
+            dailyFraction = basePlateauFraction * (0.35 + 0.65 * (day / BurstSuppressionDays)) * matrixScale;
         }
         else if (day <= SteadyStatePlateauDays)
         {
-            dailyFraction = BasePlateauFractionPerDay * matrixScale * (0.70 + 0.30 * Math.Pow(day / SteadyStatePlateauDays, n - 0.50));
+            dailyFraction = basePlateauFraction * matrixScale * (0.70 + 0.30 * Math.Pow(day / SteadyStatePlateauDays, n - 0.50));
         }
         else
         {
             double deltaDays = day - SteadyStatePlateauDays;
-            double plateauFraction = BasePlateauFractionPerDay * matrixScale;
+            double plateauFraction = basePlateauFraction * matrixScale;
             dailyFraction = plateauFraction * Math.Exp(-TerminalTaperDecayRate * deltaDays);
         }
 
@@ -381,26 +387,27 @@ public sealed class TimeReleaseDepotService : ITimeReleaseDepotService
     /// <returns>The calculated daily payload release rate in milligrams per day (mg/day).</returns>
     private static double CalculateDailyRelease(double day, TimeReleaseDepotParameters parameters)
     {
-        // WHAT: Resolves matrix biophysical constants and kinetics model scaling.
-        // WHY:  Different polymer matrices (PLGA, Alginate, Cyclodextrin) and kinetics models modulate daily elution.
-        // HOW:  Applies matrix scale, kinetics multiplier, and pharmacogenomic clearance scaling.
+        // WHAT: Resolves matrix biophysical constants, daily erosion rate fraction, and kinetics model scaling.
+        // WHY:  Different polymer matrices (PLGA, Alginate, Cyclodextrin), erosion rates, and kinetics models modulate daily elution.
+        // HOW:  Applies basePlateauFraction, matrix scale, kinetics multiplier, and pharmacogenomic clearance scaling.
         (double n, double matrixScale) = GetMatrixProperties(parameters.MatrixType);
+        double basePlateauFraction = parameters.DailyErosionRatePercent / 100.0;
         double clearanceFactor = 1.0 + 0.05 * (parameters.ClearanceMultiplier - 1.0);
 
         double dailyFraction;
         if (day <= BurstSuppressionDays)
         {
-            dailyFraction = BasePlateauFractionPerDay * (0.35 + 0.65 * (day / BurstSuppressionDays)) * matrixScale;
+            dailyFraction = basePlateauFraction * (0.35 + 0.65 * (day / BurstSuppressionDays)) * matrixScale;
         }
         else if (day <= SteadyStatePlateauDays)
         {
             double modelMultiplier = GetKineticsModelMultiplier(parameters.KineticsModel, day, n);
-            dailyFraction = BasePlateauFractionPerDay * matrixScale * modelMultiplier;
+            dailyFraction = basePlateauFraction * matrixScale * modelMultiplier;
         }
         else
         {
             double deltaDays = day - SteadyStatePlateauDays;
-            double plateauFraction = BasePlateauFractionPerDay * matrixScale;
+            double plateauFraction = basePlateauFraction * matrixScale;
             dailyFraction = plateauFraction * Math.Exp(-TerminalTaperDecayRate * deltaDays);
         }
 
@@ -601,6 +608,11 @@ public sealed class TimeReleaseDepotService : ITimeReleaseDepotService
         if (parameters.TargetTestosteroneNmolL < 0.0)
         {
             throw new ArgumentOutOfRangeException(nameof(parameters.TargetTestosteroneNmolL), "Target testosterone cannot be negative.");
+        }
+
+        if (parameters.DailyErosionRatePercent <= 0.0 || parameters.DailyErosionRatePercent > 100.0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(parameters.DailyErosionRatePercent), "Daily erosion rate percent must be between 0.0 (exclusive) and 100.0.");
         }
     }
 }

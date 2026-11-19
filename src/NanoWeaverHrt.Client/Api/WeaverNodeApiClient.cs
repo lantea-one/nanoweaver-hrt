@@ -1913,4 +1913,49 @@ public sealed class WeaverNodeApiClient : INanoWeaverNodeClient, IDisposable
             }
         }
     }
+
+    /// <inheritdoc/>
+    public Task<DepotFormulationResponse> CreateDepotFormulationAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CreateDepotFormulationRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/depots/formulations using provided or cached session token.
+        // WHY:  Persists a patient-specific semi-annual time-release depot formulation.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.CreateDepotFormulationAsync(profile, effectiveToken, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<DepotFormulationResponse>> GetDepotFormulationsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string patientId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/depots/formulations/{patientId} using provided or cached session token.
+        // WHY:  Retrieves all time-release depot formulations and schedules for a target patient.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GetDepotFormulationsAsync(profile, effectiveToken, patientId, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<TimeReleaseSimulationResult> SimulateDepotReleaseAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        SimulateDepotReleaseRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/depots/simulate-release using provided or cached session token.
+        // WHY:  Executes a 180-day multi-phase time-release depot pharmacokinetic simulation.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.SimulateDepotReleaseAsync(profile, effectiveToken, request, ct);
+    }
 }

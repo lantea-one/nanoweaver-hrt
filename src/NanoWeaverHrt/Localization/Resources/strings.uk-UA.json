@@ -38,5 +38,14 @@
   "Tray.Show": "Відкрити NanoWeaver HRT",
   "Tray.Exit": "Вийти",
   "Tray.ActiveNodeFormat": "Активний вузол: {0}",
-  "Tray.NoActiveNode": "Немає активного вузла"
+  "Tray.NoActiveNode": "Немає активного вузла",
+  "Nav.GuidedWizard": "Покроковий Майстер ДНК",
+  "Nav.StackServices": "Сервіси Стека",
+  "Nav.ConfigAndPeers": "Конфігурація та Вузли",
+  "Nav.TrajectoryBrowser": "Оглядач Траєкторій",
+  "Nav.DepotStudio": "Студія Депо 180 Днів",
+  "Nav.UserManagement": "Керування Користувачами",
+  "Nav.DnaAndImports": "ДНК та Імпорт",
+  "Nav.MyProfile": "Мій Профіль",
+  "Nav.SignOut": "Вийти"
 }

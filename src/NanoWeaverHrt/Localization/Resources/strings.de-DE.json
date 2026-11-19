@@ -38,5 +38,14 @@
   "Tray.Show": "NanoWeaver HRT öffnen",
   "Tray.Exit": "Beenden",
   "Tray.ActiveNodeFormat": "Aktiver Knoten: {0}",
-  "Tray.NoActiveNode": "Kein aktiver Knoten"
+  "Tray.NoActiveNode": "Kein aktiver Knoten",
+  "Nav.GuidedWizard": "Geführter DNA-Assistent",
+  "Nav.StackServices": "Stack-Dienste",
+  "Nav.ConfigAndPeers": "Konfiguration & Peers",
+  "Nav.TrajectoryBrowser": "Trajektorien-Browser",
+  "Nav.DepotStudio": "180-Tage-Depot-Studio",
+  "Nav.UserManagement": "Benutzerverwaltung",
+  "Nav.DnaAndImports": "DNA & Importe",
+  "Nav.MyProfile": "Mein Profil",
+  "Nav.SignOut": "Abmelden"
 }

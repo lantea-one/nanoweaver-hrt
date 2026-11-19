@@ -38,5 +38,14 @@
   "Tray.Show": "NanoWeaver HRT खोलें",
   "Tray.Exit": "बंद करें",
   "Tray.ActiveNodeFormat": "सक्रिय नोड: {0}",
-  "Tray.NoActiveNode": "कोई सक्रिय नोड नहीं"
+  "Tray.NoActiveNode": "कोई सक्रिय नोड नहीं",
+  "Nav.GuidedWizard": "निर्देशित डीएनए विज़ार्ड",
+  "Nav.StackServices": "स्टैक सेवाएँ",
+  "Nav.ConfigAndPeers": "कॉन्फ़िगरेशन और पीयर्स",
+  "Nav.TrajectoryBrowser": "प्रक्षेपवक्र ब्राउज़र",
+  "Nav.DepotStudio": "180-दिवसीय डिपो स्टूडियो",
+  "Nav.UserManagement": "उपयोगकर्ता प्रबंधन",
+  "Nav.DnaAndImports": "डीएनए और आयात",
+  "Nav.MyProfile": "मेरी प्रोफ़ाइल",
+  "Nav.SignOut": "साइन आउट"
 }

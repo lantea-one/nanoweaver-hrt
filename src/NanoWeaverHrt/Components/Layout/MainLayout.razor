@@ -40,7 +40,7 @@
                 HOW:  Direct property access on SessionState.CurrentUser!.
             *@
                 <div class="badge badge-primary">@SessionState.CurrentUser!.Username (@SessionState.CurrentUser!.Role)</div>
-                <button class="btn btn-sm btn-outline text-muted" @onclick="HandleSignOut">Sign Out</button>
+                <button class="btn btn-sm btn-outline text-muted" @onclick="HandleSignOut">@Localizer.GetString("Nav.SignOut", _currentLanguage)</button>
             </div>
         }
     </div>
@@ -59,16 +59,16 @@
 <nav class="sub-navbar">
     <div class="nav-links">
         <NavLink href="/" class="nav-link" Match="NavLinkMatch.All">
-            <span class="nav-icon">🧬</span> Guided DNA Wizard
+            <span class="nav-icon">🧬</span> @Localizer.GetString("Nav.GuidedWizard", _currentLanguage)
         </NavLink>
         <NavLink href="/services" class="nav-link">
-            <span class="nav-icon">⚙️</span> Stack Services
+            <span class="nav-icon">⚙️</span> @Localizer.GetString("Nav.StackServices", _currentLanguage)
         </NavLink>
         <NavLink href="/configuration" class="nav-link">
-            <span class="nav-icon">🛡️</span> Configuration &amp; Peers
+            <span class="nav-icon">🛡️</span> @Localizer.GetString("Nav.ConfigAndPeers", _currentLanguage)
         </NavLink>
         <NavLink href="/trajectories" class="nav-link">
-            <span class="nav-icon">📁</span> Trajectory Browser
+            <span class="nav-icon">📁</span> @Localizer.GetString("Nav.TrajectoryBrowser", _currentLanguage)
         </NavLink>
         <NavLink href="/endocrine" class="nav-link">
             <span class="nav-icon">⚖️</span> @Localizer.GetString("Nav.Endocrine", _currentLanguage)
@@ -76,22 +76,25 @@
         <NavLink href="/simulations" class="nav-link">
             <span class="nav-icon">🧪</span> @Localizer.GetString("Nav.Simulations", _currentLanguage)
         </NavLink>
+        <NavLink href="/depot-studio" class="nav-link">
+            <span class="nav-icon">⏳</span> @Localizer.GetString("Nav.DepotStudio", _currentLanguage)
+        </NavLink>
         <NavLink href="/compliance" class="nav-link">
             <span class="nav-icon">🔒</span> @Localizer.GetString("Nav.Compliance", _currentLanguage)
         </NavLink>
         @if (SessionState.IsAdmin)
         {
             <NavLink href="/users" class="nav-link">
-                <span class="nav-icon">👥</span> User Management
+                <span class="nav-icon">👥</span> @Localizer.GetString("Nav.UserManagement", _currentLanguage)
             </NavLink>
         }
         @if (SessionState.IsAuthenticated)
         {
             <NavLink href="/dna" class="nav-link">
-                <span class="nav-icon">🧬</span> DNA &amp; Imports
+                <span class="nav-icon">🧬</span> @Localizer.GetString("Nav.DnaAndImports", _currentLanguage)
             </NavLink>
             <NavLink href="/profile" class="nav-link">
-                <span class="nav-icon">👤</span> My Profile
+                <span class="nav-icon">👤</span> @Localizer.GetString("Nav.MyProfile", _currentLanguage)
             </NavLink>
         }
     </div>

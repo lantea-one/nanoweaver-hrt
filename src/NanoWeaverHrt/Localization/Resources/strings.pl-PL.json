@@ -38,5 +38,14 @@
   "Tray.Show": "Otwórz NanoWeaver HRT",
   "Tray.Exit": "Zakończ",
   "Tray.ActiveNodeFormat": "Aktywny węzeł: {0}",
-  "Tray.NoActiveNode": "Brak aktywnego węzła"
+  "Tray.NoActiveNode": "Brak aktywnego węzła",
+  "Nav.GuidedWizard": "Kreator DNA Krok po Kroku",
+  "Nav.StackServices": "Usługi Stosu",
+  "Nav.ConfigAndPeers": "Konfiguracja i Węzły",
+  "Nav.TrajectoryBrowser": "Przeglądarka Trajektorii",
+  "Nav.DepotStudio": "Studio Depozytu 180 Dni",
+  "Nav.UserManagement": "Zarządzanie Użytkownikami",
+  "Nav.DnaAndImports": "DNA i Importy",
+  "Nav.MyProfile": "Mój Profil",
+  "Nav.SignOut": "Wyloguj"
 }

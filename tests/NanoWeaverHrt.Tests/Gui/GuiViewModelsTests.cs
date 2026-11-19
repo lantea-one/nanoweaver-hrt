@@ -1334,9 +1334,10 @@ public sealed class GuiViewModelsTests
         // WHY:  Validates that cluster information dialog displays correct versions and capabilities.
         // HOW:  Instantiates AboutViewModel, checks non-null and non-empty strings and collections.
         var vm = new AboutViewModel();
+        string expectedAboutVer = $"{typeof(AboutViewModel).Assembly.GetName().Version!}-sovereign";
 
         Assert.Equal("NanoWeaver HRT", vm.AppName);
-        Assert.Equal("2026.11.04.10-sovereign", vm.Version);
+        Assert.Equal(expectedAboutVer, vm.Version);
         Assert.NotEmpty(vm.Description);
         Assert.NotEmpty(vm.OSDescription);
         Assert.NotEmpty(vm.Architecture);

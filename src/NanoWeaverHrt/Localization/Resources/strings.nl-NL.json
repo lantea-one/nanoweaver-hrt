@@ -38,5 +38,14 @@
   "Tray.Show": "Open NanoWeaver HRT",
   "Tray.Exit": "Afsluiten",
   "Tray.ActiveNodeFormat": "Actieve node: {0}",
-  "Tray.NoActiveNode": "Geen actieve node"
+  "Tray.NoActiveNode": "Geen actieve node",
+  "Nav.GuidedWizard": "Begeleide DNA-Wizard",
+  "Nav.StackServices": "Stackservices",
+  "Nav.ConfigAndPeers": "Configuratie & Peers",
+  "Nav.TrajectoryBrowser": "Trajectbrowser",
+  "Nav.DepotStudio": "180-Dagen Depotstudio",
+  "Nav.UserManagement": "Gebruikersbeheer",
+  "Nav.DnaAndImports": "DNA & Import",
+  "Nav.MyProfile": "Mijn Profiel",
+  "Nav.SignOut": "Afmelden"
 }

@@ -38,5 +38,14 @@
   "Tray.Show": "فتح NanoWeaver HRT",
   "Tray.Exit": "إنهاء",
   "Tray.ActiveNodeFormat": "العقدة النشطة: {0}",
-  "Tray.NoActiveNode": "لا توجد عقدة نشطة"
+  "Tray.NoActiveNode": "لا توجد عقدة نشطة",
+  "Nav.GuidedWizard": "معالج الحمض النووي الموجه",
+  "Nav.StackServices": "خدمات المكدس",
+  "Nav.ConfigAndPeers": "التكوين والأقران",
+  "Nav.TrajectoryBrowser": "متصفح المسارات",
+  "Nav.DepotStudio": "استوديو المستودع لـ 180 يوماً",
+  "Nav.UserManagement": "إدارة المستخدمين",
+  "Nav.DnaAndImports": "الحمض النووي والاستيراد",
+  "Nav.MyProfile": "ملفي الشخصي",
+  "Nav.SignOut": "تسجيل الخروج"
 }

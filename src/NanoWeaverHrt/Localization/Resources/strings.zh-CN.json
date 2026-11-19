@@ -38,5 +38,14 @@
   "Tray.Show": "打开 NanoWeaver HRT",
   "Tray.Exit": "退出",
   "Tray.ActiveNodeFormat": "活动节点：{0}",
-  "Tray.NoActiveNode": "无活动节点"
+  "Tray.NoActiveNode": "无活动节点",
+  "Nav.GuidedWizard": "引导式 DNA 向导",
+  "Nav.StackServices": "服务栈状态",
+  "Nav.ConfigAndPeers": "配置与对等节点",
+  "Nav.TrajectoryBrowser": "轨迹浏览器",
+  "Nav.DepotStudio": "180天缓释库工作室",
+  "Nav.UserManagement": "用户管理",
+  "Nav.DnaAndImports": "DNA 与导入",
+  "Nav.MyProfile": "我的资料",
+  "Nav.SignOut": "退出登录"
 }

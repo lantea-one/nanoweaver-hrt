@@ -111,7 +111,8 @@ echo "==========================================================================
 python3 - << 'EOF'
 import glob, re, sys
 
-files = sorted(set(glob.glob('docs/**/*.md', recursive=True) + glob.glob('docs/*.md') + ['README.md']))
+root_mds = [f for f in ['README.md', 'AGENTS.md', 'CONTRIBUTING.md', 'CODING_STANDARDS.md', 'DISCLAIMER.md'] if glob.glob(f)]
+files = sorted(set(glob.glob('docs/**/*.md', recursive=True) + glob.glob('docs/*.md') + root_mds))
 violations = []
 inline_display_violations = []
 

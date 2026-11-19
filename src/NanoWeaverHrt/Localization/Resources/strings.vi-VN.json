@@ -38,5 +38,14 @@
   "Tray.Show": "Mở NanoWeaver HRT",
   "Tray.Exit": "Thoát",
   "Tray.ActiveNodeFormat": "Nút đang hoạt động: {0}",
-  "Tray.NoActiveNode": "Không có nút đang hoạt động"
+  "Tray.NoActiveNode": "Không có nút đang hoạt động",
+  "Nav.GuidedWizard": "Trình Hướng Dẫn DNA",
+  "Nav.StackServices": "Dịch Vụ Hệ Thống",
+  "Nav.ConfigAndPeers": "Cấu Hình & Nút Ngang Hàng",
+  "Nav.TrajectoryBrowser": "Trình Duyệt Quỹ Đạo",
+  "Nav.DepotStudio": "Studio Giải Phóng Chậm 180 Ngày",
+  "Nav.UserManagement": "Quản Lý Người Dùng",
+  "Nav.DnaAndImports": "DNA & Nhập Dữ Liệu",
+  "Nav.MyProfile": "Hồ Sơ Của Tôi",
+  "Nav.SignOut": "Đăng Xuất"
 }

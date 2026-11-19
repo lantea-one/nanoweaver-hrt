@@ -796,6 +796,18 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         innerMock.Setup(i => i.GetPatientDnaRegimensAsync(profile, "explicit_token", "pt1", TherapeuticRegimen.MaleToFemale, "6HB", 3.5, It.IsAny<CancellationToken>())).ReturnsAsync(dnaPkg);
         innerMock.Setup(i => i.GetPatientDnaRegimensAsync(profile, "cached_token", "pt1", TherapeuticRegimen.MaleToFemale, "6HB", 3.5, It.IsAny<CancellationToken>())).ReturnsAsync(dnaPkg);
 
+        var sampleCreateDepotReq = new CreateDepotFormulationRequest().GetExamples();
+        var sampleDepotResp = new DepotFormulationResponse().GetExamples();
+        IReadOnlyList<DepotFormulationResponse> sampleDepotList = [sampleDepotResp];
+        var sampleSimulateDepotReq = new SimulateDepotReleaseRequest().GetExamples();
+        var sampleSimulateDepotRes = new TimeReleaseSimulationResult().GetExamples();
+        innerMock.Setup(i => i.CreateDepotFormulationAsync(profile, "explicit_token", sampleCreateDepotReq, It.IsAny<CancellationToken>())).ReturnsAsync(sampleDepotResp);
+        innerMock.Setup(i => i.CreateDepotFormulationAsync(profile, "cached_token", sampleCreateDepotReq, It.IsAny<CancellationToken>())).ReturnsAsync(sampleDepotResp);
+        innerMock.Setup(i => i.GetDepotFormulationsAsync(profile, "explicit_token", "pt1", It.IsAny<CancellationToken>())).ReturnsAsync(sampleDepotList);
+        innerMock.Setup(i => i.GetDepotFormulationsAsync(profile, "cached_token", "pt1", It.IsAny<CancellationToken>())).ReturnsAsync(sampleDepotList);
+        innerMock.Setup(i => i.SimulateDepotReleaseAsync(profile, "explicit_token", sampleSimulateDepotReq, It.IsAny<CancellationToken>())).ReturnsAsync(sampleSimulateDepotRes);
+        innerMock.Setup(i => i.SimulateDepotReleaseAsync(profile, "cached_token", sampleSimulateDepotReq, It.IsAny<CancellationToken>())).ReturnsAsync(sampleSimulateDepotRes);
+
         using var client = new WeaverNodeApiClient(innerMock.Object);
 
         // 1. Missing token without cache throws InvalidOperationException
@@ -901,6 +913,9 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.RunAptamerGatingAsync(profile, "", sampleAptamerReq));
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.RunPayloadLeakageAsync(profile, "", sampleLeakageReq));
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.RunPbpkSimulationAsync(profile, "", samplePbpkReq));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.CreateDepotFormulationAsync(profile, "", sampleCreateDepotReq));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetDepotFormulationsAsync(profile, "", "pt1"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.SimulateDepotReleaseAsync(profile, "", sampleSimulateDepotReq));
 
         // 2. Call with explicit token
         var snapRes1 = await client.PollSnapshotAsync(profile, "explicit_token");
@@ -1211,6 +1226,15 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         var filteredDna1 = await client.GetPatientDnaRegimensAsync(profile, "explicit_token", "pt1", TherapeuticRegimen.MaleToFemale, "6HB", 3.5);
         Assert.Equal("pt1", filteredDna1.PatientId);
 
+        var createdDepot1 = await client.CreateDepotFormulationAsync(profile, "explicit_token", sampleCreateDepotReq);
+        Assert.Equal(sampleDepotResp.Formulation.DepotId, createdDepot1.Formulation.DepotId);
+
+        var listDepot1 = await client.GetDepotFormulationsAsync(profile, "explicit_token", "pt1");
+        Assert.Single(listDepot1);
+
+        var simDepot1 = await client.SimulateDepotReleaseAsync(profile, "explicit_token", sampleSimulateDepotReq);
+        Assert.Equal(sampleSimulateDepotRes.Points.Count, simDepot1.Points.Count);
+
         // 3. Set cached token and call with empty token argument
         client.SetSessionToken("cached_token");
 
@@ -1516,6 +1540,15 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         var filteredDna2 = await client.GetPatientDnaRegimensAsync(profile, "", "pt1", TherapeuticRegimen.MaleToFemale, "6HB", 3.5);
         Assert.Equal("pt1", filteredDna2.PatientId);
 
+        var createdDepot2 = await client.CreateDepotFormulationAsync(profile, "", sampleCreateDepotReq);
+        Assert.Equal(sampleDepotResp.Formulation.DepotId, createdDepot2.Formulation.DepotId);
+
+        var listDepot2 = await client.GetDepotFormulationsAsync(profile, "", "pt1");
+        Assert.Single(listDepot2);
+
+        var simDepot2 = await client.SimulateDepotReleaseAsync(profile, "", sampleSimulateDepotReq);
+        Assert.Equal(sampleSimulateDepotRes.Points.Count, simDepot2.Points.Count);
+
         // 4. Set whitespace token buffer to exercise whitespace fallback exception
         using var whitespaceBuf = ZeroizableSecretBuffer.FromUtf8("   ");
         client.SetSessionToken(whitespaceBuf);
@@ -1664,6 +1697,9 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetHealthAsync(profile));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetGranularSystemHealthAsync(profile, "token"));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetPatientDnaRegimensAsync(profile, "token", "pt1", TherapeuticRegimen.MaleToFemale, "6HB", 3.5));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.CreateDepotFormulationAsync(profile, "token", new CreateDepotFormulationRequest().GetExamples()));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetDepotFormulationsAsync(profile, "token", "pt1"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.SimulateDepotReleaseAsync(profile, "token", new SimulateDepotReleaseRequest().GetExamples()));
     }
 
     /// <summary>

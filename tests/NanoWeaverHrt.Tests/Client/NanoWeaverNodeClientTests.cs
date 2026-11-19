@@ -3992,6 +3992,80 @@ public sealed class NanoWeaverNodeClientTests : IDisposable
     }
 
     /// <summary>
+    /// Verifies nominal responses, null fallbacks, and argument validation for Milestone 33 time-release depot endpoints
+    /// (<see cref="NanoWeaverNodeClient.CreateDepotFormulationAsync"/>, <see cref="NanoWeaverNodeClient.GetDepotFormulationsAsync"/>,
+    /// and <see cref="NanoWeaverNodeClient.SimulateDepotReleaseAsync"/>).
+    /// </summary>
+    /// <returns>A task representing asynchronous test completion.</returns>
+    [Fact]
+    public async Task DepotFormulationAndReleaseSimulationEndpoints_NominalAndErrors_BehavesExpectedly()
+    {
+        // WHAT: Tests CreateDepotFormulationAsync, GetDepotFormulationsAsync, and SimulateDepotReleaseAsync across nominal and error paths.
+        // WHY:  Issue #183 (P177): Guarantees 100.00% line and branch coverage on the Client SDK time-release depot methods.
+        // HOW:  Stubs HTTP responses, verifies payload deserialization, null payload fallback/throwing, HTTP error mapping, and argument guards.
+        CreateDepotFormulationRequest createReq = new CreateDepotFormulationRequest().GetExamples();
+        DepotFormulationResponse sampleFormulation = new DepotFormulationResponse().GetExamples();
+        SimulateDepotReleaseRequest simulateReq = new SimulateDepotReleaseRequest().GetExamples();
+        TimeReleaseSimulationResult sampleSimResult = new TimeReleaseSimulationResult().GetExamples();
+
+        // 1. CreateDepotFormulationAsync
+        _httpHandler.SetResponse(
+            "/api/depots/formulations",
+            HttpStatusCode.Created,
+            JsonSerializer.Serialize(sampleFormulation, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        DepotFormulationResponse created = await _client.CreateDepotFormulationAsync(_localProfile, "valid_token", createReq);
+        Assert.NotNull(created);
+        Assert.Equal(sampleFormulation.Formulation.DepotId, created.Formulation.DepotId);
+
+        _httpHandler.SetResponse("/api/depots/formulations", HttpStatusCode.Created, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.CreateDepotFormulationAsync(_localProfile, "valid_token", createReq));
+        _httpHandler.SetResponse("/api/depots/formulations", HttpStatusCode.BadRequest, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.CreateDepotFormulationAsync(_localProfile, "valid_token", createReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.CreateDepotFormulationAsync(null!, "valid_token", createReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.CreateDepotFormulationAsync(_localProfile, "", createReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.CreateDepotFormulationAsync(_localProfile, "valid_token", null!));
+
+        // 2. GetDepotFormulationsAsync
+        _httpHandler.SetResponse(
+            "/api/depots/formulations/patient-01",
+            HttpStatusCode.OK,
+            JsonSerializer.Serialize(new List<DepotFormulationResponse> { sampleFormulation }, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        IReadOnlyList<DepotFormulationResponse> list = await _client.GetDepotFormulationsAsync(_localProfile, "valid_token", "patient-01");
+        Assert.Single(list);
+        Assert.Equal(sampleFormulation.Formulation.DepotId, list[0].Formulation.DepotId);
+
+        _httpHandler.SetResponse("/api/depots/formulations/patient-01", HttpStatusCode.OK, "null");
+        IReadOnlyList<DepotFormulationResponse> emptyList = await _client.GetDepotFormulationsAsync(_localProfile, "valid_token", "patient-01");
+        Assert.Empty(emptyList);
+
+        _httpHandler.SetResponse("/api/depots/formulations/patient-01", HttpStatusCode.Forbidden, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetDepotFormulationsAsync(_localProfile, "valid_token", "patient-01"));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetDepotFormulationsAsync(null!, "valid_token", "patient-01"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetDepotFormulationsAsync(_localProfile, "", "patient-01"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetDepotFormulationsAsync(_localProfile, "valid_token", ""));
+
+        // 3. SimulateDepotReleaseAsync
+        _httpHandler.SetResponse(
+            "/api/depots/simulate-release",
+            HttpStatusCode.OK,
+            JsonSerializer.Serialize(sampleSimResult, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        TimeReleaseSimulationResult simResult = await _client.SimulateDepotReleaseAsync(_localProfile, "valid_token", simulateReq);
+        Assert.NotNull(simResult);
+        Assert.Equal(sampleSimResult.Points.Count, simResult.Points.Count);
+
+        _httpHandler.SetResponse("/api/depots/simulate-release", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.SimulateDepotReleaseAsync(_localProfile, "valid_token", simulateReq));
+        _httpHandler.SetResponse("/api/depots/simulate-release", HttpStatusCode.BadRequest, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.SimulateDepotReleaseAsync(_localProfile, "valid_token", simulateReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.SimulateDepotReleaseAsync(null!, "valid_token", simulateReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.SimulateDepotReleaseAsync(_localProfile, "", simulateReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.SimulateDepotReleaseAsync(_localProfile, "valid_token", null!));
+    }
+
+    /// <summary>
     /// In-memory HTTP message handler stub for deterministic test execution.
     /// </summary>
     private sealed class StubHttpMessageHandler : HttpMessageHandler

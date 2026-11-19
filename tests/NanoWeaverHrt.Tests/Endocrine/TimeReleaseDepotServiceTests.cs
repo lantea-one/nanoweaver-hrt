@@ -272,6 +272,12 @@ public sealed class TimeReleaseDepotServiceTests
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             _service.CalculateInstantaneousDailyRelease(10.0, PolymerMatrixType.PlgaPegPlga, 16.0, 6.0));
         Assert.Throws<ArgumentOutOfRangeException>(() =>
+            _service.CalculateInstantaneousDailyRelease(10.0, PolymerMatrixType.PlgaPegPlga, 16.0, 1.0, 0.0));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            _service.CalculateInstantaneousDailyRelease(10.0, PolymerMatrixType.PlgaPegPlga, 16.0, 1.0, -0.5));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            _service.CalculateInstantaneousDailyRelease(10.0, PolymerMatrixType.PlgaPegPlga, 16.0, 1.0, 100.5));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
             _service.CalculateInstantaneousDailyRelease(10.0, (PolymerMatrixType)999, 16.0, 1.0));
     }
 
@@ -349,6 +355,21 @@ public sealed class TimeReleaseDepotServiceTests
         Assert.Throws<ArgumentOutOfRangeException>(() => _service.Simulate180DayDepot(new TimeReleaseDepotParameters
         {
             KineticsModel = (ReleaseKineticsModel)999
+        }));
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => _service.Simulate180DayDepot(new TimeReleaseDepotParameters
+        {
+            DailyErosionRatePercent = 0.0
+        }));
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => _service.Simulate180DayDepot(new TimeReleaseDepotParameters
+        {
+            DailyErosionRatePercent = -1.0
+        }));
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => _service.Simulate180DayDepot(new TimeReleaseDepotParameters
+        {
+            DailyErosionRatePercent = 105.0
         }));
     }
 
@@ -437,5 +458,38 @@ public sealed class TimeReleaseDepotServiceTests
 
         TimeReleaseSimulationResult result = _service.Simulate180DayDepot(parameters);
         Assert.False(result.Points[0].InTargetRange);
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="TimeReleaseDepotParameters.DailyErosionRatePercent"/> proportionally scales
+    /// daily payload elution and cumulative depletion across the 180-day horizon.
+    /// </summary>
+    [Fact]
+    public void Simulate180DayDepot_CustomDailyErosionRate_ScalesReleaseTrajectory()
+    {
+        // WHAT: Compares 180-day simulations with 0.30%/day and 0.90%/day daily erosion rates.
+        // WHY:  Issue #182 (P176): Confirms user-supplied DailyErosionRatePercent governs elution kinetics.
+        // HOW:  Simulates both rates and asserts higher erosion rate accelerates daily release and depletes reserve faster.
+        TimeReleaseSimulationResult slowErosion = _service.Simulate180DayDepot(new TimeReleaseDepotParameters
+        {
+            InitialPayloadMassMg = 16.0,
+            TargetHorizonDays = 180,
+            DailyErosionRatePercent = 0.30
+        });
+
+        TimeReleaseSimulationResult fastErosion = _service.Simulate180DayDepot(new TimeReleaseDepotParameters
+        {
+            InitialPayloadMassMg = 16.0,
+            TargetHorizonDays = 180,
+            DailyErosionRatePercent = 0.90
+        });
+
+        Assert.True(fastErosion.Day7BurstFraction > slowErosion.Day7BurstFraction);
+        Assert.True(fastErosion.AverageDailyReleaseMg > slowErosion.AverageDailyReleaseMg);
+        Assert.True(fastErosion.TerminalReserveFraction < slowErosion.TerminalReserveFraction);
+
+        double slowDay30 = _service.CalculateInstantaneousDailyRelease(30.0, PolymerMatrixType.PlgaPegPlga, 16.0, 1.0, 0.30);
+        double fastDay30 = _service.CalculateInstantaneousDailyRelease(30.0, PolymerMatrixType.PlgaPegPlga, 16.0, 1.0, 0.90);
+        Assert.Equal(slowDay30 * 3.0, fastDay30, 6);
     }
 }

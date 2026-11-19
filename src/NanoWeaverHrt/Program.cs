@@ -91,6 +91,12 @@ public class Program
     {
         WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
+        // WHAT: Enables framework and NuGet static web assets (/ _framework/blazor.web.js) across all environments.
+        // WHY:  Issue #183 (P177): Running `dotnet run` defaults to the Production environment where static web assets
+        //       are not mounted by default, causing /_framework/blazor.web.js to fall through to the Blazor NotFound router.
+        // HOW:  Invokes UseStaticWebAssets on the WebHost builder before building the application.
+        builder.WebHost.UseStaticWebAssets();
+
         // WHAT: Registers Blazor Interactive Server services for single-source C# UI management.
         // WHY:  Unifies web interface, service telemetry, and domain algorithms into a single high-performance C# 13 codebase.
         // HOW:  Adds Razor Components and Interactive Server Render Mode into ASP.NET Core 10 DI.
@@ -212,12 +218,12 @@ public class Program
                 Contact = new OpenApiContact
                 {
                     Name = "NanoWeaverHrt Research Initiative",
-                    Url = new Uri("https://github.com/lantea-one/nanoweaver-hrt")
+                    Url = new Uri("https://git.lantea.one/lantea-one/nanoweaver-hrt")
                 },
                 License = new OpenApiLicense
                 {
                     Name = "MIT License",
-                    Url = new Uri("https://github.com/lantea-one/nanoweaver-hrt/blob/main/LICENSE")
+                    Url = new Uri("https://git.lantea.one/lantea-one/nanoweaver-hrt/src/branch/main/LICENSE")
                 }
             });
 
@@ -4182,6 +4188,7 @@ public class Program
             CreateDepotFormulationRequest? request,
             IDepotFormulationRepository repository,
             ISubjectAccessService subjectAccess,
+            IComplianceAuditService audit,
             HttpContext context,
             CancellationToken ct) =>
         {
@@ -4278,6 +4285,18 @@ public class Program
                 Formulation = record,
                 Schedule = schedulePoints
             };
+
+            audit.LogAction(
+                caller.Username,
+                "CreateDepotFormulation",
+                $"depot:{depotId}",
+                JsonSerializer.Serialize(new
+                {
+                    patientId = trimmedPatientId,
+                    regimen = record.Regimen,
+                    massMg = record.InitialNanocarrierMassMg,
+                    dailyErosionRatePercent = record.DailyErosionRatePercent
+                }));
 
             return Results.Created($"/api/depots/formulations/{depotId}", response);
         })
@@ -4418,7 +4437,8 @@ public class Program
                 InitialLhIuL = request.InitialLhIuL ?? 6.5,
                 InitialFshIuL = request.InitialFshIuL ?? 5.0,
                 TargetEstradiolPmolL = isFtm ? 100.0 : 550.0,
-                TargetTestosteroneNmolL = isFtm ? 20.0 : 1.2
+                TargetTestosteroneNmolL = isFtm ? 20.0 : 1.2,
+                DailyErosionRatePercent = request.DailyErosionRatePercent
             };
 
             TimeReleaseSimulationResult result = depotService.Simulate180DayDepot(parameters);
@@ -5211,6 +5231,7 @@ public class Program
         // HOW:  Subtracts start timestamp from current UTC time and queries IUserAuthenticationService.
         TimeSpan uptime = DateTime.UtcNow - StartTimeUtc;
         bool isSetupRequired = await authService.IsSetupRequiredAsync(ct);
+        string nodeVersion = typeof(Program).Assembly.GetName().Version!.ToString(); // Assembly.GetName().Version is always populated by MSBuild AssemblyVersion
 
         if (user == null)
         {
@@ -5218,7 +5239,7 @@ public class Program
             {
                 Status = "Healthy",
                 TimestampUtc = DateTimeOffset.UtcNow,
-                Version = "1.0.0",
+                Version = nodeVersion,
                 Uptime = $"{uptime.Days}d {uptime.Hours}h {uptime.Minutes}m {uptime.Seconds}s",
                 UptimeSeconds = Math.Round(uptime.TotalSeconds, 2),
                 SetupRequired = isSetupRequired,
@@ -5256,7 +5277,7 @@ public class Program
         {
             Status = "Healthy",
             TimestampUtc = DateTimeOffset.UtcNow,
-            Version = "1.0.0",
+            Version = nodeVersion,
             Uptime = $"{uptime.Days}d {uptime.Hours}h {uptime.Minutes}m {uptime.Seconds}s",
             UptimeSeconds = Math.Round(uptime.TotalSeconds, 2),
             SetupRequired = isSetupRequired,

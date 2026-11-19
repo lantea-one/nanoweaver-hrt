@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   rotate-certs:
-    runs-on: archlinux-multi-platform
+    runs-on: heimdall-ci
     permissions:
       contents: write
 

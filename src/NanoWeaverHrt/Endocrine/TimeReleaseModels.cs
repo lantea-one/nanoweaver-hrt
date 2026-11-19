@@ -178,6 +178,13 @@ public sealed record TimeReleaseDepotParameters : IExamplesProvider<TimeReleaseD
     public double TargetTestosteroneNmolL { get; init; } = 1.2;
 
     /// <summary>
+    /// Baseline daily hydrogel erosion rate expressed as a percentage of initial mass per day (default 0.55%/day).
+    /// </summary>
+    [Description("Baseline daily hydrogel erosion rate expressed as a percentage of initial mass per day (default 0.55%/day).")]
+    [JsonPropertyName("dailyErosionRatePercent")]
+    public double DailyErosionRatePercent { get; init; } = 0.55;
+
+    /// <summary>
     /// Generates a representative example instance of <see cref="TimeReleaseDepotParameters"/> for OpenAPI documentation.
     /// </summary>
     /// <returns>A populated example parameters record.</returns>

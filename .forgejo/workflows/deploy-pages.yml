@@ -1,0 +1,48 @@
+name: Deploy Forgejo Pages Wiki
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'docs/**'
+      - '.forgejo/workflows/deploy-pages.yml'
+  workflow_dispatch:
+
+# The git-pages upload authenticates with the run's token, which requires write access to the repository
+permissions:
+  contents: write
+
+# Serialize concurrent deployments to prevent upload race conditions
+concurrency:
+  group: "pages-publish"
+  cancel-in-progress: false
+
+jobs:
+  deploy-pages:
+    name: Publish Documentation Wiki to Forgejo Pages
+    if: forgejo.ref == 'refs/heads/main'
+    runs-on: heimdall-ci
+    timeout-minutes: 15
+    steps:
+      - name: Checkout Source Code
+        # WHAT: Checks out the main branch documentation tree.
+        # WHY:  Provides the static Docsify wiki under docs/ for publishing to pages.lantea.one.
+        # HOW:  Uses actions/checkout@v4 at the current commit SHA.
+        uses: actions/checkout@v4
+        with:
+          clean: true
+          ref: ${{ forgejo.sha }}
+
+      - name: Publish to Forgejo Pages
+        # WHAT: Uploads the static Docsify documentation tree under docs/ to Forgejo Pages.
+        # WHY:  Publishes https://lantea-one.pages.lantea.one/nanoweaver-hrt/ on pages.lantea.one
+        #       using the workflow token without requiring external repository secrets.
+        # HOW:  Invokes git-pages/action v2 against pages.lantea.one in strict mode.
+        uses: https://codeberg.org/git-pages/action@7f9731f428a25eaf47b42794263a0c100af9a363
+        with:
+          site: https://lantea-one.pages.lantea.one/nanoweaver-hrt/
+          server: pages.lantea.one
+          token: ${{ forgejo.token }}
+          source: docs/
+          strict: true
+          comment: ${{ forgejo.sha }}

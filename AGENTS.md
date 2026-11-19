@@ -84,7 +84,7 @@
 13. **Deterministic SQL Schema Migrations**:
     - Never execute ad-hoc DDL in service constructors or repositories.
     - All schema evolution must be modeled as an `IDatabaseMigration` executed by `DatabaseMigrationRunner` with transaction safety and version recording in `weaver_schema_migrations`.
-    - Migrations must support both SQLite (`INSERT OR REPLACE`, standard SQLite DDL) and PostgreSQL (`ON CONFLICT DO NOTHING`, PostgreSQL DDL).
+    - Migrations must support all 4 persistence dialects: SQLite (`INSERT OR REPLACE`, standard SQLite DDL), PostgreSQL (`ON CONFLICT DO NOTHING`, PostgreSQL DDL), DuckDB (`INSERT OR REPLACE`, DuckDB DDL), and MySQL/MariaDB (`ON DUPLICATE KEY UPDATE`, MySQL DDL).
 
 14. **Zero-Information-Disclosure RFC 7807 Exception Model**:
     - All API exceptions must return RFC 7807 `SecureProblemDetails` via `SecureExceptionHandlerMiddleware`.
@@ -126,18 +126,20 @@
 1. **`src/NanoWeaverHrt` (`nanoweaver-hrt-web:latest`)**:
    - High-throughput ASP.NET Core minimal service and background trajectory parser.
    - Built from `docker/web/Dockerfile.web`.
-   - Hosts the sovereign Web UI on port 5000 (`/`) with endpoints for zero-dependency dataset export/import (`/api/datasets/export`, `/api/datasets/import`) and live GPU telemetry (`/api/system/telemetry`).
-2. **`simulations/` (`nanoweaver-hrt-simulation:latest`)**:
+   - Hosts the sovereign Web UI on port 5000 (`/`) with endpoints for zero-dependency dataset export/import (`/api/datasets/export`, `/api/datasets/import`), 180-day time-release depot modeling (`/depot-studio`), and live GPU telemetry (`/api/system/telemetry`).
+2. **`src/NanoWeaverHrt.Client`, `src/NanoWeaverHrt.Gui.Core`, `src/NanoWeaverHrt.Desktop` & `src/NanoWeaverHrt.Mobile`**:
+   - Strongly typed REST SDK (`INanoWeaverNodeClient`), AES-256-GCM client key vault, shared MVVM ViewModels with 18-language community localization, and cross-platform Avalonia UI 11 desktop and mobile (Android, iOS, iPadOS) applications.
+3. **`simulations/` (`nanoweaver-hrt-simulation:latest`)**:
    - Scientific molecular dynamics simulation environment (oxDNA 2.4 & LAMMPS).
    - Built from `docker/simulation/Dockerfile.simulation`.
    - `configs/`: Simulation parameters for oxDNA and LAMMPS.
    - `shared-data/`: Shared volume where simulation engines output coordinates and the .NET parser reads them.
    - `exports/`: `.tar.gz` dataset bundles with SHA-256 manifests. Manifests exported by the web service are Ed25519-signed with the node's persisted dataset signing key; `POST /api/datasets/import` verifies a signed manifest against this node's key and the peer key registry (`weaver_peer_keys`), and accepts unsigned manifests unless `Peer:RequireSignedDatasets` is `true`.
-3. **`compose/` & `docker-compose.yml`**:
+4. **`compose/` & `docker-compose.yml`**:
    - Self-contained container stack. Default is CPU/Intel iGPU via `/dev/dri`.
    - Overrides provided for Arc A770 (`docker-compose.arc.yml`), NVIDIA (`docker-compose.nvidia.yml`), AMD Radeon (`docker-compose.radeon.yml`), and public reverse proxies (Caddy, Nginx, Cloudflare).
-4. **`docs/`**:
-   - GitHub Pages interactive documentation wiki powered by Docsify, custom sovereign dark theme, and high-contrast accessibility.
+5. **`docs/`**:
+   - Forgejo Pages (`https://lantea-one.pages.lantea.one/nanoweaver-hrt/`) and GitHub Pages interactive documentation wiki powered by Docsify, custom sovereign dark theme, and high-contrast accessibility.
 
 ---
 
@@ -206,7 +208,7 @@ To ensure reliable, deterministic contributions from smaller context-window mode
 Never assign an LLM agent a task spanning the full vertical stack (schema through UI) in a single prompt. Large compound tasks cause context overflow, missed docblocks, and coverage regressions. Always partition features into 5 discrete phases tracked via Forgejo Issues (`https://git.lantea.one/lantea-one/nanoweaver-hrt/issues`):
 
 1. **Phase 1: Persistence & Schema Evolution**
-   - Implements `IDatabaseMigration` supporting both SQLite and PostgreSQL.
+   - Implements `IDatabaseMigration` supporting SQLite, PostgreSQL, DuckDB, and MySQL/MariaDB.
    - Implements zero-allocation repository methods on `IWeaverDbConnectionFactory`.
    - Comprehensive repository unit tests with isolated SQLite connection pools (`SqliteConnection.ClearPool`).
 2. **Phase 2: Domain Logic & Security Gating**

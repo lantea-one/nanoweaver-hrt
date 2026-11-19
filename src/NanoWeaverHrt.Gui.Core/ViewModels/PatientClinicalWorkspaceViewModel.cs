@@ -1609,4 +1609,103 @@ public sealed class PatientClinicalWorkspaceViewModel : INotifyPropertyChanged
         // HOW:  Invokes PropertyChanged handler with PropertyChangedEventArgs.
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
+
+    /// <summary>
+    /// Creates and persists a semi-annual time-release depot formulation via POST /api/depots/formulations.
+    /// </summary>
+    /// <param name="request">Depot formulation parameters and optional initial release schedule points.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The created <see cref="DepotFormulationResponse"/> record.</returns>
+    public async Task<DepotFormulationResponse> CreateDepotFormulationAsync(
+        CreateDepotFormulationRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches a CreateDepotFormulationRequest to persist a semi-annual patient depot configuration.
+        // WHY:  Issue #184 (P178): Completes GUI Core ViewModel parity for Milestone 33 time-release depot management.
+        // HOW:  Validates request, resolves session credentials, delegates to INanoWeaverNodeClient, and manages busy state.
+        ArgumentNullException.ThrowIfNull(request);
+        var (profile, token) = ResolveEffectiveSession();
+
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            return await _client.CreateDepotFormulationAsync(profile, token, request, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Retrieves all time-release depot formulations and schedules for a patient via GET /api/depots/formulations/{patientId}.
+    /// </summary>
+    /// <param name="patientId">Target patient identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Collection of <see cref="DepotFormulationResponse"/> records for the patient.</returns>
+    public async Task<IReadOnlyList<DepotFormulationResponse>> GetDepotFormulationsAsync(
+        string patientId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Queries all persisted time-release depot formulations and schedules for a target patient.
+        // WHY:  Issue #184 (P178): Enables desktop and mobile clinical workspaces to inspect patient depot history.
+        // HOW:  Validates patientId, resolves session, invokes INanoWeaverNodeClient, and manages busy state.
+        ArgumentException.ThrowIfNullOrWhiteSpace(patientId);
+        var (profile, token) = ResolveEffectiveSession();
+
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            return await _client.GetDepotFormulationsAsync(profile, token, patientId, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Simulates a 180-day multi-phase time-release depot elution trajectory via POST /api/depots/simulate-release.
+    /// </summary>
+    /// <param name="request">Simulation parameters including regimen, polymer matrix, erosion rate, and clearance scaling.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The computed <see cref="TimeReleaseSimulationResult"/> trajectory and clinical metrics.</returns>
+    public async Task<TimeReleaseSimulationResult> SimulateDepotReleaseAsync(
+        SimulateDepotReleaseRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Executes a remote 180-day time-release depot pharmacokinetic simulation on the connected node.
+        // WHY:  Issue #184 (P178): Allows clinical workspace operators to evaluate burst suppression and TTR remotely.
+        // HOW:  Validates request, resolves session, invokes INanoWeaverNodeClient, and manages busy state.
+        ArgumentNullException.ThrowIfNull(request);
+        var (profile, token) = ResolveEffectiveSession();
+
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            return await _client.SimulateDepotReleaseAsync(profile, token, request, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
 }

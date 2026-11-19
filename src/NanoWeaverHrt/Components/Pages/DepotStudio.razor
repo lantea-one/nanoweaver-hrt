@@ -54,8 +54,8 @@
         <!-- Initial Payload Mass (mg) -->
         <div class="form-group">
             <label class="form-label" for="input-initial-mass">Initial Nanocarrier Mass (mg)</label>
-            <input id="input-initial-mass" type="number" class="form-control font-mono" @bind="_initialMassMg" step="0.5" min="1.0" max="200.0" aria-label="Initial Nanocarrier Mass in milligrams" />
-            <span class="form-hint">Total hormone payload loaded into the subcutaneous depot (default 18.0 mg).</span>
+            <input id="input-initial-mass" type="number" class="form-control font-mono" @bind="_initialMassMg" step="0.5" min="1.0" max="2000.0" aria-label="Initial Nanocarrier Mass in milligrams" />
+            <span class="form-hint">Total hormone payload loaded into the subcutaneous depot (16–20 mg MtF, 1000–1050 mg FtM).</span>
         </div>
 
         <!-- Daily Erosion Degradation Rate (%/day) -->
@@ -356,7 +356,8 @@
             InitialLhIuL = 6.5,
             InitialFshIuL = 5.0,
             TargetEstradiolPmolL = targetE2,
-            TargetTestosteroneNmolL = targetT
+            TargetTestosteroneNmolL = targetT,
+            DailyErosionRatePercent = Math.Clamp(_dailyErosionRatePercent, 0.05, 100.0)
         };
 
         _simulationResult = DepotService.Simulate180DayDepot(parameters);
@@ -383,12 +384,13 @@
     /// <param name="e">Change event args containing the selected enum string.</param>
     private void HandleRegimenChanged(ChangeEventArgs e)
     {
-        // WHAT: Synchronizes selected therapeutic regimen and re-executes depot kinetics.
-        // WHY:  Different endocrine regimens require distinct baseline and target sex steroid thresholds.
-        // HOW:  Parses enum value from event string and invokes RunSimulation.
+        // WHAT: Synchronizes selected therapeutic regimen, adjusts default loaded payload mass, and re-executes depot kinetics.
+        // WHY:  Different endocrine regimens require distinct baseline and target sex steroid thresholds (16.0 mg E2 for MtF vs 1050.0 mg T for FtM).
+        // HOW:  Parses enum value from event string, updates _initialMassMg to regimen clinical default, and invokes RunSimulation.
         if (Enum.TryParse(e.Value?.ToString(), out TherapeuticRegimen regimen))
         {
             _selectedRegimen = regimen;
+            _initialMassMg = regimen == TherapeuticRegimen.FemaleToMale ? 1050.0 : 16.0;
             RunSimulation();
         }
     }

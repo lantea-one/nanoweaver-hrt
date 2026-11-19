@@ -38,5 +38,14 @@
   "Tray.Show": "NanoWeaver HRT'yi Aç",
   "Tray.Exit": "Çıkış",
   "Tray.ActiveNodeFormat": "Aktif Düğüm: {0}",
-  "Tray.NoActiveNode": "Aktif Düğüm Yok"
+  "Tray.NoActiveNode": "Aktif Düğüm Yok",
+  "Nav.GuidedWizard": "Rehberli DNA Sihirbazı",
+  "Nav.StackServices": "Yığın Hizmetleri",
+  "Nav.ConfigAndPeers": "Yapılandırma ve Eşler",
+  "Nav.TrajectoryBrowser": "Yörünge Tarayıcısı",
+  "Nav.DepotStudio": "180 Günlük Depo Stüdyosu",
+  "Nav.UserManagement": "Kullanıcı Yönetimi",
+  "Nav.DnaAndImports": "DNA ve İçe Aktarımlar",
+  "Nav.MyProfile": "Profilim",
+  "Nav.SignOut": "Çıkış Yap"
 }
