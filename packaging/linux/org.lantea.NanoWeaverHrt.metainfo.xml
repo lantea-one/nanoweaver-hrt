@@ -26,6 +26,11 @@
   <url type="bugtracker">https://git.lantea.one/lantea-one/nanoweaver-hrt/issues</url>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="2026.11.19.1" date="2026-11-19">
+      <description>
+        <p>Milestone 34: Longitudinal serum assay persistence (Migration 014), deterministic WLS Bayesian adaptive depot re-dosing engine and clinical safety guardrails, Minimal API and Client REST SDK parity, sovereign DepotStudio longitudinal overlay UI, 18-language localization, and GUI Core ViewModel parity.</p>
+      </description>
+    </release>
     <release version="2026.11.18.1" date="2026-11-18">
       <description>
         <p>End-to-end verification audit release: production static web assets hosting, dynamic depot erosion rate coupling, zero-CDN fonts, 18-language navbar localization, DepotStudio 180-day FtM bounds, Client REST SDK and GUI Core depot parity, Forgejo Pages wiki publishing, and zero-warning containerized CI.</p>

@@ -1708,4 +1708,181 @@ public sealed class PatientClinicalWorkspaceViewModel : INotifyPropertyChanged
             IsBusy = false;
         }
     }
+
+    /// <summary>
+    /// Backing field for <see cref="RecordedDepotAssays"/>.
+    /// </summary>
+    private IReadOnlyList<DepotAssayObservationResponse> _recordedDepotAssays = [];
+
+    /// <summary>
+    /// Backing field for <see cref="LatestDepotCalibration"/>.
+    /// </summary>
+    private DepotCalibrationResponse? _latestDepotCalibration;
+
+    /// <summary>
+    /// Gets or sets the chronological list of longitudinal serum hormone assays loaded for the active depot.
+    /// </summary>
+    public IReadOnlyList<DepotAssayObservationResponse> RecordedDepotAssays
+    {
+        get => _recordedDepotAssays;
+        private set
+        {
+            _recordedDepotAssays = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets the most recent adaptive Bayesian calibration snapshot loaded or computed for the active depot.
+    /// </summary>
+    public DepotCalibrationResponse? LatestDepotCalibration
+    {
+        get => _latestDepotCalibration;
+        private set
+        {
+            _latestDepotCalibration = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Records a longitudinal serum hormone assay observation against a depot via POST /api/depots/{depotId}/assays.
+    /// </summary>
+    /// <param name="depotId">Target depot formulation identifier.</param>
+    /// <param name="request">Longitudinal serum hormone assay payload.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The recorded <see cref="DepotAssayObservationResponse"/>.</returns>
+    public async Task<DepotAssayObservationResponse> RecordDepotAssayAsync(
+        string depotId,
+        RecordDepotAssayRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Submits a longitudinal patient serum assay observation to the connected NanoWeaver node.
+        // WHY:  Milestone 34 (P183): Provides desktop and mobile MVVM parity for closed-loop depot calibration.
+        // HOW:  Validates arguments, resolves session credentials, calls INanoWeaverNodeClient, and updates busy/error state.
+        ArgumentException.ThrowIfNullOrWhiteSpace(depotId);
+        ArgumentNullException.ThrowIfNull(request);
+        var (profile, token) = ResolveEffectiveSession();
+
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            return await _client.RecordDepotAssayAsync(profile, token, depotId, request, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Retrieves all recorded longitudinal serum hormone assays for a depot via GET /api/depots/{depotId}/assays.
+    /// </summary>
+    /// <param name="depotId">Target depot formulation identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Chronological list of <see cref="DepotAssayObservationResponse"/> items.</returns>
+    public async Task<IReadOnlyList<DepotAssayObservationResponse>> GetDepotAssaysAsync(
+        string depotId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Queries longitudinal serum hormone assays for a depot and updates RecordedDepotAssays state.
+        // WHY:  Milestone 34 (P183): Populates desktop and mobile clinical history tables with observed lab draws.
+        // HOW:  Validates depotId, resolves session credentials, invokes INanoWeaverNodeClient, and notifies bindings.
+        ArgumentException.ThrowIfNullOrWhiteSpace(depotId);
+        var (profile, token) = ResolveEffectiveSession();
+
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            IReadOnlyList<DepotAssayObservationResponse> assays = await _client.GetDepotAssaysAsync(profile, token, depotId, ct).ConfigureAwait(false);
+            RecordedDepotAssays = assays;
+            return assays;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Runs adaptive Bayesian longitudinal calibration for a depot via POST /api/depots/{depotId}/calibrate.
+    /// </summary>
+    /// <param name="depotId">Target depot formulation identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The persisted <see cref="DepotCalibrationResponse"/> snapshot and recalibrated trajectory.</returns>
+    public async Task<DepotCalibrationResponse> CalibrateDepotAsync(
+        string depotId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Executes adaptive Bayesian calibration on the node and updates LatestDepotCalibration state.
+        // WHY:  Milestone 34 (P183): Delivers individualized clearance, erosion, and re-dosing guidance to desktop/mobile UIs.
+        // HOW:  Validates depotId, resolves session credentials, invokes INanoWeaverNodeClient, and notifies bindings.
+        ArgumentException.ThrowIfNullOrWhiteSpace(depotId);
+        var (profile, token) = ResolveEffectiveSession();
+
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            DepotCalibrationResponse result = await _client.CalibrateDepotAsync(profile, token, depotId, ct).ConfigureAwait(false);
+            LatestDepotCalibration = result;
+            return result;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Retrieves the latest persisted longitudinal calibration snapshot for a depot via GET /api/depots/{depotId}/calibrations/latest.
+    /// </summary>
+    /// <param name="depotId">Target depot formulation identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The latest <see cref="DepotCalibrationResponse"/> if present; otherwise <see langword="null"/>.</returns>
+    public async Task<DepotCalibrationResponse?> GetLatestDepotCalibrationAsync(
+        string depotId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Fetches the latest persisted calibration snapshot for a depot and updates LatestDepotCalibration state.
+        // WHY:  Milestone 34 (P183): Displays current adaptive re-dosing guidance and safety alerts on workspace load.
+        // HOW:  Validates depotId, resolves session credentials, invokes INanoWeaverNodeClient, and notifies bindings.
+        ArgumentException.ThrowIfNullOrWhiteSpace(depotId);
+        var (profile, token) = ResolveEffectiveSession();
+
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            DepotCalibrationResponse? snapshot = await _client.GetLatestDepotCalibrationAsync(profile, token, depotId, ct).ConfigureAwait(false);
+            LatestDepotCalibration = snapshot;
+            return snapshot;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
 }

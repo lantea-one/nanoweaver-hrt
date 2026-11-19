@@ -198,6 +198,15 @@ Provides an anatomical schema linking the nanocarrier's physical route:
 
 ---
 
+## Longitudinal 180-Day Depot Calibration (`/depot-studio`)
+
+For semi-annual subcutaneous nanocarrier depots, the **180-Day Depot Studio** (`/depot-studio`) pairs forward pharmacokinetic modeling with real-world longitudinal clinical serum assays:
+* **Interactive Assay Ingestion**: Clinicians enter follow-up venipuncture measurements (`DaySinceImplant`, `17β-Estradiol`, `Total Testosterone`, `LH`, `FSH`, `SHBG`, and `Hematocrit`) backed by AES-256-GCM PHI encryption for clinical notes and `Migration014_DepotLongitudinalAssays`.
+* **Observed-vs-Predicted SVG Overlay**: Plots observed assay points directly over the 180-day elution chart alongside dashed baseline curves and solid emerald recalibrated trajectories.
+* **Adaptive Re-Dosing & Guardrail Telemetry**: Displays inferred clearance multiplier, inferred daily hydrogel erosion rate, calibration fit RMSE, adjusted re-dosing day, recommended next-cycle payload mass, and localized clinical safety alerts across all 18 community languages (including Arabic RTL).
+
+---
+
 ## Next Steps
 * Learn about database persistence in [**Configuration & Sovereign Peering**](configuration-peers.md).
 * Monitor microservice vitals in [**Stack Topology & Hardware Telemetry**](stack-services.md).

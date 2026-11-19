@@ -3841,4 +3841,133 @@ public sealed class NanoWeaverNodeClient : INanoWeaverNodeClient
             _ => null
         };
     }
+
+    /// <inheritdoc/>
+    public async Task<DepotAssayObservationResponse> RecordDepotAssayAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string depotId,
+        RecordDepotAssayRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/depots/{depotId}/assays to record a longitudinal serum hormone assay.
+        // WHY:  Milestone 34 (P182): Enables desktop, mobile, and CLI clients to submit bloodwork observations.
+        // HOW:  Validates arguments, sends authenticated JSON POST, and deserializes DepotAssayObservationResponse.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(depotId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/depots/{Uri.EscapeDataString(depotId)}/assays");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        DepotAssayObservationResponse? result = await resp.Content.ReadFromJsonAsync<DepotAssayObservationResponse>(JsonOptions, ct);
+        return result ?? throw new InvalidOperationException("Endpoint returned empty or null depot assay observation payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<DepotAssayObservationResponse>> GetDepotAssaysAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string depotId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/depots/{depotId}/assays to retrieve recorded longitudinal serum assays.
+        // WHY:  Milestone 34 (P182): Allows authorized clinicians and patients to inspect assay histories.
+        // HOW:  Validates inputs, issues authenticated GET request, and deserializes a read-only observation list.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(depotId);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/depots/{Uri.EscapeDataString(depotId)}/assays");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        List<DepotAssayObservationResponse>? list = await resp.Content.ReadFromJsonAsync<List<DepotAssayObservationResponse>>(JsonOptions, ct);
+        return (IReadOnlyList<DepotAssayObservationResponse>?)list ?? [];
+    }
+
+    /// <inheritdoc/>
+    public async Task<DepotCalibrationResponse> CalibrateDepotAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string depotId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/depots/{depotId}/calibrate to execute Bayesian longitudinal calibration.
+        // WHY:  Milestone 34 (P182): Triggers individualized clearance/erosion inference and adaptive re-dosing.
+        // HOW:  Validates inputs, issues authenticated POST request, and deserializes DepotCalibrationResponse.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(depotId);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/depots/{Uri.EscapeDataString(depotId)}/calibrate");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        DepotCalibrationResponse? result = await resp.Content.ReadFromJsonAsync<DepotCalibrationResponse>(JsonOptions, ct);
+        return result ?? throw new InvalidOperationException("Endpoint returned empty or null depot calibration payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<DepotCalibrationResponse?> GetLatestDepotCalibrationAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string depotId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/depots/{depotId}/calibrations/latest to retrieve the latest calibration snapshot.
+        // WHY:  Milestone 34 (P182): Allows desktop and mobile apps to render adaptive calibration telemetry.
+        // HOW:  Returns null cleanly when the node responds 404 Not Found; throws NodeApiException on other errors.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(depotId);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/depots/{Uri.EscapeDataString(depotId)}/calibrations/latest");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (resp.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        return await resp.Content.ReadFromJsonAsync<DepotCalibrationResponse>(JsonOptions, ct);
+    }
 }

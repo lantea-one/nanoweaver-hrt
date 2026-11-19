@@ -4066,6 +4066,76 @@ public sealed class NanoWeaverNodeClientTests : IDisposable
     }
 
     /// <summary>
+    /// Verifies Milestone 34 longitudinal depot assay and calibration REST SDK client methods across success, null, 404, error, and argument guard paths.
+    /// </summary>
+    [Fact]
+    public async Task DepotCalibrationEndpoints_HandleSuccessErrorsNullsAndGuards()
+    {
+        // WHAT: Tests RecordDepotAssayAsync, GetDepotAssaysAsync, CalibrateDepotAsync, and GetLatestDepotCalibrationAsync.
+        // WHY:  Milestone 34 (P182): Guarantees 100% line and branch coverage across REST SDK calibration methods.
+        // HOW:  Stubs HTTP responses, verifies JSON round-trips, 404 null handling, error throws, and argument checks.
+        JsonSerializerOptions webOpts = new(JsonSerializerDefaults.Web);
+        RecordDepotAssayRequest recordReq = new RecordDepotAssayRequest().GetExamples();
+        DepotAssayObservationResponse sampleObs = new DepotAssayObservationResponse().GetExamples();
+        DepotCalibrationResponse sampleCal = new DepotCalibrationResponse().GetExamples();
+
+        // 1. RecordDepotAssayAsync
+        _httpHandler.SetResponse("/api/depots/depot-01/assays", HttpStatusCode.Created, JsonSerializer.Serialize(sampleObs, webOpts));
+        DepotAssayObservationResponse recorded = await _client.RecordDepotAssayAsync(_localProfile, "valid_token", "depot-01", recordReq);
+        Assert.Equal(sampleObs.ObservationId, recorded.ObservationId);
+
+        _httpHandler.SetResponse("/api/depots/depot-01/assays", HttpStatusCode.Created, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.RecordDepotAssayAsync(_localProfile, "valid_token", "depot-01", recordReq));
+        _httpHandler.SetResponse("/api/depots/depot-01/assays", HttpStatusCode.BadRequest, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.RecordDepotAssayAsync(_localProfile, "valid_token", "depot-01", recordReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.RecordDepotAssayAsync(null!, "valid_token", "depot-01", recordReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.RecordDepotAssayAsync(_localProfile, "", "depot-01", recordReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.RecordDepotAssayAsync(_localProfile, "valid_token", "", recordReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.RecordDepotAssayAsync(_localProfile, "valid_token", "depot-01", null!));
+
+        // 2. GetDepotAssaysAsync
+        _httpHandler.SetResponse("/api/depots/depot-01/assays", HttpStatusCode.OK, JsonSerializer.Serialize(new List<DepotAssayObservationResponse> { sampleObs }, webOpts));
+        IReadOnlyList<DepotAssayObservationResponse> obsList = await _client.GetDepotAssaysAsync(_localProfile, "valid_token", "depot-01");
+        Assert.Single(obsList);
+
+        _httpHandler.SetResponse("/api/depots/depot-01/assays", HttpStatusCode.OK, "null");
+        Assert.Empty(await _client.GetDepotAssaysAsync(_localProfile, "valid_token", "depot-01"));
+        _httpHandler.SetResponse("/api/depots/depot-01/assays", HttpStatusCode.Forbidden, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetDepotAssaysAsync(_localProfile, "valid_token", "depot-01"));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetDepotAssaysAsync(null!, "valid_token", "depot-01"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetDepotAssaysAsync(_localProfile, "", "depot-01"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetDepotAssaysAsync(_localProfile, "valid_token", ""));
+
+        // 3. CalibrateDepotAsync
+        _httpHandler.SetResponse("/api/depots/depot-01/calibrate", HttpStatusCode.OK, JsonSerializer.Serialize(sampleCal, webOpts));
+        DepotCalibrationResponse calibrated = await _client.CalibrateDepotAsync(_localProfile, "valid_token", "depot-01");
+        Assert.Equal(sampleCal.SnapshotId, calibrated.SnapshotId);
+
+        _httpHandler.SetResponse("/api/depots/depot-01/calibrate", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.CalibrateDepotAsync(_localProfile, "valid_token", "depot-01"));
+        _httpHandler.SetResponse("/api/depots/depot-01/calibrate", HttpStatusCode.BadRequest, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.CalibrateDepotAsync(_localProfile, "valid_token", "depot-01"));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.CalibrateDepotAsync(null!, "valid_token", "depot-01"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.CalibrateDepotAsync(_localProfile, "", "depot-01"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.CalibrateDepotAsync(_localProfile, "valid_token", ""));
+
+        // 4. GetLatestDepotCalibrationAsync
+        _httpHandler.SetResponse("/api/depots/depot-01/calibrations/latest", HttpStatusCode.OK, JsonSerializer.Serialize(sampleCal, webOpts));
+        DepotCalibrationResponse? latest = await _client.GetLatestDepotCalibrationAsync(_localProfile, "valid_token", "depot-01");
+        Assert.NotNull(latest);
+        Assert.Equal(sampleCal.SnapshotId, latest.SnapshotId);
+
+        _httpHandler.SetResponse("/api/depots/depot-01/calibrations/latest", HttpStatusCode.NotFound, "{}");
+        Assert.Null(await _client.GetLatestDepotCalibrationAsync(_localProfile, "valid_token", "depot-01"));
+
+        _httpHandler.SetResponse("/api/depots/depot-01/calibrations/latest", HttpStatusCode.Forbidden, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetLatestDepotCalibrationAsync(_localProfile, "valid_token", "depot-01"));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetLatestDepotCalibrationAsync(null!, "valid_token", "depot-01"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetLatestDepotCalibrationAsync(_localProfile, "", "depot-01"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetLatestDepotCalibrationAsync(_localProfile, "valid_token", ""));
+    }
+
+    /// <summary>
     /// In-memory HTTP message handler stub for deterministic test execution.
     /// </summary>
     private sealed class StubHttpMessageHandler : HttpMessageHandler

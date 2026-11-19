@@ -213,6 +213,9 @@ Mobile heads execute within deterministic platform coordinators enforcing strict
    - Automatically zeroes sensitive session keys and locks the biometric vault on `DidEnterBackground`.
 3. **Unified Mobile Runner (`MobileEntryPoint.RunAsync`)**:
    - Coordinates platform hosts, diagnostic self-verification, and background alert delivery via `INativeNotificationSink`.
+4. **Milestone 34 Longitudinal Depot Calibration MVVM Parity (`PatientClinicalWorkspaceViewModel`)**:
+   - Exposes `RecordDepotAssayAsync`, `GetDepotAssaysAsync`, `CalibrateDepotAsync`, and `GetLatestDepotCalibrationAsync` with observable `RecordedDepotAssays` and `LatestDepotCalibration` bindings backed by 100% REST SDK parity across `INanoWeaverNodeClient`, `NanoWeaverNodeClient`, and `WeaverNodeApiClient`.
+   - Includes 23 new localized longitudinal assay, adaptive telemetry, and clinical safety guardrail strings across all 18 community languages (including Arabic RTL).
 
 ---
 

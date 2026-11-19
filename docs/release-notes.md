@@ -4,6 +4,26 @@
 
 ---
 
+## v2026.11.19.1 — Longitudinal Serum Assay Calibration & Adaptive Depot Re-Dosing Engine (Milestone 34 / Forgejo Issues #187–#191) (2026-11-19)
+
+Completes **Milestone 34 (`P180`–`P184` / Forgejo Issues `#187`–`#191`)**, closing the loop between theoretical 180-day subcutaneous nanocarrier depot kinetics and real-world longitudinal patient serum hormone assays across persistence, systems biology calibration, Minimal APIs, Client REST SDK, sovereign Blazor UI, 18-language localization, and GUI Core ViewModels:
+* **Phase 1: Longitudinal Depot Assay Persistence & Multi-Engine Migration 014 (Forgejo #187 / P180)**:
+  - Added `Migration014_DepotLongitudinalAssays` (`Version = 14`) supporting SQLite, PostgreSQL, DuckDB, and MySQL/MariaDB with `weaver_depot_assay_observations` and `weaver_depot_calibration_snapshots` tables and indexes.
+  - Implemented `IDepotAssayRepository` and `DepotAssayRepository` with dialect-neutral upserts, chronological observation ordering, latest calibration snapshot retrieval, and atomic GDPR Article 17 patient-level erasure (`DeleteByPatientIdAsync`).
+* **Phase 2: Longitudinal Serum Assay Calibration & Adaptive Re-Dosing Engine (Forgejo #188 / P181)**:
+  - Implemented `IDepotCalibrationService` and `DepotCalibrationService` using deterministic zero-LINQ 25 × 25 coarse-to-fine bounded coordinate search (`ClearanceMultiplier ∈ [0.40, 2.50]`, `DailyErosionRatePercent ∈ [0.20, 2.00]`) with Bayesian Gaussian prior shrinkage for single-point lab visits and ≤ 2% ground-truth recovery on multi-point MtF and FtM series.
+  - Added clinical safety guardrails for HPG axis escape (`LH ≥ 2.0 IU/L`, `FSH ≥ 3.0 IU/L` after Day 14), FtM erythrocytosis (`Hematocrit ≥ 52.0%` warning / `≥ 54.0%` critical with automated 15% next-cycle mass down-titration), MtF supraphysiological estradiol (`E2 ≥ 1100.0 pmol/L` warning / `≥ 1500.0 pmol/L` critical), and sub-therapeutic trough drift.
+* **Phase 3: Minimal API Endpoints, PHI Encryption & Client REST SDK Parity (Forgejo #189 / P182)**:
+  - Appended 4 typed Minimal API endpoints to `Program.cs`: `POST /api/depots/{depotId}/assays` (`201 Created`), `GET /api/depots/{depotId}/assays` (`200 OK`), `POST /api/depots/{depotId}/calibrate` (`200 OK`), and `GET /api/depots/{depotId}/calibrations/latest` (`200 OK` / `404 Not Found`), with AES-256-GCM PHI encryption for clinical notes, role/subject-access gating, RFC 7807 `SecureProblemDetails`, and 21 CFR Part 11 audit events (`DEPOT_ASSAY_RECORD`, `DEPOT_CALIBRATION_RUN`).
+  - Added `RecordDepotAssayAsync`, `GetDepotAssaysAsync`, `CalibrateDepotAsync`, and `GetLatestDepotCalibrationAsync` across `INanoWeaverNodeClient`, `NanoWeaverNodeClient`, and `WeaverNodeApiClient`.
+* **Phase 4: Sovereign DepotStudio Calibration UI, 18-Language Localization & GUI Core Parity (Forgejo #190 / P183)**:
+  - Extended `DepotStudio.razor` with the Longitudinal Serum Assay & Adaptive Calibration workstation, overlaying observed serum assay markers and solid emerald recalibrated trajectories onto the 180-day SVG chart alongside adaptive re-dosing telemetry and severity-tiered safety alert callouts.
+  - Added 23 localized UI strings across all 18 community language resource packs (including Arabic RTL) and added full MVVM ViewModel parity on `PatientClinicalWorkspaceViewModel`.
+* **Phase 5: End-to-End Verification, Documentation Parity & CalVer Release Closeout (Forgejo #191 / P184)**:
+  - Verified 100% pass across all 8 automated verification gates (`./scripts/verify-all.sh`), 100.00% C# & JS line/branch coverage, 0 uncovered lines in `coverage-baseline.json`, and updated Forgejo Pages wiki documentation.
+
+---
+
 ## v2026.11.18.1 — End-to-End Verification Audit Remediations, Forgejo Pages Deployment, Containerized CI & Zero-CDN Hardening (Forgejo Issues #182–#185) (2026-11-18)
 
 Completes the full end-to-end code, live application runtime, standards, and documentation verification audit (`P176`–`P179` / Forgejo Issues `#182`–`#185`), deploys the authoritative interactive wiki to Forgejo Pages (`https://lantea-one.pages.lantea.one/nanoweaver-hrt/`), migrates CI/CD to containerized `-ci` organization runners (`asgard-ci`, `heimdall-ci`), eliminates all Forgejo Actions workflow warnings, and cleans up OCI registry tagging and release asset deduplication:

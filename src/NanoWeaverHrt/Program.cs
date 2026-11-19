@@ -146,6 +146,8 @@ public class Program
         builder.Services.AddSingleton<IPatientDnaRepository, PatientDnaRepository>();
         builder.Services.AddSingleton<IDepotFormulationRepository, DepotFormulationRepository>();
         builder.Services.AddSingleton<ITimeReleaseDepotService, TimeReleaseDepotService>();
+        builder.Services.AddSingleton<IDepotAssayRepository, DepotAssayRepository>();
+        builder.Services.AddSingleton<IDepotCalibrationService, DepotCalibrationService>();
         builder.Services.AddSingleton<IAssetIntegrityService, AssetIntegrityService>();
         builder.Services.AddSingleton<ISubjectAccessRepository, SubjectAccessRepository>();
         builder.Services.AddSingleton<ISubjectAccessService, SubjectAccessService>();
@@ -4451,6 +4453,393 @@ public class Program
         .Accepts<SimulateDepotReleaseRequest>("application/json")
         .Produces<TimeReleaseSimulationResult>(StatusCodes.Status200OK)
         .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest);
+
+        // ---------------------------------------------------------------------
+        // REST API: Longitudinal Depot Serum Assays & Adaptive Calibration (Milestone 34)
+        // ---------------------------------------------------------------------
+        app.MapPost("/api/depots/{depotId}/assays", async (
+            string depotId,
+            RecordDepotAssayRequest? request,
+            IDepotFormulationRepository depotRepository,
+            IDepotAssayRepository assayRepository,
+            ISubjectAccessService subjectAccess,
+            ProfileDataProtector protector,
+            IComplianceAuditService audit,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Records a longitudinal clinical serum hormone assay observation against an active depot formulation.
+            // WHY:  Captures real-world patient bloodwork with PHI-encrypted notes for closed-loop depot recalibration.
+            // HOW:  Validates inputs and depot existence, enforces Admin/authorized Researcher gating, encrypts notes, and audits.
+            if (string.IsNullOrWhiteSpace(depotId))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "DepotId must not be empty.");
+            }
+
+            if (request is null)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Request body cannot be null.");
+            }
+
+            if (request.DaySinceImplant < 1 || request.DaySinceImplant > 365)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "DaySinceImplant must be between 1 and 365.");
+            }
+
+            if (request.ObservedE2PmolL < 0.0 || request.ObservedTNmolL < 0.0 || request.ObservedLhIuL < 0.0 ||
+                request.ObservedFshIuL < 0.0 || request.ObservedShbgNmolL < 0.0)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Observed hormone concentrations cannot be negative.");
+            }
+
+            if (request.ObservedHematocritPct < 0.0 || request.ObservedHematocritPct > 100.0)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "ObservedHematocritPct must be between 0.0 and 100.0.");
+            }
+
+            // WHY `!`: Authentication middleware guarantees CurrentUser is populated with an authenticated UserAccount before reaching this handler.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            if (caller.Role != UserRole.Administrator && caller.Role != UserRole.Researcher)
+            {
+                return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: Administrator or Researcher role required to record depot serum assays.");
+            }
+
+            DepotFormulationRecord? depot = await depotRepository.GetDepotFormulationByIdAsync(depotId.Trim(), ct);
+            if (depot is null)
+            {
+                return SecureProblemResult(context, StatusCodes.Status404NotFound, $"Depot formulation '{depotId.Trim()}' was not found.");
+            }
+
+            if (caller.Role == UserRole.Researcher)
+            {
+                SubjectAccessLevel? accessLevel = await subjectAccess.GetEffectiveAccessLevelAsync(caller.Username, depot.PatientId, ct);
+                if (!accessLevel.HasValue)
+                {
+                    return SecureProblemResult(context, StatusCodes.Status403Forbidden, $"Forbidden: Caller does not possess subject access to patient '{depot.PatientId}'.");
+                }
+            }
+
+            string? encryptedNotes = string.IsNullOrWhiteSpace(request.ClinicalNotes)
+                ? null
+                : protector.EncryptDataUri(request.ClinicalNotes);
+
+            DepotAssayObservationRecord saved = await assayRepository.RecordObservationAsync(new DepotAssayObservationRecord
+            {
+                DepotId = depot.DepotId,
+                PatientId = depot.PatientId,
+                DaySinceImplant = request.DaySinceImplant,
+                ObservedE2PmolL = request.ObservedE2PmolL,
+                ObservedTNmolL = request.ObservedTNmolL,
+                ObservedLhIuL = request.ObservedLhIuL,
+                ObservedFshIuL = request.ObservedFshIuL,
+                ObservedShbgNmolL = request.ObservedShbgNmolL,
+                ObservedHematocritPct = request.ObservedHematocritPct,
+                RecordedAtUtc = request.RecordedAtUtc ?? DateTimeOffset.UtcNow,
+                NotesEncrypted = encryptedNotes
+            }, ct);
+
+            audit.LogAction(
+                caller.Username,
+                "DEPOT_ASSAY_RECORD",
+                $"depot:{depot.DepotId}",
+                JsonSerializer.Serialize(new
+                {
+                    observationId = saved.ObservationId,
+                    patientId = depot.PatientId,
+                    daySinceImplant = saved.DaySinceImplant
+                }));
+
+            DepotAssayObservationResponse response = DepotCalibrationMapper.ToApiResponse(saved, protector);
+            return Results.Created($"/api/depots/{depot.DepotId}/assays/{saved.ObservationId}", response);
+        })
+        .WithName("RecordDepotAssay")
+        .WithTags("Depot Formulations")
+        .WithSummary("Records a longitudinal clinical serum hormone assay observation against a depot formulation.")
+        .WithDescription("Validates lab bounds, encrypts clinical notes via AES-256-GCM, persists the observation, and logs a 21 CFR Part 11 audit event.")
+        .Accepts<RecordDepotAssayRequest>("application/json")
+        .Produces<DepotAssayObservationResponse>(StatusCodes.Status201Created)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden)
+        .Produces<SecureProblemDetails>(StatusCodes.Status404NotFound);
+
+        app.MapGet("/api/depots/{depotId}/assays", async (
+            string depotId,
+            IDepotFormulationRepository depotRepository,
+            IDepotAssayRepository assayRepository,
+            ISubjectAccessService subjectAccess,
+            ProfileDataProtector protector,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Retrieves all longitudinal serum hormone assay observations for a depot formulation.
+            // WHY:  Enables clinicians and patients to review historical lab trajectories and calibration inputs.
+            // HOW:  Resolves depot, verifies Admin / cohort-authorized Researcher / Patient self access, and decrypts notes.
+            if (string.IsNullOrWhiteSpace(depotId))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "DepotId must not be empty.");
+            }
+
+            DepotFormulationRecord? depot = await depotRepository.GetDepotFormulationByIdAsync(depotId.Trim(), ct);
+            if (depot is null)
+            {
+                return SecureProblemResult(context, StatusCodes.Status404NotFound, $"Depot formulation '{depotId.Trim()}' was not found.");
+            }
+
+            // WHY `!`: Authentication middleware guarantees CurrentUser is populated with an authenticated UserAccount before reaching this handler.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            bool isAuthorized = caller.Role == UserRole.Administrator ||
+                (caller.Role == UserRole.Patient && string.Equals(caller.Username, depot.PatientId, StringComparison.OrdinalIgnoreCase));
+
+            if (!isAuthorized && caller.Role == UserRole.Researcher)
+            {
+                SubjectAccessLevel? accessLevel = await subjectAccess.GetEffectiveAccessLevelAsync(caller.Username, depot.PatientId, ct);
+                if (accessLevel.HasValue)
+                {
+                    isAuthorized = true;
+                }
+            }
+
+            if (!isAuthorized)
+            {
+                return SecureProblemResult(context, StatusCodes.Status403Forbidden, $"Forbidden: Caller is not authorized to access assays for patient '{depot.PatientId}'.");
+            }
+
+            IReadOnlyList<DepotAssayObservationRecord> records = await assayRepository.GetObservationsByDepotAsync(depot.DepotId, ct);
+            List<DepotAssayObservationResponse> responses = new(records.Count);
+            for (int i = 0; i < records.Count; i++)
+            {
+                responses.Add(DepotCalibrationMapper.ToApiResponse(records[i], protector));
+            }
+
+            return Results.Ok(responses);
+        })
+        .WithName("GetDepotAssays")
+        .WithTags("Depot Formulations")
+        .WithSummary("Retrieves longitudinal serum hormone assay observations for a depot formulation.")
+        .WithDescription("Returns chronological serum assays with decrypted notes for Administrator, cohort-authorized Researcher, or Patient self.")
+        .Produces<IReadOnlyList<DepotAssayObservationResponse>>(StatusCodes.Status200OK)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden)
+        .Produces<SecureProblemDetails>(StatusCodes.Status404NotFound);
+
+        app.MapPost("/api/depots/{depotId}/calibrate", async (
+            string depotId,
+            IDepotFormulationRepository depotRepository,
+            IDepotAssayRepository assayRepository,
+            IDepotCalibrationService calibrationService,
+            ISubjectAccessService subjectAccess,
+            IComplianceAuditService audit,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Executes deterministic Bayesian longitudinal calibration for a depot formulation using recorded serum assays.
+            // WHY:  Infers patient-specific clearance and hydrogel erosion rates, checks safety guardrails, and updates re-dosing guidance.
+            // HOW:  Loads depot and observations, runs IDepotCalibrationService.CalibrateDepot, persists snapshot, and logs audit trail.
+            if (string.IsNullOrWhiteSpace(depotId))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "DepotId must not be empty.");
+            }
+
+            // WHY `!`: Authentication middleware guarantees CurrentUser is populated with an authenticated UserAccount before reaching this handler.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            if (caller.Role != UserRole.Administrator && caller.Role != UserRole.Researcher)
+            {
+                return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: Administrator or Researcher role required to calibrate depot formulations.");
+            }
+
+            DepotFormulationRecord? depot = await depotRepository.GetDepotFormulationByIdAsync(depotId.Trim(), ct);
+            if (depot is null)
+            {
+                return SecureProblemResult(context, StatusCodes.Status404NotFound, $"Depot formulation '{depotId.Trim()}' was not found.");
+            }
+
+            if (caller.Role == UserRole.Researcher)
+            {
+                SubjectAccessLevel? accessLevel = await subjectAccess.GetEffectiveAccessLevelAsync(caller.Username, depot.PatientId, ct);
+                if (!accessLevel.HasValue)
+                {
+                    return SecureProblemResult(context, StatusCodes.Status403Forbidden, $"Forbidden: Caller does not possess subject access to patient '{depot.PatientId}'.");
+                }
+            }
+
+            IReadOnlyList<DepotAssayObservationRecord> persistedObs = await assayRepository.GetObservationsByDepotAsync(depot.DepotId, ct);
+            if (persistedObs.Count == 0)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "At least one serum assay observation must be recorded before calibrating this depot.");
+            }
+
+            List<DepotAssayObservation> domainObs = new(persistedObs.Count);
+            for (int i = 0; i < persistedObs.Count; i++)
+            {
+                domainObs.Add(DepotCalibrationMapper.ToDomainObservation(persistedObs[i]));
+            }
+
+            TimeReleaseDepotParameters baseline = DepotCalibrationMapper.ToBaselineParameters(depot);
+            DepotCalibrationResult calResult = calibrationService.CalibrateDepot(new DepotCalibrationRequest
+            {
+                DepotId = depot.DepotId,
+                PatientId = depot.PatientId,
+                BaselineParameters = baseline,
+                Observations = domainObs
+            });
+
+            DateTimeOffset computedAtUtc = DateTimeOffset.UtcNow;
+            DepotCalibrationSnapshotRecord savedSnapshot = await assayRepository.SaveCalibrationSnapshotAsync(new DepotCalibrationSnapshotRecord
+            {
+                DepotId = depot.DepotId,
+                PatientId = depot.PatientId,
+                InferredClearanceMultiplier = calResult.InferredClearanceMultiplier,
+                InferredDailyErosionRatePercent = calResult.InferredDailyErosionRatePercent,
+                AdjustedRedoseDay = calResult.AdjustedRedoseDay,
+                RecommendedNextMassMg = calResult.RecommendedNextMassMg,
+                SafetyStatus = calResult.OverallSafetyStatus,
+                ResidualRmse = calResult.ResidualRmse,
+                ComputedAtUtc = computedAtUtc
+            }, ct);
+
+            audit.LogAction(
+                caller.Username,
+                "DEPOT_CALIBRATION_RUN",
+                $"depot:{depot.DepotId}",
+                JsonSerializer.Serialize(new
+                {
+                    snapshotId = savedSnapshot.SnapshotId,
+                    patientId = depot.PatientId,
+                    inferredClearance = calResult.InferredClearanceMultiplier,
+                    inferredErosion = calResult.InferredDailyErosionRatePercent,
+                    adjustedRedoseDay = calResult.AdjustedRedoseDay,
+                    safetyStatus = calResult.OverallSafetyStatus
+                }));
+
+            DepotCalibrationResponse response = new()
+            {
+                SnapshotId = savedSnapshot.SnapshotId,
+                DepotId = depot.DepotId,
+                PatientId = depot.PatientId,
+                InferredClearanceMultiplier = calResult.InferredClearanceMultiplier,
+                InferredDailyErosionRatePercent = calResult.InferredDailyErosionRatePercent,
+                ResidualRmse = calResult.ResidualRmse,
+                AdjustedRedoseDay = calResult.AdjustedRedoseDay,
+                RecommendedNextMassMg = calResult.RecommendedNextMassMg,
+                RecommendedNextErosionRatePercent = calResult.RecommendedNextErosionRatePercent,
+                OverallSafetyStatus = calResult.OverallSafetyStatus,
+                Alerts = calResult.Alerts,
+                ComputedAtUtc = savedSnapshot.ComputedAtUtc,
+                RecalibratedTrajectory = calResult.RecalibratedTrajectory
+            };
+
+            return Results.Ok(response);
+        })
+        .WithName("CalibrateDepot")
+        .WithTags("Depot Formulations")
+        .WithSummary("Runs deterministic Bayesian longitudinal calibration and persists a calibration snapshot.")
+        .WithDescription("Assimilates recorded serum assays into the 180-day depot model, evaluates clinical safety guardrails, and saves adaptive re-dosing guidance.")
+        .Produces<DepotCalibrationResponse>(StatusCodes.Status200OK)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden)
+        .Produces<SecureProblemDetails>(StatusCodes.Status404NotFound);
+
+        app.MapGet("/api/depots/{depotId}/calibrations/latest", async (
+            string depotId,
+            IDepotFormulationRepository depotRepository,
+            IDepotAssayRepository assayRepository,
+            IDepotCalibrationService calibrationService,
+            ITimeReleaseDepotService depotService,
+            ISubjectAccessService subjectAccess,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Retrieves the most recent persisted longitudinal calibration snapshot for a depot formulation.
+            // WHY:  Surfaces adaptive re-dosing day, safety alerts, and recalibrated curve for authorized clinicians and patients.
+            // HOW:  Authorizes caller, fetches latest snapshot, reconstructs recalibrated trajectory and alerts, and returns 200 OK.
+            if (string.IsNullOrWhiteSpace(depotId))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "DepotId must not be empty.");
+            }
+
+            DepotFormulationRecord? depot = await depotRepository.GetDepotFormulationByIdAsync(depotId.Trim(), ct);
+            if (depot is null)
+            {
+                return SecureProblemResult(context, StatusCodes.Status404NotFound, $"Depot formulation '{depotId.Trim()}' was not found.");
+            }
+
+            // WHY `!`: Authentication middleware guarantees CurrentUser is populated with an authenticated UserAccount before reaching this handler.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            bool isAuthorized = caller.Role == UserRole.Administrator ||
+                (caller.Role == UserRole.Patient && string.Equals(caller.Username, depot.PatientId, StringComparison.OrdinalIgnoreCase));
+
+            if (!isAuthorized && caller.Role == UserRole.Researcher)
+            {
+                SubjectAccessLevel? accessLevel = await subjectAccess.GetEffectiveAccessLevelAsync(caller.Username, depot.PatientId, ct);
+                if (accessLevel.HasValue)
+                {
+                    isAuthorized = true;
+                }
+            }
+
+            if (!isAuthorized)
+            {
+                return SecureProblemResult(context, StatusCodes.Status403Forbidden, $"Forbidden: Caller is not authorized to access calibrations for patient '{depot.PatientId}'.");
+            }
+
+            DepotCalibrationSnapshotRecord? snapshot = await assayRepository.GetLatestCalibrationSnapshotAsync(depot.DepotId, ct);
+            if (snapshot is null)
+            {
+                return SecureProblemResult(context, StatusCodes.Status404NotFound, $"No calibration snapshot found for depot '{depot.DepotId}'.");
+            }
+
+            IReadOnlyList<DepotAssayObservationRecord> persistedObs = await assayRepository.GetObservationsByDepotAsync(depot.DepotId, ct);
+            List<DepotAssayObservation> domainObs = new(persistedObs.Count);
+            for (int i = 0; i < persistedObs.Count; i++)
+            {
+                domainObs.Add(DepotCalibrationMapper.ToDomainObservation(persistedObs[i]));
+            }
+
+            TimeReleaseDepotParameters baseline = DepotCalibrationMapper.ToBaselineParameters(depot);
+            TimeReleaseSimulationResult recalibrated = depotService.Simulate180DayDepot(baseline with
+            {
+                ClearanceMultiplier = snapshot.InferredClearanceMultiplier,
+                DailyErosionRatePercent = snapshot.InferredDailyErosionRatePercent
+            });
+            IReadOnlyList<DepotSafetyAlert> alerts = calibrationService.EvaluateSafetyGuardrails(depot.Regimen, domainObs);
+            double recommendedNextErosion = Math.Round(
+                Math.Clamp(
+                    baseline.DailyErosionRatePercent * (baseline.DailyErosionRatePercent / snapshot.InferredDailyErosionRatePercent),
+                    0.20,
+                    2.00),
+                3);
+
+            DepotCalibrationResponse response = new()
+            {
+                SnapshotId = snapshot.SnapshotId,
+                DepotId = snapshot.DepotId,
+                PatientId = snapshot.PatientId,
+                InferredClearanceMultiplier = snapshot.InferredClearanceMultiplier,
+                InferredDailyErosionRatePercent = snapshot.InferredDailyErosionRatePercent,
+                ResidualRmse = snapshot.ResidualRmse,
+                AdjustedRedoseDay = snapshot.AdjustedRedoseDay,
+                RecommendedNextMassMg = snapshot.RecommendedNextMassMg,
+                RecommendedNextErosionRatePercent = recommendedNextErosion,
+                OverallSafetyStatus = snapshot.SafetyStatus,
+                Alerts = alerts,
+                ComputedAtUtc = snapshot.ComputedAtUtc,
+                RecalibratedTrajectory = recalibrated
+            };
+
+            return Results.Ok(response);
+        })
+        .WithName("GetLatestDepotCalibration")
+        .WithTags("Depot Formulations")
+        .WithSummary("Retrieves the latest adaptive Bayesian calibration snapshot for a depot formulation.")
+        .WithDescription("Returns the most recent persisted calibration snapshot, safety alerts, and recalibrated trajectory for Administrator, authorized Researcher, or Patient self.")
+        .Produces<DepotCalibrationResponse>(StatusCodes.Status200OK)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden)
+        .Produces<SecureProblemDetails>(StatusCodes.Status404NotFound);
 
         app.Run();
     }

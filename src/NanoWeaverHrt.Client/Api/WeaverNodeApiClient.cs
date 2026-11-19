@@ -1958,4 +1958,65 @@ public sealed class WeaverNodeApiClient : INanoWeaverNodeClient, IDisposable
         string effectiveToken = ResolveBearerToken(bearerToken);
         return _innerClient.SimulateDepotReleaseAsync(profile, effectiveToken, request, ct);
     }
+
+    /// <inheritdoc/>
+    public Task<DepotAssayObservationResponse> RecordDepotAssayAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string depotId,
+        RecordDepotAssayRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/depots/{depotId}/assays using provided or cached session token.
+        // WHY:  Records a longitudinal serum hormone assay observation against a depot formulation.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.RecordDepotAssayAsync(profile, effectiveToken, depotId, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<DepotAssayObservationResponse>> GetDepotAssaysAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string depotId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/depots/{depotId}/assays using provided or cached session token.
+        // WHY:  Retrieves longitudinal serum hormone assays recorded for a depot formulation.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GetDepotAssaysAsync(profile, effectiveToken, depotId, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<DepotCalibrationResponse> CalibrateDepotAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string depotId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/depots/{depotId}/calibrate using provided or cached session token.
+        // WHY:  Executes adaptive Bayesian longitudinal calibration for a depot formulation.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.CalibrateDepotAsync(profile, effectiveToken, depotId, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<DepotCalibrationResponse?> GetLatestDepotCalibrationAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string depotId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/depots/{depotId}/calibrations/latest using provided or cached session token.
+        // WHY:  Retrieves the latest adaptive Bayesian calibration snapshot for a depot formulation.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GetLatestDepotCalibrationAsync(profile, effectiveToken, depotId, ct);
+    }
 }

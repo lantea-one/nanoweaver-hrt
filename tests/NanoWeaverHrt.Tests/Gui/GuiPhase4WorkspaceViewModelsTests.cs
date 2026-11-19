@@ -1636,4 +1636,97 @@ public sealed class GuiPhase4WorkspaceViewModelsTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => vm.SimulateDepotReleaseAsync(simReq));
         Assert.Equal("Simulate depot failed", vm.ErrorMessage);
     }
+
+    /// <summary>
+    /// Verifies nominal, null, and exception paths for Milestone 34 longitudinal depot assay and calibration operations
+    /// on <see cref="PatientClinicalWorkspaceViewModel"/>.
+    /// </summary>
+    [Fact]
+    public async Task PatientClinicalWorkspaceViewModel_DepotLongitudinalCalibration_CoversAllBranches()
+    {
+        // WHAT: Tests RecordDepotAssayAsync, GetDepotAssaysAsync, CalibrateDepotAsync, and GetLatestDepotCalibrationAsync.
+        // WHY:  Milestone 34 (P183): Guarantees 100.00% line and branch coverage on all 4 new GUI Core ViewModel methods and observable properties.
+        // HOW:  Mocks INanoWeaverNodeClient, verifies argument guards, observable state updates, PropertyChanged notifications, and error propagation.
+        var clientMock = new Mock<INanoWeaverNodeClient>();
+        InstanceProfile profile = CreateProfile("inst-calib-1");
+        var vm = new PatientClinicalWorkspaceViewModel(clientMock.Object)
+        {
+            ActiveProfile = profile,
+            ActiveBearerToken = "token-calib"
+        };
+
+        List<string> changedProps = [];
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName != null)
+            {
+                changedProps.Add(e.PropertyName);
+            }
+        };
+
+        RecordDepotAssayRequest recordReq = new RecordDepotAssayRequest().GetExamples();
+        DepotAssayObservationResponse sampleObs = new DepotAssayObservationResponse().GetExamples();
+        DepotCalibrationResponse sampleCal = new DepotCalibrationResponse().GetExamples();
+
+        // 1. RecordDepotAssayAsync
+        await Assert.ThrowsAsync<ArgumentException>(() => vm.RecordDepotAssayAsync("", recordReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => vm.RecordDepotAssayAsync("depot-1", null!));
+        clientMock.Setup(c => c.RecordDepotAssayAsync(profile, "token-calib", "depot-1", recordReq, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(sampleObs);
+
+        DepotAssayObservationResponse recorded = await vm.RecordDepotAssayAsync("depot-1", recordReq);
+        Assert.Same(sampleObs, recorded);
+        Assert.False(vm.IsBusy);
+        Assert.Null(vm.ErrorMessage);
+
+        clientMock.Setup(c => c.RecordDepotAssayAsync(profile, "token-calib", "depot-1", recordReq, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Record assay failed"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.RecordDepotAssayAsync("depot-1", recordReq));
+        Assert.Equal("Record assay failed", vm.ErrorMessage);
+
+        // 2. GetDepotAssaysAsync
+        await Assert.ThrowsAsync<ArgumentException>(() => vm.GetDepotAssaysAsync(" "));
+        IReadOnlyList<DepotAssayObservationResponse> assaysList = [sampleObs];
+        clientMock.Setup(c => c.GetDepotAssaysAsync(profile, "token-calib", "depot-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(assaysList);
+
+        IReadOnlyList<DepotAssayObservationResponse> fetchedAssays = await vm.GetDepotAssaysAsync("depot-1");
+        Assert.Same(assaysList, fetchedAssays);
+        Assert.Same(assaysList, vm.RecordedDepotAssays);
+        Assert.Contains(nameof(PatientClinicalWorkspaceViewModel.RecordedDepotAssays), changedProps);
+
+        clientMock.Setup(c => c.GetDepotAssaysAsync(profile, "token-calib", "depot-1", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Get assays failed"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.GetDepotAssaysAsync("depot-1"));
+        Assert.Equal("Get assays failed", vm.ErrorMessage);
+
+        // 3. CalibrateDepotAsync
+        await Assert.ThrowsAsync<ArgumentException>(() => vm.CalibrateDepotAsync(" "));
+        clientMock.Setup(c => c.CalibrateDepotAsync(profile, "token-calib", "depot-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(sampleCal);
+
+        DepotCalibrationResponse calResult = await vm.CalibrateDepotAsync("depot-1");
+        Assert.Same(sampleCal, calResult);
+        Assert.Same(sampleCal, vm.LatestDepotCalibration);
+        Assert.Contains(nameof(PatientClinicalWorkspaceViewModel.LatestDepotCalibration), changedProps);
+
+        clientMock.Setup(c => c.CalibrateDepotAsync(profile, "token-calib", "depot-1", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Calibrate depot failed"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.CalibrateDepotAsync("depot-1"));
+        Assert.Equal("Calibrate depot failed", vm.ErrorMessage);
+
+        // 4. GetLatestDepotCalibrationAsync
+        await Assert.ThrowsAsync<ArgumentException>(() => vm.GetLatestDepotCalibrationAsync(" "));
+        clientMock.Setup(c => c.GetLatestDepotCalibrationAsync(profile, "token-calib", "depot-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((DepotCalibrationResponse?)null);
+
+        DepotCalibrationResponse? noneSnapshot = await vm.GetLatestDepotCalibrationAsync("depot-1");
+        Assert.Null(noneSnapshot);
+        Assert.Null(vm.LatestDepotCalibration);
+
+        clientMock.Setup(c => c.GetLatestDepotCalibrationAsync(profile, "token-calib", "depot-1", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Get latest calibration failed"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.GetLatestDepotCalibrationAsync("depot-1"));
+        Assert.Equal("Get latest calibration failed", vm.ErrorMessage);
+    }
 }

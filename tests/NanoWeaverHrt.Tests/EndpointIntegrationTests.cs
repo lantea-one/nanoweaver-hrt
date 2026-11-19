@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using NanoWeaverHrt.Analytics;
+using NanoWeaverHrt.Compliance;
 using NanoWeaverHrt.Endocrine;
 using NanoWeaverHrt.Fabrication.Gel;
 using NanoWeaverHrt.Genomics;
@@ -13,6 +14,7 @@ using NanoWeaverHrt.Hardware.Benchmarking;
 using NanoWeaverHrt.Models;
 using NanoWeaverHrt.Security.Access;
 using NanoWeaverHrt.Security.Authentication;
+using NanoWeaverHrt.Storage;
 using Xunit;
 
 namespace NanoWeaverHrt.Tests;
@@ -1977,5 +1979,238 @@ public sealed class EndpointIntegrationTests : IClassFixture<WebApplicationFacto
         TimeReleaseSimulationResult? fastSimResult = await fastSimResp.Content.ReadFromJsonAsync<TimeReleaseSimulationResult>();
         Assert.NotNull(fastSimResult);
         Assert.True(fastSimResult.AverageDailyReleaseMg > slowSimResult.AverageDailyReleaseMg);
+    }
+
+    /// <summary>
+    /// Verifies Milestone 34 longitudinal depot serum assay ingestion, PHI encryption/decryption,
+    /// adaptive Bayesian calibration, role and subject-access gating, and 21 CFR Part 11 audit trails.
+    /// </summary>
+    [Fact]
+    public async Task DepotCalibrationEndpoints_EnforceValidationGatingEncryptionCalibrationAndAudit()
+    {
+        // WHAT: End-to-end integration test for POST/GET /api/depots/{depotId}/assays, POST /calibrate, and GET /calibrations/latest.
+        // WHY:  Validates Phase 3 API contracts, PHI encryption at rest, role/cohort isolation, RFC 7807 errors, and audit logging.
+        // HOW:  Provisions Admin, Researcher, and Patients; seeds depots; exercises every status code (200, 201, 400, 401, 403, 404).
+
+        // 1. Verify API DTO defaults, GetExamples(), and DepotCalibrationMapper helpers
+        RecordDepotAssayRequest reqDef = new();
+        Assert.Equal(30, reqDef.DaySinceImplant);
+        Assert.False(string.IsNullOrWhiteSpace(reqDef.GetExamples().ClinicalNotes));
+
+        DepotAssayObservationResponse obsDef = new();
+        Assert.Equal(string.Empty, obsDef.ObservationId);
+        Assert.False(string.IsNullOrWhiteSpace(obsDef.GetExamples().ObservationId));
+
+        DepotCalibrationResponse calDef = new();
+        Assert.Equal(180, calDef.AdjustedRedoseDay);
+        Assert.False(string.IsNullOrWhiteSpace(calDef.GetExamples().SnapshotId));
+
+        Assert.Throws<ArgumentNullException>(() => DepotCalibrationMapper.ToBaselineParameters(null!));
+        Assert.Throws<ArgumentNullException>(() => DepotCalibrationMapper.ToDomainObservation(null!));
+        Assert.Throws<ArgumentNullException>(() => DepotCalibrationMapper.ToApiResponse(null!, null!));
+
+        using (IServiceScope mapperScope = _factory.Services.CreateScope())
+        {
+            ProfileDataProtector protector = mapperScope.ServiceProvider.GetRequiredService<ProfileDataProtector>();
+            Assert.Throws<ArgumentNullException>(() => DepotCalibrationMapper.ToApiResponse(new DepotAssayObservationRecord(), null!));
+            Assert.Equal(PolymerMatrixType.PlgaPegPlga, DepotCalibrationMapper.ParsePolymerMatrix(null));
+            Assert.Equal(PolymerMatrixType.PlgaPegPlga, DepotCalibrationMapper.ParsePolymerMatrix("unknown-matrix"));
+            Assert.Equal(PolymerMatrixType.AlginateChitosan, DepotCalibrationMapper.ParsePolymerMatrix("Alginate-Chitosan"));
+            Assert.Equal(ReleaseKineticsModel.KorsmeyerPeppas, DepotCalibrationMapper.ParseReleaseKinetics(null));
+            Assert.Equal(ReleaseKineticsModel.KorsmeyerPeppas, DepotCalibrationMapper.ParseReleaseKinetics("unknown-model"));
+            Assert.Equal(ReleaseKineticsModel.CoupledAnomalousFickian, DepotCalibrationMapper.ParseReleaseKinetics("Coupled-Fickian"));
+            Assert.Equal(ReleaseKineticsModel.Higuchi, DepotCalibrationMapper.ParseReleaseKinetics("Higuchi"));
+
+            TimeReleaseDepotParameters ftmParams = DepotCalibrationMapper.ToBaselineParameters(new DepotFormulationRecord
+            {
+                Regimen = TherapeuticRegimen.FemaleToMale,
+                InitialNanocarrierMassMg = 1000.0,
+                DailyErosionRatePercent = 0.55,
+                TargetHorizonDays = 180
+            });
+            Assert.Equal(20.0, ftmParams.TargetTestosteroneNmolL);
+            Assert.NotNull(DepotCalibrationMapper.ToApiResponse(new DepotAssayObservationRecord(), protector));
+        }
+
+        // 2. Provision isolated identities
+        string patientA = "cal_patient_a";
+        string patientB = "cal_patient_b";
+        string researcher = "cal_researcher";
+        string tokenA = await ProvisionUserAndGetTokenAsync(patientA, UserRole.Patient);
+        string tokenB = await ProvisionUserAndGetTokenAsync(patientB, UserRole.Patient);
+        string tokenRes = await ProvisionUserAndGetTokenAsync(researcher, UserRole.Researcher);
+
+        using HttpClient clientAnon = _factory.CreateClient();
+        using HttpClient clientA = CreateClientWithBearer(tokenA);
+        using HttpClient clientB = CreateClientWithBearer(tokenB);
+        using HttpClient clientRes = CreateClientWithBearer(tokenRes);
+
+        // 3. Seed two depots for patientA (one with assays, one empty)
+        HttpResponseMessage createDepotResp = await _client.PostAsJsonAsync("/api/depots/formulations", new CreateDepotFormulationRequest
+        {
+            PatientId = patientA,
+            Regimen = TherapeuticRegimen.MaleToFemale,
+            PolymerMatrixType = "PLGA-PEG-PLGA",
+            InitialNanocarrierMassMg = 18.0,
+            DailyErosionRatePercent = 0.55,
+            ReleaseKineticsModel = "Korsmeyer-Peppas",
+            TargetHorizonDays = 180
+        });
+        Assert.Equal(HttpStatusCode.Created, createDepotResp.StatusCode);
+        DepotFormulationResponse? depotA = await createDepotResp.Content.ReadFromJsonAsync<DepotFormulationResponse>();
+        Assert.NotNull(depotA);
+        string depotId = depotA.Formulation.DepotId;
+
+        HttpResponseMessage createEmptyDepotResp = await _client.PostAsJsonAsync("/api/depots/formulations", new CreateDepotFormulationRequest
+        {
+            PatientId = patientA,
+            Regimen = TherapeuticRegimen.MaleToFemale,
+            PolymerMatrixType = "PLGA-PEG-PLGA",
+            InitialNanocarrierMassMg = 18.0,
+            DailyErosionRatePercent = 0.55,
+            ReleaseKineticsModel = "Korsmeyer-Peppas",
+            TargetHorizonDays = 180
+        });
+        DepotFormulationResponse? emptyDepot = await createEmptyDepotResp.Content.ReadFromJsonAsync<DepotFormulationResponse>();
+        Assert.NotNull(emptyDepot);
+        string emptyDepotId = emptyDepot.Formulation.DepotId;
+
+        RecordDepotAssayRequest validAssay = new()
+        {
+            DaySinceImplant = 45,
+            ObservedE2PmolL = 510.0,
+            ObservedTNmolL = 1.1,
+            ObservedLhIuL = 0.6,
+            ObservedFshIuL = 0.9,
+            ObservedShbgNmolL = 76.0,
+            ObservedHematocritPct = 41.2,
+            ClinicalNotes = "Fasting venous draw at clinic."
+        };
+
+        // 4. Validation failures on POST /api/depots/{depotId}/assays -> 400 Bad Request
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/depots/%20/assays", validAssay)).StatusCode);
+        using (StringContent nullBody = new("null", System.Text.Encoding.UTF8, "application/json"))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsync($"/api/depots/{depotId}/assays", nullBody)).StatusCode);
+        }
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync($"/api/depots/{depotId}/assays", validAssay with { DaySinceImplant = 0 })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync($"/api/depots/{depotId}/assays", validAssay with { DaySinceImplant = 366 })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync($"/api/depots/{depotId}/assays", validAssay with { ObservedE2PmolL = -1.0 })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync($"/api/depots/{depotId}/assays", validAssay with { ObservedTNmolL = -1.0 })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync($"/api/depots/{depotId}/assays", validAssay with { ObservedLhIuL = -1.0 })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync($"/api/depots/{depotId}/assays", validAssay with { ObservedFshIuL = -1.0 })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync($"/api/depots/{depotId}/assays", validAssay with { ObservedShbgNmolL = -1.0 })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync($"/api/depots/{depotId}/assays", validAssay with { ObservedHematocritPct = -1.0 })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync($"/api/depots/{depotId}/assays", validAssay with { ObservedHematocritPct = 101.0 })).StatusCode);
+
+        // 5. Auth, role, subject access, and 404 gating on POST/GET assays, POST calibrate, GET latest
+        Assert.Equal(HttpStatusCode.Unauthorized, (await clientAnon.PostAsJsonAsync($"/api/depots/{depotId}/assays", validAssay)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await clientAnon.GetAsync($"/api/depots/{depotId}/assays")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await clientAnon.PostAsync($"/api/depots/{depotId}/calibrate", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await clientAnon.GetAsync($"/api/depots/{depotId}/calibrations/latest")).StatusCode);
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientA.PostAsJsonAsync($"/api/depots/{depotId}/assays", validAssay)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientRes.PostAsJsonAsync($"/api/depots/{depotId}/assays", validAssay)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsJsonAsync("/api/depots/depot_nonexistent/assays", validAssay)).StatusCode);
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.GetAsync("/api/depots/%20/assays")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/depots/depot_nonexistent/assays")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientB.GetAsync($"/api/depots/{depotId}/assays")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientRes.GetAsync($"/api/depots/{depotId}/assays")).StatusCode);
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsync("/api/depots/%20/calibrate", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientA.PostAsync($"/api/depots/{depotId}/calibrate", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsync("/api/depots/depot_nonexistent/calibrate", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientRes.PostAsync($"/api/depots/{depotId}/calibrate", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsync($"/api/depots/{emptyDepotId}/calibrate", null)).StatusCode);
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.GetAsync("/api/depots/%20/calibrations/latest")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/depots/depot_nonexistent/calibrations/latest")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientB.GetAsync($"/api/depots/{depotId}/calibrations/latest")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientRes.GetAsync($"/api/depots/{depotId}/calibrations/latest")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync($"/api/depots/{emptyDepotId}/calibrations/latest")).StatusCode);
+
+        // 6. Positive Admin record assay with encrypted notes -> 201 Created
+        HttpResponseMessage postAssay1 = await _client.PostAsJsonAsync($"/api/depots/{depotId}/assays", validAssay);
+        Assert.Equal(HttpStatusCode.Created, postAssay1.StatusCode);
+        DepotAssayObservationResponse? obs1 = await postAssay1.Content.ReadFromJsonAsync<DepotAssayObservationResponse>();
+        Assert.NotNull(obs1);
+        Assert.Equal(45, obs1.DaySinceImplant);
+        Assert.Equal("Fasting venous draw at clinic.", obs1.ClinicalNotes);
+
+        // Verify clinical notes are encrypted at rest in repository
+        using (IServiceScope verifyScope = _factory.Services.CreateScope())
+        {
+            IDepotAssayRepository assayRepo = verifyScope.ServiceProvider.GetRequiredService<IDepotAssayRepository>();
+            IReadOnlyList<DepotAssayObservationRecord> rawRecords = await assayRepo.GetObservationsByDepotAsync(depotId);
+            Assert.Single(rawRecords);
+            Assert.NotNull(rawRecords[0].NotesEncrypted);
+            Assert.DoesNotContain("Fasting venous draw", rawRecords[0].NotesEncrypted, StringComparison.Ordinal);
+        }
+
+        // 7. Grant Researcher access to patientA, record second assay without notes, and run calibration
+        using (IServiceScope grantScope = _factory.Services.CreateScope())
+        {
+            ISubjectAccessService accessService = grantScope.ServiceProvider.GetRequiredService<ISubjectAccessService>();
+            await accessService.GrantSubjectAccessAsync("admin", researcher, patientA, SubjectAccessLevel.FullReadAccess, "Calibration cohort");
+        }
+
+        HttpResponseMessage postAssay2 = await clientRes.PostAsJsonAsync($"/api/depots/{depotId}/assays", new RecordDepotAssayRequest
+        {
+            DaySinceImplant = 90,
+            ObservedE2PmolL = 475.0,
+            ObservedTNmolL = 1.0,
+            ObservedLhIuL = 0.5,
+            ObservedFshIuL = 0.8,
+            ObservedShbgNmolL = 80.0,
+            ObservedHematocritPct = 40.8,
+            ClinicalNotes = null,
+            RecordedAtUtc = DateTimeOffset.UtcNow
+        });
+        Assert.Equal(HttpStatusCode.Created, postAssay2.StatusCode);
+        DepotAssayObservationResponse? obs2 = await postAssay2.Content.ReadFromJsonAsync<DepotAssayObservationResponse>();
+        Assert.NotNull(obs2);
+        Assert.Null(obs2.ClinicalNotes);
+
+        // 8. GET /api/depots/{depotId}/assays as Admin, Patient self, and granted Researcher -> 200 OK
+        foreach (HttpClient authorizedClient in new[] { _client, clientA, clientRes })
+        {
+            HttpResponseMessage getAssaysResp = await authorizedClient.GetAsync($"/api/depots/{depotId}/assays");
+            Assert.Equal(HttpStatusCode.OK, getAssaysResp.StatusCode);
+            List<DepotAssayObservationResponse>? list = await getAssaysResp.Content.ReadFromJsonAsync<List<DepotAssayObservationResponse>>();
+            Assert.NotNull(list);
+            Assert.Equal(2, list.Count);
+            Assert.Equal(45, list[0].DaySinceImplant);
+            Assert.Equal(90, list[1].DaySinceImplant);
+        }
+
+        // 9. POST /api/depots/{depotId}/calibrate as granted Researcher -> 200 OK
+        HttpResponseMessage calResp = await clientRes.PostAsync($"/api/depots/{depotId}/calibrate", null);
+        Assert.Equal(HttpStatusCode.OK, calResp.StatusCode);
+        DepotCalibrationResponse? calibrated = await calResp.Content.ReadFromJsonAsync<DepotCalibrationResponse>();
+        Assert.NotNull(calibrated);
+        Assert.False(string.IsNullOrWhiteSpace(calibrated.SnapshotId));
+        Assert.Equal(depotId, calibrated.DepotId);
+        Assert.NotEmpty(calibrated.RecalibratedTrajectory.Points);
+
+        // 10. GET /api/depots/{depotId}/calibrations/latest as Admin, Patient self, and granted Researcher -> 200 OK
+        foreach (HttpClient authorizedClient in new[] { _client, clientA, clientRes })
+        {
+            HttpResponseMessage latestResp = await authorizedClient.GetAsync($"/api/depots/{depotId}/calibrations/latest");
+            Assert.Equal(HttpStatusCode.OK, latestResp.StatusCode);
+            DepotCalibrationResponse? latest = await latestResp.Content.ReadFromJsonAsync<DepotCalibrationResponse>();
+            Assert.NotNull(latest);
+            Assert.Equal(calibrated.SnapshotId, latest.SnapshotId);
+            Assert.NotEmpty(latest.RecalibratedTrajectory.Points);
+        }
+
+        // 11. Verify 21 CFR Part 11 audit ledger recorded both DEPOT_ASSAY_RECORD and DEPOT_CALIBRATION_RUN
+        using (IServiceScope auditScope = _factory.Services.CreateScope())
+        {
+            IComplianceAuditService auditService = auditScope.ServiceProvider.GetRequiredService<IComplianceAuditService>();
+            IReadOnlyList<AuditRecord> entries = auditService.GetAuditRecords(200);
+            Assert.Contains(entries, e => e.Action == "DEPOT_ASSAY_RECORD" && e.Resource == $"depot:{depotId}");
+            Assert.Contains(entries, e => e.Action == "DEPOT_CALIBRATION_RUN" && e.Resource == $"depot:{depotId}");
+        }
     }
 }

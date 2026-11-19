@@ -166,6 +166,32 @@ GET /api/simulations/configs/CAMPAIGN_SERUM_STABILITY
 
 ---
 
+## 5. Longitudinal Serum Assay Calibration & Adaptive Depot Re-Dosing (Milestone 34)
+
+Real patients metabolize hormones and degrade subcutaneous polymer hydrogels at slightly different rates than population averages. **NanoWeaver HRT** closes the loop between theoretical 180-day depot kinetics (`ITimeReleaseDepotService`) and real-world patient blood draws using a deterministic regularized weighted least-squares (WLS) Bayesian calibration engine (`IDepotCalibrationService`).
+
+### Regularized Bayesian Objective Function
+
+Given longitudinal serum assay observations recorded at follow-up visits (such as Day 30, Day 60, and Day 90), the optimizer searches bounded physiological domains for individualized metabolic clearance (`c ∈ [0.40, 2.50]`) and daily hydrogel erosion rate (`e ∈ [0.20, 2.00]` %/day) using a deterministic 25 × 25 coarse sweep followed by 5 local coordinate-refinement rounds:
+
+$$\mathcal{L}(c, e) = \frac{1}{N} \sum_{i=1}^{N} \left[ w_{\text{primary}} \left(\frac{y_i - \hat{y}(t_i; c, e)}{S_{\text{primary}}}\right)^2 + w_{\text{sec}} r_{\text{sec},i}^2 + w_{\text{LH}} r_{\text{LH},i}^2 \right] + \lambda_N \left[ \left(\frac{c - c_0}{c_0}\right)^2 + \left(\frac{e - e_0}{e_0}\right)^2 \right]$$
+
+* **Single-Point Prior Shrinkage (`N = 1`)**: Uses `λ₁ = 0.25` to anchor estimates smoothly toward the baseline formulation prior `(c₀, e₀)` when only one blood draw has arrived.
+* **Multi-Point Longitudinal Identification (`N ≥ 2`)**: Uses `λ = 0.0002` so longitudinal assays jointly identify clearance and erosion kinetics within `≤ 2%` of ground truth with zero random seeds and 100% deterministic repeatability.
+
+### Clinical Safety Guardrails & Adaptive Re-Dosing
+
+Every calibration automatically evaluates patient safety thresholds across all recorded assays:
+
+| Clinical Guardrail | Condition | Severity Tier | Adaptive Response |
+| :--- | :--- | :--- | :--- |
+| **HPG Axis Escape** | `LH ≥ 2.0 IU/L` or `FSH ≥ 3.0 IU/L` after Day 14 | `WarningEscape` | Flags incomplete pituitary suppression for clinician review. |
+| **FtM Erythrocytosis** | `Hematocrit ≥ 52.0%` (Warning) / `≥ 54.0%` (Critical) | `WarningEscape` / `CriticalSafety` | Applies automated 15% safety down-titration to next-cycle mass on `CriticalSafety`. |
+| **MtF Supraphysiological E2** | `17β-Estradiol ≥ 1100.0 pmol/L` (Warning) / `≥ 1500.0 pmol/L` (Critical) | `WarningEscape` / `CriticalSafety` | Flags elevated thrombotic exposure and applies 15% next-cycle down-titration on `CriticalSafety`. |
+| **Sub-Therapeutic Trough Drift** | MtF `E2 < 350.0 pmol/L` or FtM `T < 10.0 nmol/L` | `AdvisoryDrift` | Advances `AdjustedRedoseDay` and scales `RecommendedNextMassMg` for a full 180-day horizon. |
+
+---
+
 ## Next Steps
 * Run simulations interactively in the web dashboard at **`/simulations`**.
 * Connect to physical oligo ordering in the [**Guided DNA Workflow Wizard**](workflow-wizard.md).

@@ -1590,4 +1590,62 @@ public interface INanoWeaverNodeClient
         string bearerToken,
         SimulateDepotReleaseRequest request,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Records a longitudinal clinical serum hormone assay observation against a depot via POST /api/depots/{depotId}/assays.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="depotId">Target depot formulation identifier.</param>
+    /// <param name="request">Serum hormone assay observation payload.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The recorded serum assay observation with decrypted clinical notes.</returns>
+    Task<DepotAssayObservationResponse> RecordDepotAssayAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string depotId,
+        RecordDepotAssayRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Retrieves all recorded longitudinal serum hormone assays for a depot via GET /api/depots/{depotId}/assays.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="depotId">Target depot formulation identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Chronological list of longitudinal serum assay observations.</returns>
+    Task<IReadOnlyList<DepotAssayObservationResponse>> GetDepotAssaysAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string depotId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Executes adaptive Bayesian longitudinal calibration for a depot via POST /api/depots/{depotId}/calibrate.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="depotId">Target depot formulation identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Persisted calibration snapshot, safety alerts, and recalibrated pharmacokinetic trajectory.</returns>
+    Task<DepotCalibrationResponse> CalibrateDepotAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string depotId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Retrieves the latest persisted longitudinal calibration snapshot for a depot via GET /api/depots/{depotId}/calibrations/latest.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="depotId">Target depot formulation identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The latest calibration snapshot if available; otherwise <see langword="null"/> when the server returns 404.</returns>
+    Task<DepotCalibrationResponse?> GetLatestDepotCalibrationAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string depotId,
+        CancellationToken ct = default);
 }

@@ -1247,6 +1247,51 @@ Executes an in-silico 180-day multi-phase time-release depot simulation (burst s
 * **Response Status**: `200 OK`
 * **Response Payload (JSON)**: `TimeReleaseSimulationResult` containing 180-day daily trajectory, TTR %, burst fraction, and clinical feasibility verdict.
 
+### `POST /api/depots/{depotId}/assays`
+Records a longitudinal clinical serum hormone assay observation linked to an active semi-annual depot formulation. Optional clinical notes are encrypted at rest with AES-256-GCM via `ProfileDataProtector`, and every write emits an immutable `DEPOT_ASSAY_RECORD` entry in the FDA 21 CFR Part 11 audit ledger.
+
+* **Method**: `POST`
+* **Role Requirement**: `Administrator` or `Researcher` with active subject access to the depot's patient
+* **Request Payload**:
+  ```json
+  {
+    "daySinceImplant": 60,
+    "observedE2PmolL": 540.0,
+    "observedTNmolL": 1.1,
+    "observedLhIuL": 0.6,
+    "observedFshIuL": 0.9,
+    "observedShbgNmolL": 78.0,
+    "observedHematocritPct": 41.5,
+    "clinicalNotes": "Fasting morning venipuncture; no injection-site erythema."
+  }
+  ```
+* **Response Status**: `201 Created` (`DepotAssayObservationResponse`)
+* **Errors**: `400 Bad Request` (invalid day or biomarker bounds), `401 Unauthorized`, `403 Forbidden`, `404 Not Found`.
+
+### `GET /api/depots/{depotId}/assays`
+Retrieves all chronological longitudinal serum hormone assay observations for a depot formulation, decrypting clinical notes for authorized viewers.
+
+* **Method**: `GET`
+* **Role Requirement**: `Administrator`, `Researcher` with subject access, or self `Patient`
+* **Response Status**: `200 OK` (`IReadOnlyList<DepotAssayObservationResponse>`)
+* **Errors**: `400 Bad Request`, `401 Unauthorized`, `403 Forbidden`, `404 Not Found`.
+
+### `POST /api/depots/{depotId}/calibrate`
+Assimilates all recorded serum assays for a depot into the deterministic regularized weighted least-squares (WLS) Bayesian calibration engine (`IDepotCalibrationService`), evaluates clinical safety guardrails, persists a calibration snapshot (`weaver_depot_calibration_snapshots`), and logs a `DEPOT_CALIBRATION_RUN` audit record.
+
+* **Method**: `POST`
+* **Role Requirement**: `Administrator` or `Researcher` with active subject access
+* **Response Status**: `200 OK` (`DepotCalibrationResponse` with `inferredClearanceMultiplier`, `inferredDailyErosionRatePercent`, `residualRmse`, `adjustedRedoseDay`, `recommendedNextMassMg`, `recommendedNextErosionRatePercent`, `overallSafetyStatus`, `alerts`, and `recalibratedTrajectory`)
+* **Errors**: `400 Bad Request` (no assays recorded yet), `401 Unauthorized`, `403 Forbidden`, `404 Not Found`.
+
+### `GET /api/depots/{depotId}/calibrations/latest`
+Retrieves the latest persisted adaptive Bayesian calibration snapshot, evaluated clinical safety alerts, and recalibrated 180-day trajectory for a depot formulation.
+
+* **Method**: `GET`
+* **Role Requirement**: `Administrator`, `Researcher` with subject access, or self `Patient`
+* **Response Status**: `200 OK` (`DepotCalibrationResponse`)
+* **Errors**: `400 Bad Request`, `401 Unauthorized`, `403 Forbidden`, `404 Not Found` (unknown depot or no calibration snapshot computed yet).
+
 ---
 
 ## 10. Post-Quantum Cryptography & Regulatory Compliance

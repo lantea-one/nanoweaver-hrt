@@ -3,8 +3,14 @@
 @using System.Text
 @using NanoWeaverHrt.Endocrine
 @using NanoWeaverHrt.Localization
+@using NanoWeaverHrt.Models
+@using NanoWeaverHrt.Storage
 @inject ITimeReleaseDepotService DepotService
+@inject IDepotCalibrationService CalibrationService
+@inject IDepotFormulationRepository DepotRepository
+@inject IDepotAssayRepository AssayRepository
 @inject IWeaverLocalizer Localizer
+@inject IJSRuntime JS
 
 <section class="card panel" role="region" aria-label="180-Day Depot Studio Header">
     <div class="panel-header">
@@ -195,13 +201,18 @@
             <div class="d-flex align-items-center gap-2">
                 <span class="badge badge-accent font-mono">CYAN: CUMULATIVE RELEASE</span>
                 <span class="badge badge-outline font-mono">AMBER: REMAINING RESERVE</span>
+                @if (_calibrationResult != null)
+                {
+                    <span class="badge badge-success font-mono">EMERALD: RECALIBRATED</span>
+                    <span class="badge badge-danger font-mono">ROSE: OBSERVED ASSAYS</span>
+                }
             </div>
         </div>
 
         <div class="chart-container mt-3">
             <svg viewBox="0 0 720 240" class="w-100" role="img" aria-label="180-Day Depot Release Trajectory Graph">
                 <title>180-Day Depot Release Trajectory</title>
-                <desc>Displays cumulative payload fraction eluted and remaining unreleased payload reserve across 180 simulation days.</desc>
+                <desc>Displays cumulative payload fraction eluted, remaining unreleased payload reserve, recalibrated curve, and observed longitudinal serum assay markers across 180 simulation days.</desc>
 
                 <!-- Phase Division Shading -->
                 <!-- Phase I: Days 1 to 7 -->
@@ -223,11 +234,25 @@
                 <line x1="75" y1="30" x2="75" y2="200" stroke="#00f2fe" stroke-dasharray="3,3" />
                 <line x1="583" y1="30" x2="583" y2="200" stroke="#f59e0b" stroke-dasharray="3,3" />
 
-                <!-- Trajectory Curve: Cumulative Release Fraction (Cyan) -->
-                <path d="@GetCumulativeReleasePath()" fill="none" stroke="#00f2fe" stroke-width="2.5" />
+                <!-- Trajectory Curve: Baseline Cumulative Release Fraction (Cyan; dashed once recalibrated) -->
+                <path d="@GetCumulativeReleasePath(_simulationResult)" fill="none" stroke="#00f2fe" stroke-width="2.5" stroke-dasharray="@(_calibrationResult != null ? "5,3" : null)" />
 
                 <!-- Trajectory Curve: Remaining Payload Reserve (Amber) -->
                 <path d="@GetRemainingReservePath()" fill="none" stroke="#f59e0b" stroke-width="2" stroke-dasharray="4,2" />
+
+                <!-- Recalibrated Cumulative Release Overlay & Observed Assay Markers -->
+                @if (_calibrationResult != null)
+                {
+                    <path data-series="recalibrated" d="@GetCumulativeReleasePath(_calibrationResult.RecalibratedTrajectory)" fill="none" stroke="#10b981" stroke-width="2.5" />
+                    @for (int idx = 0; idx < _recordedAssays.Count; idx++)
+                    {
+                        DepotAssayObservation obs = _recordedAssays[idx];
+                        (double cx, double cy) = ProjectAssayMarker(obs);
+                        <circle class="assay-marker" cx="@cx.ToString("F1", CultureInfo.InvariantCulture)" cy="@cy.ToString("F1", CultureInfo.InvariantCulture)" r="4.5" fill="#f43f5e" stroke="#ffffff" stroke-width="1.5">
+                            <title>@FormatAssayTooltip(obs)</title>
+                        </circle>
+                    }
+                }
 
                 <!-- Phase Labels -->
                 <text x="52" y="24" fill="#00d2ff" font-size="9" font-family="monospace">Phase I (0-7d)</text>
@@ -291,6 +316,163 @@
             </table>
         </div>
     </section>
+
+    <!-- Longitudinal Serum Assay & Adaptive Calibration Panel (Milestone 34) -->
+    <section id="longitudinal-calibration-panel" class="card panel mt-4" role="region" aria-label="@T("Depot.AssaySectionTitle")">
+        <div class="panel-header">
+            <div>
+                <h3>@T("Depot.AssaySectionTitle")</h3>
+                <p class="subtext">@T("Depot.AssaySectionDesc")</p>
+            </div>
+            @if (_calibrationResult != null)
+            {
+                <span id="calibration-safety-badge" class="badge @GetSafetyBadgeClass(_calibrationResult.OverallSafetyStatus) font-mono">
+                    @T($"Depot.SafetyStatus.{_calibrationResult.OverallSafetyStatus}")
+                </span>
+            }
+        </div>
+
+        <div class="telemetry-grid mt-3">
+            <div class="form-group">
+                <label class="form-label" for="input-assay-day">@T("Depot.DaySinceImplant")</label>
+                <input id="input-assay-day" type="number" class="form-control font-mono" @bind="_assayDay" min="1" max="365" step="1" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="input-assay-e2">@T("Depot.ObservedE2")</label>
+                <input id="input-assay-e2" type="number" class="form-control font-mono" @bind="_assayE2" min="0" step="1" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="input-assay-t">@T("Depot.ObservedT")</label>
+                <input id="input-assay-t" type="number" class="form-control font-mono" @bind="_assayT" min="0" step="0.1" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="input-assay-lh">@T("Depot.ObservedLh")</label>
+                <input id="input-assay-lh" type="number" class="form-control font-mono" @bind="_assayLh" min="0" step="0.1" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="input-assay-fsh">@T("Depot.ObservedFsh")</label>
+                <input id="input-assay-fsh" type="number" class="form-control font-mono" @bind="_assayFsh" min="0" step="0.1" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="input-assay-shbg">@T("Depot.ObservedShbg")</label>
+                <input id="input-assay-shbg" type="number" class="form-control font-mono" @bind="_assayShbg" min="0" step="1" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="input-assay-hct">@T("Depot.ObservedHematocrit")</label>
+                <input id="input-assay-hct" type="number" class="form-control font-mono" @bind="_assayHematocrit" min="0" max="100" step="0.1" />
+            </div>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(_assayErrorMessage))
+        {
+            <div id="assay-validation-error" class="alert alert-danger mt-3" role="alert">@_assayErrorMessage</div>
+        }
+
+        <div class="d-flex align-items-center gap-2 mt-4">
+            <button id="btn-record-assay-recalibrate" class="btn btn-primary" @onclick="RecordAssayAndRecalibrateAsync" disabled="@_isCalibrating">
+                @T("Depot.RecordAssay")
+            </button>
+            <button id="btn-clear-assays" class="btn btn-outline" @onclick="ClearAssays" disabled="@(_recordedAssays.Count == 0)">
+                @T("Depot.ClearAssays")
+            </button>
+        </div>
+
+        @if (_calibrationResult != null)
+        {
+            <!-- Adaptive Re-Dosing Telemetry Card -->
+            <div id="adaptive-calibration-card" class="telemetry-grid mt-4">
+                <div class="card stat-card">
+                    <div class="stat-label">@T("Depot.InferredClearance")</div>
+                    <div class="stat-value font-mono text-accent">@_calibrationResult.InferredClearanceMultiplier.ToString("F2")x</div>
+                    <div class="stat-sub">Bounded WLS Posterior [0.40–2.50]</div>
+                </div>
+                <div class="card stat-card">
+                    <div class="stat-label">@T("Depot.InferredErosion")</div>
+                    <div class="stat-value font-mono text-accent">@_calibrationResult.InferredDailyErosionRatePercent.ToString("F2")%/d</div>
+                    <div class="stat-sub">Next Target: @_calibrationResult.RecommendedNextErosionRatePercent.ToString("F2")%/d</div>
+                </div>
+                <div class="card stat-card">
+                    <div class="stat-label">@T("Depot.ResidualRmse")</div>
+                    <div class="stat-value font-mono">@_calibrationResult.ResidualRmse.ToString("F4")</div>
+                    <div class="stat-sub">Assays Assimilated: @_recordedAssays.Count</div>
+                </div>
+                <div class="card stat-card">
+                    <div class="stat-label">@T("Depot.AdjustedRedoseDay")</div>
+                    <div class="stat-value font-mono text-accent">Day @_calibrationResult.AdjustedRedoseDay</div>
+                    <div class="stat-sub">Recalibrated Horizon Forecast</div>
+                </div>
+                <div class="card stat-card">
+                    <div class="stat-label">@T("Depot.RecommendedNextMass")</div>
+                    <div class="stat-value font-mono">@_calibrationResult.RecommendedNextMassMg.ToString("F2") <small class="text-muted">mg</small></div>
+                    <div class="stat-sub">Next 180-Day Depot Fabrication</div>
+                </div>
+            </div>
+
+            <!-- Clinical Safety Guardrail Alerts -->
+            <div id="calibration-safety-alerts" class="mt-4">
+                <h4>@T("Depot.SafetyAlertsTitle")</h4>
+                @if (_calibrationResult.Alerts.Count == 0)
+                {
+                    <p class="subtext mt-2">@T("Depot.NoSafetyAlerts")</p>
+                }
+                else
+                {
+                    <div class="d-flex flex-column gap-2 mt-2">
+                        @foreach (DepotSafetyAlert alert in _calibrationResult.Alerts)
+                        {
+                            <div class="card stat-card" role="status">
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="badge @GetSafetyBadgeClass(alert.Severity) font-mono">@alert.Code</span>
+                                    <span class="font-mono subtext">@alert.MeasuredValue.ToString("F2") vs @alert.ThresholdValue.ToString("F2")</span>
+                                </div>
+                                <p class="mt-2 text-main">@alert.Message</p>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+
+        @if (_recordedAssays.Count > 0)
+        {
+            <div class="table-container mt-4">
+                <table id="recorded-assays-table" class="data-table">
+                    <caption class="sr-only">Recorded Longitudinal Serum Hormone Assays</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">Day</th>
+                            <th scope="col">17β-Estradiol (pmol/L)</th>
+                            <th scope="col">Testosterone (nmol/L)</th>
+                            <th scope="col">LH (IU/L)</th>
+                            <th scope="col">FSH (IU/L)</th>
+                            <th scope="col">SHBG (nmol/L)</th>
+                            <th scope="col">Hematocrit (%)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (DepotAssayObservation obs in _recordedAssays)
+                        {
+                            <tr>
+                                <td class="font-mono">Day @obs.DaySinceImplant</td>
+                                <td class="font-mono">@obs.ObservedE2PmolL.ToString("F1")</td>
+                                <td class="font-mono">@obs.ObservedTNmolL.ToString("F2")</td>
+                                <td class="font-mono">@obs.ObservedLhIuL.ToString("F2")</td>
+                                <td class="font-mono">@obs.ObservedFshIuL.ToString("F2")</td>
+                                <td class="font-mono">@obs.ObservedShbgNmolL.ToString("F1")</td>
+                                <td class="font-mono">@obs.ObservedHematocritPct.ToString("F1")%</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
 }
 
 @code {
@@ -320,6 +502,78 @@
     private TimeReleaseSimulationResult? _simulationResult;
 
     /// <summary>
+    /// Persisted active depot formulation identifier for the current studio calibration session.
+    /// </summary>
+    private string? _activeDepotId;
+
+    /// <summary>
+    /// Chronological list of recorded longitudinal serum hormone assays for the active studio session.
+    /// </summary>
+    private readonly List<DepotAssayObservation> _recordedAssays = [];
+
+    /// <summary>
+    /// Latest Bayesian longitudinal calibration result computed from <see cref="_recordedAssays"/>.
+    /// </summary>
+    private DepotCalibrationResult? _calibrationResult;
+
+    /// <summary>
+    /// Form input: elapsed day since depot implantation (1 to 365).
+    /// </summary>
+    private int _assayDay = 30;
+
+    /// <summary>
+    /// Form input: observed serum 17β-estradiol in pmol/L.
+    /// </summary>
+    private double _assayE2 = 520.0;
+
+    /// <summary>
+    /// Form input: observed serum total testosterone in nmol/L.
+    /// </summary>
+    private double _assayT = 1.1;
+
+    /// <summary>
+    /// Form input: observed serum LH in IU/L.
+    /// </summary>
+    private double _assayLh = 0.6;
+
+    /// <summary>
+    /// Form input: observed serum FSH in IU/L.
+    /// </summary>
+    private double _assayFsh = 0.9;
+
+    /// <summary>
+    /// Form input: observed serum SHBG in nmol/L.
+    /// </summary>
+    private double _assayShbg = 78.0;
+
+    /// <summary>
+    /// Form input: observed blood hematocrit percentage.
+    /// </summary>
+    private double _assayHematocrit = 41.5;
+
+    /// <summary>
+    /// Validation or calibration error message displayed in the longitudinal panel.
+    /// </summary>
+    private string? _assayErrorMessage;
+
+    /// <summary>
+    /// Indicates whether an asynchronous assay persistence and calibration operation is in progress.
+    /// </summary>
+    private bool _isCalibrating;
+
+    /// <summary>
+    /// Currently active community localization language.
+    /// </summary>
+    private WeaverLanguage _currentLanguage = WeaverLanguage.English;
+
+    /// <summary>
+    /// Resolves a localized UI string for the active community language.
+    /// </summary>
+    /// <param name="key">Dot-notated localization resource key.</param>
+    /// <returns>Translated text in the active language.</returns>
+    private string T(string key) => Localizer.GetString(key, _currentLanguage);
+
+    /// <summary>
     /// Initializes component state and executes the default baseline simulation.
     /// </summary>
     protected override void OnInitialized()
@@ -331,19 +585,48 @@
     }
 
     /// <summary>
-    /// Executes the 180-day time-release depot kinetic simulation using configured parameters.
+    /// Synchronizes the user's persisted browser language preference after initial client render.
     /// </summary>
-    private void RunSimulation()
+    /// <param name="firstRender"><see langword="true"/> on initial interactive render.</param>
+    /// <returns>A task representing the asynchronous JS interop language lookup.</returns>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        // WHAT: Constructs simulation parameters and invokes computational time-release depot engine.
-        // WHY:  Calculates multi-phase elution, HPG feedback suppression, and semi-annual re-dosing alert day.
-        // HOW:  Sets up TimeReleaseDepotParameters matching selected regimen setpoints and invokes DepotService.Simulate180DayDepot.
+        // WHAT: Queries stored language preference from browser storage and re-renders localized strings.
+        // WHY:  Ensures all 18 community locales (including Arabic RTL) render dynamically across the Depot Studio.
+        // HOW:  Invokes 'weaverGetLanguage' via JS interop inside a headless-safe try/catch block.
+        if (firstRender)
+        {
+            try
+            {
+                string? storedTag = await JS.InvokeAsync<string?>("weaverGetLanguage");
+                if (!string.IsNullOrWhiteSpace(storedTag))
+                {
+                    _currentLanguage = Localizer.ResolveLanguage(storedTag);
+                    StateHasChanged();
+                }
+            }
+            catch (Exception)
+            {
+                // Headless bUnit tests or server prerendering
+            }
+        }
+    }
+
+    /// <summary>
+    /// Constructs the current baseline <see cref="TimeReleaseDepotParameters"/> from active form inputs.
+    /// </summary>
+    /// <returns>Configured baseline depot simulation parameters.</returns>
+    private TimeReleaseDepotParameters BuildBaselineParameters()
+    {
+        // WHAT: Translates UI formulation inputs into a strongly typed TimeReleaseDepotParameters record.
+        // WHY:  Shares a single canonical baseline specification between forward simulation and longitudinal calibration.
+        // HOW:  Maps selected regimen physiological defaults, matrix type, clamped mass, and erosion rate.
         double initialE2 = _selectedRegimen == TherapeuticRegimen.MaleToFemale ? 120.0 : 450.0;
         double initialT = _selectedRegimen == TherapeuticRegimen.MaleToFemale ? 18.0 : 1.5;
         double targetE2 = _selectedRegimen == TherapeuticRegimen.MaleToFemale ? 550.0 : 100.0;
         double targetT = _selectedRegimen == TherapeuticRegimen.MaleToFemale ? 1.2 : 20.0;
 
-        TimeReleaseDepotParameters parameters = new()
+        return new TimeReleaseDepotParameters
         {
             Regimen = _selectedRegimen,
             MatrixType = _selectedMatrix,
@@ -359,8 +642,17 @@
             TargetTestosteroneNmolL = targetT,
             DailyErosionRatePercent = Math.Clamp(_dailyErosionRatePercent, 0.05, 100.0)
         };
+    }
 
-        _simulationResult = DepotService.Simulate180DayDepot(parameters);
+    /// <summary>
+    /// Executes the 180-day time-release depot kinetic simulation using configured parameters.
+    /// </summary>
+    private void RunSimulation()
+    {
+        // WHAT: Constructs simulation parameters and invokes computational time-release depot engine.
+        // WHY:  Calculates multi-phase elution, HPG feedback suppression, and semi-annual re-dosing alert day.
+        // HOW:  Builds baseline parameters and invokes DepotService.Simulate180DayDepot.
+        _simulationResult = DepotService.Simulate180DayDepot(BuildBaselineParameters());
     }
 
     /// <summary>
@@ -370,11 +662,12 @@
     {
         // WHAT: Restores formulation configuration inputs to pristine clinical defaults.
         // WHY:  Permits wet-lab operators to quickly discard parameter explorations and resume standard protocols.
-        // HOW:  Reassigns fields and dispatches RunSimulation.
+        // HOW:  Reassigns fields, clears recorded studio assays, and dispatches RunSimulation.
         _selectedRegimen = TherapeuticRegimen.MaleToFemale;
         _selectedMatrix = PolymerMatrixType.PlgaPegPlga;
         _initialMassMg = 16.0;
         _dailyErosionRatePercent = 0.55;
+        ClearAssays();
         RunSimulation();
     }
 
@@ -386,13 +679,141 @@
     {
         // WHAT: Synchronizes selected therapeutic regimen, adjusts default loaded payload mass, and re-executes depot kinetics.
         // WHY:  Different endocrine regimens require distinct baseline and target sex steroid thresholds (16.0 mg E2 for MtF vs 1050.0 mg T for FtM).
-        // HOW:  Parses enum value from event string, updates _initialMassMg to regimen clinical default, and invokes RunSimulation.
+        // HOW:  Parses enum value from event string, updates _initialMassMg and default assay values, and invokes RunSimulation.
         if (Enum.TryParse(e.Value?.ToString(), out TherapeuticRegimen regimen))
         {
             _selectedRegimen = regimen;
             _initialMassMg = regimen == TherapeuticRegimen.FemaleToMale ? 1050.0 : 16.0;
+            _assayE2 = regimen == TherapeuticRegimen.FemaleToMale ? 95.0 : 520.0;
+            _assayT = regimen == TherapeuticRegimen.FemaleToMale ? 21.0 : 1.1;
+            _assayHematocrit = regimen == TherapeuticRegimen.FemaleToMale ? 47.0 : 41.5;
+            ClearAssays();
             RunSimulation();
         }
+    }
+
+    /// <summary>
+    /// Validates the longitudinal assay inputs, persists the observation and formulation, runs Bayesian
+    /// recalibration, saves the calibration snapshot, and updates the interactive UI overlay.
+    /// </summary>
+    /// <returns>A task representing the asynchronous persistence and calibration workflow.</returns>
+    private async Task RecordAssayAndRecalibrateAsync()
+    {
+        // WHAT: Persists a new longitudinal serum hormone assay and executes adaptive Bayesian recalibration.
+        // WHY:  Enables interactive observed-vs-predicted trajectory comparison and immediate clinical safety evaluation.
+        // HOW:  Validates numeric bounds, upserts active depot formulation, records assay via IDepotAssayRepository,
+        //       runs IDepotCalibrationService.CalibrateDepot, and persists the calibration snapshot.
+        _assayErrorMessage = null;
+
+        if (_assayDay < 1 || _assayDay > 365)
+        {
+            _assayErrorMessage = "Day since implant must be between 1 and 365.";
+            return;
+        }
+
+        if (_assayE2 < 0.0 || _assayT < 0.0 || _assayLh < 0.0 || _assayFsh < 0.0 || _assayShbg < 0.0)
+        {
+            _assayErrorMessage = "Observed hormone concentrations cannot be negative.";
+            return;
+        }
+
+        if (_assayHematocrit < 0.0 || _assayHematocrit > 100.0)
+        {
+            _assayErrorMessage = "Observed hematocrit must be between 0.0% and 100.0%.";
+            return;
+        }
+
+        _isCalibrating = true;
+        try
+        {
+            TimeReleaseDepotParameters baseline = BuildBaselineParameters();
+            string patientId = "depot-studio-session";
+            if (string.IsNullOrWhiteSpace(_activeDepotId))
+            {
+                _activeDepotId = $"depot_studio_{Guid.NewGuid():N}";
+                await DepotRepository.UpsertDepotFormulationAsync(new DepotFormulationRecord
+                {
+                    DepotId = _activeDepotId,
+                    PatientId = patientId,
+                    Regimen = baseline.Regimen,
+                    PolymerMatrixType = baseline.MatrixType.ToString(),
+                    InitialNanocarrierMassMg = baseline.InitialPayloadMassMg,
+                    DailyErosionRatePercent = baseline.DailyErosionRatePercent,
+                    ReleaseKineticsModel = baseline.KineticsModel.ToString(),
+                    TargetHorizonDays = baseline.TargetHorizonDays,
+                    CreatedAtUtc = DateTimeOffset.UtcNow
+                });
+            }
+
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            await AssayRepository.RecordObservationAsync(new DepotAssayObservationRecord
+            {
+                DepotId = _activeDepotId,
+                PatientId = patientId,
+                DaySinceImplant = _assayDay,
+                ObservedE2PmolL = _assayE2,
+                ObservedTNmolL = _assayT,
+                ObservedLhIuL = _assayLh,
+                ObservedFshIuL = _assayFsh,
+                ObservedShbgNmolL = _assayShbg,
+                ObservedHematocritPct = _assayHematocrit,
+                RecordedAtUtc = now
+            });
+
+            _recordedAssays.Add(new DepotAssayObservation
+            {
+                DaySinceImplant = _assayDay,
+                ObservedE2PmolL = _assayE2,
+                ObservedTNmolL = _assayT,
+                ObservedLhIuL = _assayLh,
+                ObservedFshIuL = _assayFsh,
+                ObservedShbgNmolL = _assayShbg,
+                ObservedHematocritPct = _assayHematocrit,
+                RecordedAtUtc = now
+            });
+            _recordedAssays.Sort((a, b) => a.DaySinceImplant.CompareTo(b.DaySinceImplant));
+
+            DepotCalibrationResult result = CalibrationService.CalibrateDepot(new DepotCalibrationRequest
+            {
+                DepotId = _activeDepotId,
+                PatientId = patientId,
+                BaselineParameters = baseline,
+                Observations = _recordedAssays
+            });
+
+            await AssayRepository.SaveCalibrationSnapshotAsync(new DepotCalibrationSnapshotRecord
+            {
+                DepotId = _activeDepotId,
+                PatientId = patientId,
+                InferredClearanceMultiplier = result.InferredClearanceMultiplier,
+                InferredDailyErosionRatePercent = result.InferredDailyErosionRatePercent,
+                AdjustedRedoseDay = result.AdjustedRedoseDay,
+                RecommendedNextMassMg = result.RecommendedNextMassMg,
+                SafetyStatus = result.OverallSafetyStatus,
+                ResidualRmse = result.ResidualRmse,
+                ComputedAtUtc = DateTimeOffset.UtcNow
+            });
+
+            _calibrationResult = result;
+        }
+        finally
+        {
+            _isCalibrating = false;
+        }
+    }
+
+    /// <summary>
+    /// Clears all recorded longitudinal assays and removes the recalibrated overlay from the studio view.
+    /// </summary>
+    private void ClearAssays()
+    {
+        // WHAT: Resets session assay history and recalibration state.
+        // WHY:  Allows clinicians to start a fresh longitudinal series when switching formulations.
+        // HOW:  Clears _recordedAssays, nulls _calibrationResult, _activeDepotId, and _assayErrorMessage.
+        _recordedAssays.Clear();
+        _calibrationResult = null;
+        _activeDepotId = null;
+        _assayErrorMessage = null;
     }
 
     /// <summary>
@@ -441,23 +862,73 @@
     }
 
     /// <summary>
-    /// Builds the SVG path definition for the cumulative release fraction trajectory.
+    /// Resolves the sovereign theme CSS badge class corresponding to a <see cref="DepotSafetyStatus"/> tier.
     /// </summary>
+    /// <param name="status">Clinical safety classification tier.</param>
+    /// <returns>A CSS badge utility class name.</returns>
+    private static string GetSafetyBadgeClass(DepotSafetyStatus status) => status switch
+    {
+        DepotSafetyStatus.Optimal => "badge-success",
+        DepotSafetyStatus.AdvisoryDrift => "badge-outline",
+        DepotSafetyStatus.WarningEscape => "badge-warning",
+        DepotSafetyStatus.CriticalSafety => "badge-danger",
+        _ => "badge-outline"
+    };
+
+    /// <summary>
+    /// Projects a recorded longitudinal serum assay onto the 180-day SVG canvas coordinate space.
+    /// </summary>
+    /// <param name="obs">The recorded serum assay observation.</param>
+    /// <returns>Projected <c>(X, Y)</c> pixel coordinates within the SVG viewport.</returns>
+    private (double X, double Y) ProjectAssayMarker(DepotAssayObservation obs)
+    {
+        // WHAT: Maps an observed longitudinal lab draw onto the SVG chart canvas.
+        // WHY:  Provides immediate visual alignment between measured blood levels and predicted curves.
+        // HOW:  Projects DaySinceImplant (0..180) to X (50..690) and normalized cumulative/target ratio to Y (200..40).
+        double clampedDay = Math.Clamp(obs.DaySinceImplant, 0, 180);
+        double x = 50.0 + (clampedDay / 180.0) * 640.0;
+        double targetRef = _selectedRegimen == TherapeuticRegimen.FemaleToMale ? 30.0 : 900.0;
+        double observedPrimary = _selectedRegimen == TherapeuticRegimen.FemaleToMale ? obs.ObservedTNmolL : obs.ObservedE2PmolL;
+        double normalizedRatio = Math.Clamp(observedPrimary / targetRef, 0.0, 1.0);
+        double y = 200.0 - (normalizedRatio * 160.0);
+        return (x, y);
+    }
+
+    /// <summary>
+    /// Formats an accessible SVG tooltip summarizing a measured longitudinal serum assay point.
+    /// </summary>
+    /// <param name="obs">The observed serum assay.</param>
+    /// <returns>Plain-English tooltip string for SVG <c>&lt;title&gt;</c> elements.</returns>
+    private static string FormatAssayTooltip(DepotAssayObservation obs) =>
+        string.Format(
+            CultureInfo.InvariantCulture,
+            "Day {0}: E2 {1:F1} pmol/L, T {2:F2} nmol/L, LH {3:F2} IU/L, FSH {4:F2} IU/L, Hct {5:F1}%",
+            obs.DaySinceImplant,
+            obs.ObservedE2PmolL,
+            obs.ObservedTNmolL,
+            obs.ObservedLhIuL,
+            obs.ObservedFshIuL,
+            obs.ObservedHematocritPct);
+
+    /// <summary>
+    /// Builds the SVG path definition for the cumulative release fraction trajectory of a simulation result.
+    /// </summary>
+    /// <param name="simulation">The simulation result whose cumulative release trajectory should be plotted.</param>
     /// <returns>SVG path string command attribute (e.g. 'M 50 200 L 53 198 ...').</returns>
-    private string GetCumulativeReleasePath()
+    private static string GetCumulativeReleasePath(TimeReleaseSimulationResult? simulation)
     {
         // WHAT: Maps daily trajectory simulation points to SVG canvas pixel coordinates.
-        // WHY:  Enables responsive vector visualization of the 180-day multi-phase elution curve.
+        // WHY:  Enables responsive vector visualization of baseline and recalibrated 180-day multi-phase elution curves.
         // HOW:  Iterates over points, projecting day (0..180) to X (50..690) and fraction (0..1) to Y (200..40).
-        if (_simulationResult == null || _simulationResult.Points.Count == 0)
+        if (simulation == null || simulation.Points.Count == 0)
         {
             return string.Empty;
         }
 
         StringBuilder sb = new();
-        for (int i = 0; i < _simulationResult.Points.Count; i++)
+        for (int i = 0; i < simulation.Points.Count; i++)
         {
-            TimeReleaseDailyPoint pt = _simulationResult.Points[i];
+            TimeReleaseDailyPoint pt = simulation.Points[i];
             double x = 50.0 + (pt.Day / 180.0) * 640.0;
             double y = 200.0 - (pt.CumulativeFraction * 160.0);
             char cmd = i == 0 ? 'M' : 'L';

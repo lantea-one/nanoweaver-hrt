@@ -1779,4 +1779,38 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.LogoutAsync(profile, ""));
         Assert.False(client.HasActiveSession);
     }
+
+    /// <summary>
+    /// Verifies that <see cref="WeaverNodeApiClient"/> forwards Milestone 34 depot assay and calibration calls
+    /// with the resolved bearer token and enforces disposal checks.
+    /// </summary>
+    [Fact]
+    public async Task WeaverNodeApiClient_DepotCalibrationMethods_ForwardAndEnforceDisposal()
+    {
+        // WHAT: Tests RecordDepotAssayAsync, GetDepotAssaysAsync, CalibrateDepotAsync, and GetLatestDepotCalibrationAsync pass-through.
+        // WHY:  Milestone 34 (P182): Guarantees 100% coverage of WeaverNodeApiClient calibration delegation and disposal guards.
+        // HOW:  Mocks INanoWeaverNodeClient, invokes all four methods, disposes client, and asserts ObjectDisposedException.
+        InstanceProfile profile = new("p1", "Profile 1", "http://127.0.0.1:5000", true, "admin", "Administrator", "Ed25519", "pub", "enc", false, 10, DateTimeOffset.UtcNow, null);
+        Mock<INanoWeaverNodeClient> innerMock = new();
+        RecordDepotAssayRequest req = new RecordDepotAssayRequest().GetExamples();
+        DepotAssayObservationResponse obs = new DepotAssayObservationResponse().GetExamples();
+        DepotCalibrationResponse cal = new DepotCalibrationResponse().GetExamples();
+
+        innerMock.Setup(i => i.RecordDepotAssayAsync(profile, "tok", "depot-1", req, It.IsAny<CancellationToken>())).ReturnsAsync(obs);
+        innerMock.Setup(i => i.GetDepotAssaysAsync(profile, "tok", "depot-1", It.IsAny<CancellationToken>())).ReturnsAsync([obs]);
+        innerMock.Setup(i => i.CalibrateDepotAsync(profile, "tok", "depot-1", It.IsAny<CancellationToken>())).ReturnsAsync(cal);
+        innerMock.Setup(i => i.GetLatestDepotCalibrationAsync(profile, "tok", "depot-1", It.IsAny<CancellationToken>())).ReturnsAsync(cal);
+
+        WeaverNodeApiClient client = new(innerMock.Object);
+        Assert.Equal(obs.ObservationId, (await client.RecordDepotAssayAsync(profile, "tok", "depot-1", req)).ObservationId);
+        Assert.Single(await client.GetDepotAssaysAsync(profile, "tok", "depot-1"));
+        Assert.Equal(cal.SnapshotId, (await client.CalibrateDepotAsync(profile, "tok", "depot-1")).SnapshotId);
+        Assert.Equal(cal.SnapshotId, (await client.GetLatestDepotCalibrationAsync(profile, "tok", "depot-1"))?.SnapshotId);
+
+        client.Dispose();
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.RecordDepotAssayAsync(profile, "tok", "depot-1", req));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetDepotAssaysAsync(profile, "tok", "depot-1"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.CalibrateDepotAsync(profile, "tok", "depot-1"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetLatestDepotCalibrationAsync(profile, "tok", "depot-1"));
+    }
 }
