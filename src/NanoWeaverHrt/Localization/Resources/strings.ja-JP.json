@@ -88,5 +88,13 @@
   "FabricationLot.Status.Revoked": "失効",
   "FabricationLot.CertificateTitle": "耐量子分析証明書 (ML-DSA-65)",
   "FabricationLot.CertificateVerified": "ML-DSA-65 署名検証済",
-  "FabricationLot.QuarantineTitle": "ロット隔離 — 臨床出荷をブロックしました"
+  "FabricationLot.QuarantineTitle": "ロット隔離 — 臨床出荷をブロックしました",
+  "FabricationLot.RevokeReasonLabel": "回収・失効理由",
+  "FabricationLot.RevokeLotButton": "ロットを永久に失効させる",
+  "FabricationLot.RevokedBannerTitle": "ロットは永久に失効しました — 投与禁止",
+  "FabricationLot.VerifierSectionTitle": "ノード間 ML-DSA-65 証明書検証ツール",
+  "FabricationLot.VerifierSectionDesc": "自ノードまたは提携研究ノードの分析証明書JSONを貼り付け、ML-DSA-65署名・信頼アンカー・失効状態を検証します。",
+  "FabricationLot.VerifierInputLabel": "分析証明書 JSON ペイロード",
+  "FabricationLot.VerifierButton": "証明書の信頼性と失効を検証",
+  "FabricationLot.VerifierTrustedBadge": "臨床使用として信頼済み"
 }

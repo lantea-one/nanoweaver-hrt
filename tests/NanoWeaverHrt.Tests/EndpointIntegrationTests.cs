@@ -2496,5 +2496,118 @@ public sealed class EndpointIntegrationTests : IClassFixture<WebApplicationFacto
             Assert.Contains(entries, e => e.Action == "FABRICATION_LOT_QUARANTINE" && e.Resource == $"fabrication-lot:{lotId}");
             Assert.Contains(entries, e => e.Action == "FABRICATION_LOT_RELEASE" && e.Resource == $"fabrication-lot:{lotId}");
         }
+
+        // 16. Milestone 36: Verify DTO examples, portable CoA download, peer/local verification, and permanent revocation
+        Assert.Equal(string.Empty, new RevokeFabricationLotRequest().Reason);
+        Assert.False(string.IsNullOrWhiteSpace(new RevokeFabricationLotRequest().GetExamples().Reason));
+        Assert.Equal(FabricationLotStatus.Revoked, new FabricationLotRevocationResponse().GetExamples().Lot.LotStatus);
+        Assert.NotNull(new FabricationLotRevocationResponse().Revocation);
+
+        // Download CoA JSON bundle validation, auth, RBAC, 404, and 200 OK across Admin, Patient self, and granted Researcher
+        Assert.Equal(HttpStatusCode.Unauthorized, (await clientAnon.GetAsync($"/api/fabrication/lots/{lotId}/certificate/download")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.GetAsync("/api/fabrication/lots/%20/certificate/download")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/fabrication/lots/lot_missing/certificate/download")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientB.GetAsync($"/api/fabrication/lots/{lotId}/certificate/download")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync($"/api/fabrication/lots/{customLot.LotId}/certificate/download")).StatusCode);
+
+        string ungrantedResearcher = "fab_res_ungranted";
+        string tokenUngranted = await ProvisionUserAndGetTokenAsync(ungrantedResearcher, UserRole.Researcher);
+        using HttpClient clientUngranted = CreateClientWithBearer(tokenUngranted);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientUngranted.GetAsync($"/api/fabrication/lots/{lotId}/certificate/download")).StatusCode);
+
+        FabricationLotCertificate? downloadedCert = null;
+        foreach (HttpClient authorizedClient in new[] { _client, clientA, clientRes })
+        {
+            HttpResponseMessage dlResp = await authorizedClient.GetAsync($"/api/fabrication/lots/{lotId}/certificate/download");
+            Assert.Equal(HttpStatusCode.OK, dlResp.StatusCode);
+            downloadedCert = await dlResp.Content.ReadFromJsonAsync<FabricationLotCertificate>();
+            Assert.NotNull(downloadedCert);
+            Assert.Equal(lotId, downloadedCert.LotId);
+        }
+
+        // Verify certificate endpoint validation, RBAC, local trust, and peer key matching loop
+        Assert.Equal(HttpStatusCode.Unauthorized, (await clientAnon.PostAsJsonAsync("/api/fabrication/certificates/verify", downloadedCert)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/fabrication/certificates/verify", new FabricationLotCertificate { LotId = " " })).StatusCode);
+        using (StringContent nullCertBody = new("null", Encoding.UTF8, "application/json"))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsync("/api/fabrication/certificates/verify", nullCertBody)).StatusCode);
+        }
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientA.PostAsJsonAsync("/api/fabrication/certificates/verify", downloadedCert)).StatusCode);
+
+        // Seed two peer keys (one non-matching, one matching a synthetic peer key) to exercise both loop branches
+        using (IServiceScope peerScope = _factory.Services.CreateScope())
+        {
+            IPeerKeyRegistry peerReg = peerScope.ServiceProvider.GetRequiredService<IPeerKeyRegistry>();
+            await peerReg.TryRegisterAsync(new PeerKeyRecord
+            {
+                KeyId = "1111111111111111111111111111111111111111111111111111111111111111",
+                Label = "Unmatched Peer Node",
+                Algorithm = KeyAlgorithm.MlDsa65,
+                PublicKeyBase64 = "DUMMY_PUB_1",
+                RegisteredBy = "admin",
+                RegisteredAtUtc = DateTimeOffset.UtcNow
+            });
+            await peerReg.TryRegisterAsync(new PeerKeyRecord
+            {
+                KeyId = "2222222222222222222222222222222222222222222222222222222222222222",
+                Label = "Matched Peer Node",
+                Algorithm = KeyAlgorithm.MlDsa65,
+                PublicKeyBase64 = "DUMMY_PUB_2",
+                RegisteredBy = "admin",
+                RegisteredAtUtc = DateTimeOffset.UtcNow
+            });
+        }
+
+        HttpResponseMessage verifyLocalResp = await clientRes.PostAsJsonAsync("/api/fabrication/certificates/verify", downloadedCert);
+        Assert.Equal(HttpStatusCode.OK, verifyLocalResp.StatusCode);
+        FabricationCertificateVerificationReport? localReport = await verifyLocalResp.Content.ReadFromJsonAsync<FabricationCertificateVerificationReport>();
+        Assert.NotNull(localReport);
+        Assert.True(localReport.IsTrusted);
+        Assert.Equal(FabricationCertificateTrustSource.LocalNode, localReport.TrustSource);
+
+        // Exercise matched peer loop branch
+        HttpResponseMessage verifyPeerMatchResp = await _client.PostAsJsonAsync(
+            "/api/fabrication/certificates/verify",
+            downloadedCert! with { SignerKeyId = "2222222222222222222222222222222222222222222222222222222222222222" });
+        Assert.Equal(HttpStatusCode.OK, verifyPeerMatchResp.StatusCode);
+
+        // Revoke lot validation, RBAC (Admin only), 404, and 200 OK
+        RevokeFabricationLotRequest revokeReq = new() { Reason = "Cold-chain excursion during transit." };
+        Assert.Equal(HttpStatusCode.Unauthorized, (await clientAnon.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/revoke", revokeReq)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/fabrication/lots/%20/revoke", revokeReq)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/revoke", new RevokeFabricationLotRequest { Reason = " " })).StatusCode);
+        using (StringContent nullRevBody = new("null", Encoding.UTF8, "application/json"))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsync($"/api/fabrication/lots/{lotId}/revoke", nullRevBody)).StatusCode);
+        }
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientRes.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/revoke", revokeReq)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientA.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/revoke", revokeReq)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsJsonAsync("/api/fabrication/lots/lot_missing/revoke", revokeReq)).StatusCode);
+
+        HttpResponseMessage revokeResp = await _client.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/revoke", revokeReq);
+        Assert.Equal(HttpStatusCode.OK, revokeResp.StatusCode);
+        FabricationLotRevocationResponse? revokedDto = await revokeResp.Content.ReadFromJsonAsync<FabricationLotRevocationResponse>();
+        Assert.NotNull(revokedDto);
+        Assert.Equal(FabricationLotStatus.Revoked, revokedDto.Lot.LotStatus);
+        Assert.Equal("Cold-chain excursion during transit.", revokedDto.Revocation.RevocationReason);
+
+        // Re-verifying the previously downloaded CoA now reports IsRevoked = true and IsTrusted = false; download returns 404
+        HttpResponseMessage verifyAfterRevoke = await _client.PostAsJsonAsync("/api/fabrication/certificates/verify", downloadedCert);
+        Assert.Equal(HttpStatusCode.OK, verifyAfterRevoke.StatusCode);
+        FabricationCertificateVerificationReport? revokedReport = await verifyAfterRevoke.Content.ReadFromJsonAsync<FabricationCertificateVerificationReport>();
+        Assert.NotNull(revokedReport);
+        Assert.True(revokedReport.IsRevoked);
+        Assert.False(revokedReport.IsTrusted);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync($"/api/fabrication/lots/{lotId}/certificate/download")).StatusCode);
+
+        using (IServiceScope auditScope2 = _factory.Services.CreateScope())
+        {
+            IComplianceAuditService auditService = auditScope2.ServiceProvider.GetRequiredService<IComplianceAuditService>();
+            IReadOnlyList<AuditRecord> entries = auditService.GetAuditRecords(400);
+            Assert.Contains(entries, e => e.Action == "FABRICATION_LOT_REVOKE" && e.Resource == $"fabrication-lot:{lotId}");
+            Assert.Contains(entries, e => e.Action == "FABRICATION_CERT_VERIFY" && e.Resource == $"fabrication-lot:{lotId}");
+        }
     }
 }

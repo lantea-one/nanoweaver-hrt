@@ -88,5 +88,13 @@
   "FabricationLot.Status.Revoked": "ملغاة",
   "FabricationLot.CertificateTitle": "شهادة التحليل المقاومة للكم (ML-DSA-65)",
   "FabricationLot.CertificateVerified": "تم التحقق من توقيع ML-DSA-65",
-  "FabricationLot.QuarantineTitle": "الدفعة في الحجر الصحي — تم حظر الإفراج السريري"
+  "FabricationLot.QuarantineTitle": "الدفعة في الحجر الصحي — تم حظر الإفراج السريري",
+  "FabricationLot.RevokeReasonLabel": "سبب الاستدعاء / الإلغاء",
+  "FabricationLot.RevokeLotButton": "إلغاء الدفعة نهائياً",
+  "FabricationLot.RevokedBannerTitle": "تم إلغاء الدفعة نهائياً — يُمنع الزرع",
+  "FabricationLot.VerifierSectionTitle": "مدقق شهادات ML-DSA-65 عبر العقد",
+  "FabricationLot.VerifierSectionDesc": "الصق شهادة تحليل JSON محمولة من هذه العقدة أو من مختبر نظير موثوق للتحقق من توقيع ML-DSA-65 وسجل الإلغاء.",
+  "FabricationLot.VerifierInputLabel": "بيانات JSON لشهادة التحليل",
+  "FabricationLot.VerifierButton": "التحقق من الثقة والإلغاء",
+  "FabricationLot.VerifierTrustedBadge": "موثوقة للاستخدام السريري"
 }

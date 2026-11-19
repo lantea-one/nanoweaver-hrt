@@ -5269,6 +5269,214 @@ public class Program
         .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden)
         .Produces<SecureProblemDetails>(StatusCodes.Status404NotFound);
 
+        // ---------------------------------------------------------------------
+        // REST API: Cross-Node Certificate Federation, Verification & Revocation (Milestone 36)
+        // ---------------------------------------------------------------------
+        app.MapPost("/api/fabrication/lots/{lotId}/revoke", async (
+            string lotId,
+            RevokeFabricationLotRequest? request,
+            IFabricationLotRepository lotRepository,
+            ProfileDataProtector protector,
+            IComplianceAuditService audit,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Permanently revokes a wet-lab fabrication lot and records a revocation tombstone.
+            // WHY:  Milestone 36 (P192): Enables immediate administrative batch recall blocking future trust verification.
+            // HOW:  Validates inputs and Administrator role, updates lot status to Revoked, persists revocation record, and audits.
+            if (string.IsNullOrWhiteSpace(lotId))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "LotId must not be empty.");
+            }
+
+            if (request is null || string.IsNullOrWhiteSpace(request.Reason))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Revocation reason must not be empty.");
+            }
+
+            // WHY `!`: Authentication middleware guarantees CurrentUser is populated with an authenticated UserAccount before reaching this handler.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            if (caller.Role != UserRole.Administrator)
+            {
+                return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: Administrator role required to revoke fabrication lots.");
+            }
+
+            FabricationLotRecord? lot = await lotRepository.GetLotByIdAsync(lotId.Trim(), ct);
+            if (lot is null)
+            {
+                return SecureProblemResult(context, StatusCodes.Status404NotFound, $"Fabrication lot '{lotId.Trim()}' was not found.");
+            }
+
+            FabricationLotRecord revokedLot = await lotRepository.UpsertLotAsync(
+                lot with { LotStatus = FabricationLotStatus.Revoked },
+                ct);
+
+            FabricationLotRevocationRecord revocation = await lotRepository.RecordLotRevocationAsync(new FabricationLotRevocationRecord
+            {
+                LotId = revokedLot.LotId,
+                PatientId = revokedLot.PatientId,
+                PayloadSha256 = revokedLot.CertificatePayloadSha256,
+                RevokedBy = caller.Username,
+                RevocationReason = request.Reason.Trim(),
+                RevokedAtUtc = DateTimeOffset.UtcNow
+            }, ct);
+
+            audit.LogAction(
+                caller.Username,
+                "FABRICATION_LOT_REVOKE",
+                $"fabrication-lot:{revokedLot.LotId}",
+                JsonSerializer.Serialize(new
+                {
+                    lotId = revokedLot.LotId,
+                    patientId = revokedLot.PatientId,
+                    reason = revocation.RevocationReason
+                }));
+
+            IReadOnlyList<FabricationQcCheckRecord> checks = await lotRepository.GetQcChecksByLotAsync(revokedLot.LotId, ct);
+            return Results.Ok(new FabricationLotRevocationResponse
+            {
+                Lot = FabricationLotMapper.ToLotResponse(revokedLot, checks, protector),
+                Revocation = revocation
+            });
+        })
+        .WithName("RevokeFabricationLot")
+        .WithTags("Wet-Lab Fabrication & QC")
+        .WithSummary("Permanently revokes a wet-lab fabrication lot and records a recall tombstone.")
+        .WithDescription("Transitions a fabrication lot to Revoked status, persists a permanent recall record, and emits a 21 CFR Part 11 audit event. Requires Administrator role.")
+        .Accepts<RevokeFabricationLotRequest>("application/json")
+        .Produces<FabricationLotRevocationResponse>(StatusCodes.Status200OK)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden)
+        .Produces<SecureProblemDetails>(StatusCodes.Status404NotFound);
+
+        app.MapPost("/api/fabrication/certificates/verify", async (
+            FabricationLotCertificate? certificate,
+            IFabricationLotRepository lotRepository,
+            IFabricationLotService lotService,
+            IPeerKeyRegistry peerKeyRegistry,
+            IComplianceAuditService audit,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Verifies an imported or local ML-DSA-65 Certificate of Analysis against node/peer trust anchors and revocations.
+            // WHY:  Milestone 36 (P192): Enables receiving clinics to verify batch provenance across federated sovereign nodes.
+            // HOW:  Checks caller role, looks up matching peer key and revocation tombstone, runs VerifyCertificateAgainstTrustAnchor, and audits.
+            if (certificate is null || string.IsNullOrWhiteSpace(certificate.LotId))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Certificate payload with a valid lotId is required.");
+            }
+
+            // WHY `!`: Authentication middleware guarantees CurrentUser is populated with an authenticated UserAccount before reaching this handler.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            if (caller.Role != UserRole.Administrator && caller.Role != UserRole.Researcher)
+            {
+                return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: Administrator or Researcher role required to verify external certificates.");
+            }
+
+            IReadOnlyList<PeerKeyRecord> allPeers = await peerKeyRegistry.ListAsync(ct);
+            PeerKeyRecord? matchedPeer = null;
+            for (int i = 0; i < allPeers.Count; i++)
+            {
+                if (string.Equals(allPeers[i].KeyId, certificate.SignerKeyId, StringComparison.OrdinalIgnoreCase))
+                {
+                    matchedPeer = allPeers[i];
+                    break;
+                }
+            }
+
+            FabricationLotRevocationRecord? revocation = await lotRepository.GetLotRevocationAsync(certificate.LotId.Trim(), ct);
+            FabricationCertificateVerificationReport report = lotService.VerifyCertificateAgainstTrustAnchor(
+                certificate,
+                matchedPeer,
+                revocation);
+
+            audit.LogAction(
+                caller.Username,
+                "FABRICATION_CERT_VERIFY",
+                $"fabrication-lot:{certificate.LotId.Trim()}",
+                JsonSerializer.Serialize(new
+                {
+                    lotId = report.LotId,
+                    signatureValid = report.SignatureValid,
+                    isTrusted = report.IsTrusted,
+                    isRevoked = report.IsRevoked,
+                    trustSource = report.TrustSource
+                }));
+
+            return Results.Ok(report);
+        })
+        .WithName("VerifyFabricationCertificate")
+        .WithTags("Wet-Lab Fabrication & QC")
+        .WithSummary("Verifies a signed ML-DSA-65 Certificate of Analysis against local/peer trust anchors and revocations.")
+        .WithDescription("Validates canonical SHA-256 and NIST FIPS 204 ML-DSA-65 signature integrity, checks IPeerKeyRegistry trust status, and enforces permanent lot revocation tombstones.")
+        .Accepts<FabricationLotCertificate>("application/json")
+        .Produces<FabricationCertificateVerificationReport>(StatusCodes.Status200OK)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden);
+
+        app.MapGet("/api/fabrication/lots/{lotId}/certificate/download", async (
+            string lotId,
+            IFabricationLotRepository lotRepository,
+            IFabricationLotService lotService,
+            ISubjectAccessService subjectAccess,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Streams a released fabrication lot's signed ML-DSA-65 Certificate of Analysis as a portable JSON file.
+            // WHY:  Milestone 36 (P192): Enables air-gapped transfer and independent verification on peer nodes.
+            // HOW:  Authorizes Admin / Patient self / granted Researcher, reconstructs certificate, and streams UTF-8 JSON attachment.
+            if (string.IsNullOrWhiteSpace(lotId))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "LotId must not be empty.");
+            }
+
+            FabricationLotRecord? lot = await lotRepository.GetLotByIdAsync(lotId.Trim(), ct);
+            if (lot is null)
+            {
+                return SecureProblemResult(context, StatusCodes.Status404NotFound, $"Fabrication lot '{lotId.Trim()}' was not found.");
+            }
+
+            // WHY `!`: Authentication middleware guarantees CurrentUser is populated with an authenticated UserAccount before reaching this handler.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            bool isAuthorized = caller.Role == UserRole.Administrator ||
+                (caller.Role == UserRole.Patient && string.Equals(caller.Username, lot.PatientId, StringComparison.OrdinalIgnoreCase));
+
+            if (!isAuthorized && caller.Role == UserRole.Researcher)
+            {
+                SubjectAccessLevel? accessLevel = await subjectAccess.GetEffectiveAccessLevelAsync(caller.Username, lot.PatientId, ct);
+                if (accessLevel.HasValue)
+                {
+                    isAuthorized = true;
+                }
+            }
+
+            if (!isAuthorized)
+            {
+                return SecureProblemResult(context, StatusCodes.Status403Forbidden, $"Forbidden: Caller is not authorized to download certificates for patient '{lot.PatientId}'.");
+            }
+
+            IReadOnlyList<FabricationQcCheckRecord> checks = await lotRepository.GetQcChecksByLotAsync(lot.LotId, ct);
+            FabricationLotCertificate? certificate = lotService.ReconstructCertificate(lot, checks);
+            if (certificate is null)
+            {
+                return SecureProblemResult(context, StatusCodes.Status404NotFound, $"No active signed Certificate of Analysis exists for lot '{lot.LotId}'.");
+            }
+
+            byte[] payloadBytes = JsonSerializer.SerializeToUtf8Bytes(certificate, new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
+            return Results.File(payloadBytes, "application/json", $"coa_{lot.LotId}.json");
+        })
+        .WithName("DownloadFabricationLotCertificate")
+        .WithTags("Wet-Lab Fabrication & QC")
+        .WithSummary("Downloads a portable signed ML-DSA-65 Certificate of Analysis JSON bundle for a released lot.")
+        .WithDescription("Streams an indented UTF-8 JSON file containing the canonical signed Certificate of Analysis for offline transfer or cross-node verification.")
+        .Produces(StatusCodes.Status200OK, contentType: "application/json")
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden)
+        .Produces<SecureProblemDetails>(StatusCodes.Status404NotFound);
+
         app.Run();
     }
 

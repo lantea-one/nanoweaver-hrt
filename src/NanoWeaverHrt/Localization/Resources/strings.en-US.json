@@ -88,5 +88,13 @@
   "FabricationLot.Status.Revoked": "Revoked",
   "FabricationLot.CertificateTitle": "Post-Quantum Certificate of Analysis (ML-DSA-65)",
   "FabricationLot.CertificateVerified": "ML-DSA-65 SIGNATURE VERIFIED",
-  "FabricationLot.QuarantineTitle": "Lot Quarantined — Clinical Release Blocked"
+  "FabricationLot.QuarantineTitle": "Lot Quarantined — Clinical Release Blocked",
+  "FabricationLot.RevokeReasonLabel": "Recall / Revocation Reason",
+  "FabricationLot.RevokeLotButton": "Permanently Revoke Lot",
+  "FabricationLot.RevokedBannerTitle": "Lot Permanently Revoked — Do Not Implant",
+  "FabricationLot.VerifierSectionTitle": "Cross-Node ML-DSA-65 Certificate Verifier",
+  "FabricationLot.VerifierSectionDesc": "Paste a portable Certificate of Analysis JSON bundle from this node or a federated peer laboratory to verify ML-DSA-65 signature integrity, peer trust anchors, and lot revocations.",
+  "FabricationLot.VerifierInputLabel": "Certificate of Analysis JSON Payload",
+  "FabricationLot.VerifierButton": "Verify Certificate Trust & Revocation",
+  "FabricationLot.VerifierTrustedBadge": "TRUSTED FOR CLINICAL USE"
 }

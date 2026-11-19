@@ -60,6 +60,16 @@ public sealed class DepotStudioComponentTests : BunitContext
     private readonly Mock<IFabricationLotRepository> _lotRepoMock = new();
 
     /// <summary>
+    /// Mocked peer key registry for cross-node certificate verification tests.
+    /// </summary>
+    private readonly Mock<IPeerKeyRegistry> _peerRegistryMock = new();
+
+    /// <summary>
+    /// In-memory stored revocation record for verifying post-revocation checks in bUnit.
+    /// </summary>
+    private FabricationLotRevocationRecord? _storedRevocation;
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="DepotStudioComponentTests"/> class.
     /// </summary>
     public DepotStudioComponentTests()
@@ -93,6 +103,22 @@ public sealed class DepotStudioComponentTests : BunitContext
             .Setup(r => r.RecordQcCheckAsync(It.IsAny<FabricationQcCheckRecord>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((FabricationQcCheckRecord chk, CancellationToken _) => string.IsNullOrWhiteSpace(chk.CheckId) ? chk with { CheckId = $"qc_{Guid.NewGuid():N}" } : chk);
 
+        _lotRepoMock
+            .Setup(r => r.RecordLotRevocationAsync(It.IsAny<FabricationLotRevocationRecord>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((FabricationLotRevocationRecord rev, CancellationToken _) =>
+            {
+                _storedRevocation = rev;
+                return rev;
+            });
+
+        _lotRepoMock
+            .Setup(r => r.GetLotRevocationAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string id, CancellationToken _) => _storedRevocation is not null && _storedRevocation.LotId == id ? _storedRevocation : null);
+
+        _peerRegistryMock
+            .Setup(p => p.ListAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
         Services.AddSingleton<IWeaverLocalizer>(_localizer);
         Services.AddSingleton<ITimeReleaseDepotService>(_depotService);
         Services.AddSingleton<IDepotCalibrationService>(_calibrationService);
@@ -100,6 +126,7 @@ public sealed class DepotStudioComponentTests : BunitContext
         Services.AddSingleton(_depotRepoMock.Object);
         Services.AddSingleton(_assayRepoMock.Object);
         Services.AddSingleton(_lotRepoMock.Object);
+        Services.AddSingleton(_peerRegistryMock.Object);
     }
 
     /// <inheritdoc/>
@@ -337,5 +364,19 @@ public sealed class DepotStudioComponentTests : BunitContext
         Assert.NotNull(cut.Find("#lot-certificate-card"));
         Assert.Contains("ML-DSA-65 SIGNATURE VERIFIED", cut.Find("#lot-certificate-verified-badge").TextContent);
         Assert.Contains("Released (ML-DSA-65 Signed)", cut.Find("#lot-status-badge").TextContent);
+
+        // 4. Milestone 36: Copy CoA into verifier -> verifies TRUSTED FOR CLINICAL USE (LocalNode)
+        cut.Find("#btn-load-active-coa").Click();
+        cut.Find("#btn-verify-peer-certificate").Click();
+        Assert.Contains("TRUSTED FOR CLINICAL USE", cut.Find("#peer-verify-trust-badge").TextContent);
+
+        // 5. Permanently revoke lot -> shows Revoked banner and re-verification flags REVOKED
+        cut.Find("#input-revoke-reason").Change("Cold-chain temperature excursion");
+        cut.Find("#btn-revoke-lot").Click();
+        Assert.Contains("Cold-chain temperature excursion", cut.Find("#lot-revoked-banner").TextContent);
+        Assert.Contains("Revoked", cut.Find("#lot-status-badge").TextContent);
+
+        cut.Find("#btn-verify-peer-certificate").Click();
+        Assert.Contains("REVOKED", cut.Find("#peer-verify-trust-badge").TextContent);
     }
 }

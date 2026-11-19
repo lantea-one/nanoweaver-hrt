@@ -1720,4 +1720,48 @@ public interface INanoWeaverNodeClient
         string bearerToken,
         string lotId,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Permanently revokes a wet-lab fabrication lot via POST /api/fabrication/lots/{lotId}/revoke (Administrator role required).
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="lotId">Target fabrication lot identifier.</param>
+    /// <param name="request">Revocation payload specifying the clinical recall reason.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The updated revoked lot and permanent revocation tombstone.</returns>
+    Task<FabricationLotRevocationResponse> RevokeFabricationLotAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        RevokeFabricationLotRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Verifies an imported or local ML-DSA-65 Certificate of Analysis via POST /api/fabrication/certificates/verify.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="certificate">Signed Certificate of Analysis payload to verify.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Cross-node trust anchor, signature, and revocation verification report.</returns>
+    Task<FabricationCertificateVerificationReport> VerifyFabricationCertificateAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        FabricationLotCertificate certificate,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Downloads a portable signed Certificate of Analysis JSON bundle via GET /api/fabrication/lots/{lotId}/certificate/download.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="lotId">Target fabrication lot identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Raw UTF-8 JSON certificate bundle bytes if released; otherwise <see langword="null"/> when the server returns 404.</returns>
+    Task<byte[]?> DownloadFabricationCertificateBundleAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        CancellationToken ct = default);
 }

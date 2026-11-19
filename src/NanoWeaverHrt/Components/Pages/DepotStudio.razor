@@ -1,6 +1,7 @@
 @page "/depot-studio"
 @using System.Globalization
 @using System.Text
+@using System.Text.Json
 @using NanoWeaverHrt.Endocrine
 @using NanoWeaverHrt.Fabrication
 @using NanoWeaverHrt.Localization
@@ -12,6 +13,7 @@
 @inject IDepotAssayRepository AssayRepository
 @inject IFabricationLotRepository LotRepository
 @inject IFabricationLotService LotService
+@inject IPeerKeyRegistry PeerKeyRegistry
 @inject IWeaverLocalizer Localizer
 @inject IJSRuntime JS
 
@@ -627,6 +629,30 @@
                                 <div class="font-mono">@_lotReleaseEvaluation.Certificate.IssuedAtUtc.ToString("u", CultureInfo.InvariantCulture)</div>
                             </div>
                         </div>
+
+                        <div class="d-flex align-items-center gap-2 mt-3">
+                            <a id="link-download-coa" class="btn btn-outline" href="@($"/api/fabrication/lots/{_activeLot.LotId}/certificate/download")" target="_blank" rel="noopener">
+                                Download Signed CoA JSON
+                            </a>
+                            <button id="btn-load-active-coa" class="btn btn-outline" @onclick="LoadActiveCertificateIntoVerifier">
+                                Copy Into Verifier
+                            </button>
+                        </div>
+
+                        @if (_activeLot.LotStatus == FabricationLotStatus.Released)
+                        {
+                            <div class="telemetry-grid mt-3">
+                                <div class="form-group">
+                                    <label class="form-label" for="input-revoke-reason">@T("FabricationLot.RevokeReasonLabel")</label>
+                                    <input id="input-revoke-reason" type="text" class="form-control" @bind="_revokeReason" placeholder="e.g. Cold-chain excursion during transit" />
+                                </div>
+                            </div>
+                            <div class="d-flex align-items-center gap-2 mt-2">
+                                <button id="btn-revoke-lot" class="btn btn-danger" @onclick="RevokeActiveLotAsync" disabled="@_isLotBusy">
+                                    @T("FabricationLot.RevokeLotButton")
+                                </button>
+                            </div>
+                        }
                     </div>
                 }
                 else
@@ -642,6 +668,57 @@
                     </div>
                 }
             }
+
+            @if (_activeLotRevocation != null)
+            {
+                <div id="lot-revoked-banner" class="alert alert-danger mt-4" role="alert">
+                    <strong>@T("FabricationLot.RevokedBannerTitle")</strong>
+                    <p class="mt-2">@_activeLotRevocation.RevocationReason</p>
+                    <p class="subtext font-mono">Revoked by @_activeLotRevocation.RevokedBy at @_activeLotRevocation.RevokedAtUtc.ToString("u", CultureInfo.InvariantCulture)</p>
+                </div>
+            }
+        }
+    </section>
+
+    <!-- Cross-Node ML-DSA-65 Certificate Verifier Panel (Milestone 36) -->
+    <section id="peer-certificate-verifier-panel" class="card panel mt-4" role="region" aria-label="@T("FabricationLot.VerifierSectionTitle")">
+        <div class="panel-header">
+            <div>
+                <h3>@T("FabricationLot.VerifierSectionTitle")</h3>
+                <p class="subtext">@T("FabricationLot.VerifierSectionDesc")</p>
+            </div>
+        </div>
+
+        <div class="form-group mt-3">
+            <label class="form-label" for="textarea-verify-coa-json">@T("FabricationLot.VerifierInputLabel")</label>
+            <textarea id="textarea-verify-coa-json" class="form-control font-mono" rows="5" @bind="_verifyCertificateJson" placeholder="{ &quot;lotId&quot;: &quot;...&quot;, &quot;signatureBase64&quot;: &quot;...&quot; }"></textarea>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(_verifyErrorMessage))
+        {
+            <div id="peer-verify-error" class="alert alert-danger mt-3" role="alert">@_verifyErrorMessage</div>
+        }
+
+        <div class="d-flex align-items-center gap-2 mt-3">
+            <button id="btn-verify-peer-certificate" class="btn btn-primary" @onclick="VerifyPastedCertificateAsync" disabled="@_isVerifyingCertificate">
+                @T("FabricationLot.VerifierButton")
+            </button>
+        </div>
+
+        @if (_peerVerificationReport != null)
+        {
+            <div id="peer-verify-result-card" class="card stat-card mt-4" role="status">
+                <div class="d-flex align-items-center gap-2">
+                    <span id="peer-verify-trust-badge" class="badge @(_peerVerificationReport.IsTrusted ? "badge-success" : "badge-danger") font-mono">
+                        @(_peerVerificationReport.IsTrusted ? T("FabricationLot.VerifierTrustedBadge") : _peerVerificationReport.IsRevoked ? "REVOKED" : _peerVerificationReport.TrustSource.ToString().ToUpperInvariant())
+                    </span>
+                    <span class="badge badge-outline font-mono">@_peerVerificationReport.TrustSource</span>
+                </div>
+                <p class="mt-2 text-main">@_peerVerificationReport.Summary</p>
+                <div class="subtext font-mono text-break-all mt-1">
+                    Lot: @_peerVerificationReport.LotId &bull; Signer: @_peerVerificationReport.SignerKeyId
+                </div>
+            </div>
         }
     </section>
 }
@@ -791,6 +868,36 @@
     /// Indicates whether an asynchronous lot persistence or signing operation is running.
     /// </summary>
     private bool _isLotBusy;
+
+    /// <summary>
+    /// Plain-English recall reason entered before revoking an active released lot.
+    /// </summary>
+    private string _revokeReason = string.Empty;
+
+    /// <summary>
+    /// Active lot revocation tombstone once revoked in the current studio session.
+    /// </summary>
+    private FabricationLotRevocationRecord? _activeLotRevocation;
+
+    /// <summary>
+    /// Portable Certificate of Analysis JSON text pasted into the cross-node verifier.
+    /// </summary>
+    private string _verifyCertificateJson = string.Empty;
+
+    /// <summary>
+    /// Validation or parse error message displayed in the cross-node verifier.
+    /// </summary>
+    private string? _verifyErrorMessage;
+
+    /// <summary>
+    /// Latest cross-node trust and revocation verification report.
+    /// </summary>
+    private FabricationCertificateVerificationReport? _peerVerificationReport;
+
+    /// <summary>
+    /// Indicates whether a cross-node certificate verification request is currently executing.
+    /// </summary>
+    private bool _isVerifyingCertificate;
 
     /// <summary>
     /// Resolves a localized UI string for the active community language.
@@ -1047,6 +1154,10 @@
         _lotReleaseEvaluation = null;
         _lotCertificateVerified = false;
         _lotErrorMessage = null;
+        _activeLotRevocation = null;
+        _revokeReason = string.Empty;
+        _peerVerificationReport = null;
+        _verifyErrorMessage = null;
     }
 
     /// <summary>
@@ -1418,4 +1529,119 @@
         FabricationLotStatus.QcPending => "badge-warning",
         _ => "badge-outline"
     };
+
+    /// <summary>
+    /// Serializes the active released Certificate of Analysis into the cross-node verifier JSON textarea.
+    /// </summary>
+    private void LoadActiveCertificateIntoVerifier()
+    {
+        // WHAT: Copies the currently issued ML-DSA-65 Certificate of Analysis JSON into the verifier input.
+        // WHY:  Lets clinicians immediately test local/federated trust verification and revocation enforcement.
+        // HOW:  Serializes _lotReleaseEvaluation.Certificate with web camelCase options into _verifyCertificateJson.
+        if (_lotReleaseEvaluation?.Certificate is not null)
+        {
+            _verifyCertificateJson = JsonSerializer.Serialize(
+                _lotReleaseEvaluation.Certificate,
+                new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
+            _verifyErrorMessage = null;
+        }
+    }
+
+    /// <summary>
+    /// Permanently revokes the currently released fabrication lot and persists a recall tombstone.
+    /// </summary>
+    /// <returns>A task representing the asynchronous revocation operation.</returns>
+    private async Task RevokeActiveLotAsync()
+    {
+        // WHAT: Transitions the active released lot to Revoked and writes a permanent revocation record.
+        // WHY:  Milestone 36 (P193): Enforces immediate recall blocking inside DepotStudio and across verifiers.
+        // HOW:  Validates non-blank reason, updates lot status, records tombstone via LotRepository, and updates UI.
+        _lotErrorMessage = null;
+        if (_activeLot is null)
+        {
+            _lotErrorMessage = "No active fabrication lot to revoke.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_revokeReason))
+        {
+            _lotErrorMessage = "Enter a clinical recall reason before revoking this lot.";
+            return;
+        }
+
+        _isLotBusy = true;
+        try
+        {
+            _activeLot = await LotRepository.UpsertLotAsync(_activeLot with { LotStatus = FabricationLotStatus.Revoked });
+            _activeLotRevocation = await LotRepository.RecordLotRevocationAsync(new FabricationLotRevocationRecord
+            {
+                LotId = _activeLot.LotId,
+                PatientId = _activeLot.PatientId,
+                PayloadSha256 = _activeLot.CertificatePayloadSha256,
+                RevokedBy = "depot-studio-operator",
+                RevocationReason = _revokeReason.Trim(),
+                RevokedAtUtc = DateTimeOffset.UtcNow
+            });
+        }
+        finally
+        {
+            _isLotBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Parses a pasted Certificate of Analysis JSON bundle and verifies its ML-DSA-65 signature,
+    /// local/peer trust anchor, and revocation status.
+    /// </summary>
+    /// <returns>A task representing the asynchronous certificate verification operation.</returns>
+    private async Task VerifyPastedCertificateAsync()
+    {
+        // WHAT: Verifies an imported or local ML-DSA-65 Certificate of Analysis JSON bundle against trust anchors.
+        // WHY:  Milestone 36 (P193): Surfaces live cross-node signature, peer registry, and revocation checks in UI.
+        // HOW:  Deserializes JSON, checks IPeerKeyRegistry and LotRepository revocation tombstones, and calls LotService.
+        _verifyErrorMessage = null;
+        _peerVerificationReport = null;
+
+        if (string.IsNullOrWhiteSpace(_verifyCertificateJson))
+        {
+            _verifyErrorMessage = "Paste a signed Certificate of Analysis JSON bundle to verify.";
+            return;
+        }
+
+        _isVerifyingCertificate = true;
+        try
+        {
+            FabricationLotCertificate? certificate = JsonSerializer.Deserialize<FabricationLotCertificate>(
+                _verifyCertificateJson,
+                new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+            if (certificate is null || string.IsNullOrWhiteSpace(certificate.LotId))
+            {
+                _verifyErrorMessage = "JSON payload is not a valid Certificate of Analysis (missing lotId).";
+                return;
+            }
+
+            IReadOnlyList<PeerKeyRecord> peers = await PeerKeyRegistry.ListAsync();
+            PeerKeyRecord? matchedPeer = null;
+            for (int i = 0; i < peers.Count; i++)
+            {
+                if (string.Equals(peers[i].KeyId, certificate.SignerKeyId, StringComparison.OrdinalIgnoreCase))
+                {
+                    matchedPeer = peers[i];
+                    break;
+                }
+            }
+
+            FabricationLotRevocationRecord? revocation = await LotRepository.GetLotRevocationAsync(certificate.LotId.Trim());
+            _peerVerificationReport = LotService.VerifyCertificateAgainstTrustAnchor(certificate, matchedPeer, revocation);
+        }
+        catch (JsonException)
+        {
+            _verifyErrorMessage = "Invalid JSON syntax in Certificate of Analysis payload.";
+        }
+        finally
+        {
+            _isVerifyingCertificate = false;
+        }
+    }
 }

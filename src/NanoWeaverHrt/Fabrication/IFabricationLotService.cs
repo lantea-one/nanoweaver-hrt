@@ -91,4 +91,17 @@ public interface IFabricationLotService
         string polymerMatrixType,
         double targetMassMg,
         double targetErosionRatePercent);
+
+    /// <summary>
+    /// Evaluates a Certificate of Analysis against mathematical ML-DSA-65 integrity, local or peer key trust anchors,
+    /// and any permanent lot revocation tombstone.
+    /// </summary>
+    /// <param name="certificate">The signed Certificate of Analysis to verify.</param>
+    /// <param name="peerKey">Optional matching peer key entry resolved from <c>IPeerKeyRegistry</c> (active or revoked).</param>
+    /// <param name="revocation">Optional lot revocation record resolved from <c>IFabricationLotRepository</c>.</param>
+    /// <returns>A complete <see cref="FabricationCertificateVerificationReport"/> classifying trust and revocation status.</returns>
+    FabricationCertificateVerificationReport VerifyCertificateAgainstTrustAnchor(
+        FabricationLotCertificate certificate,
+        PeerKeyRecord? peerKey,
+        FabricationLotRevocationRecord? revocation);
 }

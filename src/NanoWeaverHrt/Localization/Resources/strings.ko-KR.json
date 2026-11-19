@@ -88,5 +88,13 @@
   "FabricationLot.Status.Revoked": "철회됨",
   "FabricationLot.CertificateTitle": "양자 내성 분석 증명서 (ML-DSA-65)",
   "FabricationLot.CertificateVerified": "ML-DSA-65 서명 검증 완료",
-  "FabricationLot.QuarantineTitle": "로트 격리됨 — 임상 출하 차단됨"
+  "FabricationLot.QuarantineTitle": "로트 격리됨 — 임상 출하 차단됨",
+  "FabricationLot.RevokeReasonLabel": "회수 / 철회 사유",
+  "FabricationLot.RevokeLotButton": "로트 영구 철회",
+  "FabricationLot.RevokedBannerTitle": "로트가 영구 철회되었습니다 — 이식 금지",
+  "FabricationLot.VerifierSectionTitle": "노드 간 ML-DSA-65 인증서 검증기",
+  "FabricationLot.VerifierSectionDesc": "이 노드 또는 연합 피어 연구소의 분석 증명서 JSON을 붙여넣어 ML-DSA-65 서명, 신뢰 앵커 및 철회 여부를 검증합니다.",
+  "FabricationLot.VerifierInputLabel": "분석 증명서 JSON 페이로드",
+  "FabricationLot.VerifierButton": "인증서 신뢰 및 철회 검증",
+  "FabricationLot.VerifierTrustedBadge": "임상 사용 신뢰됨"
 }

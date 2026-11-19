@@ -2095,4 +2095,50 @@ public sealed class WeaverNodeApiClient : INanoWeaverNodeClient, IDisposable
         string effectiveToken = ResolveBearerToken(bearerToken);
         return _innerClient.GetFabricationLotCertificateAsync(profile, effectiveToken, lotId, ct);
     }
+
+    /// <inheritdoc/>
+    public Task<FabricationLotRevocationResponse> RevokeFabricationLotAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        RevokeFabricationLotRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/fabrication/lots/{lotId}/revoke using provided or cached session token.
+        // WHY:  Permanently revokes a wet-lab fabrication lot.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.RevokeFabricationLotAsync(profile, effectiveToken, lotId, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<FabricationCertificateVerificationReport> VerifyFabricationCertificateAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        FabricationLotCertificate certificate,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/fabrication/certificates/verify using provided or cached session token.
+        // WHY:  Verifies a signed ML-DSA-65 Certificate of Analysis against peer trust anchors and revocations.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.VerifyFabricationCertificateAsync(profile, effectiveToken, certificate, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<byte[]?> DownloadFabricationCertificateBundleAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/fabrication/lots/{lotId}/certificate/download using provided or cached token.
+        // WHY:  Downloads a portable signed Certificate of Analysis JSON bundle.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.DownloadFabricationCertificateBundleAsync(profile, effectiveToken, lotId, ct);
+    }
 }

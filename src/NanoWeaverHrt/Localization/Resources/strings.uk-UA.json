@@ -88,5 +88,13 @@
   "FabricationLot.Status.Revoked": "Відкликано",
   "FabricationLot.CertificateTitle": "Постквантовий Сертифікат Аналізу (ML-DSA-65)",
   "FabricationLot.CertificateVerified": "ПІДПИС ML-DSA-65 ПІДТВЕРДЖЕНО",
-  "FabricationLot.QuarantineTitle": "Партія у Карантині — Клінічний Випуск Заблоковано"
+  "FabricationLot.QuarantineTitle": "Партія у Карантині — Клінічний Випуск Заблоковано",
+  "FabricationLot.RevokeReasonLabel": "Причина Відкликання",
+  "FabricationLot.RevokeLotButton": "Назавжди Відкликати Партію",
+  "FabricationLot.RevokedBannerTitle": "Партію Назавжди Відкликано — Не Імплантувати",
+  "FabricationLot.VerifierSectionTitle": "Міжвузловий Верифікатор Сертифікатів ML-DSA-65",
+  "FabricationLot.VerifierSectionDesc": "Вставте портативний JSON-пакет Сертифіката Аналізу з цього вузла або партнерської лабораторії для перевірки підпису ML-DSA-65, довіри та відкликань.",
+  "FabricationLot.VerifierInputLabel": "JSON-дані Сертифіката Аналізу",
+  "FabricationLot.VerifierButton": "Перевірити Довіру та Відкликання",
+  "FabricationLot.VerifierTrustedBadge": "ДОВІРЕНО ДЛЯ КЛІНІЧНОГО ВИКОРИСТАННЯ"
 }

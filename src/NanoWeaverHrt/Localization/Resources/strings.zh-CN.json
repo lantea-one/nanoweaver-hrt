@@ -88,5 +88,13 @@
   "FabricationLot.Status.Revoked": "已吊销",
   "FabricationLot.CertificateTitle": "后量子分析证书 (ML-DSA-65)",
   "FabricationLot.CertificateVerified": "ML-DSA-65 签名验证通过",
-  "FabricationLot.QuarantineTitle": "批次已隔离 — 临床放行已阻止"
+  "FabricationLot.QuarantineTitle": "批次已隔离 — 临床放行已阻止",
+  "FabricationLot.RevokeReasonLabel": "召回 / 吊销原因",
+  "FabricationLot.RevokeLotButton": "永久吊销批次",
+  "FabricationLot.RevokedBannerTitle": "批次已永久吊销 — 禁止植入",
+  "FabricationLot.VerifierSectionTitle": "跨节点 ML-DSA-65 证书验证器",
+  "FabricationLot.VerifierSectionDesc": "粘贴来自本节点或联邦合作实验室的便携式 JSON 分析证书，以验证 ML-DSA-65 签名完整性、节点信任锚及吊销状态。",
+  "FabricationLot.VerifierInputLabel": "分析证书 JSON 内容",
+  "FabricationLot.VerifierButton": "验证证书信任与吊销状态",
+  "FabricationLot.VerifierTrustedBadge": "已获临床使用信任"
 }

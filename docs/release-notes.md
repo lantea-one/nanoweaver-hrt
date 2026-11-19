@@ -4,6 +4,23 @@
 
 ---
 
+## v2026.11.19.3 — Cross-Node Certificate Federation, Peer Verification & Revocation Ledger (Milestone 36 / Forgejo Issues #210–#214) (2026-11-19)
+
+Completes **Milestone 36 (`P190`–`P194` / Forgejo Issues `#210`–`#214`)** plus Renovate GitHub Actions workflow upgrades (`#203`–`#209`), enabling cross-node federated verification of ML-DSA-65 Certificates of Analysis, portable JSON CoA bundle export, and permanent administrative lot recall enforcement:
+* **Phase 1: Lot Certificate Revocation Ledger & Multi-Engine Migration 016 (Forgejo #210 / P190)**:
+  - Added `Migration016_FabricationLotRevocation` (`Version = 16`) across SQLite, PostgreSQL, DuckDB, and MySQL/MariaDB creating `weaver_fabrication_lot_revocations` with patient-level indexing and GDPR Article 17 erasure cascade integration in `FabricationLotRepository`.
+* **Phase 2: Cross-Node Peer Trust Anchor & Revocation Verification Engine (Forgejo #211 / P191)**:
+  - Added `FabricationCertificateTrustSource`, `FabricationCertificateVerificationReport`, and `IFabricationLotService.VerifyCertificateAgainstTrustAnchor` classifying certificates as `LocalNode`, `TrustedPeer`, `RevokedSigner`, `UntrustedSigner`, or `InvalidSignature` while enforcing fail-closed lot revocation overrides.
+* **Phase 3: Revocation, Download & Peer Verification Minimal API Endpoints & Client SDK Parity (Forgejo #212 / P192)**:
+  - Appended `POST /api/fabrication/lots/{lotId}/revoke` (`Administrator` only, logs `FABRICATION_LOT_REVOKE`), `POST /api/fabrication/certificates/verify` (`Administrator`/`Researcher`, logs `FABRICATION_CERT_VERIFY`), and `GET /api/fabrication/lots/{lotId}/certificate/download` (`Administrator`/`Researcher`/`Patient` self, streams portable `coa_{lotId}.json`).
+  - Added `RevokeFabricationLotAsync`, `VerifyFabricationCertificateAsync`, and `DownloadFabricationCertificateBundleAsync` across `INanoWeaverNodeClient`, `NanoWeaverNodeClient`, and `WeaverNodeApiClient`.
+* **Phase 4: Sovereign DepotStudio Revocation & Peer Verifier UI, 18-Language Localization & GUI Core Parity (Forgejo #213 / P193)**:
+  - Extended `DepotStudio.razor` with downloadable CoA links, one-click verifier loading, lot revocation controls, and the live Cross-Node ML-DSA-65 Certificate Verifier panel across all 18 community languages, plus full MVVM parity on `PatientClinicalWorkspaceViewModel`.
+* **Phase 5: End-to-End Verification, Documentation Parity & CalVer Release Closeout (Forgejo #214 / P194)**:
+  - Verified 100% pass across all 8 automated verification gates (`./scripts/verify-all.sh`), 100.00% C# & JS line/branch coverage, 0 uncovered ratchet lines, and updated Forgejo Pages documentation.
+
+---
+
 ## v2026.11.19.2 — Sovereign Patient-Specific Wet-Lab Batch Fabrication & Cryptographic Quality-Control Lot Release (Milestone 35 / Forgejo Issues #198–#202) (2026-11-19)
 
 Completes **Milestone 35 (`P185`–`P189` / Forgejo Issues `#198`–`#202`)** plus all Renovate `.NET 10` dependency upgrades (`bunit 2.15.2`, `Swashbuckle.AspNetCore 11.0.1` / `Microsoft.OpenApi 3.11.0`, `MySqlConnector 3.0.0`, `StackExchange.Redis 3.4.35`, `Microsoft.NET.Test.Sdk 18.12.0`, `valkey:9-alpine`), closing the full clinical loop from adaptive longitudinal depot calibration to physically fabricated, post-quantum certified patient batches:

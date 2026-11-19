@@ -889,8 +889,20 @@ Executes fail-closed 5-gate wet-lab verification (`200 OK`). When every required
 * **Role Requirement**: `Administrator` or cohort-authorized `Researcher`.
 
 #### `GET /api/fabrication/lots/{lotId}/certificate`
-Reconstructs the canonical Certificate of Analysis payload from persisted lot and QC records and verifies both the SHA-256 digest and NIST FIPS 204 **ML-DSA-65** signature live (`200 OK` / `404 Not Found` if unreleased). Any post-release tampering of target mass, Opentrons digest, or QC readings immediately sets `signatureVerified: false`.
+Reconstructs the canonical Certificate of Analysis payload from persisted lot and QC records and verifies both the SHA-256 digest and NIST FIPS 204 **ML-DSA-65** signature live (`200 OK` / `404 Not Found` if unreleased or revoked). Any post-release tampering of target mass, Opentrons digest, or QC readings immediately sets `signatureVerified: false`.
 * **Role Requirement**: `Administrator`, cohort-authorized `Researcher`, or `Patient` self.
+
+#### `GET /api/fabrication/lots/{lotId}/certificate/download`
+Streams the released lot's signed **ML-DSA-65** Certificate of Analysis as a portable UTF-8 JSON file (`coa_{lotId}.json`, `200 OK` / `404 Not Found` if unreleased or revoked) suitable for air-gapped courier transfer or cross-node verification.
+* **Role Requirement**: `Administrator`, cohort-authorized `Researcher`, or `Patient` self.
+
+#### `POST /api/fabrication/lots/{lotId}/revoke`
+Permanently transitions a fabrication lot to `Revoked`, persists a recall tombstone in `weaver_fabrication_lot_revocations`, blocks future certificate downloads/trust verification, and logs `FABRICATION_LOT_REVOKE` to the 21 CFR Part 11 audit ledger (`200 OK`).
+* **Role Requirement**: `Administrator` only.
+
+#### `POST /api/fabrication/certificates/verify`
+Verifies an imported or local **ML-DSA-65** Certificate of Analysis JSON payload against mathematical SHA-256 + ML-DSA-65 integrity, this node's signing key, `IPeerKeyRegistry` (`LocalNode`, `TrustedPeer`, `RevokedSigner`, `UntrustedSigner`, or `InvalidSignature`), and local lot revocation tombstones (`200 OK`), logging `FABRICATION_CERT_VERIFY`.
+* **Role Requirement**: `Administrator` or `Researcher`.
 
 ---
 

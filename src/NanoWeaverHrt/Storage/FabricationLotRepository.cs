@@ -103,6 +103,38 @@ public sealed class FabricationLotRepository : IFabricationLotRepository
     ];
 
     /// <summary>
+    /// Column names for the <c>weaver_fabrication_lot_revocations</c> table.
+    /// </summary>
+    private static readonly string[] RevocationColumns =
+    [
+        "lot_id", "patient_id", "payload_sha256",
+        "revoked_by", "revocation_reason", "revoked_at_utc"
+    ];
+
+    /// <summary>
+    /// Primary key conflict column for lot revocation upserts.
+    /// </summary>
+    private static readonly string[] RevocationConflictColumns = ["lot_id"];
+
+    /// <summary>
+    /// Update column list for lot revocation collision updates.
+    /// </summary>
+    private static readonly string[] RevocationUpdateColumns =
+    [
+        "patient_id", "payload_sha256",
+        "revoked_by", "revocation_reason", "revoked_at_utc"
+    ];
+
+    /// <summary>
+    /// Parameter names corresponding to <see cref="RevocationColumns"/>.
+    /// </summary>
+    private static readonly string[] RevocationParameterNames =
+    [
+        "lid", "pid", "psha",
+        "rby", "rsn", "rat"
+    ];
+
+    /// <summary>
     /// Database connection factory supplying open sessions and dialect helpers.
     /// </summary>
     private readonly IWeaverDbConnectionFactory _connectionFactory;
@@ -314,6 +346,14 @@ public sealed class FabricationLotRepository : IFabricationLotRepository
             await using WeaverDbSession session = await _connectionFactory.OpenAsync(cancellationToken).ConfigureAwait(false);
             await using DbTransaction tx = await session.Connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
+            await using (DbCommand deleteRevocations = session.CreateCommand(
+                $"DELETE FROM weaver_fabrication_lot_revocations WHERE patient_id = {session.Dialect.Parameter("pid")}"))
+            {
+                deleteRevocations.Transaction = tx;
+                WeaverDbParameters.Add(deleteRevocations, "pid", patientId);
+                deletedTotal += await deleteRevocations.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+
             await using (DbCommand deleteChecks = session.CreateCommand(
                 $"DELETE FROM weaver_fabrication_qc_checks WHERE patient_id = {session.Dialect.Parameter("pid")}"))
             {
@@ -405,5 +445,78 @@ public sealed class FabricationLotRepository : IFabricationLotRepository
             RecordedAtUtc = WeaverDbValues.ReadTimestamp(reader, 8),
             NotesEncrypted = reader.IsDBNull(9) ? null : reader.GetString(9)
         };
+    }
+
+    /// <inheritdoc/>
+    public async Task<FabricationLotRevocationRecord> RecordLotRevocationAsync(
+        FabricationLotRevocationRecord revocation,
+        CancellationToken cancellationToken = default)
+    {
+        // WHAT: Inserts or updates a permanent revocation tombstone in weaver_fabrication_lot_revocations.
+        // WHY:  Milestone 36 (P190): Persists recall provenance so revoked batches are never trusted on re-verification.
+        // HOW:  Validates required fields, builds dialect upsert SQL, and binds all typed parameters.
+        ArgumentNullException.ThrowIfNull(revocation);
+        ArgumentException.ThrowIfNullOrWhiteSpace(revocation.LotId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(revocation.PatientId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(revocation.RevokedBy);
+        ArgumentException.ThrowIfNullOrWhiteSpace(revocation.RevocationReason);
+
+        {
+            await using WeaverDbSession session = await _connectionFactory.OpenAsync(cancellationToken).ConfigureAwait(false);
+            string sql = session.Dialect.BuildUpsertSql(
+                "weaver_fabrication_lot_revocations",
+                RevocationColumns,
+                RevocationConflictColumns,
+                RevocationUpdateColumns,
+                RevocationParameterNames);
+
+            await using DbCommand cmd = session.CreateCommand(sql);
+            WeaverDbParameters.Add(cmd, "lid", revocation.LotId);
+            WeaverDbParameters.Add(cmd, "pid", revocation.PatientId);
+            WeaverDbParameters.AddNullable(cmd, "psha", revocation.PayloadSha256);
+            WeaverDbParameters.Add(cmd, "rby", revocation.RevokedBy);
+            WeaverDbParameters.Add(cmd, "rsn", revocation.RevocationReason);
+            WeaverDbParameters.Add(cmd, "rat", revocation.RevokedAtUtc.ToString("o"));
+
+            await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        return revocation;
+    }
+
+    /// <inheritdoc/>
+    public async Task<FabricationLotRevocationRecord?> GetLotRevocationAsync(
+        string lotId,
+        CancellationToken cancellationToken = default)
+    {
+        // WHAT: Queries a lot revocation tombstone by lot_id if present.
+        // WHY:  Milestone 36 (P190): Enables fail-closed revocation detection during Certificate of Analysis checks.
+        // HOW:  Executes a parameterized SELECT filtered by lot_id and maps columns by ordinal index.
+        ArgumentException.ThrowIfNullOrWhiteSpace(lotId);
+
+        FabricationLotRevocationRecord? record = null;
+        {
+            await using WeaverDbSession session = await _connectionFactory.OpenAsync(cancellationToken).ConfigureAwait(false);
+            await using DbCommand cmd = session.CreateCommand(
+                $"SELECT lot_id, patient_id, payload_sha256, revoked_by, revocation_reason, revoked_at_utc FROM weaver_fabrication_lot_revocations WHERE lot_id = {session.Dialect.Parameter("lid")}");
+
+            WeaverDbParameters.Add(cmd, "lid", lotId);
+
+            await using DbDataReader reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            if (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                record = new FabricationLotRevocationRecord
+                {
+                    LotId = reader.GetString(0),
+                    PatientId = reader.GetString(1),
+                    PayloadSha256 = reader.IsDBNull(2) ? null : reader.GetString(2),
+                    RevokedBy = reader.GetString(3),
+                    RevocationReason = reader.GetString(4),
+                    RevokedAtUtc = WeaverDbValues.ReadTimestamp(reader, 5)
+                };
+            }
+        }
+
+        return record;
     }
 }

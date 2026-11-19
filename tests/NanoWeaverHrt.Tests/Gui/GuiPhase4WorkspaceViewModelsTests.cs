@@ -4,6 +4,7 @@ using NanoWeaverHrt.Client.Storage;
 using NanoWeaverHrt.Compliance;
 using NanoWeaverHrt.Configuration;
 using NanoWeaverHrt.Endocrine;
+using NanoWeaverHrt.Fabrication;
 using NanoWeaverHrt.Federation;
 using NanoWeaverHrt.Gui.Core.ViewModels;
 using NanoWeaverHrt.Hardware.Benchmarking;
@@ -1825,5 +1826,46 @@ public sealed class GuiPhase4WorkspaceViewModelsTests
             .ThrowsAsync(new InvalidOperationException("Get cert failed"));
         await Assert.ThrowsAsync<InvalidOperationException>(() => vm.GetFabricationLotCertificateAsync("lot-1"));
         Assert.Equal("Get cert failed", vm.ErrorMessage);
+
+        // 6. RevokeFabricationLotAsync (Milestone 36)
+        RevokeFabricationLotRequest revokeReq = new RevokeFabricationLotRequest().GetExamples();
+        FabricationLotRevocationResponse revokeResp = new FabricationLotRevocationResponse().GetExamples();
+        await Assert.ThrowsAsync<ArgumentException>(() => vm.RevokeFabricationLotAsync(" ", revokeReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => vm.RevokeFabricationLotAsync("lot-1", null!));
+        clientMock.Setup(c => c.RevokeFabricationLotAsync(profile, "token-fab-lot", "lot-1", revokeReq, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(revokeResp);
+        Assert.Same(revokeResp, await vm.RevokeFabricationLotAsync("lot-1", revokeReq));
+
+        clientMock.Setup(c => c.RevokeFabricationLotAsync(profile, "token-fab-lot", "lot-1", revokeReq, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Revoke failed"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.RevokeFabricationLotAsync("lot-1", revokeReq));
+        Assert.Equal("Revoke failed", vm.ErrorMessage);
+
+        // 7. VerifyFabricationCertificateAsync (Milestone 36)
+        FabricationLotCertificate certPayload = new FabricationLotCertificate().GetExamples();
+        FabricationCertificateVerificationReport report = new FabricationCertificateVerificationReport().GetExamples();
+        await Assert.ThrowsAsync<ArgumentNullException>(() => vm.VerifyFabricationCertificateAsync(null!));
+        clientMock.Setup(c => c.VerifyFabricationCertificateAsync(profile, "token-fab-lot", certPayload, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(report);
+        Assert.Same(report, await vm.VerifyFabricationCertificateAsync(certPayload));
+        Assert.Same(report, vm.LastCertificateVerification);
+        Assert.Contains(nameof(PatientClinicalWorkspaceViewModel.LastCertificateVerification), changedProps);
+
+        clientMock.Setup(c => c.VerifyFabricationCertificateAsync(profile, "token-fab-lot", certPayload, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Verify failed"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.VerifyFabricationCertificateAsync(certPayload));
+        Assert.Equal("Verify failed", vm.ErrorMessage);
+
+        // 8. DownloadFabricationCertificateBundleAsync (Milestone 36)
+        byte[] bundleBytes = [9, 8, 7];
+        await Assert.ThrowsAsync<ArgumentException>(() => vm.DownloadFabricationCertificateBundleAsync(" "));
+        clientMock.Setup(c => c.DownloadFabricationCertificateBundleAsync(profile, "token-fab-lot", "lot-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(bundleBytes);
+        Assert.Same(bundleBytes, await vm.DownloadFabricationCertificateBundleAsync("lot-1"));
+
+        clientMock.Setup(c => c.DownloadFabricationCertificateBundleAsync(profile, "token-fab-lot", "lot-1", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Download failed"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.DownloadFabricationCertificateBundleAsync("lot-1"));
+        Assert.Equal("Download failed", vm.ErrorMessage);
     }
 }

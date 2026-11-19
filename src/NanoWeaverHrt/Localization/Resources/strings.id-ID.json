@@ -88,5 +88,13 @@
   "FabricationLot.Status.Revoked": "Dicabut",
   "FabricationLot.CertificateTitle": "Sertifikat Analisis Pasca-Kuantum (ML-DSA-65)",
   "FabricationLot.CertificateVerified": "TANDA TANGAN ML-DSA-65 TERVERIFIKASI",
-  "FabricationLot.QuarantineTitle": "Lot Dikarantina — Pelepasan Klinis Diblokir"
+  "FabricationLot.QuarantineTitle": "Lot Dikarantina — Pelepasan Klinis Diblokir",
+  "FabricationLot.RevokeReasonLabel": "Alasan Penarikan / Pencabutan",
+  "FabricationLot.RevokeLotButton": "Cabut Lot Secara Permanen",
+  "FabricationLot.RevokedBannerTitle": "Lot Dicabut Secara Permanen — Jangan Diimplantasikan",
+  "FabricationLot.VerifierSectionTitle": "Verifikator Sertifikat ML-DSA-65 Lintas-Node",
+  "FabricationLot.VerifierSectionDesc": "Tempelkan bundel JSON Sertifikat Analisis dari node ini atau laboratorium rekan untuk memverifikasi tanda tangan ML-DSA-65, jangkar kepercayaan, dan pencabutan.",
+  "FabricationLot.VerifierInputLabel": "Muatan JSON Sertifikat Analisis",
+  "FabricationLot.VerifierButton": "Verifikasi Kepercayaan & Pencabutan",
+  "FabricationLot.VerifierTrustedBadge": "TERPERCAYA UNTUK PENGGUNAAN KLINIS"
 }

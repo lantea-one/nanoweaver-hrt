@@ -147,7 +147,7 @@ Explore the comprehensive guides and references below:
 24. [**REST API Reference**](api-reference.md)
     * Full endpoint catalog, request/response JSON schemas, and test suite execution.
 25. [**Release Notes & Architecture Evolution**](release-notes.md)
-    * Post-quantum cryptographic upgrades, multi-engine database persistence, longitudinal serum assay depot calibration, cryptographic 5-gate wet-lab lot release, client REST SDK parity, and milestone releases through v2026.11.19.2.
+    * Post-quantum cryptographic upgrades, multi-engine database persistence, longitudinal serum assay depot calibration, cryptographic 5-gate wet-lab lot release, cross-node CoA peer verification & revocation, client REST SDK parity, and milestone releases through v2026.11.19.3.
 26. [**Scientific Research & Legal Disclaimer**](disclaimer.md)
     * Formal scientific research scope, medical non-advice, and BSL-1 biosafety declarations.
 

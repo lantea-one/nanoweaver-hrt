@@ -88,5 +88,13 @@
   "FabricationLot.Status.Revoked": "Widerrufen",
   "FabricationLot.CertificateTitle": "Post-Quanten-Analysezertifikat (ML-DSA-65)",
   "FabricationLot.CertificateVerified": "ML-DSA-65-SIGNATUR VERIFIZIERT",
-  "FabricationLot.QuarantineTitle": "Charge unter Quarantäne — Klinische Freigabe gesperrt"
+  "FabricationLot.QuarantineTitle": "Charge unter Quarantäne — Klinische Freigabe gesperrt",
+  "FabricationLot.RevokeReasonLabel": "Rückruf- / Widerrufsgrund",
+  "FabricationLot.RevokeLotButton": "Charge Dauerhaft Widerrufen",
+  "FabricationLot.RevokedBannerTitle": "Charge Dauerhaft Widerrufen — Nicht Implantieren",
+  "FabricationLot.VerifierSectionTitle": "Knotenübergreifender ML-DSA-65-Zertifikatsprüfer",
+  "FabricationLot.VerifierSectionDesc": "Fügen Sie ein portables JSON-Analysezertifikat dieses Knotens oder eines föderierten Partnerlabors ein, um ML-DSA-65-Signatur, Vertrauensanker und Widerrufe zu prüfen.",
+  "FabricationLot.VerifierInputLabel": "JSON-Nutzdaten des Analysezertifikats",
+  "FabricationLot.VerifierButton": "Zertifikatsvertrauen & Widerruf Prüfen",
+  "FabricationLot.VerifierTrustedBadge": "VERTRAUENSWÜRDIG FÜR KLINISCHE ANWENDUNG"
 }

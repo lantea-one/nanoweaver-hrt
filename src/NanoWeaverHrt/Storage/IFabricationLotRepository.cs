@@ -77,8 +77,28 @@ public interface IFabricationLotRepository
     /// </summary>
     /// <param name="patientId">The patient identifier whose fabrication lots and QC records should be erased.</param>
     /// <param name="cancellationToken">Cancellation token for cancelling the operation.</param>
-    /// <returns>The total number of database rows deleted across QC checks and fabrication lots.</returns>
+    /// <returns>The total number of database rows deleted across revocations, QC checks, and fabrication lots.</returns>
     Task<int> DeleteByPatientIdAsync(
         string patientId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Persists a permanent revocation tombstone for a wet-lab fabrication lot.
+    /// </summary>
+    /// <param name="revocation">The revocation record containing lot ID, revoking administrator, and clinical reason.</param>
+    /// <param name="cancellationToken">Cancellation token for cancelling the operation.</param>
+    /// <returns>The persisted <see cref="FabricationLotRevocationRecord"/>.</returns>
+    Task<FabricationLotRevocationRecord> RecordLotRevocationAsync(
+        FabricationLotRevocationRecord revocation,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Retrieves the permanent revocation record for a fabrication lot if it has been revoked.
+    /// </summary>
+    /// <param name="lotId">The unique fabrication lot identifier.</param>
+    /// <param name="cancellationToken">Cancellation token for cancelling the operation.</param>
+    /// <returns>The <see cref="FabricationLotRevocationRecord"/> if revoked; otherwise, <see langword="null"/>.</returns>
+    Task<FabricationLotRevocationRecord?> GetLotRevocationAsync(
+        string lotId,
         CancellationToken cancellationToken = default);
 }

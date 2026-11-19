@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using NanoWeaverHrt.Endocrine;
 using NanoWeaverHrt.Models;
+using NanoWeaverHrt.Security.Authentication;
 using NanoWeaverHrt.Security.Cryptography;
 using NanoWeaverHrt.Security.KeyManagement;
 using NanoWeaverHrt.Security.Models;
@@ -429,6 +430,140 @@ public sealed class FabricationLotService : IFabricationLotService
 
         byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(canonicalSpec));
         return Convert.ToHexStringLower(hash);
+    }
+
+    /// <inheritdoc/>
+    public FabricationCertificateVerificationReport VerifyCertificateAgainstTrustAnchor(
+        FabricationLotCertificate certificate,
+        PeerKeyRecord? peerKey,
+        FabricationLotRevocationRecord? revocation)
+    {
+        // WHAT: Evaluates mathematical ML-DSA-65 validity, signer trust provenance, and lot-level recall revocation.
+        // WHY:  Milestone 36 (P191): Enables cross-node federated verification where a receiving clinic trusts only
+        //       local or registered unrevoked ML-DSA-65 peer laboratories and blocks recalled lots fail-closed.
+        // HOW:  Verifies canonical SHA-256 + ML-DSA-65 signature first, then resolves LocalNode vs TrustedPeer vs
+        //       RevokedSigner vs UntrustedSigner and overlays any permanent lot revocation tombstone.
+        ArgumentNullException.ThrowIfNull(certificate);
+
+        DateTimeOffset verifiedAtUtc = DateTimeOffset.UtcNow;
+        bool isRevoked = revocation is not null;
+        string? revocationReason = isRevoked ? revocation!.RevocationReason : null; // WHY `!`: guarded by isRevoked (revocation is not null).
+        string? revokedBy = isRevoked ? revocation!.RevokedBy : null; // WHY `!`: guarded by isRevoked (revocation is not null).
+        DateTimeOffset? revokedAtUtc = isRevoked ? revocation!.RevokedAtUtc : null; // WHY `!`: guarded by isRevoked (revocation is not null).
+
+        if (!VerifyLotCertificate(certificate))
+        {
+            return new FabricationCertificateVerificationReport
+            {
+                LotId = certificate.LotId,
+                PayloadSha256 = certificate.PayloadSha256,
+                SignatureValid = false,
+                IsTrusted = false,
+                IsRevoked = isRevoked,
+                TrustSource = FabricationCertificateTrustSource.InvalidSignature,
+                TrustedPeerLabel = null,
+                SignerKeyId = certificate.SignerKeyId,
+                RevocationReason = revocationReason,
+                RevokedBy = revokedBy,
+                RevokedAtUtc = revokedAtUtc,
+                Summary = "Cryptographic verification failed: canonical SHA-256 digest or ML-DSA-65 signature is invalid.",
+                VerifiedAtUtc = verifiedAtUtc
+            };
+        }
+
+        PqcKeyMaterial localKey = _keyManagementService.GetNodeSigningKey();
+        bool matchesLocalNode = string.Equals(certificate.SignerKeyId, localKey.KeyId, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(certificate.SignerPublicKeyBase64, localKey.PublicKeyBase64, StringComparison.Ordinal);
+
+        if (matchesLocalNode)
+        {
+            bool trusted = !isRevoked;
+            string summary = trusted
+                ? "Verified ML-DSA-65 Certificate of Analysis issued by this sovereign node."
+                : $"Signature is valid for this local node, but lot '{certificate.LotId}' was permanently revoked: {revocationReason}";
+
+            return new FabricationCertificateVerificationReport
+            {
+                LotId = certificate.LotId,
+                PayloadSha256 = certificate.PayloadSha256,
+                SignatureValid = true,
+                IsTrusted = trusted,
+                IsRevoked = isRevoked,
+                TrustSource = FabricationCertificateTrustSource.LocalNode,
+                TrustedPeerLabel = null,
+                SignerKeyId = certificate.SignerKeyId,
+                RevocationReason = revocationReason,
+                RevokedBy = revokedBy,
+                RevokedAtUtc = revokedAtUtc,
+                Summary = summary,
+                VerifiedAtUtc = verifiedAtUtc
+            };
+        }
+
+        if (peerKey is not null
+            && peerKey.Algorithm == KeyAlgorithm.MlDsa65
+            && string.Equals(peerKey.KeyId, certificate.SignerKeyId, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(peerKey.PublicKeyBase64, certificate.SignerPublicKeyBase64, StringComparison.Ordinal))
+        {
+            if (!peerKey.IsActive)
+            {
+                return new FabricationCertificateVerificationReport
+                {
+                    LotId = certificate.LotId,
+                    PayloadSha256 = certificate.PayloadSha256,
+                    SignatureValid = true,
+                    IsTrusted = false,
+                    IsRevoked = isRevoked,
+                    TrustSource = FabricationCertificateTrustSource.RevokedSigner,
+                    TrustedPeerLabel = peerKey.Label,
+                    SignerKeyId = certificate.SignerKeyId,
+                    RevocationReason = revocationReason,
+                    RevokedBy = revokedBy,
+                    RevokedAtUtc = revokedAtUtc,
+                    Summary = $"Untrusted: peer laboratory key '{peerKey.Label}' has been permanently revoked.",
+                    VerifiedAtUtc = verifiedAtUtc
+                };
+            }
+
+            bool trusted = !isRevoked;
+            string summary = trusted
+                ? $"Verified ML-DSA-65 Certificate of Analysis issued by trusted peer laboratory '{peerKey.Label}'."
+                : $"Peer signature from '{peerKey.Label}' is valid, but lot '{certificate.LotId}' was permanently revoked: {revocationReason}";
+
+            return new FabricationCertificateVerificationReport
+            {
+                LotId = certificate.LotId,
+                PayloadSha256 = certificate.PayloadSha256,
+                SignatureValid = true,
+                IsTrusted = trusted,
+                IsRevoked = isRevoked,
+                TrustSource = FabricationCertificateTrustSource.TrustedPeer,
+                TrustedPeerLabel = peerKey.Label,
+                SignerKeyId = certificate.SignerKeyId,
+                RevocationReason = revocationReason,
+                RevokedBy = revokedBy,
+                RevokedAtUtc = revokedAtUtc,
+                Summary = summary,
+                VerifiedAtUtc = verifiedAtUtc
+            };
+        }
+
+        return new FabricationCertificateVerificationReport
+        {
+            LotId = certificate.LotId,
+            PayloadSha256 = certificate.PayloadSha256,
+            SignatureValid = true,
+            IsTrusted = false,
+            IsRevoked = isRevoked,
+            TrustSource = FabricationCertificateTrustSource.UntrustedSigner,
+            TrustedPeerLabel = null,
+            SignerKeyId = certificate.SignerKeyId,
+            RevocationReason = revocationReason,
+            RevokedBy = revokedBy,
+            RevokedAtUtc = revokedAtUtc,
+            Summary = "Signature is mathematically valid, but the signer ML-DSA-65 key is not registered in this node's trusted peer key registry.",
+            VerifiedAtUtc = verifiedAtUtc
+        };
     }
 
     /// <summary>

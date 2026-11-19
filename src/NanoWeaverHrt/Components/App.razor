@@ -1,5 +1,12 @@
 @using static Microsoft.AspNetCore.Components.Web.RenderMode
 @inject NanoWeaverHrt.Security.Integrity.IAssetIntegrityService AssetIntegrity
+@{
+    string appCssSri = AssetIntegrity.GetSubresourceIntegrity("css/app.css");
+    string sessionJsSri = AssetIntegrity.GetSubresourceIntegrity("js/weaver-session.js");
+    string authJsSri = AssetIntegrity.GetSubresourceIntegrity("js/weaver-auth.js");
+    string appJsSri = AssetIntegrity.GetSubresourceIntegrity("js/app.js");
+    string vizJsSri = AssetIntegrity.GetSubresourceIntegrity("js/weaver-visualizer.js");
+}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -7,7 +14,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <base href="/" />
     <title>NanoWeaverHrt (nanoweaver-hrt): Sovereign Nanotechnology Node</title>
-    <link rel="stylesheet" href="css/app.css" integrity="@AssetIntegrity.GetSubresourceIntegrity("css/app.css")" />
+    <link rel="stylesheet" href="@($"css/app.css?v={Uri.EscapeDataString(appCssSri)}")" integrity="@appCssSri" />
     <HeadOutlet @rendermode="InteractiveServer" />
 </head>
 <body>
@@ -18,12 +25,13 @@
         WHY:  Prime Directive 12 & Audit C8 mandate client-side challenge signing without
               transmitting raw private keys across the Blazor SignalR circuit.
         HOW:  Vendored crypto module loaded with SRI hash validation, followed by weaver-auth.js.
-              Authored scripts and stylesheets compute dynamic SRI hashes server-side via .NET.
+              Authored scripts and stylesheets compute dynamic SRI hashes server-side via .NET
+              and include content-derived ?v= cache busters so upgrades never collide with stale browser caches.
     *@
-    <script src="js/weaver-session.js" integrity="@AssetIntegrity.GetSubresourceIntegrity("js/weaver-session.js")"></script>
+    <script src="@($"js/weaver-session.js?v={Uri.EscapeDataString(sessionJsSri)}")" integrity="@sessionJsSri"></script>
     <script type="module" src="lib/weaver-crypto-vendor.js" integrity="sha384-2PWlMHMrV/enpeAeEB0EtHqLjYv9Rql4aPLZNGynBOQPFkoacC01+5WwbCsr8lgD"></script>
-    <script src="js/weaver-auth.js" integrity="@AssetIntegrity.GetSubresourceIntegrity("js/weaver-auth.js")"></script>
-    <script src="js/app.js" integrity="@AssetIntegrity.GetSubresourceIntegrity("js/app.js")"></script>
-    <script src="js/weaver-visualizer.js" integrity="@AssetIntegrity.GetSubresourceIntegrity("js/weaver-visualizer.js")"></script>
+    <script src="@($"js/weaver-auth.js?v={Uri.EscapeDataString(authJsSri)}")" integrity="@authJsSri"></script>
+    <script src="@($"js/app.js?v={Uri.EscapeDataString(appJsSri)}")" integrity="@appJsSri"></script>
+    <script src="@($"js/weaver-visualizer.js?v={Uri.EscapeDataString(vizJsSri)}")" integrity="@vizJsSri"></script>
 </body>
 </html>

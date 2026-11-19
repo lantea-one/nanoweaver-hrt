@@ -280,3 +280,81 @@ public sealed record FabricationQcCheckRecord : IExamplesProvider<FabricationQcC
         NotesEncrypted = null
     };
 }
+
+/// <summary>
+/// Persistent database record representing a permanent administrative recall or revocation
+/// of a wet-lab fabrication lot and its Certificate of Analysis.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <strong>What is this:</strong> The relational revocation record stored in <c>weaver_fabrication_lot_revocations</c>
+/// documenting who revoked a batch, why it was recalled, and when the revocation took effect.
+/// </para>
+/// <para>
+/// <strong>Why it exists:</strong> Ensures recalled or compromised batches are permanently blocked during
+/// cross-node Certificate of Analysis verification even if their original cryptographic signature remains valid.
+/// </para>
+/// <para>
+/// <strong>How it works:</strong> Written via <see cref="NanoWeaverHrt.Storage.IFabricationLotRepository.RecordLotRevocationAsync"/>
+/// and consulted during every trust-anchor verification pass.
+/// </para>
+/// </remarks>
+[SwaggerSchema(Title = "FabricationLotRevocationRecord", Description = "Persisted permanent recall/revocation record for a wet-lab fabrication lot.")]
+public sealed record FabricationLotRevocationRecord : IExamplesProvider<FabricationLotRevocationRecord>
+{
+    /// <summary>
+    /// Gets or initializes the unique identifier of the revoked fabrication lot.
+    /// </summary>
+    [Description("Unique identifier of the revoked wet-lab fabrication lot.")]
+    [JsonPropertyName("lotId")]
+    public string LotId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets or initializes the patient identifier associated with the revoked lot.
+    /// </summary>
+    [Description("Patient identifier associated with the revoked fabrication lot.")]
+    [JsonPropertyName("patientId")]
+    public string PatientId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets or initializes the optional SHA-256 hex digest of the revoked Certificate of Analysis payload.
+    /// </summary>
+    [Description("Optional SHA-256 hex digest of the revoked Certificate of Analysis payload.")]
+    [JsonPropertyName("payloadSha256")]
+    public string? PayloadSha256 { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the username of the Administrator who revoked this lot.
+    /// </summary>
+    [Description("Username of the Administrator who executed the lot revocation.")]
+    [JsonPropertyName("revokedBy")]
+    public string RevokedBy { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets or initializes the plain-English clinical or quality-control reason for revocation.
+    /// </summary>
+    [Description("Plain-English clinical or quality-control reason for lot revocation.")]
+    [JsonPropertyName("revocationReason")]
+    public string RevocationReason { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets or initializes the UTC timestamp when the lot was revoked.
+    /// </summary>
+    [Description("UTC timestamp when the fabrication lot was permanently revoked.")]
+    [JsonPropertyName("revokedAtUtc")]
+    public DateTimeOffset RevokedAtUtc { get; init; } = DateTimeOffset.UtcNow;
+
+    /// <summary>
+    /// Generates a representative example instance of <see cref="FabricationLotRevocationRecord"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A sample populated lot revocation record.</returns>
+    public FabricationLotRevocationRecord GetExamples() => new()
+    {
+        LotId = "lot_sample_001",
+        PatientId = "patient_alice",
+        PayloadSha256 = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+        RevokedBy = "admin",
+        RevocationReason = "Cold-chain excursion detected during courier transit (temperature exceeded 8°C).",
+        RevokedAtUtc = DateTimeOffset.Parse("2026-11-19T16:00:00Z", CultureInfo.InvariantCulture)
+    };
+}

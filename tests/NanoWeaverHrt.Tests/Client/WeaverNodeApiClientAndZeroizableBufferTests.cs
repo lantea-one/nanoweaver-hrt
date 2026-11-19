@@ -1833,12 +1833,20 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         FabricationQcCheckResponse qc = new FabricationQcCheckResponse().GetExamples();
         FabricationLotReleaseResponse release = new FabricationLotReleaseResponse().GetExamples();
         FabricationLotCertificateResponse cert = new FabricationLotCertificateResponse().GetExamples();
+        RevokeFabricationLotRequest revokeReq = new RevokeFabricationLotRequest().GetExamples();
+        FabricationLotRevocationResponse revokeResp = new FabricationLotRevocationResponse().GetExamples();
+        FabricationLotCertificate certObj = new FabricationLotCertificate().GetExamples();
+        FabricationCertificateVerificationReport verifyReport = new FabricationCertificateVerificationReport().GetExamples();
+        byte[] bundleBytes = [1, 2, 3];
 
         innerMock.Setup(i => i.CreateFabricationLotAsync(profile, "tok", createReq, It.IsAny<CancellationToken>())).ReturnsAsync(lot);
         innerMock.Setup(i => i.GetFabricationLotsAsync(profile, "tok", "patient_alice", It.IsAny<CancellationToken>())).ReturnsAsync([lot]);
         innerMock.Setup(i => i.RecordFabricationQcAsync(profile, "tok", "lot-1", qcReq, It.IsAny<CancellationToken>())).ReturnsAsync(qc);
         innerMock.Setup(i => i.ReleaseFabricationLotAsync(profile, "tok", "lot-1", It.IsAny<CancellationToken>())).ReturnsAsync(release);
         innerMock.Setup(i => i.GetFabricationLotCertificateAsync(profile, "tok", "lot-1", It.IsAny<CancellationToken>())).ReturnsAsync(cert);
+        innerMock.Setup(i => i.RevokeFabricationLotAsync(profile, "tok", "lot-1", revokeReq, It.IsAny<CancellationToken>())).ReturnsAsync(revokeResp);
+        innerMock.Setup(i => i.VerifyFabricationCertificateAsync(profile, "tok", certObj, It.IsAny<CancellationToken>())).ReturnsAsync(verifyReport);
+        innerMock.Setup(i => i.DownloadFabricationCertificateBundleAsync(profile, "tok", "lot-1", It.IsAny<CancellationToken>())).ReturnsAsync(bundleBytes);
 
         WeaverNodeApiClient client = new(innerMock.Object);
         Assert.Equal(lot.LotId, (await client.CreateFabricationLotAsync(profile, "tok", createReq)).LotId);
@@ -1846,6 +1854,9 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         Assert.Equal(qc.CheckId, (await client.RecordFabricationQcAsync(profile, "tok", "lot-1", qcReq)).CheckId);
         Assert.True((await client.ReleaseFabricationLotAsync(profile, "tok", "lot-1")).CertificateVerified);
         Assert.True((await client.GetFabricationLotCertificateAsync(profile, "tok", "lot-1"))?.SignatureVerified);
+        Assert.Equal(FabricationLotStatus.Revoked, (await client.RevokeFabricationLotAsync(profile, "tok", "lot-1", revokeReq)).Lot.LotStatus);
+        Assert.True((await client.VerifyFabricationCertificateAsync(profile, "tok", certObj)).IsTrusted);
+        Assert.Equal(bundleBytes, await client.DownloadFabricationCertificateBundleAsync(profile, "tok", "lot-1"));
 
         client.Dispose();
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.CreateFabricationLotAsync(profile, "tok", createReq));
@@ -1853,5 +1864,8 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.RecordFabricationQcAsync(profile, "tok", "lot-1", qcReq));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ReleaseFabricationLotAsync(profile, "tok", "lot-1"));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetFabricationLotCertificateAsync(profile, "tok", "lot-1"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.RevokeFabricationLotAsync(profile, "tok", "lot-1", revokeReq));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.VerifyFabricationCertificateAsync(profile, "tok", certObj));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.DownloadFabricationCertificateBundleAsync(profile, "tok", "lot-1"));
     }
 }

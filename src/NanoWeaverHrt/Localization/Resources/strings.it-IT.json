@@ -88,5 +88,13 @@
   "FabricationLot.Status.Revoked": "Revocato",
   "FabricationLot.CertificateTitle": "Certificato di Analisi Post-Quantistico (ML-DSA-65)",
   "FabricationLot.CertificateVerified": "FIRMA ML-DSA-65 VERIFICATA",
-  "FabricationLot.QuarantineTitle": "Lotto in Quarantena — Rilascio Clinico Bloccato"
+  "FabricationLot.QuarantineTitle": "Lotto in Quarantena — Rilascio Clinico Bloccato",
+  "FabricationLot.RevokeReasonLabel": "Motivo di Richiamo / Revoca",
+  "FabricationLot.RevokeLotButton": "Revoca Definitivamente il Lotto",
+  "FabricationLot.RevokedBannerTitle": "Lotto Revocato Definitivamente — Non Impiantare",
+  "FabricationLot.VerifierSectionTitle": "Verificatore Certificati ML-DSA-65 Cross-Node",
+  "FabricationLot.VerifierSectionDesc": "Incolla un Certificato di Analisi JSON da questo nodo o da un laboratorio peer federato per verificare firma ML-DSA-65, fiducia e revoche.",
+  "FabricationLot.VerifierInputLabel": "Payload JSON del Certificato di Analisi",
+  "FabricationLot.VerifierButton": "Verifica Fiducia e Revoca",
+  "FabricationLot.VerifierTrustedBadge": "ATTENDIBILE PER USO CLINICO"
 }

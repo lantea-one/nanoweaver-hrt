@@ -1,6 +1,7 @@
 using NanoWeaverHrt.Endocrine;
 using NanoWeaverHrt.Fabrication;
 using NanoWeaverHrt.Models;
+using NanoWeaverHrt.Security.Authentication;
 using NanoWeaverHrt.Security.Cryptography;
 using NanoWeaverHrt.Security.KeyManagement;
 using Xunit;
@@ -279,6 +280,134 @@ public sealed class FabricationLotServiceTests : IDisposable
         Assert.Equal(64, hash1.Length);
         Assert.Equal(hash1, hash2);
         Assert.NotEqual(hash1, hash3);
+    }
+
+    /// <summary>
+    /// Verifies cross-node ML-DSA-65 trust anchor classification across LocalNode, TrustedPeer, RevokedSigner,
+    /// UntrustedSigner, InvalidSignature, and fail-closed lot revocation overrides.
+    /// </summary>
+    [Fact]
+    public void VerifyCertificateAgainstTrustAnchor_CoversAllTrustSourcesAndRevocationPaths()
+    {
+        // WHAT: Exercises every trust anchor and revocation branch of VerifyCertificateAgainstTrustAnchor.
+        // WHY:  Milestone 36 (P191): Guarantees 100.00% line and branch coverage for federated peer certificate verification.
+        // HOW:  Signs a local certificate and a peer-node certificate using two isolated SubjectKeyTestHost instances,
+        //       then evaluates local, trusted peer, revoked peer, untrusted/mismatched peer, invalid signature, and revoked lot cases.
+        Assert.Throws<ArgumentNullException>(() => _service.VerifyCertificateAgainstTrustAnchor(null!, null, null));
+
+        FabricationCertificateVerificationReport exReport = new FabricationCertificateVerificationReport().GetExamples();
+        Assert.True(exReport.IsTrusted);
+        Assert.Equal(FabricationCertificateTrustSource.TrustedPeer, exReport.TrustSource);
+
+        FabricationLotRecord lot = CreateSampleLot(cpgRequired: false);
+        DateTimeOffset t0 = new(2026, 11, 19, 14, 0, 0, TimeSpan.Zero);
+        List<FabricationQcCheckRecord> checks =
+        [
+            new() { CheckId = "q1", LotId = lot.LotId, PatientId = lot.PatientId, GateType = FabricationQcGateType.GelFoldingYield, MeasuredValue = 91.0, RecordedAtUtc = t0 },
+            new() { CheckId = "q2", LotId = lot.LotId, PatientId = lot.PatientId, GateType = FabricationQcGateType.EndotoxinSterility, MeasuredValue = 0.15, RecordedAtUtc = t0 },
+            new() { CheckId = "q3", LotId = lot.LotId, PatientId = lot.PatientId, GateType = FabricationQcGateType.HydrodynamicSizePdi, MeasuredValue = 50.0, SecondaryValue = 0.10, RecordedAtUtc = t0 },
+            new() { CheckId = "q4", LotId = lot.LotId, PatientId = lot.PatientId, GateType = FabricationQcGateType.PayloadEncapsulation, MeasuredValue = 88.0, SecondaryValue = 1.0, RecordedAtUtc = t0 }
+        ];
+
+        FabricationLotCertificate localCert = _service.EvaluateAndSignLotRelease(lot, checks).Certificate!;
+        FabricationLotRevocationRecord revocation = new()
+        {
+            LotId = lot.LotId,
+            PatientId = lot.PatientId,
+            PayloadSha256 = localCert.PayloadSha256,
+            RevokedBy = "admin",
+            RevocationReason = "Cold-chain excursion",
+            RevokedAtUtc = t0.AddHours(1)
+        };
+
+        // 1. LocalNode active vs revoked
+        FabricationCertificateVerificationReport localOk = _service.VerifyCertificateAgainstTrustAnchor(localCert, null, null);
+        Assert.True(localOk.SignatureValid);
+        Assert.True(localOk.IsTrusted);
+        Assert.False(localOk.IsRevoked);
+        Assert.Equal(FabricationCertificateTrustSource.LocalNode, localOk.TrustSource);
+
+        FabricationCertificateVerificationReport localRevoked = _service.VerifyCertificateAgainstTrustAnchor(localCert, null, revocation);
+        Assert.True(localRevoked.SignatureValid);
+        Assert.False(localRevoked.IsTrusted);
+        Assert.True(localRevoked.IsRevoked);
+        Assert.Equal(FabricationCertificateTrustSource.LocalNode, localRevoked.TrustSource);
+        Assert.Equal("Cold-chain excursion", localRevoked.RevocationReason);
+
+        // 2. InvalidSignature (with and without revocation)
+        FabricationCertificateVerificationReport invalidSig = _service.VerifyCertificateAgainstTrustAnchor(
+            localCert with { TargetMassMg = 999.0 },
+            null,
+            revocation);
+        Assert.False(invalidSig.SignatureValid);
+        Assert.False(invalidSig.IsTrusted);
+        Assert.True(invalidSig.IsRevoked);
+        Assert.Equal(FabricationCertificateTrustSource.InvalidSignature, invalidSig.TrustSource);
+
+        // 3. Peer node certificate signed by a distinct isolated ML-DSA-65 node key
+        string peerDir = Path.Combine(Path.GetTempPath(), "weaver_fab_peer_test_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(peerDir);
+        try
+        {
+            using SubjectKeyTestHost peerHost = new(peerDir);
+            FabricationLotService peerService = new(peerHost.KeyManagement, peerHost.CryptoProvider);
+            FabricationLotCertificate peerCert = peerService.EvaluateAndSignLotRelease(lot, checks).Certificate!;
+
+            PeerKeyRecord activePeer = new()
+            {
+                KeyId = peerCert.SignerKeyId,
+                Label = "Partner BioFoundry Zurich",
+                Algorithm = KeyAlgorithm.MlDsa65,
+                PublicKeyBase64 = peerCert.SignerPublicKeyBase64,
+                RegisteredBy = "admin",
+                RegisteredAtUtc = t0
+            };
+
+            // TrustedPeer active
+            FabricationCertificateVerificationReport peerOk = _service.VerifyCertificateAgainstTrustAnchor(peerCert, activePeer, null);
+            Assert.True(peerOk.SignatureValid);
+            Assert.True(peerOk.IsTrusted);
+            Assert.Equal(FabricationCertificateTrustSource.TrustedPeer, peerOk.TrustSource);
+            Assert.Equal("Partner BioFoundry Zurich", peerOk.TrustedPeerLabel);
+
+            // TrustedPeer but lot revoked
+            FabricationCertificateVerificationReport peerLotRevoked = _service.VerifyCertificateAgainstTrustAnchor(peerCert, activePeer, revocation);
+            Assert.True(peerLotRevoked.SignatureValid);
+            Assert.False(peerLotRevoked.IsTrusted);
+            Assert.True(peerLotRevoked.IsRevoked);
+            Assert.Equal(FabricationCertificateTrustSource.TrustedPeer, peerLotRevoked.TrustSource);
+
+            // RevokedSigner (peer key revoked)
+            PeerKeyRecord revokedPeer = activePeer with { RevokedBy = "admin", RevokedAtUtc = t0.AddMinutes(30) };
+            FabricationCertificateVerificationReport peerKeyRevoked = _service.VerifyCertificateAgainstTrustAnchor(peerCert, revokedPeer, null);
+            Assert.True(peerKeyRevoked.SignatureValid);
+            Assert.False(peerKeyRevoked.IsTrusted);
+            Assert.Equal(FabricationCertificateTrustSource.RevokedSigner, peerKeyRevoked.TrustSource);
+
+            // UntrustedSigner: null peer, wrong algorithm, wrong keyId, wrong pubkey, and local keyId spoof with foreign pubkey
+            Assert.Equal(FabricationCertificateTrustSource.UntrustedSigner, _service.VerifyCertificateAgainstTrustAnchor(peerCert, null, null).TrustSource);
+            Assert.Equal(FabricationCertificateTrustSource.UntrustedSigner, _service.VerifyCertificateAgainstTrustAnchor(peerCert, activePeer with { Algorithm = KeyAlgorithm.Ed25519 }, null).TrustSource);
+            Assert.Equal(FabricationCertificateTrustSource.UntrustedSigner, _service.VerifyCertificateAgainstTrustAnchor(peerCert, activePeer with { KeyId = "other-key-id" }, null).TrustSource);
+            Assert.Equal(FabricationCertificateTrustSource.UntrustedSigner, _service.VerifyCertificateAgainstTrustAnchor(peerCert, activePeer with { PublicKeyBase64 = "MISMATCHED_KEY" }, null).TrustSource);
+
+            // Spoofing local KeyId while signing with foreign key must NOT match LocalNode
+            FabricationLotCertificate spoofLocalKeyId = peerCert with { SignerKeyId = _keyManagementService.GetNodeSigningKey().KeyId };
+            Assert.Equal(FabricationCertificateTrustSource.UntrustedSigner, _service.VerifyCertificateAgainstTrustAnchor(spoofLocalKeyId, null, null).TrustSource);
+        }
+        finally
+        {
+            if (Directory.Exists(peerDir))
+            {
+                try
+                {
+                    Directory.Delete(peerDir, recursive: true);
+                }
+                catch
+                {
+                    // Best-effort cleanup.
+                }
+            }
+        }
     }
 
     /// <summary>

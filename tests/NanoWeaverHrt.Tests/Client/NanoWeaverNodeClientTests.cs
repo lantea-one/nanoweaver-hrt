@@ -4221,6 +4221,52 @@ public sealed class NanoWeaverNodeClientTests : IDisposable
         await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetFabricationLotCertificateAsync(null!, "valid_token", "lot_01"));
         await Assert.ThrowsAsync<ArgumentException>(() => _client.GetFabricationLotCertificateAsync(_localProfile, "", "lot_01"));
         await Assert.ThrowsAsync<ArgumentException>(() => _client.GetFabricationLotCertificateAsync(_localProfile, "valid_token", ""));
+
+        // 6. RevokeFabricationLotAsync (Milestone 36)
+        RevokeFabricationLotRequest revokeReq = new RevokeFabricationLotRequest().GetExamples();
+        FabricationLotRevocationResponse sampleRevoke = new FabricationLotRevocationResponse().GetExamples();
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_01/revoke", HttpStatusCode.OK, JsonSerializer.Serialize(sampleRevoke, webOpts));
+        FabricationLotRevocationResponse revoked = await _client.RevokeFabricationLotAsync(_localProfile, "valid_token", "lot_01", revokeReq);
+        Assert.Equal(FabricationLotStatus.Revoked, revoked.Lot.LotStatus);
+
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_01/revoke", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.RevokeFabricationLotAsync(_localProfile, "valid_token", "lot_01", revokeReq));
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_01/revoke", HttpStatusCode.Forbidden, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.RevokeFabricationLotAsync(_localProfile, "valid_token", "lot_01", revokeReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.RevokeFabricationLotAsync(null!, "valid_token", "lot_01", revokeReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.RevokeFabricationLotAsync(_localProfile, "", "lot_01", revokeReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.RevokeFabricationLotAsync(_localProfile, "valid_token", "", revokeReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.RevokeFabricationLotAsync(_localProfile, "valid_token", "lot_01", null!));
+
+        // 7. VerifyFabricationCertificateAsync (Milestone 36)
+        FabricationLotCertificate sampleCertObj = new FabricationLotCertificate().GetExamples();
+        FabricationCertificateVerificationReport sampleReport = new FabricationCertificateVerificationReport().GetExamples();
+        _httpHandler.SetResponse("/api/fabrication/certificates/verify", HttpStatusCode.OK, JsonSerializer.Serialize(sampleReport, webOpts));
+        FabricationCertificateVerificationReport verifiedReport = await _client.VerifyFabricationCertificateAsync(_localProfile, "valid_token", sampleCertObj);
+        Assert.True(verifiedReport.IsTrusted);
+
+        _httpHandler.SetResponse("/api/fabrication/certificates/verify", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.VerifyFabricationCertificateAsync(_localProfile, "valid_token", sampleCertObj));
+        _httpHandler.SetResponse("/api/fabrication/certificates/verify", HttpStatusCode.BadRequest, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.VerifyFabricationCertificateAsync(_localProfile, "valid_token", sampleCertObj));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.VerifyFabricationCertificateAsync(null!, "valid_token", sampleCertObj));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.VerifyFabricationCertificateAsync(_localProfile, "", sampleCertObj));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.VerifyFabricationCertificateAsync(_localProfile, "valid_token", null!));
+
+        // 8. DownloadFabricationCertificateBundleAsync (Milestone 36)
+        byte[] sampleBytes = Encoding.UTF8.GetBytes("{\"lotId\":\"lot_01\"}");
+        _httpHandler.SetByteResponse("/api/fabrication/lots/lot_01/certificate/download", HttpStatusCode.OK, sampleBytes, "application/json");
+        byte[]? downloaded = await _client.DownloadFabricationCertificateBundleAsync(_localProfile, "valid_token", "lot_01");
+        Assert.Equal(sampleBytes, downloaded);
+
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_01/certificate/download", HttpStatusCode.NotFound, "{}");
+        Assert.Null(await _client.DownloadFabricationCertificateBundleAsync(_localProfile, "valid_token", "lot_01"));
+
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_01/certificate/download", HttpStatusCode.Forbidden, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.DownloadFabricationCertificateBundleAsync(_localProfile, "valid_token", "lot_01"));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.DownloadFabricationCertificateBundleAsync(null!, "valid_token", "lot_01"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.DownloadFabricationCertificateBundleAsync(_localProfile, "", "lot_01"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.DownloadFabricationCertificateBundleAsync(_localProfile, "valid_token", ""));
     }
 
     /// <summary>

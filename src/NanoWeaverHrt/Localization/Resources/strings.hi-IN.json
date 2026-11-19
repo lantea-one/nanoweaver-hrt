@@ -88,5 +88,13 @@
   "FabricationLot.Status.Revoked": "निरस्त",
   "FabricationLot.CertificateTitle": "पोस्ट-क्वांटम विश्लेषण प्रमाणपत्र (ML-DSA-65)",
   "FabricationLot.CertificateVerified": "ML-DSA-65 हस्ताक्षर सत्यापित",
-  "FabricationLot.QuarantineTitle": "लॉट क्वारंटाइन — क्लिनिकल रिलीज़ अवरुद्ध"
+  "FabricationLot.QuarantineTitle": "लॉट क्वारंटाइन — क्लिनिकल रिलीज़ अवरुद्ध",
+  "FabricationLot.RevokeReasonLabel": "वापसी / निरस्तीकरण कारण",
+  "FabricationLot.RevokeLotButton": "लॉट स्थायी रूप से निरस्त करें",
+  "FabricationLot.RevokedBannerTitle": "लॉट स्थायी रूप से निरस्त — इम्प्लांट न करें",
+  "FabricationLot.VerifierSectionTitle": "क्रॉस-नोड ML-DSA-65 प्रमाणपत्र सत्यापनकर्ता",
+  "FabricationLot.VerifierSectionDesc": "ML-DSA-65 हस्ताक्षर अखंडता, पीयर ट्रस्ट एंकर और लॉट निरस्तीकरण सत्यापित करने के लिए विश्लेषण प्रमाणपत्र JSON पेस्ट करें।",
+  "FabricationLot.VerifierInputLabel": "विश्लेषण प्रमाणपत्र JSON पेलोड",
+  "FabricationLot.VerifierButton": "प्रमाणपत्र विश्वास और निरस्तीकरण सत्यापित करें",
+  "FabricationLot.VerifierTrustedBadge": "क्लिनिकल उपयोग के लिए विश्वसनीय"
 }

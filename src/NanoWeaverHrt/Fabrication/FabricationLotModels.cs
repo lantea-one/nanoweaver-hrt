@@ -429,3 +429,173 @@ public sealed record FabricationLotReleaseEvaluation : IExamplesProvider<Fabrica
         };
     }
 }
+
+/// <summary>
+/// Classification of the cryptographic trust anchor established when verifying a post-quantum
+/// Certificate of Analysis across local and federated sovereign nodes.
+/// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum FabricationCertificateTrustSource
+{
+    /// <summary>
+    /// Certificate was signed by this node's own persistent ML-DSA-65 signing key.
+    /// </summary>
+    LocalNode = 0,
+
+    /// <summary>
+    /// Certificate was signed by an active, unrevoked ML-DSA-65 peer key registered in <c>weaver_peer_keys</c>.
+    /// </summary>
+    TrustedPeer = 1,
+
+    /// <summary>
+    /// Certificate signature is mathematically valid, but the signing key is not registered on this node.
+    /// </summary>
+    UntrustedSigner = 2,
+
+    /// <summary>
+    /// Certificate was signed by a peer laboratory key that has been permanently revoked in <c>weaver_peer_keys</c>.
+    /// </summary>
+    RevokedSigner = 3,
+
+    /// <summary>
+    /// Certificate canonical SHA-256 digest or ML-DSA-65 signature failed cryptographic verification.
+    /// </summary>
+    InvalidSignature = 4
+}
+
+/// <summary>
+/// Full cross-node trust-anchor, cryptographic signature, and revocation verification verdict
+/// for a NIST FIPS 204 ML-DSA-65 Certificate of Analysis.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <strong>What is this:</strong> The authoritative verification report returned by
+/// <see cref="IFabricationLotService.VerifyCertificateAgainstTrustAnchor"/> combining mathematical ML-DSA-65
+/// signature validity, peer-registry trust status, and lot-level revocation enforcement.
+/// </para>
+/// <para>
+/// <strong>Why it exists:</strong> Enables a secondary receiving clinic or sovereign node to verify an exported
+/// Certificate of Analysis offline/federated against its local <c>IPeerKeyRegistry</c> and revocation ledger.
+/// </para>
+/// <para>
+/// <strong>How it works:</strong> Evaluates canonical SHA-256 + ML-DSA-65 validity, checks lot revocation tombstones,
+/// and matches the signer public key against either the local node key or an active peer key record.
+/// </para>
+/// </remarks>
+[SwaggerSchema(Title = "FabricationCertificateVerificationReport", Description = "Cross-node trust-anchor, ML-DSA-65 signature, and revocation verification report for a Certificate of Analysis.")]
+public sealed record FabricationCertificateVerificationReport : IExamplesProvider<FabricationCertificateVerificationReport>
+{
+    /// <summary>
+    /// Gets or initializes the unique identifier of the verified fabrication lot.
+    /// </summary>
+    [Description("Unique identifier of the verified fabrication lot.")]
+    [JsonPropertyName("lotId")]
+    public string LotId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets or initializes the SHA-256 hex digest of the canonical certificate payload.
+    /// </summary>
+    [Description("SHA-256 hex digest of the canonical certificate payload.")]
+    [JsonPropertyName("payloadSha256")]
+    public string PayloadSha256 { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets or initializes a value indicating whether the canonical SHA-256 hash and ML-DSA-65 signature are valid.
+    /// </summary>
+    [Description("True when the canonical SHA-256 digest and ML-DSA-65 signature verify mathematically.")]
+    [JsonPropertyName("signatureValid")]
+    public bool SignatureValid { get; init; }
+
+    /// <summary>
+    /// Gets or initializes a value indicating whether the certificate is trusted for clinical use (valid signature,
+    /// active local or registered peer key, and not revoked).
+    /// </summary>
+    [Description("True only when signature is valid, signer is local or active trusted peer, and lot is not revoked.")]
+    [JsonPropertyName("isTrusted")]
+    public bool IsTrusted { get; init; }
+
+    /// <summary>
+    /// Gets or initializes a value indicating whether this lot has been permanently revoked on this node.
+    /// </summary>
+    [Description("True when a permanent revocation record exists for this fabrication lot.")]
+    [JsonPropertyName("isRevoked")]
+    public bool IsRevoked { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the resolved cryptographic trust source classification.
+    /// </summary>
+    [Description("Resolved cryptographic trust anchor source (LocalNode, TrustedPeer, UntrustedSigner, RevokedSigner, or InvalidSignature).")]
+    [JsonPropertyName("trustSource")]
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public FabricationCertificateTrustSource TrustSource { get; init; } = FabricationCertificateTrustSource.InvalidSignature;
+
+    /// <summary>
+    /// Gets or initializes the human-readable peer laboratory label when matched in <c>weaver_peer_keys</c>.
+    /// </summary>
+    [Description("Human-readable label of the matched peer laboratory key, or null for local/unknown signers.")]
+    [JsonPropertyName("trustedPeerLabel")]
+    public string? TrustedPeerLabel { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the signer key identifier carried in the certificate.
+    /// </summary>
+    [Description("Key identifier of the ML-DSA-65 signing key carried in the certificate.")]
+    [JsonPropertyName("signerKeyId")]
+    public string SignerKeyId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets or initializes the plain-English recall reason when <see cref="IsRevoked"/> is <see langword="true"/>.
+    /// </summary>
+    [Description("Clinical recall reason if the lot has been revoked; otherwise null.")]
+    [JsonPropertyName("revocationReason")]
+    public string? RevocationReason { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the Administrator username who revoked the lot, if revoked.
+    /// </summary>
+    [Description("Administrator username who revoked the lot, if revoked.")]
+    [JsonPropertyName("revokedBy")]
+    public string? RevokedBy { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the UTC timestamp when the lot was revoked, if revoked.
+    /// </summary>
+    [Description("UTC timestamp when the lot was revoked, if revoked.")]
+    [JsonPropertyName("revokedAtUtc")]
+    public DateTimeOffset? RevokedAtUtc { get; init; }
+
+    /// <summary>
+    /// Gets or initializes a plain-English diagnostic summary explaining the verification outcome.
+    /// </summary>
+    [Description("Plain-English diagnostic explanation of the verification verdict.")]
+    [JsonPropertyName("summary")]
+    public string Summary { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets or initializes the UTC timestamp when this verification ran.
+    /// </summary>
+    [Description("UTC timestamp when this certificate verification executed.")]
+    [JsonPropertyName("verifiedAtUtc")]
+    public DateTimeOffset VerifiedAtUtc { get; init; } = DateTimeOffset.UtcNow;
+
+    /// <summary>
+    /// Generates a representative example instance of <see cref="FabricationCertificateVerificationReport"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A sample trusted peer verification report.</returns>
+    public FabricationCertificateVerificationReport GetExamples() => new()
+    {
+        LotId = "lot_sample_001",
+        PayloadSha256 = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+        SignatureValid = true,
+        IsTrusted = true,
+        IsRevoked = false,
+        TrustSource = FabricationCertificateTrustSource.TrustedPeer,
+        TrustedPeerLabel = "Partner BioFoundry Zurich",
+        SignerKeyId = "node-mldsa65-key-01",
+        RevocationReason = null,
+        RevokedBy = null,
+        RevokedAtUtc = null,
+        Summary = "Verified ML-DSA-65 Certificate of Analysis issued by trusted peer laboratory 'Partner BioFoundry Zurich'.",
+        VerifiedAtUtc = DateTimeOffset.Parse("2026-11-19T16:30:00Z", CultureInfo.InvariantCulture)
+    };
+}

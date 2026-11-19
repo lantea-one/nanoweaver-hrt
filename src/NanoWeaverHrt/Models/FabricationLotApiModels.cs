@@ -520,3 +520,57 @@ public static class FabricationLotMapper
         };
     }
 }
+
+/// <summary>
+/// Request payload for permanently revoking a wet-lab fabrication lot and its Certificate of Analysis.
+/// </summary>
+[SwaggerSchema(Title = "RevokeFabricationLotRequest", Description = "Request payload for administratively revoking a wet-lab fabrication lot.")]
+public sealed record RevokeFabricationLotRequest : IExamplesProvider<RevokeFabricationLotRequest>
+{
+    /// <summary>
+    /// Gets or initializes the plain-English clinical or quality-control reason for revoking this lot.
+    /// </summary>
+    [Description("Plain-English clinical or quality-control reason for permanent lot revocation.")]
+    [JsonPropertyName("reason")]
+    public string Reason { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Generates a representative example instance of <see cref="RevokeFabricationLotRequest"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A sample populated lot revocation request.</returns>
+    public RevokeFabricationLotRequest GetExamples() => new()
+    {
+        Reason = "Cold-chain excursion detected during courier transit (temperature exceeded 8°C)."
+    };
+}
+
+/// <summary>
+/// Response payload returned after permanently revoking a wet-lab fabrication lot.
+/// </summary>
+[SwaggerSchema(Title = "FabricationLotRevocationResponse", Description = "Response payload containing the revoked fabrication lot and permanent revocation record.")]
+public sealed record FabricationLotRevocationResponse : IExamplesProvider<FabricationLotRevocationResponse>
+{
+    /// <summary>
+    /// Gets or initializes the updated fabrication lot record transitioned to <see cref="FabricationLotStatus.Revoked"/>.
+    /// </summary>
+    [Description("Updated fabrication lot record transitioned to Revoked status.")]
+    [JsonPropertyName("lot")]
+    public FabricationLotResponse Lot { get; init; } = new();
+
+    /// <summary>
+    /// Gets or initializes the persisted revocation tombstone record.
+    /// </summary>
+    [Description("Persisted revocation tombstone containing administrator identity, reason, and timestamp.")]
+    [JsonPropertyName("revocation")]
+    public FabricationLotRevocationRecord Revocation { get; init; } = new();
+
+    /// <summary>
+    /// Generates a representative example instance of <see cref="FabricationLotRevocationResponse"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A sample populated lot revocation response.</returns>
+    public FabricationLotRevocationResponse GetExamples() => new()
+    {
+        Lot = new FabricationLotResponse().GetExamples() with { LotStatus = FabricationLotStatus.Revoked },
+        Revocation = new FabricationLotRevocationRecord().GetExamples()
+    };
+}

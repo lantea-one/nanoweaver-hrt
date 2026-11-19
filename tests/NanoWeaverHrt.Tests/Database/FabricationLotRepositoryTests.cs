@@ -322,6 +322,82 @@ public sealed class FabricationLotRepositoryTests : IDisposable
     }
 
     /// <summary>
+    /// Verifies Migration 016 DDL across all four engines, revocation record persistence/retrieval, guards,
+    /// and GDPR Article 17 erasure cascade across <c>weaver_fabrication_lot_revocations</c>.
+    /// </summary>
+    [Fact]
+    public async Task Migration016_AndLotRevocationPersistence_BehaveCorrectly()
+    {
+        // WHAT: Exercises Migration016_FabricationLotRevocation DDL, RecordLotRevocationAsync, GetLotRevocationAsync,
+        //       nullable PayloadSha256 branches, argument guards, and GDPR erasure cascade.
+        // WHY:  Milestone 36 (P190): Guarantees 100.00% line and branch coverage for lot revocation storage.
+        // HOW:  Validates SQL across all 4 dialects, tests null/whitespace guards, persists/updates revocations, and deletes by patient.
+        Migration016_FabricationLotRevocation migration = new();
+        Assert.Equal(16L, migration.Version);
+        Assert.Equal("016_FabricationLotRevocation", migration.Name);
+        Assert.Throws<ArgumentNullException>(() => migration.GetSql(null!));
+
+        Assert.Contains("weaver_fabrication_lot_revocations", migration.GetSql("postgresql"), StringComparison.Ordinal);
+        Assert.Contains("weaver_fabrication_lot_revocations", migration.GetSql("duckdb"), StringComparison.Ordinal);
+        string mysqlSql = migration.GetSql("mysql");
+        Assert.Contains("FOREIGN KEY (lot_id)", mysqlSql, StringComparison.Ordinal);
+        Assert.Equal(mysqlSql, migration.GetSql("mariadb"));
+        Assert.Contains("idx_fab_rev_patient_id", migration.GetSql("sqlite"), StringComparison.Ordinal);
+
+        FabricationLotRevocationRecord ex = new FabricationLotRevocationRecord().GetExamples();
+        Assert.Equal("lot_sample_001", ex.LotId);
+        Assert.Equal("admin", ex.RevokedBy);
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _lotRepository.RecordLotRevocationAsync(null!));
+        await Assert.ThrowsAsync<ArgumentException>(() => _lotRepository.RecordLotRevocationAsync(ex with { LotId = " " }));
+        await Assert.ThrowsAsync<ArgumentException>(() => _lotRepository.RecordLotRevocationAsync(ex with { PatientId = "" }));
+        await Assert.ThrowsAsync<ArgumentException>(() => _lotRepository.RecordLotRevocationAsync(ex with { RevokedBy = " " }));
+        await Assert.ThrowsAsync<ArgumentException>(() => _lotRepository.RecordLotRevocationAsync(ex with { RevocationReason = "" }));
+        await Assert.ThrowsAsync<ArgumentException>(() => _lotRepository.GetLotRevocationAsync(" "));
+
+        await SeedDepotAsync("depot_m36_01", "patient_m36_01");
+        FabricationLotRecord lot = await _lotRepository.UpsertLotAsync(new FabricationLotRecord
+        {
+            DepotId = "depot_m36_01",
+            PatientId = "patient_m36_01",
+            OpentronsProtocolSha256 = "aaaa1111bbbb2222cccc3333dddd4444eeee5555ffff6666aaaa1111bbbb2222",
+            LotStatus = FabricationLotStatus.Released
+        });
+
+        Assert.Null(await _lotRepository.GetLotRevocationAsync(lot.LotId));
+
+        DateTimeOffset revokedAt = new(2026, 11, 19, 15, 0, 0, TimeSpan.Zero);
+        await _lotRepository.RecordLotRevocationAsync(new FabricationLotRevocationRecord
+        {
+            LotId = lot.LotId,
+            PatientId = lot.PatientId,
+            PayloadSha256 = null,
+            RevokedBy = "admin",
+            RevocationReason = "Initial thermal excursion",
+            RevokedAtUtc = revokedAt
+        });
+
+        FabricationLotRevocationRecord? fetchedNullSha = await _lotRepository.GetLotRevocationAsync(lot.LotId);
+        Assert.NotNull(fetchedNullSha);
+        Assert.Null(fetchedNullSha.PayloadSha256);
+
+        await _lotRepository.RecordLotRevocationAsync(fetchedNullSha with
+        {
+            PayloadSha256 = "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+            RevocationReason = "Confirmed cold-chain excursion"
+        });
+
+        FabricationLotRevocationRecord? fetchedUpdated = await _lotRepository.GetLotRevocationAsync(lot.LotId);
+        Assert.NotNull(fetchedUpdated);
+        Assert.Equal("1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef", fetchedUpdated.PayloadSha256);
+        Assert.Equal("Confirmed cold-chain excursion", fetchedUpdated.RevocationReason);
+
+        int deleted = await _lotRepository.DeleteByPatientIdAsync("patient_m36_01");
+        Assert.Equal(2, deleted);
+        Assert.Null(await _lotRepository.GetLotRevocationAsync(lot.LotId));
+    }
+
+    /// <summary>
     /// Seeds a parent depot formulation record required by foreign key constraints on <c>weaver_fabrication_lots</c>.
     /// </summary>
     /// <param name="depotId">Parent depot formulation identifier.</param>

@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using NanoWeaverHrt.Client.Api;
 using NanoWeaverHrt.Client.Storage;
 using NanoWeaverHrt.Endocrine;
+using NanoWeaverHrt.Fabrication;
 using NanoWeaverHrt.Models;
 using NanoWeaverHrt.Security.Access;
 using NanoWeaverHrt.Security.Authentication;
@@ -2102,6 +2103,128 @@ public sealed class PatientClinicalWorkspaceViewModel : INotifyPropertyChanged
             FabricationLotCertificateResponse? cert = await _client.GetFabricationLotCertificateAsync(profile, token, lotId, ct).ConfigureAwait(false);
             LatestLotCertificate = cert;
             return cert;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Backing field for <see cref="LastCertificateVerification"/>.
+    /// </summary>
+    private FabricationCertificateVerificationReport? _lastCertificateVerification;
+
+    /// <summary>
+    /// Gets the most recent cross-node ML-DSA-65 Certificate of Analysis verification report.
+    /// </summary>
+    public FabricationCertificateVerificationReport? LastCertificateVerification
+    {
+        get => _lastCertificateVerification;
+        private set
+        {
+            _lastCertificateVerification = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Permanently revokes a wet-lab fabrication lot via POST /api/fabrication/lots/{lotId}/revoke.
+    /// </summary>
+    /// <param name="lotId">Target fabrication lot identifier.</param>
+    /// <param name="request">Revocation payload specifying the clinical recall reason.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The updated revoked lot and permanent revocation record.</returns>
+    public async Task<FabricationLotRevocationResponse> RevokeFabricationLotAsync(
+        string lotId,
+        RevokeFabricationLotRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Permanently revokes a fabrication lot on the connected NanoWeaver node.
+        // WHY:  Milestone 36 (P193): Provides desktop and mobile MVVM parity for emergency lot recalls.
+        // HOW:  Validates inputs, resolves session credentials, invokes INanoWeaverNodeClient, and updates busy/error state.
+        ArgumentException.ThrowIfNullOrWhiteSpace(lotId);
+        ArgumentNullException.ThrowIfNull(request);
+        var (profile, token) = ResolveEffectiveSession();
+
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            return await _client.RevokeFabricationLotAsync(profile, token, lotId, request, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Verifies an imported or local ML-DSA-65 Certificate of Analysis via POST /api/fabrication/certificates/verify.
+    /// </summary>
+    /// <param name="certificate">Signed Certificate of Analysis payload to verify.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Cross-node trust anchor, signature, and revocation verification report.</returns>
+    public async Task<FabricationCertificateVerificationReport> VerifyFabricationCertificateAsync(
+        FabricationLotCertificate certificate,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches cross-node Certificate of Analysis verification and captures LastCertificateVerification state.
+        // WHY:  Milestone 36 (P193): Enables desktop and mobile clinicians to verify federated batch provenance.
+        // HOW:  Validates certificate, resolves session credentials, calls INanoWeaverNodeClient, and notifies bindings.
+        ArgumentNullException.ThrowIfNull(certificate);
+        var (profile, token) = ResolveEffectiveSession();
+
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            FabricationCertificateVerificationReport report = await _client.VerifyFabricationCertificateAsync(profile, token, certificate, ct).ConfigureAwait(false);
+            LastCertificateVerification = report;
+            return report;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Downloads a portable signed Certificate of Analysis JSON bundle via GET /api/fabrication/lots/{lotId}/certificate/download.
+    /// </summary>
+    /// <param name="lotId">Target fabrication lot identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Raw UTF-8 JSON certificate bundle bytes if released; otherwise <see langword="null"/>.</returns>
+    public async Task<byte[]?> DownloadFabricationCertificateBundleAsync(
+        string lotId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Downloads a portable JSON Certificate of Analysis bundle from the connected NanoWeaver node.
+        // WHY:  Milestone 36 (P193): Enables air-gapped export of signed lot certificates from desktop/mobile apps.
+        // HOW:  Validates lotId, resolves session credentials, calls INanoWeaverNodeClient, and updates busy/error state.
+        ArgumentException.ThrowIfNullOrWhiteSpace(lotId);
+        var (profile, token) = ResolveEffectiveSession();
+
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            return await _client.DownloadFabricationCertificateBundleAsync(profile, token, lotId, ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

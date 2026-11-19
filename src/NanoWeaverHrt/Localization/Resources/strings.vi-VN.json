@@ -88,5 +88,13 @@
   "FabricationLot.Status.Revoked": "Đã thu hồi",
   "FabricationLot.CertificateTitle": "Chứng Chỉ Phân Tích Hậu Lượng Tử (ML-DSA-65)",
   "FabricationLot.CertificateVerified": "ĐÃ XÁC MINH CHỮ KÝ ML-DSA-65",
-  "FabricationLot.QuarantineTitle": "Lô Bị Cách Ly — Đã Chặn Phát Hành Lâm Sàng"
+  "FabricationLot.QuarantineTitle": "Lô Bị Cách Ly — Đã Chặn Phát Hành Lâm Sàng",
+  "FabricationLot.RevokeReasonLabel": "Lý Do Thu Hồi",
+  "FabricationLot.RevokeLotButton": "Thu Hồi Lô Vĩnh Viễn",
+  "FabricationLot.RevokedBannerTitle": "Lô Đã Bị Thu Hồi Vĩnh Viễn — Không Cấy Ghép",
+  "FabricationLot.VerifierSectionTitle": "Trình Xác Minh Chứng Chỉ ML-DSA-65 Liên Nút",
+  "FabricationLot.VerifierSectionDesc": "Dán gói JSON Chứng chỉ Phân tích từ nút này hoặc phòng thí nghiệm đối tác để xác minh chữ ký ML-DSA-65, điểm tin cậy và thu hồi.",
+  "FabricationLot.VerifierInputLabel": "Dữ Liệu JSON Chứng Chỉ Phân Tích",
+  "FabricationLot.VerifierButton": "Xác Minh Độ Tin Cậy & Thu Hồi",
+  "FabricationLot.VerifierTrustedBadge": "ĐÁNG TIN CẬY CHO LÂM SÀNG"
 }

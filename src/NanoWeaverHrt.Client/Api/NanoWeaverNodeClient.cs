@@ -4132,4 +4132,106 @@ public sealed class NanoWeaverNodeClient : INanoWeaverNodeClient
 
         return await resp.Content.ReadFromJsonAsync<FabricationLotCertificateResponse>(JsonOptions, ct);
     }
+
+    /// <inheritdoc/>
+    public async Task<FabricationLotRevocationResponse> RevokeFabricationLotAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        RevokeFabricationLotRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/fabrication/lots/{lotId}/revoke to permanently revoke a fabrication lot.
+        // WHY:  Milestone 36 (P192): Enables administrators to recall compromised lots from desktop, mobile, and CLI clients.
+        // HOW:  Validates arguments, sends authenticated JSON POST, and deserializes FabricationLotRevocationResponse.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(lotId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/fabrication/lots/{Uri.EscapeDataString(lotId)}/revoke");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        FabricationLotRevocationResponse? result = await resp.Content.ReadFromJsonAsync<FabricationLotRevocationResponse>(JsonOptions, ct);
+        return result ?? throw new InvalidOperationException("Endpoint returned empty or null fabrication lot revocation payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<FabricationCertificateVerificationReport> VerifyFabricationCertificateAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        FabricationLotCertificate certificate,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/fabrication/certificates/verify to check cross-node ML-DSA-65 trust and revocations.
+        // WHY:  Milestone 36 (P192): Lets receiving clinics verify foreign Certificates of Analysis via the client SDK.
+        // HOW:  Validates arguments, sends authenticated JSON POST, and deserializes FabricationCertificateVerificationReport.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentNullException.ThrowIfNull(certificate);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/fabrication/certificates/verify");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(certificate, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        FabricationCertificateVerificationReport? result = await resp.Content.ReadFromJsonAsync<FabricationCertificateVerificationReport>(JsonOptions, ct);
+        return result ?? throw new InvalidOperationException("Endpoint returned empty or null certificate verification report payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<byte[]?> DownloadFabricationCertificateBundleAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/fabrication/lots/{lotId}/certificate/download to retrieve portable CoA JSON bytes.
+        // WHY:  Milestone 36 (P192): Supports air-gapped export and cross-node transfer of signed lot certificates.
+        // HOW:  Returns null cleanly on HTTP 404; throws NodeApiException on other error status codes.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(lotId);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/fabrication/lots/{Uri.EscapeDataString(lotId)}/certificate/download");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (resp.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        return await resp.Content.ReadAsByteArrayAsync(ct);
+    }
 }

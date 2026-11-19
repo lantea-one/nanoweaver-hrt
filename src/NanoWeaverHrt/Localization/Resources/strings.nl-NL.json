@@ -88,5 +88,13 @@
   "FabricationLot.Status.Revoked": "Ingetrokken",
   "FabricationLot.CertificateTitle": "Post-kwantum Analysecertificaat (ML-DSA-65)",
   "FabricationLot.CertificateVerified": "ML-DSA-65-HANDTEKENING GEVERIFIEERD",
-  "FabricationLot.QuarantineTitle": "Batch in quarantaine — Klinische vrijgave geblokkeerd"
+  "FabricationLot.QuarantineTitle": "Batch in quarantaine — Klinische vrijgave geblokkeerd",
+  "FabricationLot.RevokeReasonLabel": "Terugroep- / Intrekkingsreden",
+  "FabricationLot.RevokeLotButton": "Batch Permanent Intrekken",
+  "FabricationLot.RevokedBannerTitle": "Batch Permanent Ingetrokken — Niet Implanteren",
+  "FabricationLot.VerifierSectionTitle": "Cross-Node ML-DSA-65 Certificaatverificatie",
+  "FabricationLot.VerifierSectionDesc": "Plak een draagbare JSON-analysecertificaatbundel van deze node of een partnerlaboratorium om ML-DSA-65-handtekening, vertrouwen en intrekkingen te controleren.",
+  "FabricationLot.VerifierInputLabel": "Analysecertificaat JSON-payload",
+  "FabricationLot.VerifierButton": "Vertrouwen & Intrekking Verifiëren",
+  "FabricationLot.VerifierTrustedBadge": "VERTROUWD VOOR KLINISCH GEBRUIK"
 }

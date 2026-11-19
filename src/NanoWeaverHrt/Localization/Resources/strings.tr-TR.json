@@ -88,5 +88,13 @@
   "FabricationLot.Status.Revoked": "İptal Edildi",
   "FabricationLot.CertificateTitle": "Kuantum Sonrası Analiz Sertifikası (ML-DSA-65)",
   "FabricationLot.CertificateVerified": "ML-DSA-65 İMZASI DOĞRULANDI",
-  "FabricationLot.QuarantineTitle": "Parti Karantinada — Klinik Onay Engellendi"
+  "FabricationLot.QuarantineTitle": "Parti Karantinada — Klinik Onay Engellendi",
+  "FabricationLot.RevokeReasonLabel": "Geri Çağırma / İptal Nedeni",
+  "FabricationLot.RevokeLotButton": "Partiyi Kalıcı Olarak İptal Et",
+  "FabricationLot.RevokedBannerTitle": "Parti Kalıcı Olarak İptal Edildi — İmplante Etmeyin",
+  "FabricationLot.VerifierSectionTitle": "Düğümler Arası ML-DSA-65 Sertifika Doğrulayıcı",
+  "FabricationLot.VerifierSectionDesc": "ML-DSA-65 imza bütünlüğünü, eş güven çapasını ve iptal durumunu doğrulamak için Analiz Sertifikası JSON yükünü yapıştırın.",
+  "FabricationLot.VerifierInputLabel": "Analiz Sertifikası JSON Yükü",
+  "FabricationLot.VerifierButton": "Sertifika Güvenini ve İptalini Doğrula",
+  "FabricationLot.VerifierTrustedBadge": "KLİNİK KULLANIM İÇİN GÜVENİLİR"
 }

@@ -88,5 +88,13 @@
   "FabricationLot.Status.Revoked": "Återkallad",
   "FabricationLot.CertificateTitle": "Postkvant-analyscertifikat (ML-DSA-65)",
   "FabricationLot.CertificateVerified": "ML-DSA-65-SIGNATUR VERIFIERAD",
-  "FabricationLot.QuarantineTitle": "Batch i Karantän — Klinisk Frisläppning Blockerad"
+  "FabricationLot.QuarantineTitle": "Batch i Karantän — Klinisk Frisläppning Blockerad",
+  "FabricationLot.RevokeReasonLabel": "Återkallelse- / Ogiltigförklaringsorsak",
+  "FabricationLot.RevokeLotButton": "Återkalla Batch Permanent",
+  "FabricationLot.RevokedBannerTitle": "Batch Permanent Återkallad — Implantera Ej",
+  "FabricationLot.VerifierSectionTitle": "Nodöverskridande ML-DSA-65-certifikatverifierare",
+  "FabricationLot.VerifierSectionDesc": "Klistra in ett portabelt JSON-analyscertifikat från denna nod eller ett partnerlaboratorium för att verifiera ML-DSA-65-signatur, förtroende och återkallelser.",
+  "FabricationLot.VerifierInputLabel": "Analyscertifikat JSON-nyttolast",
+  "FabricationLot.VerifierButton": "Verifiera Förtroende & Återkallelse",
+  "FabricationLot.VerifierTrustedBadge": "BETRODD FÖR KLINISK ANVÄNDNING"
 }

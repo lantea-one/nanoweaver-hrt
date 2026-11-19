@@ -88,5 +88,13 @@
   "FabricationLot.Status.Revoked": "Unieważniona",
   "FabricationLot.CertificateTitle": "Postkwantowy Certyfikat Analizy (ML-DSA-65)",
   "FabricationLot.CertificateVerified": "PODPIS ML-DSA-65 ZWERYFIKOWANY",
-  "FabricationLot.QuarantineTitle": "Partia w Kwarantannie — Zwolnienie Kliniczne Zablokowane"
+  "FabricationLot.QuarantineTitle": "Partia w Kwarantannie — Zwolnienie Kliniczne Zablokowane",
+  "FabricationLot.RevokeReasonLabel": "Powód Wycofania / Unieważnienia",
+  "FabricationLot.RevokeLotButton": "Trwale Unieważnij Partię",
+  "FabricationLot.RevokedBannerTitle": "Partia Trwale Unieważniona — Nie Implantować",
+  "FabricationLot.VerifierSectionTitle": "Międzywęzłowy Weryfikator Certyfikatów ML-DSA-65",
+  "FabricationLot.VerifierSectionDesc": "Wklej przenośny pakiet JSON Certyfikatu Analizy z tego węzła lub partnerskiego laboratorium, aby zweryfikować podpis ML-DSA-65, zaufanie i unieważnienia.",
+  "FabricationLot.VerifierInputLabel": "Ładunek JSON Certyfikatu Analizy",
+  "FabricationLot.VerifierButton": "Zweryfikuj Zaufanie i Unieważnienie",
+  "FabricationLot.VerifierTrustedBadge": "ZAUFANY DO UŻYCIA KLINICZNEGO"
 }
