@@ -415,19 +415,19 @@ public sealed class EventBusAndValkeyTests : IClassFixture<WebApplicationFactory
             It.IsAny<RedisKey>(),
             It.IsAny<RedisValue>(),
             It.IsAny<TimeSpan?>(),
-            When.Always)).ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Simulated fault"));
+            When.Always)).ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, CommandFlags.None, "Simulated fault"));
 
         mockDb.Setup(d => d.StringGetAsync(
             It.IsAny<RedisKey>(),
-            It.IsAny<CommandFlags>())).ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Simulated fault"));
+            It.IsAny<CommandFlags>())).ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, CommandFlags.None, "Simulated fault"));
 
         mockDb.Setup(d => d.KeyDeleteAsync(
             It.IsAny<RedisKey>(),
-            It.IsAny<CommandFlags>())).ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Simulated fault"));
+            It.IsAny<CommandFlags>())).ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, CommandFlags.None, "Simulated fault"));
 
         mockDb.Setup(d => d.KeyExistsAsync(
             It.IsAny<RedisKey>(),
-            It.IsAny<CommandFlags>())).ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Simulated fault"));
+            It.IsAny<CommandFlags>())).ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, CommandFlags.None, "Simulated fault"));
 
         await distributedCache.SetAsync("fault_key", "fault_fallback_value");
         string? fallbackVal = await distributedCache.GetAsync<string>("fault_key");

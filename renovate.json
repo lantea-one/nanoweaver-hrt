@@ -3,5 +3,25 @@
   "extends": [
     "config:recommended"
   ],
-  "automerge": false
+  "automerge": false,
+  "packageRules": [
+    {
+      "description": "Hold .NET 11 major upgrades until dedicated net11.0 LTS migration milestone",
+      "matchPackageNames": [
+        "dotnet-sdk",
+        "mcr.microsoft.com/dotnet/aspnet",
+        "mcr.microsoft.com/dotnet/sdk",
+        "Microsoft.Data.Sqlite",
+        "Microsoft.AspNetCore.Mvc.Testing"
+      ],
+      "allowedVersions": "<11.0.0"
+    },
+    {
+      "description": "Hold coverlet.collector major 10.x until compiler state-machine branch baseline is reconciled",
+      "matchPackageNames": [
+        "coverlet.collector"
+      ],
+      "allowedVersions": "<7.0.0"
+    }
+  ]
 }

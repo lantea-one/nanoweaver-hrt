@@ -127,7 +127,7 @@ flowchart LR
 * **Typing & Serialization**: Uses strongly-typed records (`TrajectoryFrameBatchEvent`, `SimulationProgressEvent`, `UserSessionActivityEvent`, `AuditLogDispatchedEvent`, `SystemTelemetryUpdatedEvent`) satisfying `IWeaverEvent`.
 
 ### Hardened Valkey 8 Cluster Overlay (`compose/docker-compose.valkey.yml`)
-* **Open Source Datastore**: Leverages Valkey 8 (`valkey/valkey:8-alpine`), the open-source Linux Foundation fork of Redis.
+* **Open Source Datastore**: Leverages Valkey 9 (`valkey/valkey:9-alpine`), the open-source Linux Foundation fork of Redis.
 * **Security Hardening**:
   - Requires strong password authentication (`--requirepass`).
   - Caps memory footprint (`maxmemory 512mb`, `maxmemory-policy allkeys-lru`).
