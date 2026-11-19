@@ -4,14 +4,30 @@
 
 ---
 
-## v2026.11.10.3 — End-to-End Verification Audit Remediations, Forgejo Pages Deployment & Semi-Annual Time-Release Nanocarrier Depot (Milestone 33 / Forgejo Issues #177–#185) (2026-11-18)
+## v2026.11.18.1 — End-to-End Verification Audit Remediations, Forgejo Pages Deployment, Containerized CI & Zero-CDN Hardening (Forgejo Issues #182–#185) (2026-11-18)
 
-Completes the full end-to-end code, live application runtime, standards, and documentation verification audit (`P176`–`P179` / Forgejo Issues `#182`–`#185`), adds sovereign Forgejo Pages documentation publishing (`https://lantea-one.pages.lantea.one/nanoweaver-hrt/`), and migrates CI/CD workflows to containerized `-ci` organization runners (`asgard-ci`, `heimdall-ci`):
-* **End-to-End Audit Remediations & Forgejo Pages CI/CD (Forgejo #182–#185 / P176–P179)**:
-  - **Phase 2 — Time-Release Depot Erosion Rate Coupling & Dynamic CalVer Resolution (Forgejo #182 / P176)**: Wired `DailyErosionRatePercent` into `TimeReleaseDepotParameters`, `ITimeReleaseDepotService`, and `TimeReleaseDepotService` to govern multi-phase hydrogel erosion kinetics dynamically; replaced hardcoded runtime version strings in `AboutViewModel`, `DesktopProgram`, and `MobileEntryPoint` with dynamic `AssemblyVersion` resolution.
-  - **Phase 3 — Static Web Assets Production Hosting, Depot API Audit & Client SDK Parity (Forgejo #183 / P177)**: Enabled `builder.WebHost.UseStaticWebAssets()` in `Program.cs` so `/_framework/blazor.web.js` serves cleanly when running `dotnet run` in default `Production` mode; forwarded `DailyErosionRatePercent` in `POST /api/depots/simulate-release`; added FDA 21 CFR Part 11 audit logging to `POST /api/depots/formulations`; updated `/api/system/health` and OpenAPI metadata to dynamic CalVer and authoritative Forgejo URLs; added `CreateDepotFormulationAsync`, `GetDepotFormulationsAsync`, and `SimulateDepotReleaseAsync` to `INanoWeaverNodeClient` and `NanoWeaverNodeClient`.
-  - **Phase 4 — Sovereign Blazor UI Navigation, DepotStudio FtM Bounds, Zero-CDN Fonts & GUI Core Parity (Forgejo #184 / P178)**: Added `/depot-studio` link to `MainLayout.razor` and localized all 11 navigation links and the Sign Out button across all 18 community locales; updated `DepotStudio.razor` to allow FtM 180-day payload masses up to `2000.0 mg` and automatically switch default loaded mass (`16.0 mg` MtF / `1050.0 mg` FtM); fixed Razor percentage interpolation in `WorkflowWizard.razor`; removed external Google Fonts links from `App.razor` and `wwwroot/index.html`; exposed the 3 depot methods on `PatientClinicalWorkspaceViewModel`.
-  - **Phase 5 — Packaging Manifest CalVer Sync, Verification Gate Hardening & Forgejo Pages Workflow (Forgejo #185 / P179)**: Synchronized all `packaging/**` and mobile platform manifests with `2026.11.10.3`; hardened `scripts/verify-vendored-js.sh` to block external `<link href="https?://">` tags and expanded `scripts/verify-all.sh` Step 5 Markdown math scanning to root `.md` files; added `.forgejo/workflows/deploy-pages.yml` publishing `docs/` to `https://lantea-one.pages.lantea.one/nanoweaver-hrt/` and migrated `.forgejo/workflows/` to containerized `-ci` runners (`asgard-ci`, `heimdall-ci`) with public GitHub Actions SDK provisioning.
+Completes the full end-to-end code, live application runtime, standards, and documentation verification audit (`P176`–`P179` / Forgejo Issues `#182`–`#185`), deploys the authoritative interactive wiki to Forgejo Pages (`https://lantea-one.pages.lantea.one/nanoweaver-hrt/`), migrates CI/CD to containerized `-ci` organization runners (`asgard-ci`, `heimdall-ci`), eliminates all Forgejo Actions workflow warnings, and cleans up OCI registry tagging and release asset deduplication:
+* **Phase 2 — Time-Release Depot Erosion Rate Coupling & Dynamic CalVer Resolution (Forgejo #182 / P176)**:
+  - Wired `DailyErosionRatePercent` into `TimeReleaseDepotParameters`, `ITimeReleaseDepotService`, and `TimeReleaseDepotService` to govern multi-phase hydrogel erosion kinetics dynamically.
+  - Replaced hardcoded runtime version strings in `AboutViewModel`, `DesktopProgram`, and `MobileEntryPoint` with dynamic `AssemblyVersion` resolution.
+* **Phase 3 — Static Web Assets Production Hosting, Depot API Audit & Client SDK Parity (Forgejo #183 / P177)**:
+  - Enabled `builder.WebHost.UseStaticWebAssets()` in `Program.cs` so `/_framework/blazor.web.js` serves cleanly when running `dotnet run` in default `Production` mode.
+  - Forwarded `DailyErosionRatePercent` in `POST /api/depots/simulate-release`, added FDA 21 CFR Part 11 audit logging (`DEPOT_FORMULATION_CREATE`) to `POST /api/depots/formulations`, and updated `/api/system/health` and OpenAPI metadata to dynamic CalVer and authoritative Forgejo URLs.
+  - Added `CreateDepotFormulationAsync`, `GetDepotFormulationsAsync`, and `SimulateDepotReleaseAsync` to `INanoWeaverNodeClient`, `NanoWeaverNodeClient`, and `WeaverNodeApiClient`.
+* **Phase 4 — Sovereign Blazor UI Navigation, DepotStudio FtM Bounds, Zero-CDN Fonts & GUI Core Parity (Forgejo #184 / P178)**:
+  - Added `/depot-studio` link to `MainLayout.razor` and localized all 11 navigation links and the Sign Out button across all 18 community locales.
+  - Updated `DepotStudio.razor` to allow FtM 180-day payload masses up to `2000.0 mg` and automatically switch default loaded mass (`16.0 mg` MtF / `1050.0 mg` FtM).
+  - Fixed Razor percentage interpolation in `WorkflowWizard.razor`, removed external Google Fonts links from `App.razor` and `wwwroot/index.html`, and exposed all 3 depot commands on `PatientClinicalWorkspaceViewModel`.
+* **Phase 5 — Packaging Manifest CalVer Sync, Verification Gate Hardening, Forgejo Pages & Containerized CI/CD (Forgejo #185 / P179)**:
+  - Hardened `scripts/verify-vendored-js.sh` to reject external `<link href="https?://">` stylesheets/fonts and expanded `scripts/verify-all.sh` Step 5 Markdown math scanning across all 34 Markdown files including root guides.
+  - Added `.forgejo/workflows/deploy-pages.yml` publishing `docs/` to Forgejo Pages (`https://lantea-one.pages.lantea.one/nanoweaver-hrt/`) and updated all documentation links to Forgejo Pages.
+  - Migrated `.forgejo/workflows/build-and-deploy.yml` to containerized `-ci` runners (`asgard-ci`, `heimdall-ci`), removed unsupported `permissions:` fields (zero workflow warnings), switched container publishing to single-manifest (`provenance: false`) `latest` + CalVer release tagging, updated `AcceleratorBenchmarkTests` for root-safe container sysfs `EIO` testing via `/proc/self/mem` symlinks, and added release asset deduplication to `scripts/packaging/publish-forgejo-release.sh`.
+
+---
+
+## v2026.11.10.3 — Semi-Annual Time-Release Nanocarrier Depot & Automated Hydrogel Encapsulation (Milestone 33 / Forgejo Issues #177–#181) (2026-11-10)
+
+Completes Milestone 33 (`P171`–`P175` / Forgejo Issues `#177`–`#181`), introducing semi-annual (180-day) multi-phase time-release nanocarrier depot persistence, systems biology kinetics modeling, REST API endpoints, Opentrons hydrogel encapsulation automation, and the sovereign `DepotStudio` Blazor UI:
 * **Phase 1: Persistence & Schema Evolution (Forgejo #177 / P171)**:
   - Database schema migration `Migration013_TimeReleaseDepotFormulations` across SQLite, PostgreSQL, DuckDB, and MySQL.
   - Persists patient-specific depot configurations (`weaver_depot_formulations`) and 180-day trajectory schedules (`weaver_depot_release_schedules`).

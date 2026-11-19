@@ -12,7 +12,7 @@
 
 buildDotnetModule rec {
   pname = "nanoweaver-hrt-desktop";
-  version = "2026.11.10.3";
+  version = "2026.11.18.1";
 
   src = fetchgit {
     url = "https://git.lantea.one/lantea-one/nanoweaver-hrt.git";
