@@ -17,11 +17,11 @@ jobs:
   deploy-pages:
     name: Publish Documentation Wiki to Forgejo Pages
     if: forgejo.ref == 'refs/heads/main'
-    # WHAT: Run on the containerized vidar-ci runner (label: vidar).
-    # WHY:  Publishing static docs/ to Forgejo Pages is a quick ~10-second task and avoids
-    #       queuing behind long-running GUI packaging jobs on heimdall-ci.
-    # HOW:  Target the vidar label of the vidar-ci containerized runner.
-    runs-on: vidar
+    # WHAT: Run on the containerized heimdall-ci runner.
+    # WHY:  heimdall-ci reaches pages.lantea.one directly (preserving the git-pages Server header
+    #       required by git-pages/action, whereas vidar-ci traverses an nginx proxy).
+    # HOW:  Target the heimdall-ci containerized runner label.
+    runs-on: heimdall-ci
     timeout-minutes: 15
     steps:
       - name: Checkout Source Code
