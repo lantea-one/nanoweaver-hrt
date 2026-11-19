@@ -8,8 +8,8 @@ using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.AspNetCore.Mvc.ApiExplorer;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
-using Microsoft.OpenApi.Any;
-using Microsoft.OpenApi.Models;
+using System.Text.Json.Nodes;
+using Microsoft.OpenApi;
 using Swashbuckle.AspNetCore.SwaggerGen;
 using NanoWeaverHrt.Compliance;
 using NanoWeaverHrt.Configuration;
@@ -261,14 +261,14 @@ public sealed class ContentFormatAndSwaggerTests
     }
 
     /// <summary>
-    /// Verifies that <see cref="OpenApiMultiFormatExampleFilter.ConvertJsonElementToOpenApiAny"/> correctly maps all JSON tokens to OpenAPI AST nodes.
+    /// Verifies that <see cref="OpenApiMultiFormatExampleFilter.ConvertJsonElementToJsonNode"/> correctly maps all JSON tokens to OpenAPI JsonNode trees.
     /// </summary>
     [Fact]
-    public void ConvertJsonElementToOpenApiAny_ShouldMapAllTokenKinds()
+    public void ConvertJsonElementToJsonNode_ShouldMapAllTokenKinds()
     {
         // WHAT: Tests AST node conversion for object, array, string, number, true, false, and null.
-        // WHY:  Guarantees Swashbuckle schema generator produces valid OpenAPI 3.0 example nodes.
-        // HOW:  Parses JSON with all types and validates converted IOpenApiAny.
+        // WHY:  Guarantees Swashbuckle schema generator produces valid OpenAPI 3.x JsonNode example trees.
+        // HOW:  Parses JSON with all types and validates converted JsonNode.
         string json = """
         {
           "str": "text",
@@ -283,32 +283,22 @@ public sealed class ContentFormatAndSwaggerTests
         """;
 
         using var doc = JsonDocument.Parse(json);
-        IOpenApiAny ast = OpenApiMultiFormatExampleFilter.ConvertJsonElementToOpenApiAny(doc.RootElement);
+        JsonNode? ast = OpenApiMultiFormatExampleFilter.ConvertJsonElementToJsonNode(doc.RootElement);
 
-        Assert.IsType<OpenApiObject>(ast);
-        var obj = (OpenApiObject)ast;
+        Assert.IsType<JsonObject>(ast);
+        var obj = (JsonObject)ast;
 
-        Assert.IsType<OpenApiString>(obj["str"]);
-        Assert.Equal("text", ((OpenApiString)obj["str"]).Value);
+        Assert.Equal("text", obj["str"]!.GetValue<string>());
+        Assert.Equal(123456789L, obj["intNum"]!.GetValue<long>());
+        Assert.Equal(12.34, obj["doubleNum"]!.GetValue<double>(), 2);
+        Assert.True(obj["isTrue"]!.GetValue<bool>());
+        Assert.False(obj["isFalse"]!.GetValue<bool>());
+        Assert.Null(obj["isNull"]);
 
-        Assert.IsType<OpenApiLong>(obj["intNum"]);
-        Assert.Equal(123456789, ((OpenApiLong)obj["intNum"]).Value);
+        Assert.IsType<JsonArray>(obj["arr"]);
+        Assert.Equal(3, ((JsonArray)obj["arr"]!).Count);
 
-        Assert.IsType<OpenApiDouble>(obj["doubleNum"]);
-        Assert.Equal(12.34, ((OpenApiDouble)obj["doubleNum"]).Value, 2);
-
-        Assert.IsType<OpenApiBoolean>(obj["isTrue"]);
-        Assert.True(((OpenApiBoolean)obj["isTrue"]).Value);
-
-        Assert.IsType<OpenApiBoolean>(obj["isFalse"]);
-        Assert.False(((OpenApiBoolean)obj["isFalse"]).Value);
-
-        Assert.IsType<OpenApiNull>(obj["isNull"]);
-
-        Assert.IsType<OpenApiArray>(obj["arr"]);
-        Assert.Equal(3, ((OpenApiArray)obj["arr"]).Count);
-
-        Assert.IsType<OpenApiObject>(obj["nested"]);
+        Assert.IsType<JsonObject>(obj["nested"]);
     }
 
     /// <summary>
@@ -322,12 +312,17 @@ public sealed class ContentFormatAndSwaggerTests
         // HOW:  Instantiates OpenApiMultiFormatExampleFilter and executes Apply on schema and operation.
         var filter = new OpenApiMultiFormatExampleFilter();
 
+        // 0. Non-concrete IOpenApiSchema reference returns cleanly
+        var schemaRef = new OpenApiSchemaReference("SystemTelemetry");
+        filter.Apply(schemaRef, new SchemaFilterContext(typeof(SystemTelemetry), null, null));
+
         // 1. Schema Filter for provider type
         var schema = new OpenApiSchema();
         var schemaContext = new SchemaFilterContext(typeof(SystemTelemetry), null, null);
         filter.Apply(schema, schemaContext);
 
-        Assert.NotNull(schema.Example);
+        Assert.NotNull(schema.Examples);
+        Assert.NotEmpty(schema.Examples);
         Assert.NotNull(schema.Xml);
         Assert.Equal("SystemTelemetry", schema.Xml.Name);
 
@@ -338,14 +333,14 @@ public sealed class ContentFormatAndSwaggerTests
         var nonProviderSchema = new OpenApiSchema();
         var nonProviderContext = new SchemaFilterContext(typeof(int), null, null);
         filter.Apply(nonProviderSchema, nonProviderContext);
-        Assert.Null(nonProviderSchema.Example);
+        Assert.Null(nonProviderSchema.Examples);
 
         // 3. Operation Filter with request body and response
         var operation = new OpenApiOperation
         {
             RequestBody = new OpenApiRequestBody
             {
-                Content = new Dictionary<string, OpenApiMediaType>
+                Content = new Dictionary<string, IOpenApiMediaType>
                 {
                     ["application/json"] = new OpenApiMediaType { Schema = new OpenApiSchema() }
                 }
@@ -354,7 +349,7 @@ public sealed class ContentFormatAndSwaggerTests
             {
                 ["200"] = new OpenApiResponse
                 {
-                    Content = new Dictionary<string, OpenApiMediaType>
+                    Content = new Dictionary<string, IOpenApiMediaType>
                     {
                         ["application/json"] = new OpenApiMediaType { Schema = new OpenApiSchema() }
                     }
@@ -375,7 +370,7 @@ public sealed class ContentFormatAndSwaggerTests
         });
         operation.Responses["204"] = new OpenApiResponse
         {
-            Content = new Dictionary<string, OpenApiMediaType>
+            Content = new Dictionary<string, IOpenApiMediaType>
             {
                 ["application/json"] = new OpenApiMediaType { Schema = new OpenApiSchema() }
             }
@@ -386,11 +381,11 @@ public sealed class ContentFormatAndSwaggerTests
             Type = typeof(ExportRequest)
         });
 
-        var opContext = new OperationFilterContext(apiDesc, null, null, null);
+        var opContext = new OperationFilterContext(apiDesc, null, null, null, null);
         filter.Apply(operation, opContext);
 
         // Verify multi-format request body
-        Assert.True(operation.RequestBody.Content.ContainsKey("application/json"));
+        Assert.True(operation.RequestBody.Content!.ContainsKey("application/json"));
         Assert.True(operation.RequestBody.Content.ContainsKey("application/xml"));
         Assert.True(operation.RequestBody.Content.ContainsKey("application/x-yaml"));
         Assert.NotNull(operation.RequestBody.Content["application/json"].Example);
@@ -398,12 +393,12 @@ public sealed class ContentFormatAndSwaggerTests
         Assert.NotNull(operation.RequestBody.Content["application/x-yaml"].Example);
 
         // Verify multi-format responses
-        Assert.True(operation.Responses["200"].Content.ContainsKey("application/json"));
-        Assert.True(operation.Responses["200"].Content.ContainsKey("application/xml"));
-        Assert.True(operation.Responses["200"].Content.ContainsKey("application/x-yaml"));
-        Assert.NotNull(operation.Responses["200"].Content["application/json"].Example);
-        Assert.NotNull(operation.Responses["200"].Content["application/xml"].Example);
-        Assert.NotNull(operation.Responses["200"].Content["application/x-yaml"].Example);
+        Assert.True(operation.Responses["200"].Content!.ContainsKey("application/json"));
+        Assert.True(operation.Responses["200"].Content!.ContainsKey("application/xml"));
+        Assert.True(operation.Responses["200"].Content!.ContainsKey("application/x-yaml"));
+        Assert.NotNull(operation.Responses["200"].Content!["application/json"].Example);
+        Assert.NotNull(operation.Responses["200"].Content!["application/xml"].Example);
+        Assert.NotNull(operation.Responses["200"].Content!["application/x-yaml"].Example);
 
         // Path 4: Second pass when media types already exist (covers TryGetValue true branches)
         filter.Apply(operation, opContext);
@@ -411,7 +406,7 @@ public sealed class ContentFormatAndSwaggerTests
         // Path 5: Null Responses and Null RequestBody
         var nullOp = new OpenApiOperation { RequestBody = null, Responses = null };
         var emptyApiDesc = new ApiDescription();
-        var nullOpContext = new OperationFilterContext(emptyApiDesc, null, null, null);
+        var nullOpContext = new OperationFilterContext(emptyApiDesc, null, null, null, null);
         filter.Apply(nullOp, nullOpContext);
 
         // Path 6: Body parameter with non-provider type (covers example == null return)
@@ -419,7 +414,7 @@ public sealed class ContentFormatAndSwaggerTests
         {
             RequestBody = new OpenApiRequestBody
             {
-                Content = new Dictionary<string, OpenApiMediaType>
+                Content = new Dictionary<string, IOpenApiMediaType>
                 {
                     ["application/json"] = new OpenApiMediaType { Schema = new OpenApiSchema() }
                 }
@@ -448,7 +443,7 @@ public sealed class ContentFormatAndSwaggerTests
             StatusCode = 500,
             Type = typeof(SystemTelemetry)
         });
-        var nonProviderOpContext = new OperationFilterContext(nonProviderApiDesc, null, null, null);
+        var nonProviderOpContext = new OperationFilterContext(nonProviderApiDesc, null, null, null, null);
         filter.Apply(nonProviderOp, nonProviderOpContext);
 
         // Path 7: Operation with empty Content dictionary (covers ResolveFirstSchema MoveNext() false branch)
@@ -456,13 +451,13 @@ public sealed class ContentFormatAndSwaggerTests
         {
             RequestBody = new OpenApiRequestBody
             {
-                Content = new Dictionary<string, OpenApiMediaType>()
+                Content = new Dictionary<string, IOpenApiMediaType>()
             },
             Responses = new OpenApiResponses
             {
                 ["200"] = new OpenApiResponse
                 {
-                    Content = new Dictionary<string, OpenApiMediaType>()
+                    Content = new Dictionary<string, IOpenApiMediaType>()
                 }
             }
         };
@@ -477,8 +472,23 @@ public sealed class ContentFormatAndSwaggerTests
             StatusCode = 200,
             Type = typeof(SystemTelemetry)
         });
-        var emptyContentOpContext = new OperationFilterContext(emptyContentApiDesc, null, null, null);
+        var emptyContentOpContext = new OperationFilterContext(emptyContentApiDesc, null, null, null, null);
         filter.Apply(emptyContentOp, emptyContentOpContext);
+
+        // Path 8: Existing media type entry is a non-concrete IOpenApiMediaType reference (covers pattern-match false branch)
+        var refMediaOp = new OpenApiOperation
+        {
+            RequestBody = new OpenApiRequestBody
+            {
+                Content = new Dictionary<string, IOpenApiMediaType>
+                {
+                    ["application/json"] = new OpenApiMediaTypeReference("json")
+                }
+            },
+            Responses = new OpenApiResponses()
+        };
+        filter.Apply(refMediaOp, emptyContentOpContext);
+        Assert.IsType<OpenApiMediaType>(refMediaOp.RequestBody.Content!["application/json"]);
     }
 
     /// <summary>

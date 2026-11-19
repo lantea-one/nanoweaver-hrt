@@ -1,6 +1,6 @@
 using System.Text.Json;
-using Microsoft.OpenApi.Any;
-using Microsoft.OpenApi.Models;
+using System.Text.Json.Nodes;
+using Microsoft.OpenApi;
 using Swashbuckle.AspNetCore.SwaggerGen;
 using NanoWeaverHrt.Formatting;
 
@@ -22,7 +22,7 @@ namespace NanoWeaverHrt.Swagger;
 /// <strong>How it works:</strong>
 /// <list type="bullet">
 ///   <item><description>Detects types implementing <see cref="IExamplesProvider{T}"/> on requests and responses.</description></item>
-///   <item><description>Generates native <see cref="OpenApiObject"/> / <see cref="OpenApiArray"/> ASTs for <c>application/json</c>.</description></item>
+///   <item><description>Generates native <see cref="JsonNode"/> trees for <c>application/json</c>.</description></item>
 ///   <item><description>Generates formatted XML strings for <c>application/xml</c>.</description></item>
 ///   <item><description>Generates hyphenated YAML strings for <c>application/x-yaml</c>.</description></item>
 /// </list>
@@ -35,11 +35,16 @@ public sealed class OpenApiMultiFormatExampleFilter : ISchemaFilter, IOperationF
     /// </summary>
     /// <param name="schema">The schema being processed.</param>
     /// <param name="context">The schema filter context.</param>
-    public void Apply(OpenApiSchema schema, SchemaFilterContext context)
+    public void Apply(IOpenApiSchema schema, SchemaFilterContext context)
     {
         // WHAT: Injects model example into OpenAPI components.schemas.
         // WHY:  Allows Swagger and ReDoc model schema explorers to display realistic data contracts.
-        // HOW:  Queries IExamplesProvider<T>, converts example to OpenApiAny.
+        // HOW:  Queries IExamplesProvider<T> and converts example JSON to a Microsoft.OpenApi JsonNode.
+        if (schema is not OpenApiSchema concreteSchema)
+        {
+            return;
+        }
+
         object? example = ContentFormatSerializer.GetExampleInstance(context.Type);
         if (example == null)
         {
@@ -48,8 +53,9 @@ public sealed class OpenApiMultiFormatExampleFilter : ISchemaFilter, IOperationF
 
         string json = ContentFormatSerializer.SerializeJson(example);
         using var doc = JsonDocument.Parse(json);
-        schema.Example = ConvertJsonElementToOpenApiAny(doc.RootElement);
-        schema.Xml ??= new OpenApiXml { Name = context.Type.Name };
+        // WHY `!`: example is guaranteed non-null above, so SerializeJson emits a non-null JSON root value.
+        concreteSchema.Examples = [ConvertJsonElementToJsonNode(doc.RootElement)!];
+        concreteSchema.Xml ??= new OpenApiXml { Name = context.Type.Name };
     }
 
     /// <summary>
@@ -98,11 +104,11 @@ public sealed class OpenApiMultiFormatExampleFilter : ISchemaFilter, IOperationF
         string yaml = ContentFormatSerializer.SerializeYaml(example);
 
         using var doc = JsonDocument.Parse(json);
-        IOpenApiAny jsonExample = ConvertJsonElementToOpenApiAny(doc.RootElement);
-        var xmlExample = new OpenApiString(xml);
-        var yamlExample = new OpenApiString(yaml);
+        JsonNode? jsonExample = ConvertJsonElementToJsonNode(doc.RootElement);
+        JsonNode xmlExample = JsonValue.Create(xml);
+        JsonNode yamlExample = JsonValue.Create(yaml);
 
-        OpenApiSchema? schema = ResolveFirstSchema(operation.RequestBody.Content);
+        IOpenApiSchema? schema = ResolveFirstSchema(operation.RequestBody.Content);
 
         SetContentExample(operation.RequestBody.Content, "application/json", jsonExample, schema);
         SetContentExample(operation.RequestBody.Content, "application/xml", xmlExample, schema);
@@ -124,7 +130,7 @@ public sealed class OpenApiMultiFormatExampleFilter : ISchemaFilter, IOperationF
         foreach (var responseType in context.ApiDescription.SupportedResponseTypes)
         {
             string statusCode = responseType.StatusCode.ToString();
-            if (!operation.Responses.TryGetValue(statusCode, out var response) || response.Content == null)
+            if (!operation.Responses.TryGetValue(statusCode, out IOpenApiResponse? response) || response.Content == null)
             {
                 continue;
             }
@@ -146,11 +152,11 @@ public sealed class OpenApiMultiFormatExampleFilter : ISchemaFilter, IOperationF
             string yaml = ContentFormatSerializer.SerializeYaml(example);
 
             using var doc = JsonDocument.Parse(json);
-            IOpenApiAny jsonExample = ConvertJsonElementToOpenApiAny(doc.RootElement);
-            var xmlExample = new OpenApiString(xml);
-            var yamlExample = new OpenApiString(yaml);
+            JsonNode? jsonExample = ConvertJsonElementToJsonNode(doc.RootElement);
+            JsonNode xmlExample = JsonValue.Create(xml);
+            JsonNode yamlExample = JsonValue.Create(yaml);
 
-            OpenApiSchema? schema = ResolveFirstSchema(response.Content);
+            IOpenApiSchema? schema = ResolveFirstSchema(response.Content);
 
             SetContentExample(response.Content, "application/json", jsonExample, schema);
             SetContentExample(response.Content, "application/xml", xmlExample, schema);
@@ -163,16 +169,16 @@ public sealed class OpenApiMultiFormatExampleFilter : ISchemaFilter, IOperationF
     /// </summary>
     /// <param name="contentDict">The OpenAPI content dictionary.</param>
     /// <param name="mediaType">The MIME media type.</param>
-    /// <param name="example">The example AST node.</param>
+    /// <param name="example">The example JSON AST node.</param>
     /// <param name="schema">The fallback schema definition.</param>
-    private static void SetContentExample(IDictionary<string, OpenApiMediaType> contentDict, string mediaType, IOpenApiAny example, OpenApiSchema? schema)
+    private static void SetContentExample(IDictionary<string, IOpenApiMediaType> contentDict, string mediaType, JsonNode? example, IOpenApiSchema? schema)
     {
-        // WHAT: Assigns example AST node to target media type in OpenAPI dictionary.
+        // WHAT: Assigns example JsonNode to target media type in OpenAPI dictionary.
         // WHY:  Standardizes example assignment across request bodies and responses.
         // HOW:  Updates existing OpenApiMediaType or creates a new entry.
-        if (contentDict.TryGetValue(mediaType, out var media))
+        if (contentDict.TryGetValue(mediaType, out IOpenApiMediaType? media) && media is OpenApiMediaType concreteMedia)
         {
-            media.Example = example;
+            concreteMedia.Example = example;
         }
         else
         {
@@ -185,7 +191,7 @@ public sealed class OpenApiMultiFormatExampleFilter : ISchemaFilter, IOperationF
     /// </summary>
     /// <param name="contentDict">The media type dictionary.</param>
     /// <returns>The first available schema, or null.</returns>
-    private static OpenApiSchema? ResolveFirstSchema(IDictionary<string, OpenApiMediaType> contentDict)
+    private static IOpenApiSchema? ResolveFirstSchema(IDictionary<string, IOpenApiMediaType> contentDict)
     {
         // WHAT: Retrieves the first schema from the content dictionary.
         // WHY:  Propagates request/response schema metadata to newly added multi-format representations.
@@ -199,51 +205,54 @@ public sealed class OpenApiMultiFormatExampleFilter : ISchemaFilter, IOperationF
     }
 
     /// <summary>
-    /// Recursively maps a <see cref="JsonElement"/> into a strongly-typed <see cref="IOpenApiAny"/> node hierarchy.
+    /// Recursively maps a <see cref="JsonElement"/> into a <see cref="JsonNode"/> hierarchy compatible with OpenAPI v3.
     /// </summary>
     /// <param name="element">The JSON element.</param>
-    /// <returns>A populated <see cref="IOpenApiAny"/> node.</returns>
-    public static IOpenApiAny ConvertJsonElementToOpenApiAny(JsonElement element)
+    /// <returns>A populated <see cref="JsonNode"/>, or <see langword="null"/> for JSON null literals.</returns>
+    public static JsonNode? ConvertJsonElementToJsonNode(JsonElement element)
     {
+        // WHAT: Converts System.Text.Json JsonElement values into mutable System.Text.Json.Nodes.JsonNode trees.
+        // WHY:  Microsoft.OpenApi v3 represents schema and media-type examples natively as JsonNode instances.
+        // HOW:  Switches on element.ValueKind and recursively builds JsonObject, JsonArray, and JsonValue nodes.
         switch (element.ValueKind)
         {
             case JsonValueKind.Object:
-                var obj = new OpenApiObject();
+                var obj = new JsonObject();
                 foreach (var prop in element.EnumerateObject())
                 {
-                    obj[prop.Name] = ConvertJsonElementToOpenApiAny(prop.Value);
+                    obj[prop.Name] = ConvertJsonElementToJsonNode(prop.Value);
                 }
                 return obj;
 
             case JsonValueKind.Array:
-                var arr = new OpenApiArray();
+                var arr = new JsonArray();
                 foreach (var item in element.EnumerateArray())
                 {
-                    arr.Add(ConvertJsonElementToOpenApiAny(item));
+                    arr.Add(ConvertJsonElementToJsonNode(item));
                 }
                 return arr;
 
             case JsonValueKind.String:
                 // WHY `!`: GetString() returns null only when the value kind is Null. This case label
                 //          guarantees the kind is String, so the decoded text is always present.
-                return new OpenApiString(element.GetString()!);
+                return JsonValue.Create(element.GetString()!);
 
             case JsonValueKind.Number:
                 if (element.TryGetInt64(out long l))
                 {
-                    return new OpenApiLong(l);
+                    return JsonValue.Create(l);
                 }
-                return new OpenApiDouble(element.GetDouble());
+                return JsonValue.Create(element.GetDouble());
 
             case JsonValueKind.True:
-                return new OpenApiBoolean(true);
+                return JsonValue.Create(true);
 
             case JsonValueKind.False:
-                return new OpenApiBoolean(false);
+                return JsonValue.Create(false);
 
             case JsonValueKind.Null:
             default:
-                return new OpenApiNull();
+                return null;
         }
     }
 }
