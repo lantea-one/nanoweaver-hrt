@@ -28,7 +28,7 @@ jobs:
         # WHAT: Checks out the main branch documentation tree.
         # WHY:  Provides the static Docsify wiki under docs/ for publishing to pages.lantea.one.
         # HOW:  Uses actions/checkout@v4 at the current commit SHA.
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           clean: true
           ref: ${{ forgejo.sha }}

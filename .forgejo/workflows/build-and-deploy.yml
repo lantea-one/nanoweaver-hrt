@@ -23,7 +23,7 @@ jobs:
 
     steps:
       - name: Checkout Source Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup .NET 10 SDK
         uses: https://github.com/actions/setup-dotnet@v4
@@ -285,7 +285,7 @@ jobs:
     runs-on: heimdall-ci
     steps:
       - name: Checkout Source Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup .NET 10 SDK
         uses: https://github.com/actions/setup-dotnet@v4
