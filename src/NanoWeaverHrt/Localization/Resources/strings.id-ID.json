@@ -118,5 +118,16 @@
   "Gui.DepotWorkspace.TrustRevoked": "DICABUT",
   "Gui.DepotWorkspace.TrayOptimal": "Batas Keamanan Klinis Optimal",
   "Gui.DepotWorkspace.TrayWarning": "Peringatan Klinis / Karantina",
-  "Gui.DepotWorkspace.TrayCritical": "Batas Keamanan Kritis / Lot Dicabut"
+  "Gui.DepotWorkspace.TrayCritical": "Batas Keamanan Kritis / Lot Dicabut",
+  "FabricationLot.RevocationFeedTitle": "Sinkronisasi Umpan Penarikan & Pencabutan Peer Terfederasi",
+  "FabricationLot.RevocationFeedDesc": "Ekspor umpan pencabutan lot bertanda tangan ML-DSA-65 node ini atau verifikasi dan impor umpan penarikan dari laboratorium peer tepercaya.",
+  "FabricationLot.RevocationFeedExportButton": "Ekspor Umpan Bertanda Tangan",
+  "FabricationLot.RevocationFeedRefreshButton": "Segarkan Penarikan",
+  "FabricationLot.RevocationFeedInputLabel": "Umpan Pencabutan Bertanda Tangan ML-DSA-65 (JSON)",
+  "FabricationLot.RevocationFeedImportButton": "Verifikasi & Impor Umpan Peer",
+  "FabricationLot.RevocationFeedColLot": "ID Lot Ditarik",
+  "FabricationLot.RevocationFeedColIssuer": "Lab Peer Penerbit",
+  "FabricationLot.RevocationFeedColReason": "Alasan Penarikan",
+  "FabricationLot.RevocationFeedColImported": "Diimpor (UTC)",
+  "FabricationLot.RevocationFeedEmpty": "Belum ada penarikan peer terfederasi terverifikasi yang diimpor di node ini."
 }

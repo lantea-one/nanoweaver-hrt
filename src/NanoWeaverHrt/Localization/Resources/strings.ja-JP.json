@@ -118,5 +118,16 @@
   "Gui.DepotWorkspace.TrustRevoked": "失効済み",
   "Gui.DepotWorkspace.TrayOptimal": "臨床安全基準は最適です",
   "Gui.DepotWorkspace.TrayWarning": "臨床警告 / 隔離ロットあり",
-  "Gui.DepotWorkspace.TrayCritical": "重大な安全上限 / ロット失効"
+  "Gui.DepotWorkspace.TrayCritical": "重大な安全上限 / ロット失効",
+  "FabricationLot.RevocationFeedTitle": "連邦ピア回収および失効フィード同期",
+  "FabricationLot.RevocationFeedDesc": "このノードの ML-DSA-65 署名付きロット失効フィードをエクスポートするか、信頼済みピア研究室からの回収フィードを検証してインポートします。",
+  "FabricationLot.RevocationFeedExportButton": "署名済みフィードを出力",
+  "FabricationLot.RevocationFeedRefreshButton": "回収履歴を更新",
+  "FabricationLot.RevocationFeedInputLabel": "署名済み ML-DSA-65 失効フィード JSON",
+  "FabricationLot.RevocationFeedImportButton": "ピア失効フィードを検証・取込",
+  "FabricationLot.RevocationFeedColLot": "回収ロット ID",
+  "FabricationLot.RevocationFeedColIssuer": "発行ピア研究室",
+  "FabricationLot.RevocationFeedColReason": "回収理由",
+  "FabricationLot.RevocationFeedColImported": "取込日時 (UTC)",
+  "FabricationLot.RevocationFeedEmpty": "このノードに検証済みの連邦ピア回収履歴はまだ取り込まれていません。"
 }

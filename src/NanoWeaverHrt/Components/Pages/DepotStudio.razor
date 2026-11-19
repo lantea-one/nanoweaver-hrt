@@ -721,6 +721,76 @@
             </div>
         }
     </section>
+
+    <!-- Federated Peer Recall & Revocation Feed Sync Panel (Milestone 38) -->
+    <section id="federated-revocation-sync-panel" class="card panel mt-4" role="region" aria-label="@T("FabricationLot.RevocationFeedTitle")">
+        <div class="panel-header">
+            <div>
+                <h3>@T("FabricationLot.RevocationFeedTitle")</h3>
+                <p class="subtext">@T("FabricationLot.RevocationFeedDesc")</p>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <button id="btn-export-revocation-feed" class="btn btn-outline" @onclick="ExportSignedRevocationFeedAsync" disabled="@_isSyncingRevocationFeed">
+                    @T("FabricationLot.RevocationFeedExportButton")
+                </button>
+                <button id="btn-refresh-federated-recalls" class="btn btn-outline" @onclick="RefreshFederatedRecallsAsync" disabled="@_isSyncingRevocationFeed">
+                    @T("FabricationLot.RevocationFeedRefreshButton")
+                </button>
+            </div>
+        </div>
+
+        <div class="form-group mt-3">
+            <label class="form-label" for="textarea-revocation-feed-json">@T("FabricationLot.RevocationFeedInputLabel")</label>
+            <textarea id="textarea-revocation-feed-json" class="form-control font-mono" rows="5" @bind="_revocationFeedJson" placeholder="{ &quot;feedVersion&quot;: &quot;nanoweaver-revocation-feed-v1&quot;, &quot;entries&quot;: [ ... ] }"></textarea>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(_revocationFeedErrorMessage))
+        {
+            <div id="revocation-feed-error" class="alert alert-danger mt-3" role="alert">@_revocationFeedErrorMessage</div>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(_revocationFeedStatusMessage))
+        {
+            <div id="revocation-feed-status" class="alert alert-success mt-3" role="status">@_revocationFeedStatusMessage</div>
+        }
+
+        <div class="d-flex align-items-center gap-2 mt-3">
+            <button id="btn-import-revocation-feed" class="btn btn-primary" @onclick="ImportSignedRevocationFeedAsync" disabled="@_isSyncingRevocationFeed">
+                @T("FabricationLot.RevocationFeedImportButton")
+            </button>
+        </div>
+
+        @if (_federatedRecalls.Count > 0)
+        {
+            <div class="table-responsive mt-4">
+                <table id="federated-recalls-table" class="table">
+                    <thead>
+                        <tr>
+                            <th>@T("FabricationLot.RevocationFeedColLot")</th>
+                            <th>@T("FabricationLot.RevocationFeedColIssuer")</th>
+                            <th>@T("FabricationLot.RevocationFeedColReason")</th>
+                            <th>@T("FabricationLot.RevocationFeedColImported")</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (FederatedLotRevocationRecord rec in _federatedRecalls)
+                        {
+                            <tr>
+                                <td class="font-mono text-break-all">@rec.LotId</td>
+                                <td class="font-mono text-break-all">@(string.IsNullOrWhiteSpace(rec.IssuerPeerLabel) ? rec.IssuerKeyId : rec.IssuerPeerLabel)</td>
+                                <td>@rec.RevocationReason</td>
+                                <td class="font-mono">@rec.ImportedAtUtc.ToString("u", CultureInfo.InvariantCulture)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        else
+        {
+            <p class="subtext mt-3">@T("FabricationLot.RevocationFeedEmpty")</p>
+        }
+    </section>
 }
 
 @code {
@@ -1633,6 +1703,15 @@
             }
 
             FabricationLotRevocationRecord? revocation = await LotRepository.GetLotRevocationAsync(certificate.LotId.Trim());
+            if (revocation is null)
+            {
+                FederatedLotRevocationRecord? fed = await LotRepository.GetFederatedRevocationAsync(certificate.LotId.Trim());
+                if (fed is not null)
+                {
+                    revocation = FabricationLotService.ToEffectiveRevocation(fed);
+                }
+            }
+
             _peerVerificationReport = LotService.VerifyCertificateAgainstTrustAnchor(certificate, matchedPeer, revocation);
         }
         catch (JsonException)
@@ -1642,6 +1721,166 @@
         finally
         {
             _isVerifyingCertificate = false;
+        }
+    }
+
+    /// <summary>
+    /// Portable signed peer revocation feed JSON displayed or pasted in the Federated Recall Sync panel.
+    /// </summary>
+    private string _revocationFeedJson = string.Empty;
+
+    /// <summary>
+    /// Error message displayed when a pasted revocation feed fails JSON parsing or ML-DSA-65 verification.
+    /// </summary>
+    private string? _revocationFeedErrorMessage;
+
+    /// <summary>
+    /// Success summary banner displayed after exporting or importing a signed revocation feed.
+    /// </summary>
+    private string? _revocationFeedStatusMessage;
+
+    /// <summary>
+    /// Indicates whether an asynchronous revocation feed export/import operation is running.
+    /// </summary>
+    private bool _isSyncingRevocationFeed;
+
+    /// <summary>
+    /// Cached list of verified federated peer recall tombstones displayed in the ledger table.
+    /// </summary>
+    private IReadOnlyList<FederatedLotRevocationRecord> _federatedRecalls = [];
+
+    /// <summary>
+    /// Exports this node's local lot revocations as a signed NIST FIPS 204 ML-DSA-65 JSON feed.
+    /// </summary>
+    /// <returns>A task representing the asynchronous export operation.</returns>
+    private async Task ExportSignedRevocationFeedAsync()
+    {
+        // WHAT: Builds and serializes a signed ML-DSA-65 revocation feed from local recall tombstones.
+        // WHY:  Milestone 38 (P203): Allows clinicians to copy/share signed recall feeds with peer sovereign nodes.
+        // HOW:  Lists local revocations, signs via LotService.BuildSignedRevocationFeed, and formats indented JSON.
+        _revocationFeedErrorMessage = null;
+        _revocationFeedStatusMessage = null;
+        _isSyncingRevocationFeed = true;
+        try
+        {
+            IReadOnlyList<FabricationLotRevocationRecord> locals = await LotRepository.ListLocalRevocationsAsync();
+            SignedLotRevocationFeed feed = LotService.BuildSignedRevocationFeed(locals);
+            _revocationFeedJson = JsonSerializer.Serialize(
+                feed,
+                new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
+            _revocationFeedStatusMessage = $"Signed ML-DSA-65 revocation feed generated with {feed.Entries.Count} entry(ies).";
+        }
+        finally
+        {
+            _isSyncingRevocationFeed = false;
+        }
+    }
+
+    /// <summary>
+    /// Parses, verifies, and persists a pasted ML-DSA-65 signed peer revocation feed.
+    /// </summary>
+    /// <returns>A task representing the asynchronous verification and import operation.</returns>
+    private async Task ImportSignedRevocationFeedAsync()
+    {
+        // WHAT: Verifies a peer node's ML-DSA-65 revocation feed signature and trust anchor before persisting recall tombstones.
+        // WHY:  Milestone 38 (P203): Enforces fail-closed cross-node recall propagation directly from Depot Studio.
+        // HOW:  Deserializes JSON, looks up signer key in IPeerKeyRegistry, runs VerifySignedRevocationFeed, and upserts entries.
+        _revocationFeedErrorMessage = null;
+        _revocationFeedStatusMessage = null;
+        if (string.IsNullOrWhiteSpace(_revocationFeedJson))
+        {
+            _revocationFeedErrorMessage = "Paste a signed ML-DSA-65 revocation feed JSON bundle to import.";
+            return;
+        }
+
+        _isSyncingRevocationFeed = true;
+        try
+        {
+            SignedLotRevocationFeed? feed = JsonSerializer.Deserialize<SignedLotRevocationFeed>(
+                _revocationFeedJson,
+                new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            if (feed is null)
+            {
+                _revocationFeedErrorMessage = "JSON payload is not a valid signed revocation feed.";
+                return;
+            }
+
+            IReadOnlyList<PeerKeyRecord> peers = await PeerKeyRegistry.ListAsync();
+            PeerKeyRecord? matchedPeer = null;
+            for (int i = 0; i < peers.Count; i++)
+            {
+                if (string.Equals(peers[i].KeyId, feed.SignerKeyId, StringComparison.OrdinalIgnoreCase))
+                {
+                    matchedPeer = peers[i];
+                    break;
+                }
+            }
+
+            RevocationFeedVerificationResult verdict = LotService.VerifySignedRevocationFeed(feed, matchedPeer);
+            if (!verdict.IsTrusted)
+            {
+                _revocationFeedErrorMessage = verdict.Summary;
+                return;
+            }
+
+            DateTimeOffset importedAtUtc = DateTimeOffset.UtcNow;
+            int count = 0;
+            for (int i = 0; i < feed.Entries.Count; i++)
+            {
+                SignedLotRevocationEntry entry = feed.Entries[i];
+                if (string.IsNullOrWhiteSpace(entry.LotId)
+                    || string.IsNullOrWhiteSpace(entry.RevokedBy)
+                    || string.IsNullOrWhiteSpace(entry.RevocationReason))
+                {
+                    continue;
+                }
+
+                await LotRepository.UpsertFederatedRevocationAsync(new FederatedLotRevocationRecord
+                {
+                    LotId = entry.LotId.Trim(),
+                    PayloadSha256 = entry.PayloadSha256,
+                    IssuerKeyId = feed.SignerKeyId,
+                    IssuerPeerLabel = verdict.TrustedPeerLabel,
+                    RevokedBy = entry.RevokedBy.Trim(),
+                    RevocationReason = entry.RevocationReason.Trim(),
+                    RevokedAtUtc = entry.RevokedAtUtc,
+                    FeedPayloadSha256 = feed.PayloadSha256,
+                    FeedSignatureBase64 = feed.SignatureBase64,
+                    ImportedAtUtc = importedAtUtc
+                });
+                count++;
+            }
+
+            _federatedRecalls = await LotRepository.ListFederatedRevocationsAsync();
+            _revocationFeedStatusMessage = $"Verified and imported {count} federated recall tombstone(s).";
+        }
+        catch (JsonException)
+        {
+            _revocationFeedErrorMessage = "Invalid JSON syntax in signed revocation feed payload.";
+        }
+        finally
+        {
+            _isSyncingRevocationFeed = false;
+        }
+    }
+
+    /// <summary>
+    /// Refreshes the displayed federated recall ledger from <see cref="IFabricationLotRepository"/>.
+    /// </summary>
+    /// <returns>A task representing the asynchronous refresh operation.</returns>
+    private async Task RefreshFederatedRecallsAsync()
+    {
+        // WHAT: Loads all verified federated peer recall tombstones from persistence.
+        // WHY:  Displays active upstream peer recalls in the Depot Studio table.
+        // HOW:  Queries LotRepository.ListFederatedRevocationsAsync inside a busy guard.
+        _isSyncingRevocationFeed = true;
+        try
+        {
+            _federatedRecalls = await LotRepository.ListFederatedRevocationsAsync();
+        }
+        finally
+        {
+            _isSyncingRevocationFeed = false;
         }
     }
 }

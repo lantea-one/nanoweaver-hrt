@@ -2609,5 +2609,121 @@ public sealed class EndpointIntegrationTests : IClassFixture<WebApplicationFacto
             Assert.Contains(entries, e => e.Action == "FABRICATION_LOT_REVOKE" && e.Resource == $"fabrication-lot:{lotId}");
             Assert.Contains(entries, e => e.Action == "FABRICATION_CERT_VERIFY" && e.Resource == $"fabrication-lot:{lotId}");
         }
+
+        // -----------------------------------------------------------------
+        // Milestone 38: Federated Peer Lot Revocation Sync & Recall Gossip Ledger
+        // -----------------------------------------------------------------
+        // 1. Export signed ML-DSA-65 revocation feed: 401 anon, 403 patient, 200 researcher/admin
+        Assert.Equal(HttpStatusCode.Unauthorized, (await clientAnon.GetAsync("/api/fabrication/revocations/feed")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientA.GetAsync("/api/fabrication/revocations/feed")).StatusCode);
+
+        HttpResponseMessage feedResp = await clientRes.GetAsync("/api/fabrication/revocations/feed");
+        Assert.Equal(HttpStatusCode.OK, feedResp.StatusCode);
+        SignedLotRevocationFeed? exportedFeed = await feedResp.Content.ReadFromJsonAsync<SignedLotRevocationFeed>();
+        Assert.NotNull(exportedFeed);
+        Assert.Contains(exportedFeed.Entries, e => e.LotId == lotId);
+
+        // 2. Mint & release a second lot (NOT locally revoked) to verify federated recall enforcement
+        HttpResponseMessage mintLotBResp = await _client.PostAsJsonAsync("/api/fabrication/lots", new CreateFabricationLotRequest
+        {
+            DepotId = depotId,
+            UseLatestCalibration = false,
+            CpGMethylationRequired = false
+        });
+        Assert.Equal(HttpStatusCode.Created, mintLotBResp.StatusCode);
+        string lotBId = (await mintLotBResp.Content.ReadFromJsonAsync<FabricationLotResponse>())!.LotId;
+
+        await _client.PostAsJsonAsync($"/api/fabrication/lots/{lotBId}/qc", new RecordFabricationQcRequest { GateType = FabricationQcGateType.GelFoldingYield, MeasuredValue = 93.0 });
+        await _client.PostAsJsonAsync($"/api/fabrication/lots/{lotBId}/qc", new RecordFabricationQcRequest { GateType = FabricationQcGateType.EndotoxinSterility, MeasuredValue = 0.11 });
+        await _client.PostAsJsonAsync($"/api/fabrication/lots/{lotBId}/qc", new RecordFabricationQcRequest { GateType = FabricationQcGateType.HydrodynamicSizePdi, MeasuredValue = 58.0, SecondaryValue = 0.11 });
+        await _client.PostAsJsonAsync($"/api/fabrication/lots/{lotBId}/qc", new RecordFabricationQcRequest { GateType = FabricationQcGateType.PayloadEncapsulation, MeasuredValue = 90.0, SecondaryValue = 1.0 });
+        Assert.Equal(HttpStatusCode.OK, (await _client.PostAsync($"/api/fabrication/lots/{lotBId}/release", null)).StatusCode);
+
+        FabricationLotCertificate certLotB = (await (await _client.GetAsync($"/api/fabrication/lots/{lotBId}/certificate/download")).Content.ReadFromJsonAsync<FabricationLotCertificate>())!;
+
+        // 3. Import revocation feed guards: 401 anon, 400 null body, 403 patient, 422 tampered/untrusted
+        Assert.Equal(HttpStatusCode.Unauthorized, (await clientAnon.PostAsJsonAsync("/api/fabrication/revocations/import", exportedFeed)).StatusCode);
+        using (StringContent nullFeedBody = new("null", Encoding.UTF8, "application/json"))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsync("/api/fabrication/revocations/import", nullFeedBody)).StatusCode);
+        }
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientA.PostAsJsonAsync("/api/fabrication/revocations/import", exportedFeed)).StatusCode);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await _client.PostAsJsonAsync("/api/fabrication/revocations/import", exportedFeed with { PayloadSha256 = "0000" })).StatusCode);
+
+        // Match peer key loop branch on untrusted peer
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await _client.PostAsJsonAsync("/api/fabrication/revocations/import", exportedFeed with { SignerKeyId = "2222222222222222222222222222222222222222222222222222222222222222" })).StatusCode);
+
+        // 4. Sign a feed containing lotB + an intentionally blank entry (to cover skip branch) and import via Researcher
+        SignedLotRevocationFeed feedForLotB;
+        using (IServiceScope signScope = _factory.Services.CreateScope())
+        {
+            IFabricationLotService lotSvc = signScope.ServiceProvider.GetRequiredService<IFabricationLotService>();
+            feedForLotB = lotSvc.BuildSignedRevocationFeed(
+            [
+                new FabricationLotRevocationRecord
+                {
+                    LotId = " ",
+                    PatientId = "p",
+                    RevokedBy = "admin",
+                    RevocationReason = "skip blank lotId"
+                },
+                new FabricationLotRevocationRecord
+                {
+                    LotId = "skip_blank_actor",
+                    PatientId = "p",
+                    RevokedBy = " ",
+                    RevocationReason = "skip blank actor"
+                },
+                new FabricationLotRevocationRecord
+                {
+                    LotId = "skip_blank_reason",
+                    PatientId = "p",
+                    RevokedBy = "admin",
+                    RevocationReason = " "
+                },
+                new FabricationLotRevocationRecord
+                {
+                    LotId = lotBId,
+                    PatientId = "p",
+                    PayloadSha256 = certLotB.PayloadSha256,
+                    RevokedBy = "peer_director",
+                    RevocationReason = "Upstream federated courier recall"
+                }
+            ]);
+        }
+
+        HttpResponseMessage importResp = await clientRes.PostAsJsonAsync("/api/fabrication/revocations/import", feedForLotB);
+        Assert.Equal(HttpStatusCode.OK, importResp.StatusCode);
+        ImportRevocationFeedResponse? importDto = await importResp.Content.ReadFromJsonAsync<ImportRevocationFeedResponse>();
+        Assert.NotNull(importDto);
+        Assert.Equal(1, importDto.ImportedCount);
+        Assert.Equal(FabricationCertificateTrustSource.LocalNode, importDto.TrustSource);
+
+        // 5. List federated revocations: 401 anon, 403 patient, 200 researcher/admin
+        Assert.Equal(HttpStatusCode.Unauthorized, (await clientAnon.GetAsync("/api/fabrication/revocations/federated")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientA.GetAsync("/api/fabrication/revocations/federated")).StatusCode);
+        HttpResponseMessage fedListResp = await clientRes.GetAsync("/api/fabrication/revocations/federated");
+        Assert.Equal(HttpStatusCode.OK, fedListResp.StatusCode);
+        List<FederatedLotRevocationRecord>? fedRecalls = await fedListResp.Content.ReadFromJsonAsync<List<FederatedLotRevocationRecord>>();
+        Assert.NotNull(fedRecalls);
+        Assert.Contains(fedRecalls, r => r.LotId == lotBId);
+
+        // 6. Verifying lotB's valid CoA now returns IsRevoked = true, IsTrusted = false via federated recall ledger!
+        HttpResponseMessage verifyLotBResp = await _client.PostAsJsonAsync("/api/fabrication/certificates/verify", certLotB);
+        Assert.Equal(HttpStatusCode.OK, verifyLotBResp.StatusCode);
+        FabricationCertificateVerificationReport? lotBReport = await verifyLotBResp.Content.ReadFromJsonAsync<FabricationCertificateVerificationReport>();
+        Assert.NotNull(lotBReport);
+        Assert.True(lotBReport.SignatureValid);
+        Assert.True(lotBReport.IsRevoked);
+        Assert.False(lotBReport.IsTrusted);
+        Assert.Equal("Upstream federated courier recall", lotBReport.RevocationReason);
+
+        using (IServiceScope auditScope3 = _factory.Services.CreateScope())
+        {
+            IComplianceAuditService auditService = auditScope3.ServiceProvider.GetRequiredService<IComplianceAuditService>();
+            IReadOnlyList<AuditRecord> entries = auditService.GetAuditRecords(400);
+            Assert.Contains(entries, e => e.Action == "FABRICATION_REVOCATION_FEED_IMPORT");
+        }
     }
 }

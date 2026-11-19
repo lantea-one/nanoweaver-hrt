@@ -519,4 +519,189 @@ public sealed class FabricationLotRepository : IFabricationLotRepository
 
         return record;
     }
+
+    /// <summary>
+    /// Column names for the <c>weaver_federated_lot_revocations</c> table.
+    /// </summary>
+    private static readonly string[] FederatedRevocationColumns =
+    [
+        "lot_id", "payload_sha256", "issuer_key_id", "issuer_peer_label",
+        "revoked_by", "revocation_reason", "revoked_at_utc",
+        "feed_payload_sha256", "feed_signature_base64", "imported_at_utc"
+    ];
+
+    /// <summary>
+    /// Primary key conflict column for federated revocation upserts.
+    /// </summary>
+    private static readonly string[] FederatedRevocationConflictColumns = ["lot_id"];
+
+    /// <summary>
+    /// Update columns for federated revocation upserts.
+    /// </summary>
+    private static readonly string[] FederatedRevocationUpdateColumns =
+    [
+        "payload_sha256", "issuer_key_id", "issuer_peer_label",
+        "revoked_by", "revocation_reason", "revoked_at_utc",
+        "feed_payload_sha256", "feed_signature_base64", "imported_at_utc"
+    ];
+
+    /// <summary>
+    /// Parameter names corresponding to <see cref="FederatedRevocationColumns"/>.
+    /// </summary>
+    private static readonly string[] FederatedRevocationParameterNames =
+    [
+        "lid", "psha", "ikid", "ilbl",
+        "rby", "rsn", "rat",
+        "fsha", "fsig", "iat"
+    ];
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<FabricationLotRevocationRecord>> ListLocalRevocationsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        // WHAT: Retrieves all locally issued permanent lot revocations ordered newest first.
+        // WHY:  Milestone 38 (P200): Supplies the complete local recall list for ML-DSA-65 revocation feed export.
+        // HOW:  Executes a parameterized SELECT over weaver_fabrication_lot_revocations and maps rows by ordinal index.
+        List<FabricationLotRevocationRecord> results = [];
+        {
+            await using WeaverDbSession session = await _connectionFactory.OpenAsync(cancellationToken).ConfigureAwait(false);
+            await using DbCommand cmd = session.CreateCommand(
+                "SELECT lot_id, patient_id, payload_sha256, revoked_by, revocation_reason, revoked_at_utc FROM weaver_fabrication_lot_revocations ORDER BY revoked_at_utc DESC, lot_id ASC");
+
+            await using DbDataReader reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                results.Add(new FabricationLotRevocationRecord
+                {
+                    LotId = reader.GetString(0),
+                    PatientId = reader.GetString(1),
+                    PayloadSha256 = reader.IsDBNull(2) ? null : reader.GetString(2),
+                    RevokedBy = reader.GetString(3),
+                    RevocationReason = reader.GetString(4),
+                    RevokedAtUtc = WeaverDbValues.ReadTimestamp(reader, 5)
+                });
+            }
+        }
+
+        return results;
+    }
+
+    /// <inheritdoc/>
+    public async Task<FederatedLotRevocationRecord> UpsertFederatedRevocationAsync(
+        FederatedLotRevocationRecord record,
+        CancellationToken cancellationToken = default)
+    {
+        // WHAT: Inserts or updates a cryptographically verified upstream peer lot revocation tombstone.
+        // WHY:  Milestone 38 (P200): Persists peer recalls across all 4 SQL dialects for fail-closed verification.
+        // HOW:  Validates required fields, builds dialect upsert SQL, binds typed parameters, and executes inside explicit block scope.
+        ArgumentNullException.ThrowIfNull(record);
+        ArgumentException.ThrowIfNullOrWhiteSpace(record.LotId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(record.IssuerKeyId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(record.RevokedBy);
+        ArgumentException.ThrowIfNullOrWhiteSpace(record.RevocationReason);
+        ArgumentException.ThrowIfNullOrWhiteSpace(record.FeedPayloadSha256);
+        ArgumentException.ThrowIfNullOrWhiteSpace(record.FeedSignatureBase64);
+
+        {
+            await using WeaverDbSession session = await _connectionFactory.OpenAsync(cancellationToken).ConfigureAwait(false);
+            string sql = session.Dialect.BuildUpsertSql(
+                "weaver_federated_lot_revocations",
+                FederatedRevocationColumns,
+                FederatedRevocationConflictColumns,
+                FederatedRevocationUpdateColumns,
+                FederatedRevocationParameterNames);
+
+            await using DbCommand cmd = session.CreateCommand(sql);
+            WeaverDbParameters.Add(cmd, "lid", record.LotId);
+            WeaverDbParameters.AddNullable(cmd, "psha", record.PayloadSha256);
+            WeaverDbParameters.Add(cmd, "ikid", record.IssuerKeyId);
+            WeaverDbParameters.AddNullable(cmd, "ilbl", record.IssuerPeerLabel);
+            WeaverDbParameters.Add(cmd, "rby", record.RevokedBy);
+            WeaverDbParameters.Add(cmd, "rsn", record.RevocationReason);
+            WeaverDbParameters.Add(cmd, "rat", record.RevokedAtUtc.ToString("o"));
+            WeaverDbParameters.Add(cmd, "fsha", record.FeedPayloadSha256);
+            WeaverDbParameters.Add(cmd, "fsig", record.FeedSignatureBase64);
+            WeaverDbParameters.Add(cmd, "iat", record.ImportedAtUtc.ToString("o"));
+
+            await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        return record;
+    }
+
+    /// <inheritdoc/>
+    public async Task<FederatedLotRevocationRecord?> GetFederatedRevocationAsync(
+        string lotId,
+        CancellationToken cancellationToken = default)
+    {
+        // WHAT: Queries a verified federated peer revocation tombstone by lot_id.
+        // WHY:  Milestone 38 (P200): Lets cross-node Certificate of Analysis verification block upstream recalls immediately.
+        // HOW:  Executes a parameterized SELECT filtered by lot_id and maps columns via MapFederatedRevocation.
+        ArgumentException.ThrowIfNullOrWhiteSpace(lotId);
+
+        FederatedLotRevocationRecord? record = null;
+        {
+            await using WeaverDbSession session = await _connectionFactory.OpenAsync(cancellationToken).ConfigureAwait(false);
+            await using DbCommand cmd = session.CreateCommand(
+                $"SELECT lot_id, payload_sha256, issuer_key_id, issuer_peer_label, revoked_by, revocation_reason, revoked_at_utc, feed_payload_sha256, feed_signature_base64, imported_at_utc FROM weaver_federated_lot_revocations WHERE lot_id = {session.Dialect.Parameter("lid")}");
+
+            WeaverDbParameters.Add(cmd, "lid", lotId);
+
+            await using DbDataReader reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            if (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                record = MapFederatedRevocation(reader);
+            }
+        }
+
+        return record;
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<FederatedLotRevocationRecord>> ListFederatedRevocationsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        // WHAT: Retrieves all verified federated peer recall tombstones ordered newest imported first.
+        // WHY:  Milestone 38 (P200): Powers the Federated Peer Recall Ledger API and Depot Studio table.
+        // HOW:  Executes a SELECT ordered by imported_at_utc DESC, lot_id ASC and maps rows via MapFederatedRevocation.
+        List<FederatedLotRevocationRecord> results = [];
+        {
+            await using WeaverDbSession session = await _connectionFactory.OpenAsync(cancellationToken).ConfigureAwait(false);
+            await using DbCommand cmd = session.CreateCommand(
+                "SELECT lot_id, payload_sha256, issuer_key_id, issuer_peer_label, revoked_by, revocation_reason, revoked_at_utc, feed_payload_sha256, feed_signature_base64, imported_at_utc FROM weaver_federated_lot_revocations ORDER BY imported_at_utc DESC, lot_id ASC");
+
+            await using DbDataReader reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                results.Add(MapFederatedRevocation(reader));
+            }
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// Maps the current row of a <see cref="DbDataReader"/> to a <see cref="FederatedLotRevocationRecord"/>.
+    /// </summary>
+    /// <param name="reader">Active database reader positioned on a federated revocation row.</param>
+    /// <returns>A populated <see cref="FederatedLotRevocationRecord"/>.</returns>
+    private static FederatedLotRevocationRecord MapFederatedRevocation(DbDataReader reader)
+    {
+        // WHAT: Extracts column ordinals from weaver_federated_lot_revocations into a strongly typed record.
+        // WHY:  Eliminates duplicate ordinal mapping code across GetFederatedRevocationAsync and ListFederatedRevocationsAsync.
+        // HOW:  Reads columns by ordinal index with explicit DBNull handling for nullable payload_sha256 and issuer_peer_label.
+        return new FederatedLotRevocationRecord
+        {
+            LotId = reader.GetString(0),
+            PayloadSha256 = reader.IsDBNull(1) ? null : reader.GetString(1),
+            IssuerKeyId = reader.GetString(2),
+            IssuerPeerLabel = reader.IsDBNull(3) ? null : reader.GetString(3),
+            RevokedBy = reader.GetString(4),
+            RevocationReason = reader.GetString(5),
+            RevokedAtUtc = WeaverDbValues.ReadTimestamp(reader, 6),
+            FeedPayloadSha256 = reader.GetString(7),
+            FeedSignatureBase64 = reader.GetString(8),
+            ImportedAtUtc = WeaverDbValues.ReadTimestamp(reader, 9)
+        };
+    }
 }

@@ -5386,6 +5386,15 @@ public class Program
             }
 
             FabricationLotRevocationRecord? revocation = await lotRepository.GetLotRevocationAsync(certificate.LotId.Trim(), ct);
+            if (revocation is null)
+            {
+                FederatedLotRevocationRecord? federatedRevocation = await lotRepository.GetFederatedRevocationAsync(certificate.LotId.Trim(), ct);
+                if (federatedRevocation is not null)
+                {
+                    revocation = FabricationLotService.ToEffectiveRevocation(federatedRevocation);
+                }
+            }
+
             FabricationCertificateVerificationReport report = lotService.VerifyCertificateAgainstTrustAnchor(
                 certificate,
                 matchedPeer,
@@ -5476,6 +5485,168 @@ public class Program
         .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
         .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden)
         .Produces<SecureProblemDetails>(StatusCodes.Status404NotFound);
+
+        // ---------------------------------------------------------------------
+        // REST API: Federated Peer Lot Revocation Sync & Recall Gossip Ledger (Milestone 38)
+        // ---------------------------------------------------------------------
+        app.MapGet("/api/fabrication/revocations/feed", async (
+            IFabricationLotRepository lotRepository,
+            IFabricationLotService lotService,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Exports all local permanent lot revocations as a de-identified ML-DSA-65 signed feed.
+            // WHY:  Milestone 38 (P202): Enables peer sovereign nodes to pull and verify upstream batch recalls.
+            // HOW:  Enforces Administrator/Researcher role, queries local revocations, and signs via BuildSignedRevocationFeed.
+            // WHY `!`: Authentication middleware guarantees CurrentUser is populated with an authenticated UserAccount before reaching this handler.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            if (caller.Role != UserRole.Administrator && caller.Role != UserRole.Researcher)
+            {
+                return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: Administrator or Researcher role required to export signed revocation feeds.");
+            }
+
+            IReadOnlyList<FabricationLotRevocationRecord> revocations = await lotRepository.ListLocalRevocationsAsync(ct);
+            SignedLotRevocationFeed feed = lotService.BuildSignedRevocationFeed(revocations);
+            return Results.Ok(feed);
+        })
+        .WithName("GetSignedRevocationFeed")
+        .WithTags("Wet-Lab Fabrication & QC")
+        .WithSummary("Exports a portable ML-DSA-65 signed lot revocation feed for peer clinic recall synchronization.")
+        .WithDescription("Projects all local permanent lot revocations into de-identified recall entries signed with this node's NIST FIPS 204 ML-DSA-65 key.")
+        .Produces<SignedLotRevocationFeed>(StatusCodes.Status200OK)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden);
+
+        app.MapPost("/api/fabrication/revocations/import", async (
+            SignedLotRevocationFeed? feed,
+            IFabricationLotRepository lotRepository,
+            IFabricationLotService lotService,
+            IPeerKeyRegistry peerKeyRegistry,
+            IComplianceAuditService audit,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Verifies a peer node's ML-DSA-65 signed revocation feed and persists verified recall tombstones.
+            // WHY:  Milestone 38 (P202): Propagates upstream recalls fail-closed while blocking spoofed or untrusted feeds.
+            // HOW:  Validates role and payload, matches signer key in IPeerKeyRegistry, verifies signature & trust, upserts rows, and audits.
+            if (feed is null)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Signed revocation feed payload is required.");
+            }
+
+            // WHY `!`: Authentication middleware guarantees CurrentUser is populated with an authenticated UserAccount before reaching this handler.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            if (caller.Role != UserRole.Administrator && caller.Role != UserRole.Researcher)
+            {
+                return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: Administrator or Researcher role required to import peer revocation feeds.");
+            }
+
+            IReadOnlyList<PeerKeyRecord> allPeers = await peerKeyRegistry.ListAsync(ct);
+            PeerKeyRecord? matchedPeer = null;
+            for (int i = 0; i < allPeers.Count; i++)
+            {
+                if (string.Equals(allPeers[i].KeyId, feed.SignerKeyId, StringComparison.OrdinalIgnoreCase))
+                {
+                    matchedPeer = allPeers[i];
+                    break;
+                }
+            }
+
+            RevocationFeedVerificationResult verdict = lotService.VerifySignedRevocationFeed(feed, matchedPeer);
+            if (!verdict.IsTrusted)
+            {
+                return SecureProblemResult(context, StatusCodes.Status422UnprocessableEntity, verdict.Summary);
+            }
+
+            DateTimeOffset importedAtUtc = DateTimeOffset.UtcNow;
+            int importedCount = 0;
+            for (int i = 0; i < feed.Entries.Count; i++)
+            {
+                SignedLotRevocationEntry entry = feed.Entries[i];
+                if (string.IsNullOrWhiteSpace(entry.LotId)
+                    || string.IsNullOrWhiteSpace(entry.RevokedBy)
+                    || string.IsNullOrWhiteSpace(entry.RevocationReason))
+                {
+                    continue;
+                }
+
+                await lotRepository.UpsertFederatedRevocationAsync(new FederatedLotRevocationRecord
+                {
+                    LotId = entry.LotId.Trim(),
+                    PayloadSha256 = entry.PayloadSha256,
+                    IssuerKeyId = feed.SignerKeyId,
+                    IssuerPeerLabel = verdict.TrustedPeerLabel,
+                    RevokedBy = entry.RevokedBy.Trim(),
+                    RevocationReason = entry.RevocationReason.Trim(),
+                    RevokedAtUtc = entry.RevokedAtUtc,
+                    FeedPayloadSha256 = feed.PayloadSha256,
+                    FeedSignatureBase64 = feed.SignatureBase64,
+                    ImportedAtUtc = importedAtUtc
+                }, ct);
+                importedCount++;
+            }
+
+            audit.LogAction(
+                caller.Username,
+                "FABRICATION_REVOCATION_FEED_IMPORT",
+                $"peer-revocation-feed:{feed.SignerKeyId}",
+                JsonSerializer.Serialize(new
+                {
+                    signerKeyId = feed.SignerKeyId,
+                    trustSource = verdict.TrustSource,
+                    trustedPeerLabel = verdict.TrustedPeerLabel,
+                    importedCount,
+                    feedPayloadSha256 = feed.PayloadSha256
+                }));
+
+            string sourceDisplay = verdict.TrustedPeerLabel ?? feed.SignerKeyId;
+            return Results.Ok(new ImportRevocationFeedResponse
+            {
+                ImportedCount = importedCount,
+                TrustSource = verdict.TrustSource,
+                SignerKeyId = feed.SignerKeyId,
+                TrustedPeerLabel = verdict.TrustedPeerLabel,
+                FeedPayloadSha256 = feed.PayloadSha256,
+                Summary = $"Verified and imported {importedCount} federated recall tombstone(s) from '{sourceDisplay}'.",
+                ImportedAtUtc = importedAtUtc
+            });
+        })
+        .WithName("ImportSignedRevocationFeed")
+        .WithTags("Wet-Lab Fabrication & QC")
+        .WithSummary("Verifies and imports a peer laboratory's ML-DSA-65 signed lot revocation feed.")
+        .WithDescription("Validates canonical SHA-256 digest, ML-DSA-65 signature, and IPeerKeyRegistry trust anchor before persisting verified recall tombstones and logging an audit event.")
+        .Accepts<SignedLotRevocationFeed>("application/json")
+        .Produces<ImportRevocationFeedResponse>(StatusCodes.Status200OK)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden)
+        .Produces<SecureProblemDetails>(StatusCodes.Status422UnprocessableEntity);
+
+        app.MapGet("/api/fabrication/revocations/federated", async (
+            IFabricationLotRepository lotRepository,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Lists all verified federated peer recall tombstones stored in weaver_federated_lot_revocations.
+            // WHY:  Milestone 38 (P202): Lets clinicians audit imported upstream peer laboratory batch recalls.
+            // HOW:  Enforces Administrator/Researcher role and queries ListFederatedRevocationsAsync.
+            // WHY `!`: Authentication middleware guarantees CurrentUser is populated with an authenticated UserAccount before reaching this handler.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            if (caller.Role != UserRole.Administrator && caller.Role != UserRole.Researcher)
+            {
+                return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: Administrator or Researcher role required to inspect federated recall tombstones.");
+            }
+
+            IReadOnlyList<FederatedLotRevocationRecord> list = await lotRepository.ListFederatedRevocationsAsync(ct);
+            return Results.Ok(list);
+        })
+        .WithName("ListFederatedLotRevocations")
+        .WithTags("Wet-Lab Fabrication & QC")
+        .WithSummary("Lists all cryptographically verified federated peer lot recall tombstones imported on this node.")
+        .WithDescription("Returns verified recall records imported from trusted peer ML-DSA-65 revocation feeds ordered newest imported first.")
+        .Produces<IReadOnlyList<FederatedLotRevocationRecord>>(StatusCodes.Status200OK)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden);
 
         app.Run();
     }

@@ -538,4 +538,67 @@ public sealed class DepotAndLotWorkspaceViewModelTests
         await vm.RecordAssayAndCalibrateAsync(new RecordDepotAssayRequest());
         Assert.Equal(ClinicalWorkspaceSeverity.Optimal, vm.BuildSummary().Severity);
     }
+
+    /// <summary>
+    /// Verifies Milestone 38 federated revocation feed export, JSON import, federated recall loading,
+    /// error handling, and sensitive cache clearing on <see cref="DepotAndLotWorkspaceViewModel"/>.
+    /// </summary>
+    [Fact]
+    public async Task FederatedRevocationSync_CommandsAndErrorPaths()
+    {
+        // WHAT: Tests ExportSignedRevocationFeedAsync, ImportSignedRevocationFeedJsonAsync, and LoadFederatedRevocationsAsync.
+        // WHY:  Milestone 38 (P202): Guarantees 100.00% line and branch coverage of native GUI federated recall commands.
+        // HOW:  Mocks INanoWeaverNodeClient for success, malformed/null JSON, and server error paths.
+        var clientMock = new Mock<INanoWeaverNodeClient>();
+        var vm = new DepotAndLotWorkspaceViewModel(clientMock.Object, CreateProfile, () => "token");
+
+        SignedLotRevocationFeed sampleFeed = new SignedLotRevocationFeed().GetExamples();
+        ImportRevocationFeedResponse sampleImport = new ImportRevocationFeedResponse().GetExamples();
+        FederatedLotRevocationRecord sampleFed = new FederatedLotRevocationRecord().GetExamples();
+
+        clientMock.Setup(c => c.GetSignedRevocationFeedAsync(It.IsAny<InstanceProfile>(), "token", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(sampleFeed);
+        SignedLotRevocationFeed exported = await vm.ExportSignedRevocationFeedAsync();
+        Assert.Same(sampleFeed, exported);
+        Assert.Same(sampleFeed, vm.LatestExportedRevocationFeed);
+
+        clientMock.Setup(c => c.GetSignedRevocationFeedAsync(It.IsAny<InstanceProfile>(), "token", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("export fail"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.ExportSignedRevocationFeedAsync());
+        Assert.Equal("export fail", vm.ErrorMessage);
+
+        // Import validation: blank, malformed JSON, null literal
+        await Assert.ThrowsAsync<ArgumentException>(() => vm.ImportSignedRevocationFeedJsonAsync(" "));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.ImportSignedRevocationFeedJsonAsync("{bad"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.ImportSignedRevocationFeedJsonAsync("null"));
+
+        string feedJson = JsonSerializer.Serialize(sampleFeed);
+        clientMock.Setup(c => c.ImportSignedRevocationFeedAsync(It.IsAny<InstanceProfile>(), "token", It.IsAny<SignedLotRevocationFeed>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(sampleImport);
+        clientMock.Setup(c => c.GetFederatedRevocationsAsync(It.IsAny<InstanceProfile>(), "token", It.IsAny<CancellationToken>()))
+            .ReturnsAsync([sampleFed]);
+
+        ImportRevocationFeedResponse imported = await vm.ImportSignedRevocationFeedJsonAsync(feedJson);
+        Assert.Same(sampleImport, imported);
+        Assert.Same(sampleImport, vm.LastRevocationFeedImport);
+        Assert.Single(vm.FederatedRevocations);
+
+        clientMock.Setup(c => c.ImportSignedRevocationFeedAsync(It.IsAny<InstanceProfile>(), "token", It.IsAny<SignedLotRevocationFeed>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("import fail"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.ImportSignedRevocationFeedJsonAsync(feedJson));
+        Assert.Equal("import fail", vm.ErrorMessage);
+
+        IReadOnlyList<FederatedLotRevocationRecord> loaded = await vm.LoadFederatedRevocationsAsync();
+        Assert.Single(loaded);
+
+        clientMock.Setup(c => c.GetFederatedRevocationsAsync(It.IsAny<InstanceProfile>(), "token", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("list fail"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.LoadFederatedRevocationsAsync());
+        Assert.Equal("list fail", vm.ErrorMessage);
+
+        vm.ClearSensitiveClinicalCache();
+        Assert.Null(vm.LatestExportedRevocationFeed);
+        Assert.Null(vm.LastRevocationFeedImport);
+        Assert.Empty(vm.FederatedRevocations);
+    }
 }

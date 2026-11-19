@@ -118,5 +118,16 @@
   "Gui.DepotWorkspace.TrustRevoked": "İPTAL EDİLDİ",
   "Gui.DepotWorkspace.TrayOptimal": "Klinik Güvenlik Sınırları Optimal",
   "Gui.DepotWorkspace.TrayWarning": "Klinik Uyarı / Karantina",
-  "Gui.DepotWorkspace.TrayCritical": "Kritik Güvenlik Sınırı / Lot İptal Edildi"
+  "Gui.DepotWorkspace.TrayCritical": "Kritik Güvenlik Sınırı / Lot İptal Edildi",
+  "FabricationLot.RevocationFeedTitle": "Federe Eş Geri Çağırma ve İptal Akışı Senkronizasyonu",
+  "FabricationLot.RevocationFeedDesc": "Bu düğümün ML-DSA-65 imzalı lot iptal akışını dışa aktarın veya güvenilir eş laboratuvarlardan gelen geri çağırma akışlarını doğrulayıp içe aktarın.",
+  "FabricationLot.RevocationFeedExportButton": "İmzalı Akışı Dışa Aktar",
+  "FabricationLot.RevocationFeedRefreshButton": "Geri Çağırmaları Yenile",
+  "FabricationLot.RevocationFeedInputLabel": "İmzalı ML-DSA-65 İptal Akışı JSON",
+  "FabricationLot.RevocationFeedImportButton": "Eş İptal Akışını Doğrula ve İçe Aktar",
+  "FabricationLot.RevocationFeedColLot": "Geri Çağrılan Lot Kimliği",
+  "FabricationLot.RevocationFeedColIssuer": "Yayınlayan Eş Laboratuvar",
+  "FabricationLot.RevocationFeedColReason": "Geri Çağırma Nedeni",
+  "FabricationLot.RevocationFeedColImported": "İçe Aktarıldı (UTC)",
+  "FabricationLot.RevocationFeedEmpty": "Bu düğümde henüz doğrulanmış federe eş geri çağırması yok."
 }

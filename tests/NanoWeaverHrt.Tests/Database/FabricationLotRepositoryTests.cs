@@ -398,6 +398,111 @@ public sealed class FabricationLotRepositoryTests : IDisposable
     }
 
     /// <summary>
+    /// Verifies <see cref="Migration017_FederatedRevocationFeed"/> dialect DDL, local revocation listing,
+    /// and federated revocation upsert/query/list across all validation and nullable column branches.
+    /// </summary>
+    [Fact]
+    public async Task Migration017_And_FederatedRevocations_RoundTripAndGuards()
+    {
+        // WHAT: Tests Migration 017 DDL across all four SQL dialects plus local listing and federated upsert/get/list.
+        // WHY:  Milestone 38 (P200): Guarantees 100.00% line & branch coverage across federated recall persistence.
+        // HOW:  Exercises GetSql per dialect, validates all argument guards, inserts null and non-null rows, and queries.
+        var migration = new Migration017_FederatedRevocationFeed();
+        Assert.Equal(17, migration.Version);
+        Assert.Equal("017_FederatedRevocationFeed", migration.Name);
+        Assert.Throws<ArgumentNullException>(() => migration.GetSql(null!));
+        Assert.Contains("weaver_federated_lot_revocations", migration.GetSql("postgresql"), StringComparison.Ordinal);
+        Assert.Contains("weaver_federated_lot_revocations", migration.GetSql("duckdb"), StringComparison.Ordinal);
+        Assert.Contains("weaver_federated_lot_revocations", migration.GetSql("mysql"), StringComparison.Ordinal);
+        Assert.Contains("weaver_federated_lot_revocations", migration.GetSql("mariadb"), StringComparison.Ordinal);
+        Assert.Contains("weaver_federated_lot_revocations", migration.GetSql("sqlite"), StringComparison.Ordinal);
+
+        // Model example coverage
+        FederatedLotRevocationRecord sampleFed = new FederatedLotRevocationRecord().GetExamples();
+        Assert.Equal("lot_peer_001", sampleFed.LotId);
+
+        // Local revocation listing (both null and non-null PayloadSha256)
+        await SeedDepotAsync("depot_m38_01", "patient_m38_01");
+        FabricationLotRecord lot1 = await _lotRepository.UpsertLotAsync(new FabricationLotRecord
+        {
+            LotId = "lot_m38_local_1",
+            DepotId = "depot_m38_01",
+            PatientId = "patient_m38_01",
+            OpentronsProtocolSha256 = "sha_1",
+            LotStatus = FabricationLotStatus.Revoked
+        });
+        FabricationLotRecord lot2 = await _lotRepository.UpsertLotAsync(new FabricationLotRecord
+        {
+            LotId = "lot_m38_local_2",
+            DepotId = "depot_m38_01",
+            PatientId = "patient_m38_01",
+            OpentronsProtocolSha256 = "sha_2",
+            LotStatus = FabricationLotStatus.Revoked
+        });
+
+        await _lotRepository.RecordLotRevocationAsync(new FabricationLotRevocationRecord
+        {
+            LotId = lot1.LotId,
+            PatientId = lot1.PatientId,
+            PayloadSha256 = null,
+            RevokedBy = "admin",
+            RevocationReason = "Reason 1",
+            RevokedAtUtc = new DateTimeOffset(2026, 11, 19, 10, 0, 0, TimeSpan.Zero)
+        });
+        await _lotRepository.RecordLotRevocationAsync(new FabricationLotRevocationRecord
+        {
+            LotId = lot2.LotId,
+            PatientId = lot2.PatientId,
+            PayloadSha256 = "abcdef",
+            RevokedBy = "admin",
+            RevocationReason = "Reason 2",
+            RevokedAtUtc = new DateTimeOffset(2026, 11, 19, 11, 0, 0, TimeSpan.Zero)
+        });
+
+        IReadOnlyList<FabricationLotRevocationRecord> locals = await _lotRepository.ListLocalRevocationsAsync();
+        Assert.Equal(2, locals.Count);
+        Assert.Equal("lot_m38_local_2", locals[0].LotId);
+        Assert.Equal("abcdef", locals[0].PayloadSha256);
+        Assert.Null(locals[1].PayloadSha256);
+
+        // Federated revocation argument guards
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _lotRepository.UpsertFederatedRevocationAsync(null!));
+        await Assert.ThrowsAsync<ArgumentException>(() => _lotRepository.UpsertFederatedRevocationAsync(sampleFed with { LotId = " " }));
+        await Assert.ThrowsAsync<ArgumentException>(() => _lotRepository.UpsertFederatedRevocationAsync(sampleFed with { IssuerKeyId = " " }));
+        await Assert.ThrowsAsync<ArgumentException>(() => _lotRepository.UpsertFederatedRevocationAsync(sampleFed with { RevokedBy = " " }));
+        await Assert.ThrowsAsync<ArgumentException>(() => _lotRepository.UpsertFederatedRevocationAsync(sampleFed with { RevocationReason = " " }));
+        await Assert.ThrowsAsync<ArgumentException>(() => _lotRepository.UpsertFederatedRevocationAsync(sampleFed with { FeedPayloadSha256 = " " }));
+        await Assert.ThrowsAsync<ArgumentException>(() => _lotRepository.UpsertFederatedRevocationAsync(sampleFed with { FeedSignatureBase64 = " " }));
+        await Assert.ThrowsAsync<ArgumentException>(() => _lotRepository.GetFederatedRevocationAsync(" "));
+
+        Assert.Null(await _lotRepository.GetFederatedRevocationAsync("lot_missing"));
+
+        // Insert with null optional fields, then upsert with non-null fields
+        await _lotRepository.UpsertFederatedRevocationAsync(sampleFed with
+        {
+            LotId = "lot_fed_01",
+            PayloadSha256 = null,
+            IssuerPeerLabel = null,
+            ImportedAtUtc = new DateTimeOffset(2026, 11, 19, 12, 0, 0, TimeSpan.Zero)
+        });
+        FederatedLotRevocationRecord? fetchedNull = await _lotRepository.GetFederatedRevocationAsync("lot_fed_01");
+        Assert.NotNull(fetchedNull);
+        Assert.Null(fetchedNull.PayloadSha256);
+        Assert.Null(fetchedNull.IssuerPeerLabel);
+
+        await _lotRepository.UpsertFederatedRevocationAsync(sampleFed with
+        {
+            LotId = "lot_fed_02",
+            ImportedAtUtc = new DateTimeOffset(2026, 11, 19, 13, 0, 0, TimeSpan.Zero)
+        });
+        IReadOnlyList<FederatedLotRevocationRecord> fedList = await _lotRepository.ListFederatedRevocationsAsync();
+        Assert.Equal(2, fedList.Count);
+        Assert.Equal("lot_fed_02", fedList[0].LotId);
+        Assert.Equal("Zurich Sovereign Wet-Lab", fedList[0].IssuerPeerLabel);
+        Assert.Equal("lot_fed_01", fedList[1].LotId);
+    }
+
+    /// <summary>
     /// Seeds a parent depot formulation record required by foreign key constraints on <c>weaver_fabrication_lots</c>.
     /// </summary>
     /// <param name="depotId">Parent depot formulation identifier.</param>

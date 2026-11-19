@@ -1764,4 +1764,42 @@ public interface INanoWeaverNodeClient
         string bearerToken,
         string lotId,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Retrieves the node's ML-DSA-65 signed lot revocation feed via GET /api/fabrication/revocations/feed.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Signed <see cref="SignedLotRevocationFeed"/> ready for peer distribution.</returns>
+    Task<SignedLotRevocationFeed> GetSignedRevocationFeedAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Verifies and imports a peer laboratory's ML-DSA-65 signed lot revocation feed via POST /api/fabrication/revocations/import.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="feed">Signed peer revocation feed payload to verify and ingest.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Summary of verified recall tombstones imported.</returns>
+    Task<ImportRevocationFeedResponse> ImportSignedRevocationFeedAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        SignedLotRevocationFeed feed,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Lists all verified federated peer lot recall tombstones via GET /api/fabrication/revocations/federated.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Read-only list of imported <see cref="FederatedLotRevocationRecord"/> tombstones.</returns>
+    Task<IReadOnlyList<FederatedLotRevocationRecord>> GetFederatedRevocationsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default);
 }

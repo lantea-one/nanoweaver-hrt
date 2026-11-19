@@ -411,6 +411,135 @@ public sealed class FabricationLotServiceTests : IDisposable
     }
 
     /// <summary>
+    /// Verifies ML-DSA-65 signed revocation feed generation, canonical tampering rejection, peer trust anchor
+    /// classification (LocalNode, TrustedPeer, RevokedSigner, UntrustedSigner), and federated revocation conversion.
+    /// </summary>
+    [Fact]
+    public void BuildAndVerifySignedRevocationFeed_CoversAllTrustAndTamperPaths()
+    {
+        // WHAT: Tests BuildSignedRevocationFeed, VerifySignedRevocationFeed, ToEffectiveRevocation, and model examples.
+        // WHY:  Milestone 38 (P201): Guarantees fail-closed peer revocation feed verification across every branch.
+        // HOW:  Signs feeds with local and foreign ML-DSA-65 nodes, tampers fields, tests peer states, and verifies projections.
+        Assert.Throws<ArgumentNullException>(() => _service.BuildSignedRevocationFeed(null!));
+        Assert.Throws<ArgumentNullException>(() => _service.VerifySignedRevocationFeed(null!, null));
+        Assert.Throws<ArgumentNullException>(() => FabricationLotService.ToEffectiveRevocation(null!));
+
+        // OpenAPI model examples
+        Assert.Equal("lot_sample_001", new SignedLotRevocationEntry().GetExamples().LotId);
+        Assert.Equal("nanoweaver-revocation-feed-v1", new SignedLotRevocationFeed().GetExamples().FeedVersion);
+        Assert.Equal(1, new ImportRevocationFeedResponse().GetExamples().ImportedCount);
+
+        DateTimeOffset t0 = new(2026, 11, 19, 16, 0, 0, TimeSpan.Zero);
+        List<FabricationLotRevocationRecord> revocations =
+        [
+            new FabricationLotRevocationRecord
+            {
+                LotId = "lot_z",
+                PatientId = "p2",
+                PayloadSha256 = null,
+                RevokedBy = "admin",
+                RevocationReason = "Reason Z",
+                RevokedAtUtc = t0
+            },
+            new FabricationLotRevocationRecord
+            {
+                LotId = "lot_a",
+                PatientId = "p1",
+                PayloadSha256 = "sha_a",
+                RevokedBy = "admin",
+                RevocationReason = "Reason A",
+                RevokedAtUtc = t0
+            }
+        ];
+
+        // Default timestamp + deterministic sorting by LotId
+        SignedLotRevocationFeed localFeed = _service.BuildSignedRevocationFeed(revocations);
+        Assert.Equal(2, localFeed.Entries.Count);
+        Assert.Equal("lot_a", localFeed.Entries[0].LotId);
+        Assert.Equal("lot_z", localFeed.Entries[1].LotId);
+
+        // Explicit timestamp + LocalNode verification
+        SignedLotRevocationFeed timedFeed = _service.BuildSignedRevocationFeed(revocations, t0);
+        RevocationFeedVerificationResult localVerdict = _service.VerifySignedRevocationFeed(timedFeed, null);
+        Assert.True(localVerdict.SignatureValid);
+        Assert.True(localVerdict.IsTrusted);
+        Assert.Equal(FabricationCertificateTrustSource.LocalNode, localVerdict.TrustSource);
+
+        // Missing required fields -> InvalidSignature
+        Assert.Equal(FabricationCertificateTrustSource.InvalidSignature, _service.VerifySignedRevocationFeed(timedFeed with { FeedVersion = " " }, null).TrustSource);
+        Assert.Equal(FabricationCertificateTrustSource.InvalidSignature, _service.VerifySignedRevocationFeed(timedFeed with { PayloadSha256 = " " }, null).TrustSource);
+        Assert.Equal(FabricationCertificateTrustSource.InvalidSignature, _service.VerifySignedRevocationFeed(timedFeed with { SignatureBase64 = " " }, null).TrustSource);
+        Assert.Equal(FabricationCertificateTrustSource.InvalidSignature, _service.VerifySignedRevocationFeed(timedFeed with { SignerKeyId = " " }, null).TrustSource);
+        Assert.Equal(FabricationCertificateTrustSource.InvalidSignature, _service.VerifySignedRevocationFeed(timedFeed with { SignerPublicKeyBase64 = " " }, null).TrustSource);
+
+        // Tampered payload hash and tampered ML-DSA-65 signature
+        Assert.Equal(FabricationCertificateTrustSource.InvalidSignature, _service.VerifySignedRevocationFeed(timedFeed with { PayloadSha256 = "0000" }, null).TrustSource);
+        Assert.Equal(FabricationCertificateTrustSource.InvalidSignature, _service.VerifySignedRevocationFeed(timedFeed with { SignatureBase64 = Convert.ToBase64String(new byte[32]) }, null).TrustSource);
+
+        // Foreign peer node signing feed
+        string peerDir = Path.Combine(Path.GetTempPath(), "weaver_peer_revfeed_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(peerDir);
+        try
+        {
+            using SubjectKeyTestHost peerHost = new(peerDir);
+            FabricationLotService peerSvc = new(peerHost.KeyManagement, peerHost.CryptoProvider);
+            SignedLotRevocationFeed peerFeed = peerSvc.BuildSignedRevocationFeed(revocations, t0);
+
+            PeerKeyRecord activePeer = new()
+            {
+                KeyId = peerFeed.SignerKeyId,
+                Label = "Zurich Sovereign Wet-Lab",
+                Algorithm = KeyAlgorithm.MlDsa65,
+                PublicKeyBase64 = peerFeed.SignerPublicKeyBase64,
+                RegisteredBy = "admin",
+                RegisteredAtUtc = t0
+            };
+
+            RevocationFeedVerificationResult peerTrusted = _service.VerifySignedRevocationFeed(peerFeed, activePeer);
+            Assert.True(peerTrusted.SignatureValid);
+            Assert.True(peerTrusted.IsTrusted);
+            Assert.Equal(FabricationCertificateTrustSource.TrustedPeer, peerTrusted.TrustSource);
+            Assert.Equal("Zurich Sovereign Wet-Lab", peerTrusted.TrustedPeerLabel);
+
+            RevocationFeedVerificationResult peerRevoked = _service.VerifySignedRevocationFeed(
+                peerFeed,
+                activePeer with { RevokedBy = "admin", RevokedAtUtc = t0.AddMinutes(5) });
+            Assert.True(peerRevoked.SignatureValid);
+            Assert.False(peerRevoked.IsTrusted);
+            Assert.Equal(FabricationCertificateTrustSource.RevokedSigner, peerRevoked.TrustSource);
+
+            // UntrustedSigner permutations + spoofed local KeyId with foreign pubkey
+            Assert.Equal(FabricationCertificateTrustSource.UntrustedSigner, _service.VerifySignedRevocationFeed(peerFeed, null).TrustSource);
+            Assert.Equal(FabricationCertificateTrustSource.UntrustedSigner, _service.VerifySignedRevocationFeed(peerFeed, activePeer with { Algorithm = KeyAlgorithm.Ed25519 }).TrustSource);
+            Assert.Equal(FabricationCertificateTrustSource.UntrustedSigner, _service.VerifySignedRevocationFeed(peerFeed, activePeer with { KeyId = "other" }).TrustSource);
+            Assert.Equal(FabricationCertificateTrustSource.UntrustedSigner, _service.VerifySignedRevocationFeed(peerFeed, activePeer with { PublicKeyBase64 = "BAD" }).TrustSource);
+            Assert.Equal(FabricationCertificateTrustSource.UntrustedSigner, _service.VerifySignedRevocationFeed(peerFeed with { SignerKeyId = _keyManagementService.GetNodeSigningKey().KeyId }, null).TrustSource);
+        }
+        finally
+        {
+            if (Directory.Exists(peerDir))
+            {
+                try
+                {
+                    Directory.Delete(peerDir, recursive: true);
+                }
+                catch
+                {
+                    // Best-effort cleanup.
+                }
+            }
+        }
+
+        // ToEffectiveRevocation with peer label and without peer label
+        FederatedLotRevocationRecord fedWithLabel = new FederatedLotRevocationRecord().GetExamples();
+        FabricationLotRevocationRecord eff1 = FabricationLotService.ToEffectiveRevocation(fedWithLabel);
+        Assert.Equal("lab_director@Zurich Sovereign Wet-Lab", eff1.RevokedBy);
+
+        FabricationLotRevocationRecord eff2 = FabricationLotService.ToEffectiveRevocation(fedWithLabel with { IssuerPeerLabel = null });
+        Assert.Equal("lab_director@node-mldsa65-peer-zurich", eff2.RevokedBy);
+    }
+
+    /// <summary>
     /// Creates a representative fabrication lot record for service test cases.
     /// </summary>
     /// <param name="cpgRequired">Whether CpG methylation verification is mandatory.</param>

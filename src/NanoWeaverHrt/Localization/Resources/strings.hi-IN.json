@@ -118,5 +118,16 @@
   "Gui.DepotWorkspace.TrustRevoked": "निरस्त",
   "Gui.DepotWorkspace.TrayOptimal": "नैदानिक सुरक्षा सीमाएँ इष्टतम",
   "Gui.DepotWorkspace.TrayWarning": "नैदानिक चेतावनी / संगरोध",
-  "Gui.DepotWorkspace.TrayCritical": "गंभीर सुरक्षा सीमा / लॉट निरस्त"
+  "Gui.DepotWorkspace.TrayCritical": "गंभीर सुरक्षा सीमा / लॉट निरस्त",
+  "FabricationLot.RevocationFeedTitle": "संघीय पीयर रिकॉल और निरसन फ़ीड सिंक",
+  "FabricationLot.RevocationFeedDesc": "इस नोड का ML-DSA-65 हस्ताक्षरित लॉट निरसन फ़ीड निर्यात करें या विश्वसनीय पीयर प्रयोगशालाओं से हस्ताक्षरित रिकॉल फ़ीड सत्यापित और आयात करें।",
+  "FabricationLot.RevocationFeedExportButton": "हस्ताक्षरित फ़ीड निर्यात करें",
+  "FabricationLot.RevocationFeedRefreshButton": "रिकॉल ताज़ा करें",
+  "FabricationLot.RevocationFeedInputLabel": "हस्ताक्षरित ML-DSA-65 निरसन फ़ीड JSON",
+  "FabricationLot.RevocationFeedImportButton": "पीयर निरसन फ़ीड सत्यापित और आयात करें",
+  "FabricationLot.RevocationFeedColLot": "रिकॉल लॉट आईडी",
+  "FabricationLot.RevocationFeedColIssuer": "जारीकर्ता पीयर लैब",
+  "FabricationLot.RevocationFeedColReason": "रिकॉल कारण",
+  "FabricationLot.RevocationFeedColImported": "आयात समय (UTC)",
+  "FabricationLot.RevocationFeedEmpty": "इस नोड पर कोई सत्यापित संघीय पीयर रिकॉल आयात नहीं किया गया है।"
 }

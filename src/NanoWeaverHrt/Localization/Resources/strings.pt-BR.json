@@ -118,5 +118,16 @@
   "Gui.DepotWorkspace.TrustRevoked": "REVOGADO",
   "Gui.DepotWorkspace.TrayOptimal": "Limites clínicos ótimos",
   "Gui.DepotWorkspace.TrayWarning": "Alerta clínico / Quarentena",
-  "Gui.DepotWorkspace.TrayCritical": "Teto crítico de segurança / Lote revogado"
+  "Gui.DepotWorkspace.TrayCritical": "Teto crítico de segurança / Lote revogado",
+  "FabricationLot.RevocationFeedTitle": "Sincronização Federada de Recolhimento e Revogação entre Pares",
+  "FabricationLot.RevocationFeedDesc": "Exporte o feed de revogação de lotes assinado com ML-DSA-65 deste nó ou verifique e importe feeds de recolhimento de laboratórios pares confiáveis.",
+  "FabricationLot.RevocationFeedExportButton": "Exportar feed assinado",
+  "FabricationLot.RevocationFeedRefreshButton": "Atualizar recolhimentos",
+  "FabricationLot.RevocationFeedInputLabel": "Feed de revogação assinado ML-DSA-65 (JSON)",
+  "FabricationLot.RevocationFeedImportButton": "Verificar e importar feed de pares",
+  "FabricationLot.RevocationFeedColLot": "ID do lote recolhido",
+  "FabricationLot.RevocationFeedColIssuer": "Laboratório par emissor",
+  "FabricationLot.RevocationFeedColReason": "Motivo do recolhimento",
+  "FabricationLot.RevocationFeedColImported": "Importado (UTC)",
+  "FabricationLot.RevocationFeedEmpty": "Nenhum recolhimento federado verificado foi importado neste nó."
 }

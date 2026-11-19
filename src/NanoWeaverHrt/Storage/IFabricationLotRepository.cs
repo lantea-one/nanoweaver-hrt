@@ -101,4 +101,40 @@ public interface IFabricationLotRepository
     Task<FabricationLotRevocationRecord?> GetLotRevocationAsync(
         string lotId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lists all local permanent lot revocation tombstones ordered newest first for signed revocation feed export.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token for cancelling the operation.</param>
+    /// <returns>Read-only list of local <see cref="FabricationLotRevocationRecord"/> entries.</returns>
+    Task<IReadOnlyList<FabricationLotRevocationRecord>> ListLocalRevocationsAsync(
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Persists a verified upstream peer lot revocation tombstone into <c>weaver_federated_lot_revocations</c>.
+    /// </summary>
+    /// <param name="record">The verified federated lot revocation record to upsert.</param>
+    /// <param name="cancellationToken">Cancellation token for cancelling the operation.</param>
+    /// <returns>The persisted <see cref="FederatedLotRevocationRecord"/>.</returns>
+    Task<FederatedLotRevocationRecord> UpsertFederatedRevocationAsync(
+        FederatedLotRevocationRecord record,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Retrieves a verified federated peer revocation tombstone for the specified lot identifier, if present.
+    /// </summary>
+    /// <param name="lotId">The unique fabrication lot identifier.</param>
+    /// <param name="cancellationToken">Cancellation token for cancelling the operation.</param>
+    /// <returns>The matching <see cref="FederatedLotRevocationRecord"/> if recalled upstream; otherwise <see langword="null"/>.</returns>
+    Task<FederatedLotRevocationRecord?> GetFederatedRevocationAsync(
+        string lotId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lists all verified federated peer lot revocation tombstones ordered newest imported first.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token for cancelling the operation.</param>
+    /// <returns>Read-only list of <see cref="FederatedLotRevocationRecord"/> entries.</returns>
+    Task<IReadOnlyList<FederatedLotRevocationRecord>> ListFederatedRevocationsAsync(
+        CancellationToken cancellationToken = default);
 }

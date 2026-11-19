@@ -104,4 +104,26 @@ public interface IFabricationLotService
         FabricationLotCertificate certificate,
         PeerKeyRecord? peerKey,
         FabricationLotRevocationRecord? revocation);
+
+    /// <summary>
+    /// Constructs and signs a portable NIST FIPS 204 ML-DSA-65 <see cref="SignedLotRevocationFeed"/> from all local
+    /// lot revocation records for cross-node clinical recall synchronization.
+    /// </summary>
+    /// <param name="revocations">Local permanent lot revocation records to include (de-identified).</param>
+    /// <param name="issuedAtUtc">Optional deterministic UTC timestamp override; defaults to current UTC time.</param>
+    /// <returns>A signed, canonically hashed <see cref="SignedLotRevocationFeed"/> ready for peer distribution.</returns>
+    SignedLotRevocationFeed BuildSignedRevocationFeed(
+        IReadOnlyList<FabricationLotRevocationRecord> revocations,
+        DateTimeOffset? issuedAtUtc = null);
+
+    /// <summary>
+    /// Cryptographically verifies an imported <see cref="SignedLotRevocationFeed"/> against its canonical SHA-256 digest,
+    /// ML-DSA-65 signature, and local or trusted peer laboratory key anchors.
+    /// </summary>
+    /// <param name="feed">The signed revocation feed payload to evaluate.</param>
+    /// <param name="peerKey">Optional matching peer key entry resolved from <c>IPeerKeyRegistry</c> (active or revoked).</param>
+    /// <returns>A fail-closed <see cref="RevocationFeedVerificationResult"/> detailing trust and signature validity.</returns>
+    RevocationFeedVerificationResult VerifySignedRevocationFeed(
+        SignedLotRevocationFeed feed,
+        PeerKeyRecord? peerKey);
 }

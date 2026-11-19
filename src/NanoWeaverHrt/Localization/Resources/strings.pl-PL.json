@@ -118,5 +118,16 @@
   "Gui.DepotWorkspace.TrustRevoked": "UNIEWAŻNIONY",
   "Gui.DepotWorkspace.TrayOptimal": "Kliniczne limity bezpieczeństwa optymalne",
   "Gui.DepotWorkspace.TrayWarning": "Ostrzeżenie kliniczne / Kwarantanna",
-  "Gui.DepotWorkspace.TrayCritical": "Krytyczny próg bezpieczeństwa / Partia wycofana"
+  "Gui.DepotWorkspace.TrayCritical": "Krytyczny próg bezpieczeństwa / Partia wycofana",
+  "FabricationLot.RevocationFeedTitle": "Federacyjna Synchronizacja Wycofań i Unieważnień między Węzłami",
+  "FabricationLot.RevocationFeedDesc": "Wyeksportuj podpisany ML-DSA-65 kanał unieważnień partii tego węzła lub zweryfikuj i zaimportuj kanały wycofań z zaufanych laboratoriów partnerskich.",
+  "FabricationLot.RevocationFeedExportButton": "Eksportuj podpisany kanał",
+  "FabricationLot.RevocationFeedRefreshButton": "Odśwież wycofania",
+  "FabricationLot.RevocationFeedInputLabel": "Podpisany kanał unieważnień ML-DSA-65 (JSON)",
+  "FabricationLot.RevocationFeedImportButton": "Zweryfikuj i zaimportuj kanał partnerski",
+  "FabricationLot.RevocationFeedColLot": "ID wycofanej partii",
+  "FabricationLot.RevocationFeedColIssuer": "Laboratorium wystawiające",
+  "FabricationLot.RevocationFeedColReason": "Powód wycofania",
+  "FabricationLot.RevocationFeedColImported": "Zaimportowano (UTC)",
+  "FabricationLot.RevocationFeedEmpty": "Na tym węźle nie zaimportowano żadnych zweryfikowanych wycofań partnerskich."
 }

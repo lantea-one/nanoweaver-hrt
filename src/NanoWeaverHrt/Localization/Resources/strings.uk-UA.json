@@ -118,5 +118,16 @@
   "Gui.DepotWorkspace.TrustRevoked": "ВІДКЛИКАНО",
   "Gui.DepotWorkspace.TrayOptimal": "Клінічні обмеження оптимальні",
   "Gui.DepotWorkspace.TrayWarning": "Клінічне попередження / Карантин",
-  "Gui.DepotWorkspace.TrayCritical": "Критична межа безпеки / Партію відкликано"
+  "Gui.DepotWorkspace.TrayCritical": "Критична межа безпеки / Партію відкликано",
+  "FabricationLot.RevocationFeedTitle": "Федеративна синхронізація відкликань та анулювань партій",
+  "FabricationLot.RevocationFeedDesc": "Експортуйте підписаний ML-DSA-65 потік анулювань цього вузла або перевірте й імпортуйте потоки відкликань від довірених партнерських лабораторій.",
+  "FabricationLot.RevocationFeedExportButton": "Експортувати підписаний потік",
+  "FabricationLot.RevocationFeedRefreshButton": "Оновити відкликання",
+  "FabricationLot.RevocationFeedInputLabel": "Підписаний потік анулювань ML-DSA-65 (JSON)",
+  "FabricationLot.RevocationFeedImportButton": "Перевірити та імпортувати потік",
+  "FabricationLot.RevocationFeedColLot": "ID відкликаної партії",
+  "FabricationLot.RevocationFeedColIssuer": "Партнерська лабораторія",
+  "FabricationLot.RevocationFeedColReason": "Причина відкликання",
+  "FabricationLot.RevocationFeedColImported": "Імпортовано (UTC)",
+  "FabricationLot.RevocationFeedEmpty": "На цьому вузлі ще немає перевірених федеративних відкликань."
 }

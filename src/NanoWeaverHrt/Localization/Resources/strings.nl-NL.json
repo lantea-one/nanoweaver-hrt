@@ -118,5 +118,16 @@
   "Gui.DepotWorkspace.TrustRevoked": "INGETROKKEN",
   "Gui.DepotWorkspace.TrayOptimal": "Klinische veiligheidsgrenzen optimaal",
   "Gui.DepotWorkspace.TrayWarning": "Klinische waarschuwing / Quarantaine",
-  "Gui.DepotWorkspace.TrayCritical": "Kritieke veiligheidsgrens / Lot ingetrokken"
+  "Gui.DepotWorkspace.TrayCritical": "Kritieke veiligheidsgrens / Lot ingetrokken",
+  "FabricationLot.RevocationFeedTitle": "Gefedereerde Peer-terugroep- & Intrekkingsfeedsynchronisatie",
+  "FabricationLot.RevocationFeedDesc": "Exporteer de ML-DSA-65-ondertekende intrekkingsfeed van deze node of verifieer en importeer terugroepfeeds van vertrouwde peerlaboratoria.",
+  "FabricationLot.RevocationFeedExportButton": "Ondertekende feed exporteren",
+  "FabricationLot.RevocationFeedRefreshButton": "Terugroepingen vernieuwen",
+  "FabricationLot.RevocationFeedInputLabel": "Ondertekende ML-DSA-65 intrekkingsfeed (JSON)",
+  "FabricationLot.RevocationFeedImportButton": "Peer-intrekkingsfeed verifiëren & importeren",
+  "FabricationLot.RevocationFeedColLot": "Teruggeroepen lot-ID",
+  "FabricationLot.RevocationFeedColIssuer": "Uitgevend peerlab",
+  "FabricationLot.RevocationFeedColReason": "Reden van terugroeping",
+  "FabricationLot.RevocationFeedColImported": "Geïmporteerd (UTC)",
+  "FabricationLot.RevocationFeedEmpty": "Er zijn geen geverifieerde gefedereerde terugroepingen geïmporteerd op deze node."
 }

@@ -118,5 +118,16 @@
   "Gui.DepotWorkspace.TrustRevoked": "WIDERRUFEN",
   "Gui.DepotWorkspace.TrayOptimal": "Klinische Leitplanken optimal",
   "Gui.DepotWorkspace.TrayWarning": "Klinische Warnung / Quarantäne",
-  "Gui.DepotWorkspace.TrayCritical": "Kritische Sicherheitsgrenze / Charge widerrufen"
+  "Gui.DepotWorkspace.TrayCritical": "Kritische Sicherheitsgrenze / Charge widerrufen",
+  "FabricationLot.RevocationFeedTitle": "Föderierte Peer-Rückruf- & Widerrufsfeed-Synchronisierung",
+  "FabricationLot.RevocationFeedDesc": "Exportieren Sie den ML-DSA-65-signierten Chargenwiderrufsfeed dieses Knotens oder prüfen und importieren Sie Rückruffeeds vertrauenswürdiger Partnerlabore.",
+  "FabricationLot.RevocationFeedExportButton": "Signierten Feed exportieren",
+  "FabricationLot.RevocationFeedRefreshButton": "Rückrufe aktualisieren",
+  "FabricationLot.RevocationFeedInputLabel": "Signierter ML-DSA-65-Widerrufsfeed (JSON)",
+  "FabricationLot.RevocationFeedImportButton": "Peer-Widerrufsfeed prüfen & importieren",
+  "FabricationLot.RevocationFeedColLot": "Zurückgerufene Chargen-ID",
+  "FabricationLot.RevocationFeedColIssuer": "Ausstellendes Partnerlabor",
+  "FabricationLot.RevocationFeedColReason": "Rückrufgrund",
+  "FabricationLot.RevocationFeedColImported": "Importiert (UTC)",
+  "FabricationLot.RevocationFeedEmpty": "Auf diesem Knoten wurden noch keine verifizierten föderierten Rückrufe importiert."
 }

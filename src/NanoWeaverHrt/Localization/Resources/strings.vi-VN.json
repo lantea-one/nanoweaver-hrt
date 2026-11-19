@@ -118,5 +118,16 @@
   "Gui.DepotWorkspace.TrustRevoked": "ĐÃ THU HỒI",
   "Gui.DepotWorkspace.TrayOptimal": "Giới hạn an toàn lâm sàng tối ưu",
   "Gui.DepotWorkspace.TrayWarning": "Cảnh báo lâm sàng / Cách ly",
-  "Gui.DepotWorkspace.TrayCritical": "Trần an toàn nghiêm trọng / Lô đã thu hồi"
+  "Gui.DepotWorkspace.TrayCritical": "Trần an toàn nghiêm trọng / Lô đã thu hồi",
+  "FabricationLot.RevocationFeedTitle": "Đồng Bộ Nguồn Thu Hồi & Hủy Lô Liên Nút",
+  "FabricationLot.RevocationFeedDesc": "Xuất nguồn hủy lô đã ký ML-DSA-65 của nút này hoặc xác minh và nhập nguồn thu hồi từ các phòng thí nghiệm đối tác đáng tin cậy.",
+  "FabricationLot.RevocationFeedExportButton": "Xuất nguồn đã ký",
+  "FabricationLot.RevocationFeedRefreshButton": "Làm mới danh sách",
+  "FabricationLot.RevocationFeedInputLabel": "Nguồn hủy lô đã ký ML-DSA-65 (JSON)",
+  "FabricationLot.RevocationFeedImportButton": "Xác minh & Nhập nguồn đối tác",
+  "FabricationLot.RevocationFeedColLot": "Mã lô bị thu hồi",
+  "FabricationLot.RevocationFeedColIssuer": "Phòng lab phát hành",
+  "FabricationLot.RevocationFeedColReason": "Lý do thu hồi",
+  "FabricationLot.RevocationFeedColImported": "Đã nhập (UTC)",
+  "FabricationLot.RevocationFeedEmpty": "Chưa có bản ghi thu hồi liên nút nào được xác minh trên nút này."
 }

@@ -118,5 +118,16 @@
   "Gui.DepotWorkspace.TrustRevoked": "REVOKED",
   "Gui.DepotWorkspace.TrayOptimal": "Clinical Guardrails Optimal",
   "Gui.DepotWorkspace.TrayWarning": "Clinical Guardrail / Quarantine Alert",
-  "Gui.DepotWorkspace.TrayCritical": "Critical Safety Ceiling / Lot Revoked"
+  "Gui.DepotWorkspace.TrayCritical": "Critical Safety Ceiling / Lot Revoked",
+  "FabricationLot.RevocationFeedTitle": "Federated Peer Recall & Revocation Feed Sync",
+  "FabricationLot.RevocationFeedDesc": "Export this node's ML-DSA-65 signed lot revocation feed or verify and import signed recall feeds from trusted peer laboratories.",
+  "FabricationLot.RevocationFeedExportButton": "Export Signed Feed",
+  "FabricationLot.RevocationFeedRefreshButton": "Refresh Recalls",
+  "FabricationLot.RevocationFeedInputLabel": "Signed ML-DSA-65 Revocation Feed JSON",
+  "FabricationLot.RevocationFeedImportButton": "Verify & Import Peer Revocation Feed",
+  "FabricationLot.RevocationFeedColLot": "Recalled Lot ID",
+  "FabricationLot.RevocationFeedColIssuer": "Issuing Peer Lab",
+  "FabricationLot.RevocationFeedColReason": "Recall Reason",
+  "FabricationLot.RevocationFeedColImported": "Imported (UTC)",
+  "FabricationLot.RevocationFeedEmpty": "No verified federated peer recalls have been imported on this node."
 }

@@ -118,5 +118,16 @@
   "Gui.DepotWorkspace.TrustRevoked": "폐기됨",
   "Gui.DepotWorkspace.TrayOptimal": "임상 안전 기준 최적",
   "Gui.DepotWorkspace.TrayWarning": "임상 경고 / 격리 로트 발생",
-  "Gui.DepotWorkspace.TrayCritical": "심각한 안전 상한 / 로트 폐기"
+  "Gui.DepotWorkspace.TrayCritical": "심각한 안전 상한 / 로트 폐기",
+  "FabricationLot.RevocationFeedTitle": "연합 피어 리콜 및 폐기 피드 동기화",
+  "FabricationLot.RevocationFeedDesc": "이 노드의 ML-DSA-65 서명 로트 폐기 피드를 내보내거나 신뢰할 수 있는 피어 연구소의 리콜 피드를 검증 및 가져오기합니다.",
+  "FabricationLot.RevocationFeedExportButton": "서명 피드 내보내기",
+  "FabricationLot.RevocationFeedRefreshButton": "리콜 새로고침",
+  "FabricationLot.RevocationFeedInputLabel": "서명된 ML-DSA-65 폐기 피드 JSON",
+  "FabricationLot.RevocationFeedImportButton": "피어 폐기 피드 검증 및 가져오기",
+  "FabricationLot.RevocationFeedColLot": "리콜된 로트 ID",
+  "FabricationLot.RevocationFeedColIssuer": "발행 피어 연구소",
+  "FabricationLot.RevocationFeedColReason": "리콜 사유",
+  "FabricationLot.RevocationFeedColImported": "가져온 시각 (UTC)",
+  "FabricationLot.RevocationFeedEmpty": "이 노드에 검증된 연합 피어 리콜이 아직 없습니다."
 }

@@ -953,6 +953,9 @@ public sealed class DepotAndLotWorkspaceViewModel : INotifyPropertyChanged
         LatestLotCertificate = null;
         LastCertificateVerification = null;
         LastRevocation = null;
+        LatestExportedRevocationFeed = null;
+        LastRevocationFeedImport = null;
+        FederatedRevocations = [];
         ErrorMessage = null;
     }
 
@@ -1122,5 +1125,173 @@ public sealed class DepotAndLotWorkspaceViewModel : INotifyPropertyChanged
         // WHY:  Drives reactive desktop and mobile UI updates without manual polling.
         // HOW:  Invokes PropertyChanged?.Invoke with PropertyChangedEventArgs.
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
+    /// <summary>
+    /// Backing field for <see cref="LatestExportedRevocationFeed"/>.
+    /// </summary>
+    private SignedLotRevocationFeed? _latestExportedRevocationFeed;
+
+    /// <summary>
+    /// Backing field for <see cref="LastRevocationFeedImport"/>.
+    /// </summary>
+    private ImportRevocationFeedResponse? _lastRevocationFeedImport;
+
+    /// <summary>
+    /// Backing field for <see cref="FederatedRevocations"/>.
+    /// </summary>
+    private IReadOnlyList<FederatedLotRevocationRecord> _federatedRevocations = [];
+
+    /// <summary>
+    /// Gets the most recently exported ML-DSA-65 signed lot revocation feed from the connected node.
+    /// </summary>
+    public SignedLotRevocationFeed? LatestExportedRevocationFeed
+    {
+        get => _latestExportedRevocationFeed;
+        private set
+        {
+            _latestExportedRevocationFeed = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Gets the summary result of the most recent verified peer revocation feed import.
+    /// </summary>
+    public ImportRevocationFeedResponse? LastRevocationFeedImport
+    {
+        get => _lastRevocationFeedImport;
+        private set
+        {
+            _lastRevocationFeedImport = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Gets the list of verified federated peer lot recall tombstones synced on the connected node.
+    /// </summary>
+    public IReadOnlyList<FederatedLotRevocationRecord> FederatedRevocations
+    {
+        get => _federatedRevocations;
+        private set
+        {
+            _federatedRevocations = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Pulls the connected node's ML-DSA-65 signed lot revocation feed via GET /api/fabrication/revocations/feed.
+    /// </summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The signed <see cref="SignedLotRevocationFeed"/> ready for export to peer laboratories.</returns>
+    public async Task<SignedLotRevocationFeed> ExportSignedRevocationFeedAsync(CancellationToken ct = default)
+    {
+        // WHAT: Fetches the local node's ML-DSA-65 signed revocation feed and updates LatestExportedRevocationFeed.
+        // WHY:  Milestone 38 (P202): Lets clinicians export signed batch recall feeds from desktop and mobile shells.
+        // HOW:  Resolves session credentials, calls GetSignedRevocationFeedAsync, and updates observable state.
+        var (profile, token) = ResolveEffectiveSession();
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            SignedLotRevocationFeed feed = await _client.GetSignedRevocationFeedAsync(profile, token, ct).ConfigureAwait(false);
+            LatestExportedRevocationFeed = feed;
+            return feed;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Parses a portable peer revocation feed JSON bundle, verifies &amp; imports it via POST /api/fabrication/revocations/import,
+    /// and refreshes <see cref="FederatedRevocations"/>.
+    /// </summary>
+    /// <param name="feedJson">Raw UTF-8 JSON string representing a <see cref="SignedLotRevocationFeed"/>.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The verified <see cref="ImportRevocationFeedResponse"/> summary.</returns>
+    public async Task<ImportRevocationFeedResponse> ImportSignedRevocationFeedJsonAsync(
+        string feedJson,
+        CancellationToken ct = default)
+    {
+        // WHAT: Deserializes a peer node's signed revocation feed JSON and submits it to the connected node for verification and ingestion.
+        // WHY:  Milestone 38 (P202): Enables air-gapped or remote recall feed synchronization from desktop and mobile UIs.
+        // HOW:  Parses JSON with case-insensitive options, invokes ImportSignedRevocationFeedAsync, and refreshes FederatedRevocations.
+        ArgumentException.ThrowIfNullOrWhiteSpace(feedJson);
+        SignedLotRevocationFeed? parsed;
+        try
+        {
+            parsed = JsonSerializer.Deserialize<SignedLotRevocationFeed>(feedJson, s_certificateJsonOptions);
+        }
+        catch (JsonException ex)
+        {
+            ErrorMessage = ex.Message;
+            throw new InvalidOperationException("The supplied signed revocation feed JSON is malformed.", ex);
+        }
+
+        if (parsed == null)
+        {
+            const string nullMsg = "The supplied signed revocation feed JSON deserialized to null.";
+            ErrorMessage = nullMsg;
+            throw new InvalidOperationException(nullMsg);
+        }
+
+        var (profile, token) = ResolveEffectiveSession();
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            ImportRevocationFeedResponse response = await _client.ImportSignedRevocationFeedAsync(profile, token, parsed, ct).ConfigureAwait(false);
+            LastRevocationFeedImport = response;
+            FederatedRevocations = await _client.GetFederatedRevocationsAsync(profile, token, ct).ConfigureAwait(false);
+            return response;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Loads all verified federated peer recall tombstones from the connected node via GET /api/fabrication/revocations/federated.
+    /// </summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Read-only list of imported <see cref="FederatedLotRevocationRecord"/> entries.</returns>
+    public async Task<IReadOnlyList<FederatedLotRevocationRecord>> LoadFederatedRevocationsAsync(CancellationToken ct = default)
+    {
+        // WHAT: Queries verified peer recall tombstones and populates FederatedRevocations.
+        // WHY:  Milestone 38 (P202): Surfaces active upstream lot recalls across desktop and mobile clinical workspaces.
+        // HOW:  Resolves session credentials, calls GetFederatedRevocationsAsync, and updates observable state.
+        var (profile, token) = ResolveEffectiveSession();
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            IReadOnlyList<FederatedLotRevocationRecord> list = await _client.GetFederatedRevocationsAsync(profile, token, ct).ConfigureAwait(false);
+            FederatedRevocations = list;
+            return list;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 }

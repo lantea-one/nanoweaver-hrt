@@ -118,5 +118,16 @@
   "Gui.DepotWorkspace.TrustRevoked": "ÅTERKALLAD",
   "Gui.DepotWorkspace.TrayOptimal": "Kliniska säkerhetsgränser optimala",
   "Gui.DepotWorkspace.TrayWarning": "Klinisk varning / Karantän",
-  "Gui.DepotWorkspace.TrayCritical": "Kritiskt säkerhetstak / Batch återkallad"
+  "Gui.DepotWorkspace.TrayCritical": "Kritiskt säkerhetstak / Batch återkallad",
+  "FabricationLot.RevocationFeedTitle": "Federerad Synkronisering av Återkallelse- & Spärrflöden",
+  "FabricationLot.RevocationFeedDesc": "Exportera denna nods ML-DSA-65-signerade återkallelseflöde eller verifiera och importera återkallelseflöden från betrodda partnerlaboratorier.",
+  "FabricationLot.RevocationFeedExportButton": "Exportera signerat flöde",
+  "FabricationLot.RevocationFeedRefreshButton": "Uppdatera återkallelser",
+  "FabricationLot.RevocationFeedInputLabel": "Signerat ML-DSA-65-återkallelseflöde (JSON)",
+  "FabricationLot.RevocationFeedImportButton": "Verifiera & importera partnerflöde",
+  "FabricationLot.RevocationFeedColLot": "Återkallat batch-ID",
+  "FabricationLot.RevocationFeedColIssuer": "Utfärdande partnerlabb",
+  "FabricationLot.RevocationFeedColReason": "Orsak till återkallelse",
+  "FabricationLot.RevocationFeedColImported": "Importerad (UTC)",
+  "FabricationLot.RevocationFeedEmpty": "Inga verifierade federerade återkallelser har importerats på denna nod."
 }

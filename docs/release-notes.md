@@ -4,6 +4,25 @@
 
 ---
 
+## v2026.11.19.5 — Federated Peer Lot Revocation Sync & Cross-Node Recall Gossip Ledger (Milestone 38 / Forgejo Issues #224–#228) (2026-11-19)
+
+Completes **Milestone 38 (`P200`–`P204` / Forgejo Issues `#224`–`#228`)**, enabling cross-node propagation of permanent wet-lab lot recalls via NIST FIPS 204 ML-DSA-65 signed de-identified revocation feeds so receiving clinics automatically block upstream recalled Certificates of Analysis fail-closed:
+* **Phase 1: Federated Peer Lot Revocation Ledger & Multi-Engine Migration 017 (Forgejo #224 / P200)**:
+  - Added `Migration017_FederatedRevocationFeed` (`Version = 17`) across SQLite, PostgreSQL, DuckDB, and MySQL/MariaDB creating `weaver_federated_lot_revocations` with indexes on `issuer_key_id` and `imported_at_utc`.
+  - Extended `IFabricationLotRepository` and `FabricationLotRepository` with `ListLocalRevocationsAsync`, `UpsertFederatedRevocationAsync`, `GetFederatedRevocationAsync`, and `ListFederatedRevocationsAsync`.
+* **Phase 2: Signed ML-DSA-65 Revocation Feed Export, Peer Verification & Fail-Closed Recall Enforcement (Forgejo #225 / P201)**:
+  - Added `SignedLotRevocationEntry`, `SignedLotRevocationFeed`, `RevocationFeedVerificationResult`, `ImportRevocationFeedResponse`, `BuildSignedRevocationFeed`, `VerifySignedRevocationFeed`, and `FabricationLotService.ToEffectiveRevocation`.
+  - Enforced canonical UTF-8 JSON SHA-256 + ML-DSA-65 verification against local node keys and active (non-revoked) `IPeerKeyRegistry` anchors, rejecting tampered, untrusted, or revoked-signer feeds fail-closed.
+* **Phase 3: Federated Revocation Sync Minimal API Endpoints, Audit Trail & Client SDK Parity (Forgejo #226 / P202)**:
+  - Appended `GET /api/fabrication/revocations/feed`, `POST /api/fabrication/revocations/import` (logs `FABRICATION_REVOCATION_FEED_IMPORT`), and `GET /api/fabrication/revocations/federated` to `Program.cs`, and updated `POST /api/fabrication/certificates/verify` to enforce both local and federated recall ledgers.
+  - Added `GetSignedRevocationFeedAsync`, `ImportSignedRevocationFeedAsync`, and `GetFederatedRevocationsAsync` across `INanoWeaverNodeClient`, `NanoWeaverNodeClient`, `WeaverNodeApiClient`, and `DepotAndLotWorkspaceViewModel`.
+* **Phase 4: Sovereign DepotStudio Federated Recall Sync UI, 18-Language Localization & Test Suite (Forgejo #227 / P203)**:
+  - Extended `DepotStudio.razor` with the Federated Peer Recall & Revocation Feed Sync panel and added 11 `FabricationLot.RevocationFeed*` localization keys across all 18 community languages (`131` keys per catalog).
+* **Phase 5: Full 8-Gate Verification, Documentation Parity & CalVer Release Closeout (Forgejo #228 / P204)**:
+  - Verified 100% pass across all 8 automated verification gates (`./scripts/verify-all.sh`), 100.00% C# & JS line/branch coverage, 0 incomplete docblocks, 0 uncovered ratchet lines, and updated Forgejo Pages documentation.
+
+---
+
 ## v2026.11.19.4 — Native Cross-Platform Depot & Fabrication Lot Studio for Desktop & Mobile (Milestone 37 / Forgejo Issues #219–#223) (2026-11-19)
 
 Completes **Milestone 37 (`P195`–`P199` / Forgejo Issues `#219`–`#223`)** plus Renovate CI workflow upgrades (`#215`–`#218`: Node.js 26, `docker/login-action@v4`, `docker/metadata-action@v6`, `docker/build-push-action@v7`), delivering native desktop and mobile Depot & Fabrication Lot Studio orchestration, responsive cross-platform view hosting, system-tray clinical alert escalation, air-gapped `.coa.json` file exchange, and biometric-gated mobile wet-lab actions:

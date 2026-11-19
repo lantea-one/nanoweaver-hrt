@@ -118,5 +118,16 @@
   "Gui.DepotWorkspace.TrustRevoked": "ملغى",
   "Gui.DepotWorkspace.TrayOptimal": "ضوابط السلامة السريرية مثالية",
   "Gui.DepotWorkspace.TrayWarning": "تنبيه سلامة سريرية / حجر صحي",
-  "Gui.DepotWorkspace.TrayCritical": "سقف سلامة حرج / تم إلغاء الدفعة"
+  "Gui.DepotWorkspace.TrayCritical": "سقف سلامة حرج / تم إلغاء الدفعة",
+  "FabricationLot.RevocationFeedTitle": "مزامنة موجز استدعاء وإلغاء الدفعات عبر الأقران",
+  "FabricationLot.RevocationFeedDesc": "قم بتصدير موجز إلغاء الدفعات الموقع بـ ML-DSA-65 لهذه العقدة أو تحقق من موجزات الاستدعاء من المختبرات النظيرة الموثوقة واستوردها.",
+  "FabricationLot.RevocationFeedExportButton": "تصدير الموجز الموقع",
+  "FabricationLot.RevocationFeedRefreshButton": "تحديث الاستدعاءات",
+  "FabricationLot.RevocationFeedInputLabel": "موجز الإلغاء الموقع ML-DSA-65 بتنسيق JSON",
+  "FabricationLot.RevocationFeedImportButton": "التحقق من موجز إلغاء الأقران واستيراده",
+  "FabricationLot.RevocationFeedColLot": "معرف الدفعة المستدعاة",
+  "FabricationLot.RevocationFeedColIssuer": "المختبر النظير المُصدر",
+  "FabricationLot.RevocationFeedColReason": "سبب الاستدعاء",
+  "FabricationLot.RevocationFeedColImported": "تاريخ الاستيراد (UTC)",
+  "FabricationLot.RevocationFeedEmpty": "لم يتم استيراد أي استدعاءات موثقة من الأقران على هذه العقدة."
 }

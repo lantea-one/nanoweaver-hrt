@@ -67,7 +67,7 @@ public sealed class MultiEngineMigrationTests : IDisposable
         DatabaseMigrationRunner runner = new(protector: _protector);
         string[] dialects = ["sqlite", "postgresql", "duckdb", "mysql", "mariadb"];
 
-        Assert.Equal(16, runner.RegisteredMigrations.Count);
+        Assert.Equal(17, runner.RegisteredMigrations.Count);
 
         foreach (IDatabaseMigration migration in runner.RegisteredMigrations)
         {
@@ -109,11 +109,11 @@ public sealed class MultiEngineMigrationTests : IDisposable
         await connection.OpenAsync();
 
         int applied = await runner.ApplyPendingMigrationsAsync(connection, "sqlite");
-        Assert.Equal(16, applied);
+        Assert.Equal(17, applied);
 
         IReadOnlyList<long> versions = await runner.GetAppliedVersionsAsync(connection, "sqlite");
-        Assert.Equal(16, versions.Count);
-        for (int i = 1; i <= 16; i++)
+        Assert.Equal(17, versions.Count);
+        for (int i = 1; i <= 17; i++)
         {
             Assert.Contains(i, versions);
         }
@@ -136,11 +136,11 @@ public sealed class MultiEngineMigrationTests : IDisposable
         await connection.OpenAsync();
 
         int applied = await runner.ApplyPendingMigrationsAsync(connection, "duckdb");
-        Assert.Equal(16, applied);
+        Assert.Equal(17, applied);
 
         IReadOnlyList<long> versions = await runner.GetAppliedVersionsAsync(connection, "duckdb");
-        Assert.Equal(16, versions.Count);
-        for (int i = 1; i <= 16; i++)
+        Assert.Equal(17, versions.Count);
+        for (int i = 1; i <= 17; i++)
         {
             Assert.Contains(i, versions);
         }

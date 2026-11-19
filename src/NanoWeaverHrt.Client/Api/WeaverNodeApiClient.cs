@@ -2141,4 +2141,47 @@ public sealed class WeaverNodeApiClient : INanoWeaverNodeClient, IDisposable
         string effectiveToken = ResolveBearerToken(bearerToken);
         return _innerClient.DownloadFabricationCertificateBundleAsync(profile, effectiveToken, lotId, ct);
     }
+
+    /// <inheritdoc/>
+    public Task<SignedLotRevocationFeed> GetSignedRevocationFeedAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/fabrication/revocations/feed using provided or cached session token.
+        // WHY:  Milestone 38 (P202): Exports the node's ML-DSA-65 signed lot revocation feed.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GetSignedRevocationFeedAsync(profile, effectiveToken, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<ImportRevocationFeedResponse> ImportSignedRevocationFeedAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        SignedLotRevocationFeed feed,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/fabrication/revocations/import using provided or cached session token.
+        // WHY:  Milestone 38 (P202): Verifies and ingests a signed peer revocation feed.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.ImportSignedRevocationFeedAsync(profile, effectiveToken, feed, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<FederatedLotRevocationRecord>> GetFederatedRevocationsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/fabrication/revocations/federated using provided or cached session token.
+        // WHY:  Milestone 38 (P202): Lists verified imported peer recall tombstones.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GetFederatedRevocationsAsync(profile, effectiveToken, ct);
+    }
 }

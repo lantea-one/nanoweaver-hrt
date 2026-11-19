@@ -118,5 +118,16 @@
   "Gui.DepotWorkspace.TrustRevoked": "REVOCADO",
   "Gui.DepotWorkspace.TrayOptimal": "Límites clínicos óptimos",
   "Gui.DepotWorkspace.TrayWarning": "Alerta clínica / Cuarentena",
-  "Gui.DepotWorkspace.TrayCritical": "Límite crítico de seguridad / Lote revocado"
+  "Gui.DepotWorkspace.TrayCritical": "Límite crítico de seguridad / Lote revocado",
+  "FabricationLot.RevocationFeedTitle": "Sincronización Federada de Revocación y Retiros entre Pares",
+  "FabricationLot.RevocationFeedDesc": "Exporte el feed de revocación de lotes firmado con ML-DSA-65 de este nodo o verifique e importe feeds de retiro de laboratorios pares confiables.",
+  "FabricationLot.RevocationFeedExportButton": "Exportar feed firmado",
+  "FabricationLot.RevocationFeedRefreshButton": "Actualizar retiros",
+  "FabricationLot.RevocationFeedInputLabel": "Feed de revocación firmado ML-DSA-65 (JSON)",
+  "FabricationLot.RevocationFeedImportButton": "Verificar e importar feed de pares",
+  "FabricationLot.RevocationFeedColLot": "ID de lote retirado",
+  "FabricationLot.RevocationFeedColIssuer": "Laboratorio par emisor",
+  "FabricationLot.RevocationFeedColReason": "Motivo del retiro",
+  "FabricationLot.RevocationFeedColImported": "Importado (UTC)",
+  "FabricationLot.RevocationFeedEmpty": "No se han importado retiros federados verificados en este nodo."
 }

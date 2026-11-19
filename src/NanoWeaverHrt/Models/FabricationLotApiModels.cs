@@ -574,3 +574,248 @@ public sealed record FabricationLotRevocationResponse : IExamplesProvider<Fabric
         Revocation = new FabricationLotRevocationRecord().GetExamples()
     };
 }
+
+/// <summary>
+/// Single de-identified lot revocation entry included inside a portable ML-DSA-65 signed peer revocation feed.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <strong>What is this:</strong> The non-PHI subset of a permanent lot revocation record safe for federated sharing
+/// across peer NanoWeaver laboratories (omits patient identifiers while preserving lot ID, payload hash, actor, reason, and timestamp).
+/// </para>
+/// </remarks>
+[SwaggerSchema(Title = "SignedLotRevocationEntry", Description = "De-identified permanent lot recall entry carried inside a signed ML-DSA-65 peer revocation feed.")]
+public sealed record SignedLotRevocationEntry : IExamplesProvider<SignedLotRevocationEntry>
+{
+    /// <summary>
+    /// Gets or initializes the unique identifier of the revoked fabrication lot.
+    /// </summary>
+    [Description("Unique identifier of the revoked wet-lab fabrication lot.")]
+    [JsonPropertyName("lotId")]
+    public string LotId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets or initializes the optional SHA-256 hex digest of the revoked Certificate of Analysis payload.
+    /// </summary>
+    [Description("Optional SHA-256 hex digest of the revoked Certificate of Analysis payload.")]
+    [JsonPropertyName("payloadSha256")]
+    public string? PayloadSha256 { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the revoking Administrator username on the issuing laboratory node.
+    /// </summary>
+    [Description("Administrator username who issued the recall on the fabricating node.")]
+    [JsonPropertyName("revokedBy")]
+    public string RevokedBy { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets or initializes the plain-English clinical or cold-chain reason for permanent lot revocation.
+    /// </summary>
+    [Description("Plain-English clinical or quality-control reason for permanent lot revocation.")]
+    [JsonPropertyName("revocationReason")]
+    public string RevocationReason { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets or initializes the UTC timestamp when the lot was permanently revoked.
+    /// </summary>
+    [Description("UTC timestamp when the lot was permanently revoked.")]
+    [JsonPropertyName("revokedAtUtc")]
+    public DateTimeOffset RevokedAtUtc { get; init; } = DateTimeOffset.UtcNow;
+
+    /// <summary>
+    /// Generates a representative example instance of <see cref="SignedLotRevocationEntry"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A sample populated signed revocation entry.</returns>
+    public SignedLotRevocationEntry GetExamples() => new()
+    {
+        LotId = "lot_sample_001",
+        PayloadSha256 = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+        RevokedBy = "admin",
+        RevocationReason = "Cold-chain excursion detected during courier transit (temperature exceeded 8°C).",
+        RevokedAtUtc = DateTimeOffset.Parse("2026-11-19T16:00:00Z", CultureInfo.InvariantCulture)
+    };
+}
+
+/// <summary>
+/// Portable, NIST FIPS 204 ML-DSA-65 signed Certificate Revocation Feed exported by a sovereign NanoWeaver node
+/// for cross-node clinical recall synchronization.
+/// </summary>
+[SwaggerSchema(Title = "SignedLotRevocationFeed", Description = "Portable NIST FIPS 204 ML-DSA-65 signed lot revocation feed for cross-node peer recall synchronization.")]
+public sealed record SignedLotRevocationFeed : IExamplesProvider<SignedLotRevocationFeed>
+{
+    /// <summary>
+    /// Gets or initializes the schema version identifier for canonical revocation feed hashing.
+    /// </summary>
+    [Description("Canonical feed format version identifier.")]
+    [JsonPropertyName("feedVersion")]
+    public string FeedVersion { get; init; } = "nanoweaver-revocation-feed-v1";
+
+    /// <summary>
+    /// Gets or initializes the UTC timestamp when this revocation feed snapshot was generated and signed.
+    /// </summary>
+    [Description("UTC timestamp when this signed revocation feed was generated.")]
+    [JsonPropertyName("issuedAtUtc")]
+    public DateTimeOffset IssuedAtUtc { get; init; } = DateTimeOffset.UtcNow;
+
+    /// <summary>
+    /// Gets or initializes the deterministically ordered list of de-identified lot recall entries.
+    /// </summary>
+    [Description("Deterministically ordered list of de-identified permanent lot recall entries.")]
+    [JsonPropertyName("entries")]
+    public IReadOnlyList<SignedLotRevocationEntry> Entries { get; init; } = [];
+
+    /// <summary>
+    /// Gets or initializes the lowercase SHA-256 hex digest of the canonical UTF-8 JSON feed payload.
+    /// </summary>
+    [Description("SHA-256 hex digest of the canonical UTF-8 JSON revocation feed payload.")]
+    [JsonPropertyName("payloadSha256")]
+    public string PayloadSha256 { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets or initializes the Base64-encoded NIST FIPS 204 ML-DSA-65 signature over the canonical feed payload.
+    /// </summary>
+    [Description("Base64-encoded NIST FIPS 204 ML-DSA-65 signature over the canonical feed payload.")]
+    [JsonPropertyName("signatureBase64")]
+    public string SignatureBase64 { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets or initializes the signing key identifier of the exporting laboratory node.
+    /// </summary>
+    [Description("ML-DSA-65 signing key identifier of the exporting laboratory node.")]
+    [JsonPropertyName("signerKeyId")]
+    public string SignerKeyId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets or initializes the Base64-encoded ML-DSA-65 public key of the exporting laboratory node.
+    /// </summary>
+    [Description("Base64-encoded ML-DSA-65 public key of the exporting laboratory node.")]
+    [JsonPropertyName("signerPublicKeyBase64")]
+    public string SignerPublicKeyBase64 { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets or initializes the post-quantum digital signature algorithm name (<c>ML-DSA-65</c>).
+    /// </summary>
+    [Description("Post-quantum digital signature algorithm name (ML-DSA-65).")]
+    [JsonPropertyName("signatureAlgorithm")]
+    public string SignatureAlgorithm { get; init; } = "ML-DSA-65";
+
+    /// <summary>
+    /// Generates a representative example instance of <see cref="SignedLotRevocationFeed"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A sample populated signed revocation feed.</returns>
+    public SignedLotRevocationFeed GetExamples() => new()
+    {
+        FeedVersion = "nanoweaver-revocation-feed-v1",
+        IssuedAtUtc = DateTimeOffset.Parse("2026-11-19T16:15:00Z", CultureInfo.InvariantCulture),
+        Entries = [new SignedLotRevocationEntry().GetExamples()],
+        PayloadSha256 = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        SignatureBase64 = "TUwtRFNBLTY1LVNJRw==",
+        SignerKeyId = "node-mldsa65-primary",
+        SignerPublicKeyBase64 = "UExBQ0VIT0xERVI=",
+        SignatureAlgorithm = "ML-DSA-65"
+    };
+}
+
+/// <summary>
+/// Verification verdict produced when evaluating an imported <see cref="SignedLotRevocationFeed"/>
+/// against mathematical ML-DSA-65 integrity and local/peer trust anchors.
+/// </summary>
+public sealed record RevocationFeedVerificationResult
+{
+    /// <summary>
+    /// Gets or initializes a value indicating whether the feed canonical SHA-256 digest and ML-DSA-65 signature verified cleanly.
+    /// </summary>
+    public bool SignatureValid { get; init; }
+
+    /// <summary>
+    /// Gets or initializes a value indicating whether the feed is trusted for ingestion (valid signature and active local or peer key).
+    /// </summary>
+    public bool IsTrusted { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the resolved trust anchor classification.
+    /// </summary>
+    public FabricationCertificateTrustSource TrustSource { get; init; } = FabricationCertificateTrustSource.InvalidSignature;
+
+    /// <summary>
+    /// Gets or initializes the human-readable peer laboratory label when matched in <c>weaver_peer_keys</c>.
+    /// </summary>
+    public string? TrustedPeerLabel { get; init; }
+
+    /// <summary>
+    /// Gets or initializes a plain-English explanation of the verification verdict.
+    /// </summary>
+    public string Summary { get; init; } = string.Empty;
+}
+
+/// <summary>
+/// Response payload returned after verifying and importing a peer node's <see cref="SignedLotRevocationFeed"/>.
+/// </summary>
+[SwaggerSchema(Title = "ImportRevocationFeedResponse", Description = "Response payload summarizing the verified import of a signed ML-DSA-65 peer revocation feed.")]
+public sealed record ImportRevocationFeedResponse : IExamplesProvider<ImportRevocationFeedResponse>
+{
+    /// <summary>
+    /// Gets or initializes the number of verified recall tombstones persisted into <c>weaver_federated_lot_revocations</c>.
+    /// </summary>
+    [Description("Number of verified recall tombstones imported and persisted.")]
+    [JsonPropertyName("importedCount")]
+    public int ImportedCount { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the resolved cryptographic trust source classification of the imported feed.
+    /// </summary>
+    [Description("Resolved trust anchor classification (LocalNode or TrustedPeer).")]
+    [JsonPropertyName("trustSource")]
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public FabricationCertificateTrustSource TrustSource { get; init; } = FabricationCertificateTrustSource.TrustedPeer;
+
+    /// <summary>
+    /// Gets or initializes the ML-DSA-65 signing key identifier of the peer laboratory.
+    /// </summary>
+    [Description("ML-DSA-65 signing key identifier of the peer laboratory.")]
+    [JsonPropertyName("signerKeyId")]
+    public string SignerKeyId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets or initializes the human-readable peer laboratory label if imported from a registered peer key.
+    /// </summary>
+    [Description("Human-readable label of the trusted peer laboratory, if applicable.")]
+    [JsonPropertyName("trustedPeerLabel")]
+    public string? TrustedPeerLabel { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the canonical SHA-256 hex digest of the verified feed payload.
+    /// </summary>
+    [Description("Canonical SHA-256 hex digest of the verified revocation feed.")]
+    [JsonPropertyName("feedPayloadSha256")]
+    public string FeedPayloadSha256 { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets or initializes a plain-English summary of the import result.
+    /// </summary>
+    [Description("Plain-English summary of the verified revocation feed import.")]
+    [JsonPropertyName("summary")]
+    public string Summary { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets or initializes the UTC timestamp when the feed import completed.
+    /// </summary>
+    [Description("UTC timestamp when the verified feed import completed.")]
+    [JsonPropertyName("importedAtUtc")]
+    public DateTimeOffset ImportedAtUtc { get; init; } = DateTimeOffset.UtcNow;
+
+    /// <summary>
+    /// Generates a representative example instance of <see cref="ImportRevocationFeedResponse"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A sample populated import revocation feed response.</returns>
+    public ImportRevocationFeedResponse GetExamples() => new()
+    {
+        ImportedCount = 1,
+        TrustSource = FabricationCertificateTrustSource.TrustedPeer,
+        SignerKeyId = "node-mldsa65-peer-zurich",
+        TrustedPeerLabel = "Zurich Sovereign Wet-Lab",
+        FeedPayloadSha256 = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        Summary = "Verified and imported 1 federated recall tombstone(s) from trusted peer laboratory 'Zurich Sovereign Wet-Lab'.",
+        ImportedAtUtc = DateTimeOffset.Parse("2026-11-19T16:15:00Z", CultureInfo.InvariantCulture)
+    };
+}

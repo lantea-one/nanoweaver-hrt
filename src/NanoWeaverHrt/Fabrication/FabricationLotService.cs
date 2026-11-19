@@ -709,4 +709,219 @@ public sealed class FabricationLotService : IFabricationLotService
 
         return buffer.WrittenSpan.ToArray();
     }
+
+    /// <summary>
+    /// Canonical schema version stamped on signed ML-DSA-65 lot revocation feeds.
+    /// </summary>
+    private const string RevocationFeedVersion = "nanoweaver-revocation-feed-v1";
+
+    /// <inheritdoc/>
+    public SignedLotRevocationFeed BuildSignedRevocationFeed(
+        IReadOnlyList<FabricationLotRevocationRecord> revocations,
+        DateTimeOffset? issuedAtUtc = null)
+    {
+        // WHAT: Projects local revocation tombstones into de-identified entries, hashes canonically, and signs with ML-DSA-65.
+        // WHY:  Milestone 38 (P201): Lets peer laboratories pull and verify upstream batch recalls without leaking patient IDs.
+        // HOW:  Copies entries without LINQ, sorts deterministically by LotId, hashes UTF-8 JSON with SHA-256, and signs via node key.
+        ArgumentNullException.ThrowIfNull(revocations);
+
+        DateTimeOffset effectiveIssuedAt = (issuedAtUtc ?? DateTimeOffset.UtcNow).ToUniversalTime();
+        List<SignedLotRevocationEntry> entries = new(revocations.Count);
+        for (int i = 0; i < revocations.Count; i++)
+        {
+            FabricationLotRevocationRecord rev = revocations[i];
+            entries.Add(new SignedLotRevocationEntry
+            {
+                LotId = rev.LotId,
+                PayloadSha256 = rev.PayloadSha256,
+                RevokedBy = rev.RevokedBy,
+                RevocationReason = rev.RevocationReason,
+                RevokedAtUtc = rev.RevokedAtUtc.ToUniversalTime()
+            });
+        }
+
+        entries.Sort(static (a, b) => string.Compare(a.LotId, b.LotId, StringComparison.Ordinal));
+
+        byte[] canonicalBytes = BuildCanonicalRevocationFeedBytes(RevocationFeedVersion, effectiveIssuedAt, entries);
+        string payloadSha256 = Convert.ToHexStringLower(SHA256.HashData(canonicalBytes));
+        PqcKeyMaterial nodeKey = _keyManagementService.GetNodeSigningKey();
+        PqcSignature signature = _keyManagementService.SignWithNodeSigningKey(canonicalBytes);
+
+        return new SignedLotRevocationFeed
+        {
+            FeedVersion = RevocationFeedVersion,
+            IssuedAtUtc = effectiveIssuedAt,
+            Entries = entries,
+            PayloadSha256 = payloadSha256,
+            SignatureBase64 = signature.SignatureBase64,
+            SignerKeyId = nodeKey.KeyId,
+            SignerPublicKeyBase64 = nodeKey.PublicKeyBase64,
+            SignatureAlgorithm = SignatureAlgorithmName
+        };
+    }
+
+    /// <inheritdoc/>
+    public RevocationFeedVerificationResult VerifySignedRevocationFeed(
+        SignedLotRevocationFeed feed,
+        PeerKeyRecord? peerKey)
+    {
+        // WHAT: Independently verifies a peer revocation feed's canonical SHA-256 hash, ML-DSA-65 signature, and signer trust anchor.
+        // WHY:  Milestone 38 (P201): Prevents malicious or untrusted nodes from injecting spoofed clinical lot recalls.
+        // HOW:  Recomputes canonical UTF-8 payload, validates SHA-256 + ML-DSA-65, and resolves LocalNode/TrustedPeer/RevokedSigner/UntrustedSigner.
+        ArgumentNullException.ThrowIfNull(feed);
+
+        if (string.IsNullOrWhiteSpace(feed.FeedVersion)
+            || string.IsNullOrWhiteSpace(feed.PayloadSha256)
+            || string.IsNullOrWhiteSpace(feed.SignatureBase64)
+            || string.IsNullOrWhiteSpace(feed.SignerKeyId)
+            || string.IsNullOrWhiteSpace(feed.SignerPublicKeyBase64))
+        {
+            return new RevocationFeedVerificationResult
+            {
+                SignatureValid = false,
+                IsTrusted = false,
+                TrustSource = FabricationCertificateTrustSource.InvalidSignature,
+                TrustedPeerLabel = null,
+                Summary = "Revocation feed rejected: mandatory signature or signer metadata fields are missing."
+            };
+        }
+
+        byte[] canonicalBytes = BuildCanonicalRevocationFeedBytes(
+            feed.FeedVersion,
+            feed.IssuedAtUtc.ToUniversalTime(),
+            feed.Entries);
+        string recomputedSha256 = Convert.ToHexStringLower(SHA256.HashData(canonicalBytes));
+
+        if (!string.Equals(recomputedSha256, feed.PayloadSha256, StringComparison.OrdinalIgnoreCase)
+            || !_cryptoProvider.VerifySignature(canonicalBytes, feed.SignatureBase64, feed.SignerPublicKeyBase64))
+        {
+            return new RevocationFeedVerificationResult
+            {
+                SignatureValid = false,
+                IsTrusted = false,
+                TrustSource = FabricationCertificateTrustSource.InvalidSignature,
+                TrustedPeerLabel = null,
+                Summary = "Revocation feed rejected: canonical SHA-256 digest or ML-DSA-65 signature verification failed."
+            };
+        }
+
+        PqcKeyMaterial localKey = _keyManagementService.GetNodeSigningKey();
+        if (string.Equals(feed.SignerKeyId, localKey.KeyId, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(feed.SignerPublicKeyBase64, localKey.PublicKeyBase64, StringComparison.Ordinal))
+        {
+            return new RevocationFeedVerificationResult
+            {
+                SignatureValid = true,
+                IsTrusted = true,
+                TrustSource = FabricationCertificateTrustSource.LocalNode,
+                TrustedPeerLabel = null,
+                Summary = "Verified ML-DSA-65 revocation feed signed by this local sovereign node."
+            };
+        }
+
+        if (peerKey is not null
+            && peerKey.Algorithm == KeyAlgorithm.MlDsa65
+            && string.Equals(peerKey.KeyId, feed.SignerKeyId, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(peerKey.PublicKeyBase64, feed.SignerPublicKeyBase64, StringComparison.Ordinal))
+        {
+            if (!peerKey.IsActive)
+            {
+                return new RevocationFeedVerificationResult
+                {
+                    SignatureValid = true,
+                    IsTrusted = false,
+                    TrustSource = FabricationCertificateTrustSource.RevokedSigner,
+                    TrustedPeerLabel = peerKey.Label,
+                    Summary = $"Revocation feed rejected: peer laboratory key '{peerKey.Label}' has been permanently revoked."
+                };
+            }
+
+            return new RevocationFeedVerificationResult
+            {
+                SignatureValid = true,
+                IsTrusted = true,
+                TrustSource = FabricationCertificateTrustSource.TrustedPeer,
+                TrustedPeerLabel = peerKey.Label,
+                Summary = $"Verified ML-DSA-65 revocation feed issued by trusted peer laboratory '{peerKey.Label}'."
+            };
+        }
+
+        return new RevocationFeedVerificationResult
+        {
+            SignatureValid = true,
+            IsTrusted = false,
+            TrustSource = FabricationCertificateTrustSource.UntrustedSigner,
+            TrustedPeerLabel = null,
+            Summary = "Revocation feed rejected: signer ML-DSA-65 key is not registered in this node's trusted peer key registry."
+        };
+    }
+
+    /// <summary>
+    /// Converts a verified <see cref="FederatedLotRevocationRecord"/> into a <see cref="FabricationLotRevocationRecord"/>
+    /// suitable for unified fail-closed evaluation inside <see cref="VerifyCertificateAgainstTrustAnchor"/>.
+    /// </summary>
+    /// <param name="federated">The imported peer recall tombstone.</param>
+    /// <returns>A projected <see cref="FabricationLotRevocationRecord"/> carrying peer provenance in <c>RevokedBy</c> and reason.</returns>
+    public static FabricationLotRevocationRecord ToEffectiveRevocation(FederatedLotRevocationRecord federated)
+    {
+        // WHAT: Adapts an upstream federated recall record into the unified revocation type consumed by CoA verification.
+        // WHY:  Allows VerifyCertificateAgainstTrustAnchor to enforce local and federated recalls with identical fail-closed logic.
+        // HOW:  Formats issuer attribution into RevokedBy and preserves exact reason, hash, and timestamp.
+        ArgumentNullException.ThrowIfNull(federated);
+
+        string sourceLabel = string.IsNullOrWhiteSpace(federated.IssuerPeerLabel)
+            ? federated.IssuerKeyId
+            : federated.IssuerPeerLabel;
+
+        return new FabricationLotRevocationRecord
+        {
+            LotId = federated.LotId,
+            PatientId = string.Empty,
+            PayloadSha256 = federated.PayloadSha256,
+            RevokedBy = $"{federated.RevokedBy}@{sourceLabel}",
+            RevocationReason = federated.RevocationReason,
+            RevokedAtUtc = federated.RevokedAtUtc
+        };
+    }
+
+    /// <summary>
+    /// Serializes a revocation feed header and entry array into deterministic UTF-8 JSON bytes for SHA-256 and ML-DSA-65 signing.
+    /// </summary>
+    /// <param name="feedVersion">Feed schema version string.</param>
+    /// <param name="issuedAtUtc">Canonical UTC issuance timestamp.</param>
+    /// <param name="entries">Ordered list of de-identified revocation entries.</param>
+    /// <returns>Deterministic UTF-8 JSON bytes.</returns>
+    private static byte[] BuildCanonicalRevocationFeedBytes(
+        string feedVersion,
+        DateTimeOffset issuedAtUtc,
+        IReadOnlyList<SignedLotRevocationEntry> entries)
+    {
+        // WHAT: Produces byte-for-byte reproducible UTF-8 JSON bytes binding feed metadata and all recall entries.
+        // WHY:  Ensures SHA-256 digest and ML-DSA-65 signature verification succeed across independent sovereign nodes.
+        // HOW:  Writes fixed-order JSON properties with Utf8JsonWriter over an ArrayBufferWriter<byte>.
+        ArrayBufferWriter<byte> buffer = new(1024);
+        using (Utf8JsonWriter writer = new(buffer, new JsonWriterOptions { Indented = false }))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("feedVersion", feedVersion);
+            writer.WriteString("issuedAtUtc", issuedAtUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture));
+            writer.WriteStartArray("entries");
+            for (int i = 0; i < entries.Count; i++)
+            {
+                SignedLotRevocationEntry entry = entries[i];
+                writer.WriteStartObject();
+                writer.WriteString("lotId", entry.LotId);
+                writer.WriteString("payloadSha256", entry.PayloadSha256 ?? string.Empty);
+                writer.WriteString("revokedBy", entry.RevokedBy);
+                writer.WriteString("revocationReason", entry.RevocationReason);
+                writer.WriteString("revokedAtUtc", entry.RevokedAtUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture));
+                writer.WriteEndObject();
+            }
+
+            writer.WriteEndArray();
+            writer.WriteEndObject();
+        }
+
+        return buffer.WrittenSpan.ToArray();
+    }
 }

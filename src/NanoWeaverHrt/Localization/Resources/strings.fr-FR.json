@@ -118,5 +118,16 @@
   "Gui.DepotWorkspace.TrustRevoked": "RÉVOQUÉ",
   "Gui.DepotWorkspace.TrayOptimal": "Garde-fous cliniques optimaux",
   "Gui.DepotWorkspace.TrayWarning": "Alerte clinique / Quarantaine",
-  "Gui.DepotWorkspace.TrayCritical": "Plafond de sécurité critique / Lot révoqué"
+  "Gui.DepotWorkspace.TrayCritical": "Plafond de sécurité critique / Lot révoqué",
+  "FabricationLot.RevocationFeedTitle": "Synchronisation Fédérée des Rappels et Révocations entre Pairs",
+  "FabricationLot.RevocationFeedDesc": "Exportez le flux de révocation de lots signé ML-DSA-65 de ce nœud ou vérifiez et importez les flux de rappel des laboratoires pairs de confiance.",
+  "FabricationLot.RevocationFeedExportButton": "Exporter le flux signé",
+  "FabricationLot.RevocationFeedRefreshButton": "Actualiser les rappels",
+  "FabricationLot.RevocationFeedInputLabel": "Flux de révocation signé ML-DSA-65 (JSON)",
+  "FabricationLot.RevocationFeedImportButton": "Vérifier et importer le flux pair",
+  "FabricationLot.RevocationFeedColLot": "ID du lot rappelé",
+  "FabricationLot.RevocationFeedColIssuer": "Laboratoire pair émetteur",
+  "FabricationLot.RevocationFeedColReason": "Motif du rappel",
+  "FabricationLot.RevocationFeedColImported": "Importé (UTC)",
+  "FabricationLot.RevocationFeedEmpty": "Aucun rappel fédéré vérifié n'a encore été importé sur ce nœud."
 }

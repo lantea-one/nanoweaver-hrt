@@ -901,7 +901,19 @@ Permanently transitions a fabrication lot to `Revoked`, persists a recall tombst
 * **Role Requirement**: `Administrator` only.
 
 #### `POST /api/fabrication/certificates/verify`
-Verifies an imported or local **ML-DSA-65** Certificate of Analysis JSON payload against mathematical SHA-256 + ML-DSA-65 integrity, this node's signing key, `IPeerKeyRegistry` (`LocalNode`, `TrustedPeer`, `RevokedSigner`, `UntrustedSigner`, or `InvalidSignature`), and local lot revocation tombstones (`200 OK`), logging `FABRICATION_CERT_VERIFY`.
+Verifies an imported or local **ML-DSA-65** Certificate of Analysis JSON payload against mathematical SHA-256 + ML-DSA-65 integrity, this node's signing key, `IPeerKeyRegistry` (`LocalNode`, `TrustedPeer`, `RevokedSigner`, `UntrustedSigner`, or `InvalidSignature`), and both local (`weaver_fabrication_lot_revocations`) and federated (`weaver_federated_lot_revocations`) lot revocation tombstones (`200 OK`), logging `FABRICATION_CERT_VERIFY`.
+* **Role Requirement**: `Administrator` or `Researcher`.
+
+#### `GET /api/fabrication/revocations/feed`
+Exports all locally issued permanent lot revocation tombstones as a de-identified (zero patient IDs), canonically hashed, **ML-DSA-65** signed `SignedLotRevocationFeed` JSON document ready for peer node synchronization (`200 OK`).
+* **Role Requirement**: `Administrator` or `Researcher`.
+
+#### `POST /api/fabrication/revocations/import`
+Verifies a peer laboratory's `SignedLotRevocationFeed` against canonical SHA-256 + ML-DSA-65 integrity and active `IPeerKeyRegistry` trust anchors (`422 Unprocessable Entity` fail-closed on tampered, untrusted, or revoked-signer feeds), persists verified recall tombstones into `weaver_federated_lot_revocations`, and logs `FABRICATION_REVOCATION_FEED_IMPORT` (`200 OK`).
+* **Role Requirement**: `Administrator` or `Researcher`.
+
+#### `GET /api/fabrication/revocations/federated`
+Lists all cryptographically verified upstream peer laboratory recall tombstones persisted in `weaver_federated_lot_revocations`, ordered newest imported first (`200 OK`).
 * **Role Requirement**: `Administrator` or `Researcher`.
 
 ---

@@ -358,3 +358,113 @@ public sealed record FabricationLotRevocationRecord : IExamplesProvider<Fabricat
         RevokedAtUtc = DateTimeOffset.Parse("2026-11-19T16:00:00Z", CultureInfo.InvariantCulture)
     };
 }
+
+/// <summary>
+/// Persistent database record representing a cryptographically verified upstream peer laboratory lot recall
+/// stored in <c>weaver_federated_lot_revocations</c>.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <strong>What is this:</strong> A federated recall tombstone imported from a trusted peer node's ML-DSA-65
+/// signed revocation feed, linking a recalled lot ID to its issuing laboratory key, recall reason, and feed proof.
+/// </para>
+/// <para>
+/// <strong>Why it exists:</strong> Prevents a receiving clinic from accepting a previously exported Certificate of
+/// Analysis after the originating laboratory issues an emergency recall.
+/// </para>
+/// <para>
+/// <strong>How it works:</strong> Persisted via <see cref="NanoWeaverHrt.Storage.IFabricationLotRepository.UpsertFederatedRevocationAsync"/>
+/// after ML-DSA-65 peer verification and queried during every cross-node certificate trust check.
+/// </para>
+/// </remarks>
+[SwaggerSchema(Title = "FederatedLotRevocationRecord", Description = "Verified upstream peer laboratory recall tombstone imported from a signed ML-DSA-65 revocation feed.")]
+public sealed record FederatedLotRevocationRecord : IExamplesProvider<FederatedLotRevocationRecord>
+{
+    /// <summary>
+    /// Gets or initializes the unique identifier of the recalled fabrication lot.
+    /// </summary>
+    [Description("Unique identifier of the recalled fabrication lot.")]
+    [JsonPropertyName("lotId")]
+    public string LotId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets or initializes the optional SHA-256 hex digest of the recalled Certificate of Analysis payload.
+    /// </summary>
+    [Description("Optional SHA-256 hex digest of the recalled Certificate of Analysis payload.")]
+    [JsonPropertyName("payloadSha256")]
+    public string? PayloadSha256 { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the ML-DSA-65 signing key identifier of the peer laboratory that issued the recall feed.
+    /// </summary>
+    [Description("ML-DSA-65 signing key identifier of the issuing peer laboratory.")]
+    [JsonPropertyName("issuerKeyId")]
+    public string IssuerKeyId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets or initializes the human-readable peer laboratory label from <c>weaver_peer_keys</c>, if available.
+    /// </summary>
+    [Description("Human-readable peer laboratory label registered in weaver_peer_keys.")]
+    [JsonPropertyName("issuerPeerLabel")]
+    public string? IssuerPeerLabel { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the administrator identifier who issued the recall on the upstream laboratory node.
+    /// </summary>
+    [Description("Administrator username who issued the recall on the upstream laboratory node.")]
+    [JsonPropertyName("revokedBy")]
+    public string RevokedBy { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets or initializes the plain-English clinical or cold-chain reason for the recall.
+    /// </summary>
+    [Description("Plain-English clinical or cold-chain reason for the upstream lot recall.")]
+    [JsonPropertyName("revocationReason")]
+    public string RevocationReason { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets or initializes the UTC timestamp when the upstream laboratory revoked the lot.
+    /// </summary>
+    [Description("UTC timestamp when the upstream laboratory revoked the lot.")]
+    [JsonPropertyName("revokedAtUtc")]
+    public DateTimeOffset RevokedAtUtc { get; init; } = DateTimeOffset.UtcNow;
+
+    /// <summary>
+    /// Gets or initializes the canonical SHA-256 hex digest of the signed revocation feed bundle carrying this entry.
+    /// </summary>
+    [Description("Canonical SHA-256 hex digest of the signed peer revocation feed bundle.")]
+    [JsonPropertyName("feedPayloadSha256")]
+    public string FeedPayloadSha256 { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets or initializes the Base64-encoded NIST FIPS 204 ML-DSA-65 signature over the source revocation feed.
+    /// </summary>
+    [Description("Base64-encoded ML-DSA-65 signature authenticating the source revocation feed.")]
+    [JsonPropertyName("feedSignatureBase64")]
+    public string FeedSignatureBase64 { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets or initializes the UTC timestamp when this node verified and imported the recall tombstone.
+    /// </summary>
+    [Description("UTC timestamp when this node verified and persisted the federated recall tombstone.")]
+    [JsonPropertyName("importedAtUtc")]
+    public DateTimeOffset ImportedAtUtc { get; init; } = DateTimeOffset.UtcNow;
+
+    /// <summary>
+    /// Generates a representative example instance of <see cref="FederatedLotRevocationRecord"/> for OpenAPI documentation.
+    /// </summary>
+    /// <returns>A sample populated federated lot revocation record.</returns>
+    public FederatedLotRevocationRecord GetExamples() => new()
+    {
+        LotId = "lot_peer_001",
+        PayloadSha256 = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+        IssuerKeyId = "node-mldsa65-peer-zurich",
+        IssuerPeerLabel = "Zurich Sovereign Wet-Lab",
+        RevokedBy = "lab_director",
+        RevocationReason = "Stability assay indicated elevated sub-visible particulate count.",
+        RevokedAtUtc = DateTimeOffset.Parse("2026-11-19T16:10:00Z", CultureInfo.InvariantCulture),
+        FeedPayloadSha256 = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        FeedSignatureBase64 = "TUwtRFNBLTY1LVNJRw==",
+        ImportedAtUtc = DateTimeOffset.Parse("2026-11-19T16:15:00Z", CultureInfo.InvariantCulture)
+    };
+}

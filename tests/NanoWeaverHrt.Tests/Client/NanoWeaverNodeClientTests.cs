@@ -4267,6 +4267,46 @@ public sealed class NanoWeaverNodeClientTests : IDisposable
         await Assert.ThrowsAsync<ArgumentNullException>(() => _client.DownloadFabricationCertificateBundleAsync(null!, "valid_token", "lot_01"));
         await Assert.ThrowsAsync<ArgumentException>(() => _client.DownloadFabricationCertificateBundleAsync(_localProfile, "", "lot_01"));
         await Assert.ThrowsAsync<ArgumentException>(() => _client.DownloadFabricationCertificateBundleAsync(_localProfile, "valid_token", ""));
+
+        // 9. GetSignedRevocationFeedAsync (Milestone 38)
+        SignedLotRevocationFeed sampleFeed = new SignedLotRevocationFeed().GetExamples();
+        _httpHandler.SetResponse("/api/fabrication/revocations/feed", HttpStatusCode.OK, JsonSerializer.Serialize(sampleFeed, webOpts));
+        SignedLotRevocationFeed fetchedFeed = await _client.GetSignedRevocationFeedAsync(_localProfile, "valid_token");
+        Assert.Equal(sampleFeed.FeedVersion, fetchedFeed.FeedVersion);
+
+        _httpHandler.SetResponse("/api/fabrication/revocations/feed", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.GetSignedRevocationFeedAsync(_localProfile, "valid_token"));
+        _httpHandler.SetResponse("/api/fabrication/revocations/feed", HttpStatusCode.Forbidden, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetSignedRevocationFeedAsync(_localProfile, "valid_token"));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetSignedRevocationFeedAsync(null!, "valid_token"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetSignedRevocationFeedAsync(_localProfile, ""));
+
+        // 10. ImportSignedRevocationFeedAsync (Milestone 38)
+        ImportRevocationFeedResponse sampleImportFeedResp = new ImportRevocationFeedResponse().GetExamples();
+        _httpHandler.SetResponse("/api/fabrication/revocations/import", HttpStatusCode.OK, JsonSerializer.Serialize(sampleImportFeedResp, webOpts));
+        ImportRevocationFeedResponse importedFeedResp = await _client.ImportSignedRevocationFeedAsync(_localProfile, "valid_token", sampleFeed);
+        Assert.Equal(1, importedFeedResp.ImportedCount);
+
+        _httpHandler.SetResponse("/api/fabrication/revocations/import", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.ImportSignedRevocationFeedAsync(_localProfile, "valid_token", sampleFeed));
+        _httpHandler.SetResponse("/api/fabrication/revocations/import", HttpStatusCode.UnprocessableEntity, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.ImportSignedRevocationFeedAsync(_localProfile, "valid_token", sampleFeed));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.ImportSignedRevocationFeedAsync(null!, "valid_token", sampleFeed));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.ImportSignedRevocationFeedAsync(_localProfile, "", sampleFeed));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.ImportSignedRevocationFeedAsync(_localProfile, "valid_token", null!));
+
+        // 11. GetFederatedRevocationsAsync (Milestone 38)
+        FederatedLotRevocationRecord sampleFedRec = new FederatedLotRevocationRecord().GetExamples();
+        _httpHandler.SetResponse("/api/fabrication/revocations/federated", HttpStatusCode.OK, JsonSerializer.Serialize(new[] { sampleFedRec }, webOpts));
+        IReadOnlyList<FederatedLotRevocationRecord> fedRecs = await _client.GetFederatedRevocationsAsync(_localProfile, "valid_token");
+        Assert.Single(fedRecs);
+
+        _httpHandler.SetResponse("/api/fabrication/revocations/federated", HttpStatusCode.OK, "null");
+        Assert.Empty(await _client.GetFederatedRevocationsAsync(_localProfile, "valid_token"));
+        _httpHandler.SetResponse("/api/fabrication/revocations/federated", HttpStatusCode.Forbidden, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetFederatedRevocationsAsync(_localProfile, "valid_token"));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetFederatedRevocationsAsync(null!, "valid_token"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetFederatedRevocationsAsync(_localProfile, ""));
     }
 
     /// <summary>

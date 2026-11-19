@@ -4234,4 +4234,93 @@ public sealed class NanoWeaverNodeClient : INanoWeaverNodeClient
 
         return await resp.Content.ReadAsByteArrayAsync(ct);
     }
+
+    /// <inheritdoc/>
+    public async Task<SignedLotRevocationFeed> GetSignedRevocationFeedAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/fabrication/revocations/feed to retrieve the node's signed ML-DSA-65 recall feed.
+        // WHY:  Milestone 38 (P202): Enables desktop, mobile, and CLI tools to pull signed revocation feeds for peer sync.
+        // HOW:  Validates arguments, sends authenticated GET request, and deserializes SignedLotRevocationFeed.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/fabrication/revocations/feed");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        SignedLotRevocationFeed? feed = await resp.Content.ReadFromJsonAsync<SignedLotRevocationFeed>(JsonOptions, ct);
+        return feed ?? throw new InvalidOperationException("Endpoint returned empty or null signed revocation feed payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<ImportRevocationFeedResponse> ImportSignedRevocationFeedAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        SignedLotRevocationFeed feed,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/fabrication/revocations/import to verify and ingest a peer laboratory's recall feed.
+        // WHY:  Milestone 38 (P202): Propagates upstream recalls across sovereign nodes from desktop/mobile clients.
+        // HOW:  Validates arguments, sends authenticated JSON POST, and deserializes ImportRevocationFeedResponse.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentNullException.ThrowIfNull(feed);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/fabrication/revocations/import");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(feed, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        ImportRevocationFeedResponse? result = await resp.Content.ReadFromJsonAsync<ImportRevocationFeedResponse>(JsonOptions, ct);
+        return result ?? throw new InvalidOperationException("Endpoint returned empty or null revocation feed import payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<FederatedLotRevocationRecord>> GetFederatedRevocationsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/fabrication/revocations/federated to list verified imported peer recall tombstones.
+        // WHY:  Milestone 38 (P202): Populates desktop and mobile federated recall audit tables.
+        // HOW:  Validates arguments, issues authenticated GET request, and returns deserialized list or empty array.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/fabrication/revocations/federated");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        List<FederatedLotRevocationRecord>? list = await resp.Content.ReadFromJsonAsync<List<FederatedLotRevocationRecord>>(JsonOptions, ct);
+        return list ?? (IReadOnlyList<FederatedLotRevocationRecord>)Array.Empty<FederatedLotRevocationRecord>();
+    }
 }
