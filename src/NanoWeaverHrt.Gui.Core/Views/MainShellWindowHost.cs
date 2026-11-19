@@ -27,7 +27,13 @@ public enum ShellNavigationPage
     /// <summary>
     /// System diagnostics, platform info, and cryptographic capabilities.
     /// </summary>
-    About
+    About,
+
+    /// <summary>
+    /// Unified 180-day depot formulation, longitudinal calibration, wet-lab 5-gate QC lot release,
+    /// and cross-node ML-DSA-65 certificate verification studio (Milestones 33–37).
+    /// </summary>
+    DepotAndLotStudio
 }
 
 /// <summary>
@@ -78,6 +84,11 @@ public sealed class MainShellWindowHost : INotifyPropertyChanged, IDisposable
     public AboutViewModel About { get; }
 
     /// <summary>
+    /// Gets the native cross-platform view host for the 180-day Depot &amp; Fabrication Lot Studio.
+    /// </summary>
+    public DepotStudioViewHost DepotStudioHost { get; }
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="MainShellWindowHost"/> class.
     /// </summary>
     /// <param name="shellViewModel">Root shell ViewModel.</param>
@@ -97,6 +108,7 @@ public sealed class MainShellWindowHost : INotifyPropertyChanged, IDisposable
         InstanceManager = instanceManager ?? throw new ArgumentNullException(nameof(instanceManager));
         VaultUnlock = vaultUnlock ?? new VaultUnlockViewModel();
         About = about ?? new AboutViewModel();
+        DepotStudioHost = new DepotStudioViewHost(ShellViewModel);
     }
 
     /// <summary>

@@ -57,6 +57,7 @@ All desktop and mobile platform heads share a high-throughput, reactive presenta
 | `WetLabComplianceWorkspaceViewModel` | Opentrons robotic protocol generation, agarose gel image densitometry, and FDA 21 CFR Part 11 audit ledger verification. |
 | `NodeAdministrationViewModel` | First-launch setup bootstrapping, user account management, authoritative configuration overrides, container stack services, and hardware benchmarks. |
 | `PatientClinicalWorkspaceViewModel` | Demographics, addresses, emergency contacts, digitized DNA regimens, clinical laboratory results, and cohort access groups. |
+| `DepotAndLotWorkspaceViewModel` | Unified Milestones 33–37 clinical studio coordinating 180-day depot formulations, longitudinal serum assay calibration, 5-gate wet-lab QC lot release, portable ML-DSA-65 CoA downloads, cross-node trust verification, and permanent lot revocation with zero-LINQ KPI summaries and automatic memory wiping on session lock. |
 | `FederationAndDatasetWorkspaceViewModel` | Single-use peer share keys, trusted peer laboratory key registry, dataset export/import bundles, and trajectory federation swarm manifests. |
 | `InstanceOnboardingViewModel` | Connection profile wizard, client-side keypair generation, and remote health connectivity verification (`TestAndSaveAsync`). |
 | `InstanceManagerViewModel` | Profile listing, search filtering, profile deletion, and persistence synchronization. |
@@ -213,9 +214,10 @@ Mobile heads execute within deterministic platform coordinators enforcing strict
    - Automatically zeroes sensitive session keys and locks the biometric vault on `DidEnterBackground`.
 3. **Unified Mobile Runner (`MobileEntryPoint.RunAsync`)**:
    - Coordinates platform hosts, diagnostic self-verification, and background alert delivery via `INativeNotificationSink`.
-4. **Milestone 34–36 Clinical Depot, Wet-Lab Lot & Cross-Node Verification MVVM Parity (`PatientClinicalWorkspaceViewModel`)**:
-   - Exposes Milestone 34 longitudinal calibration commands (`RecordDepotAssayAsync`, `GetDepotAssaysAsync`, `CalibrateDepotAsync`, `GetLatestDepotCalibrationAsync`), Milestone 35 wet-lab lot release commands (`CreateFabricationLotAsync`, `GetFabricationLotsAsync`, `RecordFabricationQcAsync`, `ReleaseFabricationLotAsync`, `GetFabricationLotCertificateAsync`), and Milestone 36 revocation & peer verification commands (`RevokeFabricationLotAsync`, `VerifyFabricationCertificateAsync`, `DownloadFabricationCertificateBundleAsync`) with observable `RecordedDepotAssays`, `LatestDepotCalibration`, `FabricationLots`, `LatestLotRelease`, `LatestLotCertificate`, and `LastCertificateVerification` bindings backed by 100% REST SDK parity across `INanoWeaverNodeClient`, `NanoWeaverNodeClient`, and `WeaverNodeApiClient`.
-   - Includes localized longitudinal assay, clinical safety guardrail, wet-lab cryptographic QC release, revocation, and peer verifier strings across all 18 community languages (including Arabic RTL).
+4. **Milestone 34–37 Native Depot & Fabrication Lot Studio (`DepotAndLotWorkspaceViewModel`, `DepotStudioViewHost`, `DesktopCertificateFileStore`, `MobileClinicalActionGate`)**:
+   - Exposes unified native MVVM orchestration across Milestones 33–36 via `DepotAndLotWorkspaceViewModel` (and direct SDK commands on `PatientClinicalWorkspaceViewModel`) with zero-LINQ clinical safety aggregation (`DepotWorkspaceSummary`) and automatic cryptographic zeroization of cached Certificate of Analysis bytes on idle lock or mobile backgrounding (`MainActivity.OnPause` / `AppDelegate.DidEnterBackground`).
+   - Renders deterministic, high-contrast sovereign dark-mode layouts via `DepotStudioViewHost` (`ShellNavigationPage.DepotAndLotStudio`) with responsive `DesktopWide` (4-column), `TabletSplit` (2-column iPadOS), and `MobileCompact` (1-column Android/iOS) breakpoints (`MobileEntryPoint.ResolveLayoutMode`) plus Arabic RTL support across all 18 community languages (`Gui.DepotWorkspace.*`).
+   - Escalates clinical guardrail alerts and quarantined/revoked lots directly to desktop system tray badges (`DesktopTrayIconController.ApplyClinicalSafetyState`), supports path-traversal-safe `.coa.json` desktop import/export (`DesktopCertificateFileStore`), and gates mobile ML-DSA-65 lot release and permanent revocation behind hardware biometrics (`MobileClinicalActionGate`).
 
 ---
 

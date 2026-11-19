@@ -1,5 +1,6 @@
 using NanoWeaverHrt.Client.Api;
 using NanoWeaverHrt.Gui.Core.Services;
+using NanoWeaverHrt.Gui.Core.Views;
 using NanoWeaverHrt.Mobile.Security;
 
 namespace NanoWeaverHrt.Mobile.Platform;
@@ -248,5 +249,26 @@ public static class MobileEntryPoint
         // HOW:  Normalizes platform string, instantiates platform-specific notification sink, and executes RunMobileLifecycleAsync.
         var sink = new MobileNotificationSink(platform);
         return await RunMobileLifecycleAsync(platform, sink, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Resolves the recommended responsive <see cref="WorkspaceLayoutMode"/> for the target mobile platform head.
+    /// </summary>
+    /// <param name="targetPlatform">Mobile platform label ("Android", "iOS", or "iPadOS").</param>
+    /// <returns><see cref="WorkspaceLayoutMode.TabletSplit"/> for iPadOS, or <see cref="WorkspaceLayoutMode.MobileCompact"/> for Android and iOS.</returns>
+    public static WorkspaceLayoutMode ResolveLayoutMode(string targetPlatform)
+    {
+        // WHAT: Selects split-view tablet or compact phone card grid layout for the Depot & Lot Studio.
+        // WHY:  Milestone 37 (P197): Ensures iPadOS Stage Manager uses 2-column split cards while phones stay single-column.
+        // HOW:  Normalizes platform label and throws ArgumentException for unsupported platform identifiers.
+        ArgumentException.ThrowIfNullOrWhiteSpace(targetPlatform);
+        string normalized = targetPlatform.Trim().ToLowerInvariant();
+
+        return normalized switch
+        {
+            "ipados" => WorkspaceLayoutMode.TabletSplit,
+            "android" or "ios" => WorkspaceLayoutMode.MobileCompact,
+            _ => throw new ArgumentException($"Unsupported mobile platform identifier: '{targetPlatform}'.", nameof(targetPlatform))
+        };
     }
 }

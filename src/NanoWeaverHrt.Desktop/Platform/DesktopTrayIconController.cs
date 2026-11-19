@@ -1,4 +1,5 @@
 using NanoWeaverHrt.Gui.Core.Services;
+using NanoWeaverHrt.Gui.Core.ViewModels;
 using NanoWeaverHrt.Localization;
 
 namespace NanoWeaverHrt.Desktop.Platform;
@@ -213,5 +214,36 @@ public sealed class DesktopTrayIconController : ITrayIconController, IDisposable
         // WHY:  Ensures clean teardown without lingering event handler references.
         // HOW:  Clears StateChanged event subscriptions.
         StateChanged = null;
+    }
+
+    /// <summary>
+    /// Projects a <see cref="DepotWorkspaceSummary"/> onto the desktop system tray badge and localized tooltip,
+    /// escalating quarantined lots, safety guardrail alerts, and permanent lot recalls to visible tray states.
+    /// </summary>
+    /// <param name="summary">Computed clinical depot and fabrication lot summary snapshot.</param>
+    /// <param name="isMainWindowVisible">True when the primary desktop window is currently shown.</param>
+    /// <param name="areNotificationsMuted">True when OS notifications are muted.</param>
+    /// <param name="instanceSummaries">Current per-node status lines to display in the tray menu.</param>
+    public void ApplyClinicalSafetyState(
+        DepotWorkspaceSummary summary,
+        bool isMainWindowVisible,
+        bool areNotificationsMuted,
+        IReadOnlyList<string> instanceSummaries)
+    {
+        // WHAT: Translates clinical workspace severity into desktop system tray icon badge and localized tooltip.
+        // WHY:  Milestone 37 (P197): Surfaces critical endocrine safety ceilings and lot recalls while minimized to tray.
+        // HOW:  Maps ClinicalWorkspaceSeverity to TrayHealthBadge and delegates to ApplyLocalizedState.
+        ArgumentNullException.ThrowIfNull(summary);
+        ArgumentNullException.ThrowIfNull(instanceSummaries);
+
+        (TrayHealthBadge badge, string statusKey) = summary.Severity switch
+        {
+            ClinicalWorkspaceSeverity.Critical => (TrayHealthBadge.Critical, "Gui.DepotWorkspace.TrayCritical"),
+            ClinicalWorkspaceSeverity.Warning => (TrayHealthBadge.Warning, "Gui.DepotWorkspace.TrayWarning"),
+            ClinicalWorkspaceSeverity.Optimal => (TrayHealthBadge.Healthy, "Gui.DepotWorkspace.TrayOptimal"),
+            _ => (TrayHealthBadge.Idle, "Status.Offline")
+        };
+
+        ApplyLocalizedState(badge, statusKey, isMainWindowVisible, areNotificationsMuted, instanceSummaries);
     }
 }

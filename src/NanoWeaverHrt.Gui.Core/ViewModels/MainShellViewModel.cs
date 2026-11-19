@@ -92,6 +92,7 @@ public sealed class MainShellViewModel : INotifyPropertyChanged, IDisposable
     /// <param name="nodeAdministration">Optional node administration workspace ViewModel override.</param>
     /// <param name="patientClinicalWorkspace">Optional patient clinical workspace ViewModel override.</param>
     /// <param name="federationAndDatasetWorkspace">Optional federation and dataset workspace ViewModel override.</param>
+    /// <param name="depotAndLotWorkspace">Optional depot and fabrication lot workspace ViewModel override.</param>
     public MainShellViewModel(
         IInstanceProfileRepository profileRepository,
         IMultiInstanceCoordinator coordinator,
@@ -103,7 +104,8 @@ public sealed class MainShellViewModel : INotifyPropertyChanged, IDisposable
         WetLabComplianceWorkspaceViewModel? wetLabComplianceWorkspace = null,
         NodeAdministrationViewModel? nodeAdministration = null,
         PatientClinicalWorkspaceViewModel? patientClinicalWorkspace = null,
-        FederationAndDatasetWorkspaceViewModel? federationAndDatasetWorkspace = null)
+        FederationAndDatasetWorkspaceViewModel? federationAndDatasetWorkspace = null,
+        DepotAndLotWorkspaceViewModel? depotAndLotWorkspace = null)
     {
         // WHAT: Assigns dependencies for profile storage, multi-instance coordination, REST API access, and localization.
         // WHY:  Coordinates data flows between client-side services, localizer catalogs, and Avalonia presentation layer.
@@ -122,6 +124,7 @@ public sealed class MainShellViewModel : INotifyPropertyChanged, IDisposable
         NodeAdministration = nodeAdministration ?? new NodeAdministrationViewModel(effectiveClient, GetSelectedProfile, GetSelectedToken);
         PatientClinicalWorkspace = patientClinicalWorkspace ?? new PatientClinicalWorkspaceViewModel(effectiveClient, GetSelectedProfile, GetSelectedToken);
         FederationAndDatasetWorkspace = federationAndDatasetWorkspace ?? new FederationAndDatasetWorkspaceViewModel(effectiveClient, GetSelectedProfile, GetSelectedToken);
+        DepotAndLotWorkspace = depotAndLotWorkspace ?? new DepotAndLotWorkspaceViewModel(effectiveClient, GetSelectedProfile, GetSelectedToken);
     }
 
     /// <summary>
@@ -153,6 +156,11 @@ public sealed class MainShellViewModel : INotifyPropertyChanged, IDisposable
     /// Gets the federation and dataset workspace ViewModel managing share keys, peer keys, dataset transfers, and swarm federation.
     /// </summary>
     public FederationAndDatasetWorkspaceViewModel FederationAndDatasetWorkspace { get; }
+
+    /// <summary>
+    /// Gets the unified depot and fabrication lot workspace ViewModel coordinating Milestones 33–36 clinical workflows.
+    /// </summary>
+    public DepotAndLotWorkspaceViewModel DepotAndLotWorkspace { get; }
 
     /// <summary>
     /// Gets the collection of configured instance profiles.
@@ -806,6 +814,8 @@ public sealed class MainShellViewModel : INotifyPropertyChanged, IDisposable
             weaverClient.ClearSessionToken();
         }
 
+        DepotAndLotWorkspace.ClearSensitiveClinicalCache();
+
         foreach (var snapshot in _snapshots)
         {
             if (snapshot.State != InstanceConnectionState.Disconnected)
@@ -879,5 +889,7 @@ public sealed class MainShellViewModel : INotifyPropertyChanged, IDisposable
         {
             weaverClient.ClearSessionToken();
         }
+
+        DepotAndLotWorkspace.ClearSensitiveClinicalCache();
     }
 }

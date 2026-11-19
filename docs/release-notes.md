@@ -4,6 +4,25 @@
 
 ---
 
+## v2026.11.19.4 — Native Cross-Platform Depot & Fabrication Lot Studio for Desktop & Mobile (Milestone 37 / Forgejo Issues #219–#223) (2026-11-19)
+
+Completes **Milestone 37 (`P195`–`P199` / Forgejo Issues `#219`–`#223`)** plus Renovate CI workflow upgrades (`#215`–`#218`: Node.js 26, `docker/login-action@v4`, `docker/metadata-action@v6`, `docker/build-push-action@v7`), delivering native desktop and mobile Depot & Fabrication Lot Studio orchestration, responsive cross-platform view hosting, system-tray clinical alert escalation, air-gapped `.coa.json` file exchange, and biometric-gated mobile wet-lab actions:
+* **Phase 1: Native `DepotAndLotWorkspaceViewModel` & Clinical KPI Projections (Forgejo #219 / P195)**:
+  - Implemented `DepotAndLotWorkspaceViewModel`, `DepotWorkspaceSummary`, and `ClinicalWorkspaceSeverity` in `NanoWeaverHrt.Gui.Core` unifying Milestones 33–36 workflows (`LoadPatientWorkspaceAsync`, `CreateFormulationAndSimulateAsync`, `RecordAssayAndCalibrateAsync`, `MintFabricationLotAsync`, `RecordQcMeasurementAsync`, `ReleaseSelectedLotAsync`, `RevokeSelectedLotAsync`, `DownloadSelectedCertificateBundleAsync`, and `VerifyImportedCertificateJsonAsync`).
+  - Wired `DepotAndLotWorkspace` onto `MainShellViewModel` with automatic `ClearSensitiveClinicalCache()` cryptographic memory zeroization on `OnIdleTimeout()` and `Dispose()`.
+* **Phase 2: Cross-Platform Shell Navigation & Pure C# `DepotStudioViewHost` (Forgejo #220 / P196)**:
+  - Extended `ShellNavigationPage` with `DepotAndLotStudio` and added `DepotStudioViewHost` producing deterministic sovereign dark-mode screen snapshots (`DepotStudioScreenSnapshot`, `DepotStudioCardDescriptor`) across responsive `DesktopWide` (4-column), `TabletSplit` (2-column), and `MobileCompact` (1-column) breakpoints with Arabic RTL support.
+* **Phase 3: Desktop Tray Safety Alerts, Portable CoA File Store & Mobile Biometric Action Gate (Forgejo #221 / P197)**:
+  - Added `DesktopTrayIconController.ApplyClinicalSafetyState(...)` to escalate active clinical safety ceilings, quarantined lots, and recalled batches to localized desktop tray badges (`Healthy` / `Warning` / `Critical`).
+  - Added `DesktopCertificateFileStore` enforcing strict filename whitelisting, canonical root-directory containment (zero path traversal), and 256 KiB payload caps for air-gapped `.coa.json` export and import.
+  - Added `MobileClinicalActionGate` gating mobile ML-DSA-65 lot release signing and permanent clinical revocation behind `UnifiedMobileBiometricVault` hardware biometrics (fail-closed when unavailable or cancelled), plus `MobileEntryPoint.ResolveLayoutMode(platform)` (`TabletSplit` for iPadOS, `MobileCompact` for Android/iOS).
+* **Phase 4: 18-Language Native Workspace Localization & 100.00% Test Coverage (Forgejo #222 / P198)**:
+  - Added 22 `Gui.DepotWorkspace.*` localization keys across all 18 community languages (`strings.ar-SA.json` through `strings.zh-CN.json`, 120 keys per catalog) and comprehensive deterministic unit test suites across `Gui`, `Desktop`, and `Mobile`.
+* **Phase 5: Full 8-Gate Verification, Documentation & CalVer Release Closeout (Forgejo #223 / P199)**:
+  - Verified 100% pass across all 8 automated verification gates (`./scripts/verify-all.sh`), 100.00% C# & JS line/branch coverage, 0 incomplete docblocks, 0 uncovered ratchet lines, and updated Forgejo Pages documentation.
+
+---
+
 ## v2026.11.19.3 — Cross-Node Certificate Federation, Peer Verification & Revocation Ledger (Milestone 36 / Forgejo Issues #210–#214) (2026-11-19)
 
 Completes **Milestone 36 (`P190`–`P194` / Forgejo Issues `#210`–`#214`)** plus Renovate GitHub Actions workflow upgrades (`#203`–`#209`), enabling cross-node federated verification of ML-DSA-65 Certificates of Analysis, portable JSON CoA bundle export, and permanent administrative lot recall enforcement:
