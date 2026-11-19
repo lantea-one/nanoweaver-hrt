@@ -45,7 +45,7 @@
 
 8. **Documentation & Markdown Rendering Invariants**:
    - Never wrap physical units (`50 µL`, `100 µM`), chemical formulas (`17β-estradiol`, `Mg²⁺`), or temperatures (`37°C`, `90°C → 4°C`) in single-dollar LaTeX delimiters (`$ ... $`).
-   - Use clean Unicode symbols to ensure flawless rendering across GitHub.com and GitHub Pages (Docsify) without breaking Markdown tables.
+   - Use clean Unicode symbols to ensure flawless rendering across Forgejo and Forgejo Pages (`https://lantea-one.pages.lantea.one/nanoweaver-hrt/`, Docsify) without breaking Markdown tables.
    - For standalone mathematical equations, use fenced display math blocks (`$$ ... $$`).
    - Maintain high-contrast dark mode table styling (`docs/assets/sovereign-theme.css`) so text remains readable in Chrome dark mode.
 
@@ -139,7 +139,7 @@
    - Self-contained container stack. Default is CPU/Intel iGPU via `/dev/dri`.
    - Overrides provided for Arc A770 (`docker-compose.arc.yml`), NVIDIA (`docker-compose.nvidia.yml`), AMD Radeon (`docker-compose.radeon.yml`), and public reverse proxies (Caddy, Nginx, Cloudflare).
 5. **`docs/`**:
-   - Forgejo Pages (`https://lantea-one.pages.lantea.one/nanoweaver-hrt/`) and GitHub Pages interactive documentation wiki powered by Docsify, custom sovereign dark theme, and high-contrast accessibility.
+   - Forgejo Pages (`https://lantea-one.pages.lantea.one/nanoweaver-hrt/`) interactive documentation wiki powered by Docsify, custom sovereign dark theme, and high-contrast accessibility.
 
 ---
 

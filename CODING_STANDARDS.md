@@ -133,7 +133,7 @@ Whenever writing code or comments involving domain concepts, use these analogies
 
 3. **Markdown Documentation Math Invariants**:
    - Never wrap physical quantities, units (`50 µL`, `100 µM`), chemical formulas (`17β-estradiol`, `Mg²⁺`), or temperatures in raw single-dollar LaTeX delimiters (`$ ... $`).
-   - Use clean Unicode symbols to guarantee clean rendering on GitHub.com and GitHub Pages without breaking markdown tables. Display equations must use fenced `$$ ... $$` blocks.
+   - Use clean Unicode symbols to guarantee clean rendering on Forgejo and Forgejo Pages (`https://lantea-one.pages.lantea.one/nanoweaver-hrt/`) without breaking markdown tables. Display equations must use fenced `$$ ... $$` blocks.
 
 4. **Universal Pre-Flight Verification Gate**:
    - Before committing or concluding any turn, contributors and AI agents must run:

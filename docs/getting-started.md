@@ -297,7 +297,7 @@ nanoweaver-hrt/
 │   ├── docker-compose.public-caddy.yml   # Hardened Caddy + Let's Encrypt SSL override
 │   ├── docker-compose.public-nginx.yml   # Hardened Nginx + Certbot SSL override
 │   └── docker-compose.public-cloudflare.yml # Cloudflare Zero Trust Tunnel override
-├── docs/                                 # GitHub Pages wiki documentation & images
+├── docs/                                 # Forgejo Pages wiki documentation & images (https://lantea-one.pages.lantea.one/nanoweaver-hrt/)
 │   ├── images/                           # High-resolution UI screenshots
 │   └── index.md                          # Portal home
 ├── simulations/                          # Simulation input, output, and shared data

@@ -212,10 +212,9 @@ The embedded dashboard provides:
 
 ## 📚 Documentation & Interactive Wiki
 
-Comprehensive documentation, biomedical engineering primers, architectural diagrams, screenshots, and step-by-step example workflows are available in the repository's [**`docs/`**](docs/) directory and automatically deployed as an interactive wiki via Forgejo Pages (and mirrored to GitHub Pages):
+Comprehensive documentation, biomedical engineering primers, architectural diagrams, screenshots, and step-by-step example workflows are available in the repository's [**`docs/`**](docs/) directory and automatically deployed as an interactive wiki via Forgejo Pages:
 
-* **[Sovereign Live Documentation Portal](https://lantea-one.pages.lantea.one/nanoweaver-hrt/)** (Forgejo Pages — Authoritative)
-* **[Mirror Documentation Portal](https://lantea-one.github.io/nanoweaver-hrt/)** (GitHub Pages Mirror)
+* **[Sovereign Live Documentation Portal](https://lantea-one.pages.lantea.one/nanoweaver-hrt/)** (Forgejo Pages)
 * **[Scientific Abstract](docs/abstract.md)**: Formal peer-reviewed abstract, biophysical gating mechanisms, zero-allocation pipeline specifications, and stage-gate verification matrix.
 * **[Getting Started & Deployment Guide](docs/getting-started.md)**: Local .NET 10 setup and Docker GPU overrides (Intel Arc, NVIDIA, AMD).
 * **[Desktop & Mobile Applications Guide](docs/desktop-and-mobile-gui.md)**: Native desktop and mobile GUI apps (Avalonia UI 11 / .NET 10), direct portable `.exe`, packaging, and 90-day sovereign code signing.

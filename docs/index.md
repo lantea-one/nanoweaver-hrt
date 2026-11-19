@@ -10,7 +10,8 @@ Welcome to the official documentation and wiki for **`nanoweaver-hrt`** (`NanoWe
 
 > [!IMPORTANT]
 > **Authoritative Upstream Source:** This project is developed and maintained on a sovereign, decentralized Git forge powered by **Forgejo**:  
-> 🔗 **[https://git.lantea.one/lantea-one/nanoweaver-hrt](https://git.lantea.one/lantea-one/nanoweaver-hrt)**
+> 🔗 **[https://git.lantea.one/lantea-one/nanoweaver-hrt](https://git.lantea.one/lantea-one/nanoweaver-hrt)**  
+> 📚 **Live Forgejo Pages Documentation Wiki:** **[https://lantea-one.pages.lantea.one/nanoweaver-hrt/](https://lantea-one.pages.lantea.one/nanoweaver-hrt/)**
 >
 > **GitHub is a Read-Only Downstream Mirror:** Due to the real threat of administrative censorship, account suspension, and arbitrary deplatforming of open-source synthetic biology and gender-affirming healthcare research by centralized corporate platforms, GitHub is maintained strictly as an automated read-only distribution mirror.
 >

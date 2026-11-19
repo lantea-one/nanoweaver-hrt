@@ -114,7 +114,7 @@ jobs:
 
       - name: Verify Documentation Markdown Math Delimiters
         # WHAT: Verifies zero broken LaTeX math interpolation in documentation markdown files.
-        # WHY:  Guarantees flawless rendering across Docsify, GitHub Pages, and GitHub.
+        # WHY:  Guarantees flawless rendering across Docsify, Forgejo Pages (https://lantea-one.pages.lantea.one/nanoweaver-hrt/), and Forgejo.
         # HOW:  Executes Python regex scanner checking for unescaped single-dollar and inline double-dollar delimiters.
         run: |
           python3 - << 'EOF'
