@@ -8,6 +8,7 @@ using Moq;
 using NanoWeaverHrt.Analytics;
 using NanoWeaverHrt.Compliance;
 using NanoWeaverHrt.Endocrine;
+using NanoWeaverHrt.Fabrication;
 using NanoWeaverHrt.Fabrication.Gel;
 using NanoWeaverHrt.Genomics;
 using NanoWeaverHrt.Hardware.Benchmarking;
@@ -2211,6 +2212,289 @@ public sealed class EndpointIntegrationTests : IClassFixture<WebApplicationFacto
             IReadOnlyList<AuditRecord> entries = auditService.GetAuditRecords(200);
             Assert.Contains(entries, e => e.Action == "DEPOT_ASSAY_RECORD" && e.Resource == $"depot:{depotId}");
             Assert.Contains(entries, e => e.Action == "DEPOT_CALIBRATION_RUN" && e.Resource == $"depot:{depotId}");
+        }
+    }
+
+    /// <summary>
+    /// Verifies end-to-end Milestone 35 wet-lab batch fabrication, 5-gate pharmaceutical QC logging,
+    /// fail-closed quarantine, NIST FIPS 204 ML-DSA-65 Certificate of Analysis signing, live verification,
+    /// RBAC gating, PHI note encryption, and 21 CFR Part 11 audit trails.
+    /// </summary>
+    [Fact]
+    public async Task FabricationLotEndpoints_AdaptiveMintingQcReleaseAndCertificateVerification_EnforceRbacAndPqc()
+    {
+        // WHAT: Exercises all 5 Milestone 35 REST endpoints plus API DTO examples and mapper guards.
+        // WHY:  Milestone 35 (P187): Guarantees 100% line and branch coverage across endpoints, RBAC, and PQC verification.
+        // HOW:  Seeds a depot and calibration snapshot, verifies 400/401/403/404 paths, tests quarantine then full
+        //       5-gate ML-DSA-65 release, and confirms live certificate verification for Admin, Researcher, and Patient self.
+        // 1. Verify API DTO defaults, OpenAPI examples, and mapper null guards
+        Assert.True(new CreateFabricationLotRequest().UseLatestCalibration);
+        Assert.False(string.IsNullOrWhiteSpace(new CreateFabricationLotRequest().GetExamples().DepotId));
+        Assert.Equal(FabricationQcGateType.GelFoldingYield, new RecordFabricationQcRequest().GateType);
+        Assert.Equal(92.4, new RecordFabricationQcRequest().GetExamples().MeasuredValue);
+        Assert.Equal(string.Empty, new FabricationQcCheckResponse().CheckId);
+        Assert.True(new FabricationQcCheckResponse().GetExamples().Passed);
+        Assert.Equal(FabricationLotStatus.Draft, new FabricationLotResponse().LotStatus);
+        Assert.NotEmpty(new FabricationLotResponse().GetExamples().QcChecks);
+        Assert.False(new FabricationLotReleaseResponse().CertificateVerified);
+        Assert.True(new FabricationLotReleaseResponse().GetExamples().CertificateVerified);
+        Assert.False(new FabricationLotCertificateResponse().SignatureVerified);
+        Assert.True(new FabricationLotCertificateResponse().GetExamples().SignatureVerified);
+
+        Assert.Throws<ArgumentNullException>(() => FabricationLotMapper.ToQcResponse(null!, null!));
+        Assert.Throws<ArgumentNullException>(() => FabricationLotMapper.ToLotResponse(null!, [], null!));
+
+        using (IServiceScope mapperScope = _factory.Services.CreateScope())
+        {
+            ProfileDataProtector protector = mapperScope.ServiceProvider.GetRequiredService<ProfileDataProtector>();
+            Assert.Throws<ArgumentNullException>(() => FabricationLotMapper.ToQcResponse(new FabricationQcCheckRecord(), null!));
+            Assert.Throws<ArgumentNullException>(() => FabricationLotMapper.ToLotResponse(new FabricationLotRecord(), null!, protector));
+            Assert.Throws<ArgumentNullException>(() => FabricationLotMapper.ToLotResponse(new FabricationLotRecord(), [], null!));
+        }
+
+        // 2. Provision isolated identities
+        string patientA = "fab_patient_a";
+        string patientB = "fab_patient_b";
+        string researcher = "fab_researcher";
+        string tokenA = await ProvisionUserAndGetTokenAsync(patientA, UserRole.Patient);
+        string tokenB = await ProvisionUserAndGetTokenAsync(patientB, UserRole.Patient);
+        string tokenRes = await ProvisionUserAndGetTokenAsync(researcher, UserRole.Researcher);
+
+        using HttpClient clientAnon = _factory.CreateClient();
+        using HttpClient clientA = CreateClientWithBearer(tokenA);
+        using HttpClient clientB = CreateClientWithBearer(tokenB);
+        using HttpClient clientRes = CreateClientWithBearer(tokenRes);
+
+        // 3. Seed parent depot formulation and a longitudinal calibration snapshot for patientA
+        HttpResponseMessage depotResp = await _client.PostAsJsonAsync("/api/depots/formulations", new CreateDepotFormulationRequest
+        {
+            PatientId = patientA,
+            Regimen = TherapeuticRegimen.MaleToFemale,
+            PolymerMatrixType = "PLGA-PEG-PLGA",
+            InitialNanocarrierMassMg = 18.0,
+            DailyErosionRatePercent = 0.55,
+            ReleaseKineticsModel = "Korsmeyer-Peppas",
+            TargetHorizonDays = 180
+        });
+        Assert.Equal(HttpStatusCode.Created, depotResp.StatusCode);
+        DepotFormulationResponse? depotA = await depotResp.Content.ReadFromJsonAsync<DepotFormulationResponse>();
+        Assert.NotNull(depotA);
+        string depotId = depotA.Formulation.DepotId;
+
+        HttpResponseMessage assayResp = await _client.PostAsJsonAsync($"/api/depots/{depotId}/assays", new RecordDepotAssayRequest
+        {
+            DaySinceImplant = 45,
+            ObservedE2PmolL = 490.0,
+            ObservedTNmolL = 1.2,
+            ObservedLhIuL = 0.7,
+            ObservedFshIuL = 0.9,
+            ObservedShbgNmolL = 75.0,
+            ObservedHematocritPct = 41.0
+        });
+        Assert.Equal(HttpStatusCode.Created, assayResp.StatusCode);
+        HttpResponseMessage calResp = await _client.PostAsync($"/api/depots/{depotId}/calibrate", null);
+        Assert.Equal(HttpStatusCode.OK, calResp.StatusCode);
+        DepotCalibrationResponse? calData = await calResp.Content.ReadFromJsonAsync<DepotCalibrationResponse>();
+        Assert.NotNull(calData);
+
+        CreateFabricationLotRequest validCreateReq = new()
+        {
+            DepotId = depotId,
+            UseLatestCalibration = true,
+            CpGMethylationRequired = true
+        };
+
+        // 4. Validation & auth checks on POST /api/fabrication/lots
+        Assert.Equal(HttpStatusCode.Unauthorized, (await clientAnon.PostAsJsonAsync("/api/fabrication/lots", validCreateReq)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/fabrication/lots", new CreateFabricationLotRequest { DepotId = " " })).StatusCode);
+        using (StringContent nullBody = new("null", System.Text.Encoding.UTF8, "application/json"))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsync("/api/fabrication/lots", nullBody)).StatusCode);
+        }
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientA.PostAsJsonAsync("/api/fabrication/lots", validCreateReq)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsJsonAsync("/api/fabrication/lots", validCreateReq with { DepotId = "depot_missing" })).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientRes.PostAsJsonAsync("/api/fabrication/lots", validCreateReq)).StatusCode);
+
+        // 5. Mint adaptive lot as Admin (inherits Milestone 34 calibration snapshot) -> 201 Created
+        HttpResponseMessage createLotResp = await _client.PostAsJsonAsync("/api/fabrication/lots", validCreateReq);
+        Assert.Equal(HttpStatusCode.Created, createLotResp.StatusCode);
+        FabricationLotResponse? createdLot = await createLotResp.Content.ReadFromJsonAsync<FabricationLotResponse>();
+        Assert.NotNull(createdLot);
+        Assert.Equal(calData.SnapshotId, createdLot.CalibrationSnapshotId);
+        Assert.Equal(calData.RecommendedNextMassMg, createdLot.TargetMassMg);
+        Assert.Equal(FabricationLotStatus.Draft, createdLot.LotStatus);
+        Assert.Equal(64, createdLot.OpentronsProtocolSha256.Length);
+        string lotId = createdLot.LotId;
+
+        // 6. Mint a second baseline lot without calibration and with custom Opentrons SHA-256
+        HttpResponseMessage customLotResp = await _client.PostAsJsonAsync("/api/fabrication/lots", new CreateFabricationLotRequest
+        {
+            DepotId = depotId,
+            UseLatestCalibration = false,
+            CpGMethylationRequired = false,
+            OpentronsProtocolSha256 = "ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789"
+        });
+        Assert.Equal(HttpStatusCode.Created, customLotResp.StatusCode);
+        FabricationLotResponse? customLot = await customLotResp.Content.ReadFromJsonAsync<FabricationLotResponse>();
+        Assert.NotNull(customLot);
+        Assert.Null(customLot.CalibrationSnapshotId);
+        Assert.Equal(18.0, customLot.TargetMassMg);
+        Assert.Equal("abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789", customLot.OpentronsProtocolSha256);
+
+        // 7. Validation, auth, RBAC, and 404 checks across GET lots, POST qc, POST release, and GET certificate
+        Assert.Equal(HttpStatusCode.Unauthorized, (await clientAnon.GetAsync($"/api/fabrication/lots/{patientA}")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.GetAsync("/api/fabrication/lots/%20")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientB.GetAsync($"/api/fabrication/lots/{patientA}")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientRes.GetAsync($"/api/fabrication/lots/{patientA}")).StatusCode);
+
+        RecordFabricationQcRequest sampleQcReq = new()
+        {
+            GateType = FabricationQcGateType.GelFoldingYield,
+            MeasuredValue = 92.5,
+            TechnicianNotes = "2% agarose gel clean monomeric band."
+        };
+        Assert.Equal(HttpStatusCode.Unauthorized, (await clientAnon.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/qc", sampleQcReq)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/fabrication/lots/%20/qc", sampleQcReq)).StatusCode);
+        using (StringContent nullQcBody = new("null", System.Text.Encoding.UTF8, "application/json"))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsync($"/api/fabrication/lots/{lotId}/qc", nullQcBody)).StatusCode);
+        }
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/qc", sampleQcReq with { GateType = (FabricationQcGateType)99 })).StatusCode);
+        using (StringContent nanQcBody = new("{\"gateType\":\"GelFoldingYield\",\"measuredValue\":\"NaN\"}", System.Text.Encoding.UTF8, "application/json"))
+        {
+            HttpResponseMessage nanResp = await _client.PostAsync($"/api/fabrication/lots/{lotId}/qc", nanQcBody);
+            Assert.Equal(HttpStatusCode.BadRequest, nanResp.StatusCode);
+        }
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientA.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/qc", sampleQcReq)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsJsonAsync("/api/fabrication/lots/lot_missing/qc", sampleQcReq)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientRes.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/qc", sampleQcReq)).StatusCode);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, (await clientAnon.PostAsync($"/api/fabrication/lots/{lotId}/release", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsync("/api/fabrication/lots/%20/release", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientA.PostAsync($"/api/fabrication/lots/{lotId}/release", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsync("/api/fabrication/lots/lot_missing/release", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientRes.PostAsync($"/api/fabrication/lots/{lotId}/release", null)).StatusCode);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, (await clientAnon.GetAsync($"/api/fabrication/lots/{lotId}/certificate")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.GetAsync("/api/fabrication/lots/%20/certificate")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/fabrication/lots/lot_missing/certificate")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientB.GetAsync($"/api/fabrication/lots/{lotId}/certificate")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientRes.GetAsync($"/api/fabrication/lots/{lotId}/certificate")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync($"/api/fabrication/lots/{lotId}/certificate")).StatusCode);
+
+        // 8. Grant Researcher access to patientA
+        using (IServiceScope grantScope = _factory.Services.CreateScope())
+        {
+            ISubjectAccessService accessService = grantScope.ServiceProvider.GetRequiredService<ISubjectAccessService>();
+            await accessService.GrantSubjectAccessAsync("admin", researcher, patientA, SubjectAccessLevel.FullReadAccess, "Wet-lab cohort");
+        }
+
+        // 9. Record Gate 1 as Admin (with encrypted technician notes) -> transitions Draft to QcPending
+        HttpResponseMessage qc1Resp = await _client.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/qc", sampleQcReq);
+        Assert.Equal(HttpStatusCode.Created, qc1Resp.StatusCode);
+        FabricationQcCheckResponse? qc1 = await qc1Resp.Content.ReadFromJsonAsync<FabricationQcCheckResponse>();
+        Assert.NotNull(qc1);
+        Assert.True(qc1.Passed);
+        Assert.Equal("2% agarose gel clean monomeric band.", qc1.TechnicianNotes);
+
+        using (IServiceScope verifyScope = _factory.Services.CreateScope())
+        {
+            IFabricationLotRepository lotRepo = verifyScope.ServiceProvider.GetRequiredService<IFabricationLotRepository>();
+            IReadOnlyList<FabricationQcCheckRecord> rawChecks = await lotRepo.GetQcChecksByLotAsync(lotId);
+            Assert.Single(rawChecks);
+            Assert.NotNull(rawChecks[0].NotesEncrypted);
+            Assert.DoesNotContain("SYBR", rawChecks[0].NotesEncrypted, StringComparison.Ordinal);
+            Assert.DoesNotContain("monomeric", rawChecks[0].NotesEncrypted, StringComparison.Ordinal);
+        }
+
+        // 10. Attempt premature release as granted Researcher -> Quarantined (4 missing gates)
+        HttpResponseMessage quarantineResp = await clientRes.PostAsync($"/api/fabrication/lots/{lotId}/release", null);
+        Assert.Equal(HttpStatusCode.OK, quarantineResp.StatusCode);
+        FabricationLotReleaseResponse? quarantined = await quarantineResp.Content.ReadFromJsonAsync<FabricationLotReleaseResponse>();
+        Assert.NotNull(quarantined);
+        Assert.Equal(FabricationLotStatus.Quarantined, quarantined.Evaluation.ResultStatus);
+        Assert.False(quarantined.CertificateVerified);
+        Assert.Null(quarantined.Evaluation.Certificate);
+
+        // 11. Record remaining 4 passing gates as granted Researcher (without technician notes)
+        RecordFabricationQcRequest[] remainingGates =
+        [
+            new() { GateType = FabricationQcGateType.EndotoxinSterility, MeasuredValue = 0.14, RecordedAtUtc = DateTimeOffset.UtcNow },
+            new() { GateType = FabricationQcGateType.HydrodynamicSizePdi, MeasuredValue = 58.0, SecondaryValue = 0.11 },
+            new() { GateType = FabricationQcGateType.PayloadEncapsulation, MeasuredValue = 89.5, SecondaryValue = 1.2 },
+            new() { GateType = FabricationQcGateType.CpGMethylation, MeasuredValue = 97.8 }
+        ];
+
+        foreach (RecordFabricationQcRequest gateReq in remainingGates)
+        {
+            HttpResponseMessage gateResp = await clientRes.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/qc", gateReq);
+            Assert.Equal(HttpStatusCode.Created, gateResp.StatusCode);
+        }
+
+        // 12. Execute release as granted Researcher -> Released + Verified ML-DSA-65 Certificate of Analysis
+        HttpResponseMessage releaseResp = await clientRes.PostAsync($"/api/fabrication/lots/{lotId}/release", null);
+        Assert.Equal(HttpStatusCode.OK, releaseResp.StatusCode);
+        FabricationLotReleaseResponse? released = await releaseResp.Content.ReadFromJsonAsync<FabricationLotReleaseResponse>();
+        Assert.NotNull(released);
+        Assert.Equal(FabricationLotStatus.Released, released.Evaluation.ResultStatus);
+        Assert.True(released.CertificateVerified);
+        Assert.NotNull(released.Evaluation.Certificate);
+        Assert.Equal("ML-DSA-65", released.Evaluation.Certificate.SignatureAlgorithm);
+
+        // 13. Verify GET lots and GET certificate succeed for Admin, Patient self, and granted Researcher
+        foreach (HttpClient authorizedClient in new[] { _client, clientA, clientRes })
+        {
+            HttpResponseMessage listResp = await authorizedClient.GetAsync($"/api/fabrication/lots/{patientA}");
+            Assert.Equal(HttpStatusCode.OK, listResp.StatusCode);
+            List<FabricationLotResponse>? lots = await listResp.Content.ReadFromJsonAsync<List<FabricationLotResponse>>();
+            Assert.NotNull(lots);
+            Assert.Equal(2, lots.Count);
+
+            HttpResponseMessage certResp = await authorizedClient.GetAsync($"/api/fabrication/lots/{lotId}/certificate");
+            Assert.Equal(HttpStatusCode.OK, certResp.StatusCode);
+            FabricationLotCertificateResponse? certDto = await certResp.Content.ReadFromJsonAsync<FabricationLotCertificateResponse>();
+            Assert.NotNull(certDto);
+            Assert.True(certDto.SignatureVerified);
+            Assert.Equal(released.Evaluation.Certificate.PayloadSha256, certDto.Certificate.PayloadSha256);
+        }
+
+        // 14. Verify granted Researcher can mint a lot when no calibration exists on a fresh depot
+        HttpResponseMessage freshDepotResp = await _client.PostAsJsonAsync("/api/depots/formulations", new CreateDepotFormulationRequest
+        {
+            PatientId = patientA,
+            Regimen = TherapeuticRegimen.MaleToFemale,
+            PolymerMatrixType = "PLGA-PEG-PLGA",
+            InitialNanocarrierMassMg = 16.5,
+            DailyErosionRatePercent = 0.50,
+            ReleaseKineticsModel = "Korsmeyer-Peppas",
+            TargetHorizonDays = 180
+        });
+        DepotFormulationResponse? freshDepot = await freshDepotResp.Content.ReadFromJsonAsync<DepotFormulationResponse>();
+        Assert.NotNull(freshDepot);
+        HttpResponseMessage resCreateResp = await clientRes.PostAsJsonAsync("/api/fabrication/lots", new CreateFabricationLotRequest
+        {
+            DepotId = freshDepot.Formulation.DepotId,
+            UseLatestCalibration = true,
+            CpGMethylationRequired = true
+        });
+        Assert.Equal(HttpStatusCode.Created, resCreateResp.StatusCode);
+        FabricationLotResponse? resLot = await resCreateResp.Content.ReadFromJsonAsync<FabricationLotResponse>();
+        Assert.NotNull(resLot);
+        Assert.Null(resLot.CalibrationSnapshotId);
+        Assert.Equal(16.5, resLot.TargetMassMg);
+
+        // 15. Verify 21 CFR Part 11 audit ledger recorded all four Milestone 35 event types
+        using (IServiceScope auditScope = _factory.Services.CreateScope())
+        {
+            IComplianceAuditService auditService = auditScope.ServiceProvider.GetRequiredService<IComplianceAuditService>();
+            IReadOnlyList<AuditRecord> entries = auditService.GetAuditRecords(300);
+            Assert.Contains(entries, e => e.Action == "FABRICATION_LOT_CREATE" && e.Resource == $"fabrication-lot:{lotId}");
+            Assert.Contains(entries, e => e.Action == "FABRICATION_QC_RECORD" && e.Resource == $"fabrication-lot:{lotId}");
+            Assert.Contains(entries, e => e.Action == "FABRICATION_LOT_QUARANTINE" && e.Resource == $"fabrication-lot:{lotId}");
+            Assert.Contains(entries, e => e.Action == "FABRICATION_LOT_RELEASE" && e.Resource == $"fabrication-lot:{lotId}");
         }
     }
 }

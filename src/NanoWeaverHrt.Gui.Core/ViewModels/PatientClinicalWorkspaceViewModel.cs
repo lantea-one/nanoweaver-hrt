@@ -1885,4 +1885,232 @@ public sealed class PatientClinicalWorkspaceViewModel : INotifyPropertyChanged
             IsBusy = false;
         }
     }
+
+    /// <summary>
+    /// Backing field for <see cref="FabricationLots"/>.
+    /// </summary>
+    private IReadOnlyList<FabricationLotResponse> _fabricationLots = [];
+
+    /// <summary>
+    /// Backing field for <see cref="LatestLotRelease"/>.
+    /// </summary>
+    private FabricationLotReleaseResponse? _latestLotRelease;
+
+    /// <summary>
+    /// Backing field for <see cref="LatestLotCertificate"/>.
+    /// </summary>
+    private FabricationLotCertificateResponse? _latestLotCertificate;
+
+    /// <summary>
+    /// Gets the list of patient-specific wet-lab nanocarrier fabrication lots loaded for the active patient.
+    /// </summary>
+    public IReadOnlyList<FabricationLotResponse> FabricationLots
+    {
+        get => _fabricationLots;
+        private set
+        {
+            _fabricationLots = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Gets the most recent 5-gate wet-lab lot release evaluation executed from this workspace.
+    /// </summary>
+    public FabricationLotReleaseResponse? LatestLotRelease
+    {
+        get => _latestLotRelease;
+        private set
+        {
+            _latestLotRelease = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Gets the most recently retrieved and verified post-quantum ML-DSA-65 Certificate of Analysis.
+    /// </summary>
+    public FabricationLotCertificateResponse? LatestLotCertificate
+    {
+        get => _latestLotCertificate;
+        private set
+        {
+            _latestLotCertificate = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Mints a new patient-specific wet-lab fabrication lot via POST /api/fabrication/lots.
+    /// </summary>
+    /// <param name="request">Fabrication lot creation payload linking to a parent depot formulation.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The created <see cref="FabricationLotResponse"/>.</returns>
+    public async Task<FabricationLotResponse> CreateFabricationLotAsync(
+        CreateFabricationLotRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Mints an adaptive wet-lab nanocarrier fabrication lot on the connected NanoWeaver node.
+        // WHY:  Milestone 35 (P188): Provides desktop and mobile MVVM parity for physical batch initiation.
+        // HOW:  Validates request, resolves session credentials, calls INanoWeaverNodeClient, and updates busy/error state.
+        ArgumentNullException.ThrowIfNull(request);
+        var (profile, token) = ResolveEffectiveSession();
+
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            return await _client.CreateFabricationLotAsync(profile, token, request, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Retrieves all wet-lab fabrication lots for a patient via GET /api/fabrication/lots/{patientId}.
+    /// </summary>
+    /// <param name="patientId">Target patient identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Read-only list of <see cref="FabricationLotResponse"/> records ordered newest first.</returns>
+    public async Task<IReadOnlyList<FabricationLotResponse>> GetFabricationLotsAsync(
+        string patientId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Queries patient wet-lab fabrication lots and updates observable FabricationLots state.
+        // WHY:  Milestone 35 (P188): Populates desktop and mobile batch ledgers with QC status and release state.
+        // HOW:  Validates patientId, resolves session credentials, calls INanoWeaverNodeClient, and notifies bindings.
+        ArgumentException.ThrowIfNullOrWhiteSpace(patientId);
+        var (profile, token) = ResolveEffectiveSession();
+
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            IReadOnlyList<FabricationLotResponse> lots = await _client.GetFabricationLotsAsync(profile, token, patientId, ct).ConfigureAwait(false);
+            FabricationLots = lots;
+            return lots;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Records a single pharmaceutical wet-lab QC measurement against a lot via POST /api/fabrication/lots/{lotId}/qc.
+    /// </summary>
+    /// <param name="lotId">Target fabrication lot identifier.</param>
+    /// <param name="request">Wet-lab QC measurement payload.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The recorded <see cref="FabricationQcCheckResponse"/>.</returns>
+    public async Task<FabricationQcCheckResponse> RecordFabricationQcAsync(
+        string lotId,
+        RecordFabricationQcRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Submits a wet-lab pharmaceutical QC gate reading to the connected NanoWeaver node.
+        // WHY:  Milestone 35 (P188): Enables desktop and mobile wet-lab operators to log 5-gate assays remotely.
+        // HOW:  Validates inputs, resolves session credentials, calls INanoWeaverNodeClient, and updates busy/error state.
+        ArgumentException.ThrowIfNullOrWhiteSpace(lotId);
+        ArgumentNullException.ThrowIfNull(request);
+        var (profile, token) = ResolveEffectiveSession();
+
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            return await _client.RecordFabricationQcAsync(profile, token, lotId, request, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Executes 5-gate wet-lab verification and ML-DSA-65 Certificate of Analysis signing via POST /api/fabrication/lots/{lotId}/release.
+    /// </summary>
+    /// <param name="lotId">Target fabrication lot identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The <see cref="FabricationLotReleaseResponse"/> containing updated status and optional signed CoA.</returns>
+    public async Task<FabricationLotReleaseResponse> ReleaseFabricationLotAsync(
+        string lotId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches cryptographic 5-gate lot release evaluation and captures LatestLotRelease state.
+        // WHY:  Milestone 35 (P188): Allows authorized clinicians to issue or quarantine batches from Avalonia clients.
+        // HOW:  Validates lotId, resolves session credentials, invokes INanoWeaverNodeClient, and notifies bindings.
+        ArgumentException.ThrowIfNullOrWhiteSpace(lotId);
+        var (profile, token) = ResolveEffectiveSession();
+
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            FabricationLotReleaseResponse release = await _client.ReleaseFabricationLotAsync(profile, token, lotId, ct).ConfigureAwait(false);
+            LatestLotRelease = release;
+            return release;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Retrieves and verifies the signed Certificate of Analysis for a released lot via GET /api/fabrication/lots/{lotId}/certificate.
+    /// </summary>
+    /// <param name="lotId">Target fabrication lot identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The verified <see cref="FabricationLotCertificateResponse"/> if released; otherwise <see langword="null"/>.</returns>
+    public async Task<FabricationLotCertificateResponse?> GetFabricationLotCertificateAsync(
+        string lotId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Queries a lot's ML-DSA-65 Certificate of Analysis and updates LatestLotCertificate state.
+        // WHY:  Milestone 35 (P188): Lets patients and clinicians audit post-quantum provenance on desktop/mobile.
+        // HOW:  Validates lotId, resolves session credentials, invokes INanoWeaverNodeClient, and notifies bindings.
+        ArgumentException.ThrowIfNullOrWhiteSpace(lotId);
+        var (profile, token) = ResolveEffectiveSession();
+
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            FabricationLotCertificateResponse? cert = await _client.GetFabricationLotCertificateAsync(profile, token, lotId, ct).ConfigureAwait(false);
+            LatestLotCertificate = cert;
+            return cert;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
 }

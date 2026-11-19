@@ -4136,6 +4136,94 @@ public sealed class NanoWeaverNodeClientTests : IDisposable
     }
 
     /// <summary>
+    /// Verifies nominal responses, 404 null handling, error exceptions, and argument guards for all five
+    /// Milestone 35 wet-lab fabrication lot and cryptographic QC client SDK methods.
+    /// </summary>
+    [Fact]
+    public async Task FabricationLotEndpoints_NominalNull404AndErrors_BehaveExpectedly()
+    {
+        // WHAT: Tests CreateFabricationLotAsync, GetFabricationLotsAsync, RecordFabricationQcAsync,
+        //       ReleaseFabricationLotAsync, and GetFabricationLotCertificateAsync.
+        // WHY:  Milestone 35 (P187): Ensures 100.00% line and branch coverage for all fabrication lot SDK calls.
+        // HOW:  Configures stubbed JSON responses, null bodies, HTTP errors, 404 certificate miss, and null/empty guards.
+        JsonSerializerOptions webOpts = new(JsonSerializerDefaults.Web);
+        CreateFabricationLotRequest createReq = new CreateFabricationLotRequest().GetExamples();
+        RecordFabricationQcRequest qcReq = new RecordFabricationQcRequest().GetExamples();
+        FabricationLotResponse sampleLot = new FabricationLotResponse().GetExamples();
+        FabricationQcCheckResponse sampleQc = new FabricationQcCheckResponse().GetExamples();
+        FabricationLotReleaseResponse sampleRelease = new FabricationLotReleaseResponse().GetExamples();
+        FabricationLotCertificateResponse sampleCert = new FabricationLotCertificateResponse().GetExamples();
+
+        // 1. CreateFabricationLotAsync
+        _httpHandler.SetResponse("/api/fabrication/lots", HttpStatusCode.Created, JsonSerializer.Serialize(sampleLot, webOpts));
+        FabricationLotResponse created = await _client.CreateFabricationLotAsync(_localProfile, "valid_token", createReq);
+        Assert.Equal(sampleLot.LotId, created.LotId);
+
+        _httpHandler.SetResponse("/api/fabrication/lots", HttpStatusCode.Created, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.CreateFabricationLotAsync(_localProfile, "valid_token", createReq));
+        _httpHandler.SetResponse("/api/fabrication/lots", HttpStatusCode.BadRequest, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.CreateFabricationLotAsync(_localProfile, "valid_token", createReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.CreateFabricationLotAsync(null!, "valid_token", createReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.CreateFabricationLotAsync(_localProfile, "", createReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.CreateFabricationLotAsync(_localProfile, "valid_token", null!));
+
+        // 2. GetFabricationLotsAsync
+        _httpHandler.SetResponse("/api/fabrication/lots/patient_alice", HttpStatusCode.OK, JsonSerializer.Serialize(new List<FabricationLotResponse> { sampleLot }, webOpts));
+        IReadOnlyList<FabricationLotResponse> lots = await _client.GetFabricationLotsAsync(_localProfile, "valid_token", "patient_alice");
+        Assert.Single(lots);
+
+        _httpHandler.SetResponse("/api/fabrication/lots/patient_alice", HttpStatusCode.OK, "null");
+        Assert.Empty(await _client.GetFabricationLotsAsync(_localProfile, "valid_token", "patient_alice"));
+        _httpHandler.SetResponse("/api/fabrication/lots/patient_alice", HttpStatusCode.Forbidden, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetFabricationLotsAsync(_localProfile, "valid_token", "patient_alice"));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetFabricationLotsAsync(null!, "valid_token", "patient_alice"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetFabricationLotsAsync(_localProfile, "", "patient_alice"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetFabricationLotsAsync(_localProfile, "valid_token", ""));
+
+        // 3. RecordFabricationQcAsync
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_01/qc", HttpStatusCode.Created, JsonSerializer.Serialize(sampleQc, webOpts));
+        FabricationQcCheckResponse qc = await _client.RecordFabricationQcAsync(_localProfile, "valid_token", "lot_01", qcReq);
+        Assert.Equal(sampleQc.CheckId, qc.CheckId);
+
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_01/qc", HttpStatusCode.Created, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.RecordFabricationQcAsync(_localProfile, "valid_token", "lot_01", qcReq));
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_01/qc", HttpStatusCode.BadRequest, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.RecordFabricationQcAsync(_localProfile, "valid_token", "lot_01", qcReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.RecordFabricationQcAsync(null!, "valid_token", "lot_01", qcReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.RecordFabricationQcAsync(_localProfile, "", "lot_01", qcReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.RecordFabricationQcAsync(_localProfile, "valid_token", "", qcReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.RecordFabricationQcAsync(_localProfile, "valid_token", "lot_01", null!));
+
+        // 4. ReleaseFabricationLotAsync
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_01/release", HttpStatusCode.OK, JsonSerializer.Serialize(sampleRelease, webOpts));
+        FabricationLotReleaseResponse released = await _client.ReleaseFabricationLotAsync(_localProfile, "valid_token", "lot_01");
+        Assert.True(released.CertificateVerified);
+
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_01/release", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.ReleaseFabricationLotAsync(_localProfile, "valid_token", "lot_01"));
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_01/release", HttpStatusCode.Forbidden, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.ReleaseFabricationLotAsync(_localProfile, "valid_token", "lot_01"));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.ReleaseFabricationLotAsync(null!, "valid_token", "lot_01"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.ReleaseFabricationLotAsync(_localProfile, "", "lot_01"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.ReleaseFabricationLotAsync(_localProfile, "valid_token", ""));
+
+        // 5. GetFabricationLotCertificateAsync
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_01/certificate", HttpStatusCode.OK, JsonSerializer.Serialize(sampleCert, webOpts));
+        FabricationLotCertificateResponse? cert = await _client.GetFabricationLotCertificateAsync(_localProfile, "valid_token", "lot_01");
+        Assert.NotNull(cert);
+        Assert.True(cert.SignatureVerified);
+
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_01/certificate", HttpStatusCode.NotFound, "{}");
+        Assert.Null(await _client.GetFabricationLotCertificateAsync(_localProfile, "valid_token", "lot_01"));
+
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_01/certificate", HttpStatusCode.Forbidden, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetFabricationLotCertificateAsync(_localProfile, "valid_token", "lot_01"));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetFabricationLotCertificateAsync(null!, "valid_token", "lot_01"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetFabricationLotCertificateAsync(_localProfile, "", "lot_01"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetFabricationLotCertificateAsync(_localProfile, "valid_token", ""));
+    }
+
+    /// <summary>
     /// In-memory HTTP message handler stub for deterministic test execution.
     /// </summary>
     private sealed class StubHttpMessageHandler : HttpMessageHandler

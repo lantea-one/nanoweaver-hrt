@@ -2019,4 +2019,80 @@ public sealed class WeaverNodeApiClient : INanoWeaverNodeClient, IDisposable
         string effectiveToken = ResolveBearerToken(bearerToken);
         return _innerClient.GetLatestDepotCalibrationAsync(profile, effectiveToken, depotId, ct);
     }
+
+    /// <inheritdoc/>
+    public Task<FabricationLotResponse> CreateFabricationLotAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CreateFabricationLotRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/fabrication/lots using provided or cached session token.
+        // WHY:  Mints a new patient-specific wet-lab nanocarrier fabrication lot.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.CreateFabricationLotAsync(profile, effectiveToken, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<FabricationLotResponse>> GetFabricationLotsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string patientId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/fabrication/lots/{patientId} using provided or cached session token.
+        // WHY:  Lists all wet-lab fabrication lots and QC checks belonging to a patient.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GetFabricationLotsAsync(profile, effectiveToken, patientId, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<FabricationQcCheckResponse> RecordFabricationQcAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        RecordFabricationQcRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/fabrication/lots/{lotId}/qc using provided or cached session token.
+        // WHY:  Records a single pharmaceutical wet-lab QC measurement against a fabrication lot.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.RecordFabricationQcAsync(profile, effectiveToken, lotId, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<FabricationLotReleaseResponse> ReleaseFabricationLotAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/fabrication/lots/{lotId}/release using provided or cached session token.
+        // WHY:  Executes 5-gate wet-lab verification and ML-DSA-65 Certificate of Analysis signing.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.ReleaseFabricationLotAsync(profile, effectiveToken, lotId, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<FabricationLotCertificateResponse?> GetFabricationLotCertificateAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/fabrication/lots/{lotId}/certificate using provided or cached session token.
+        // WHY:  Retrieves and verifies the signed ML-DSA-65 Certificate of Analysis for a released lot.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GetFabricationLotCertificateAsync(profile, effectiveToken, lotId, ct);
+    }
 }

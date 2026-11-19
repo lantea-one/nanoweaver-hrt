@@ -870,6 +870,30 @@ Generates and directly streams the Opentrons Protocol API v2 Python script as a 
 
 ---
 
+### Wet-Lab Batch Fabrication & Cryptographic QC Lot Release (Milestone 35)
+
+#### `POST /api/fabrication/lots`
+Mints a patient-specific wet-lab nanocarrier fabrication lot linked to an active semi-annual depot formulation (`201 Created`). When `useLatestCalibration` is `true`, automatically inherits the latest Milestone 34 calibration snapshot's `RecommendedNextMassMg` and `RecommendedNextErosionRatePercent`, computes a deterministic Opentrons Protocol API v2 SHA-256 digest if omitted, and logs `FABRICATION_LOT_CREATE` to the 21 CFR Part 11 audit ledger.
+* **Role Requirement**: `Administrator` or cohort-authorized `Researcher` (`Patient` receives `403 Forbidden`).
+
+#### `GET /api/fabrication/lots/{patientId}`
+Lists all wet-lab fabrication lots and chronological QC check histories for a patient (`200 OK`), ordered newest first with decrypted technician notes.
+* **Role Requirement**: `Administrator`, cohort-authorized `Researcher`, or `Patient` self.
+
+#### `POST /api/fabrication/lots/{lotId}/qc`
+Records a single pharmaceutical wet-lab quality control reading (`GelFoldingYield`, `EndotoxinSterility`, `HydrodynamicSizePdi`, `PayloadEncapsulation`, or `CpGMethylation`) against a lot (`201 Created`). Evaluates pass/fail against normative limits, encrypts optional `technicianNotes` via AES-256-GCM, transitions `Draft`/`Quarantined` lots to `QcPending`, and logs `FABRICATION_QC_RECORD`.
+* **Role Requirement**: `Administrator` or cohort-authorized `Researcher`.
+
+#### `POST /api/fabrication/lots/{lotId}/release`
+Executes fail-closed 5-gate wet-lab verification (`200 OK`). When every required gate is present and passes, computes the canonical SHA-256 payload digest, signs a NIST FIPS 204 **ML-DSA-65** Certificate of Analysis (`FabricationLotCertificate`) via the node signing key, transitions the lot to `Released`, and logs `FABRICATION_LOT_RELEASE`. If any required gate is missing or out of specification, quarantines the lot (`Quarantined`), omits any signature, and logs `FABRICATION_LOT_QUARANTINE`.
+* **Role Requirement**: `Administrator` or cohort-authorized `Researcher`.
+
+#### `GET /api/fabrication/lots/{lotId}/certificate`
+Reconstructs the canonical Certificate of Analysis payload from persisted lot and QC records and verifies both the SHA-256 digest and NIST FIPS 204 **ML-DSA-65** signature live (`200 OK` / `404 Not Found` if unreleased). Any post-release tampering of target mass, Opentrons digest, or QC readings immediately sets `signatureVerified: false`.
+* **Role Requirement**: `Administrator`, cohort-authorized `Researcher`, or `Patient` self.
+
+---
+
 ### `POST /api/fabrication/gel/analyze`
 Executes automated computer vision agarose gel electrophoresis image segmentation, lane profiling, and molecular weight band densitometry for DNA origami assembly verification.
 

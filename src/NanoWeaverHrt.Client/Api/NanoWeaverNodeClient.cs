@@ -3970,4 +3970,166 @@ public sealed class NanoWeaverNodeClient : INanoWeaverNodeClient
 
         return await resp.Content.ReadFromJsonAsync<DepotCalibrationResponse>(JsonOptions, ct);
     }
+
+    /// <inheritdoc/>
+    public async Task<FabricationLotResponse> CreateFabricationLotAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CreateFabricationLotRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/fabrication/lots to mint an adaptive wet-lab nanocarrier fabrication lot.
+        // WHY:  Milestone 35 (P187): Enables desktop, mobile, and CLI clients to initiate patient-specific batch fabrication.
+        // HOW:  Validates arguments, sends authenticated JSON POST, and deserializes FabricationLotResponse.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/fabrication/lots");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        FabricationLotResponse? result = await resp.Content.ReadFromJsonAsync<FabricationLotResponse>(JsonOptions, ct);
+        return result ?? throw new InvalidOperationException("Endpoint returned empty or null fabrication lot payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<FabricationLotResponse>> GetFabricationLotsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string patientId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/fabrication/lots/{patientId} to list wet-lab batches for a patient.
+        // WHY:  Milestone 35 (P187): Enables authorized clinicians and patients to review batch status and QC records.
+        // HOW:  Validates inputs, issues authenticated GET request, and deserializes a read-only lot list.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(patientId);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/fabrication/lots/{Uri.EscapeDataString(patientId)}");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        List<FabricationLotResponse>? list = await resp.Content.ReadFromJsonAsync<List<FabricationLotResponse>>(JsonOptions, ct);
+        return (IReadOnlyList<FabricationLotResponse>?)list ?? [];
+    }
+
+    /// <inheritdoc/>
+    public async Task<FabricationQcCheckResponse> RecordFabricationQcAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        RecordFabricationQcRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/fabrication/lots/{lotId}/qc to log a wet-lab pharmaceutical QC measurement.
+        // WHY:  Milestone 35 (P187): Allows wet-lab technicians to record gel, endotoxin, DLS, HPLC, and CpG readings remotely.
+        // HOW:  Validates arguments, sends authenticated JSON POST, and deserializes FabricationQcCheckResponse.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(lotId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/fabrication/lots/{Uri.EscapeDataString(lotId)}/qc");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        FabricationQcCheckResponse? result = await resp.Content.ReadFromJsonAsync<FabricationQcCheckResponse>(JsonOptions, ct);
+        return result ?? throw new InvalidOperationException("Endpoint returned empty or null fabrication QC check payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<FabricationLotReleaseResponse> ReleaseFabricationLotAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/fabrication/lots/{lotId}/release to run 5-gate verification and ML-DSA-65 signing.
+        // WHY:  Milestone 35 (P187): Enables remote lot release or fail-closed quarantine from desktop and mobile clients.
+        // HOW:  Validates inputs, issues authenticated POST request, and deserializes FabricationLotReleaseResponse.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(lotId);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/fabrication/lots/{Uri.EscapeDataString(lotId)}/release");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        FabricationLotReleaseResponse? result = await resp.Content.ReadFromJsonAsync<FabricationLotReleaseResponse>(JsonOptions, ct);
+        return result ?? throw new InvalidOperationException("Endpoint returned empty or null fabrication lot release payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<FabricationLotCertificateResponse?> GetFabricationLotCertificateAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/fabrication/lots/{lotId}/certificate to inspect and verify a signed Certificate of Analysis.
+        // WHY:  Milestone 35 (P187): Enables desktop and mobile apps to verify post-quantum lot provenance prior to clinical use.
+        // HOW:  Returns null cleanly when the server responds 404 Not Found; throws NodeApiException on other errors.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(lotId);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/fabrication/lots/{Uri.EscapeDataString(lotId)}/certificate");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (resp.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        return await resp.Content.ReadFromJsonAsync<FabricationLotCertificateResponse>(JsonOptions, ct);
+    }
 }

@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using NanoWeaverHrt.Components.Pages;
 using NanoWeaverHrt.Endocrine;
+using NanoWeaverHrt.Fabrication;
 using NanoWeaverHrt.Localization;
 using NanoWeaverHrt.Models;
 using NanoWeaverHrt.Storage;
@@ -13,7 +14,8 @@ namespace NanoWeaverHrt.Tests.Components;
 /// <summary>
 /// Unit and integration test suite for <see cref="DepotStudio"/> validating interactive 180-day depot parameter configuration,
 /// simulation execution dispatch, clinical metric displays (TTR %, burst phase, steady-state rate, re-dosing alert),
-/// longitudinal serum assay calibration, observed SVG markers, safety alerts, and reset actions.
+/// longitudinal serum assay calibration, observed SVG markers, safety alerts, wet-lab batch fabrication,
+/// 5-gate pharmaceutical QC verification, ML-DSA-65 Certificate of Analysis signing, and reset actions.
 /// </summary>
 public sealed class DepotStudioComponentTests : BunitContext
 {
@@ -33,6 +35,16 @@ public sealed class DepotStudioComponentTests : BunitContext
     private readonly DepotCalibrationService _calibrationService;
 
     /// <summary>
+    /// Isolated key management host supplying real NIST FIPS 204 ML-DSA-65 signing for studio lot release tests.
+    /// </summary>
+    private readonly SubjectKeyTestHost _pqcHost;
+
+    /// <summary>
+    /// Real wet-lab 5-gate QC and ML-DSA-65 lot release service.
+    /// </summary>
+    private readonly FabricationLotService _lotService;
+
+    /// <summary>
     /// Mocked depot formulation repository for studio persistence actions.
     /// </summary>
     private readonly Mock<IDepotFormulationRepository> _depotRepoMock = new();
@@ -43,14 +55,23 @@ public sealed class DepotStudioComponentTests : BunitContext
     private readonly Mock<IDepotAssayRepository> _assayRepoMock = new();
 
     /// <summary>
+    /// Mocked wet-lab fabrication lot repository for studio persistence actions.
+    /// </summary>
+    private readonly Mock<IFabricationLotRepository> _lotRepoMock = new();
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="DepotStudioComponentTests"/> class.
     /// </summary>
     public DepotStudioComponentTests()
     {
         // WHAT: Configures dependency injection container for bUnit component testing.
-        // WHY:  DepotStudio depends on ITimeReleaseDepotService, IDepotCalibrationService, repositories, and IWeaverLocalizer.
-        // HOW:  Registers real computational services and mocked repositories into BunitContext.Services.
+        // WHY:  DepotStudio depends on ITimeReleaseDepotService, IDepotCalibrationService, IFabricationLotService, repositories, and IWeaverLocalizer.
+        // HOW:  Registers real computational/cryptographic services and mocked repositories into BunitContext.Services.
         _calibrationService = new DepotCalibrationService(_depotService);
+        string pqcDir = Path.Combine(Path.GetTempPath(), "weaver_depot_studio_bunit_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(pqcDir);
+        _pqcHost = new SubjectKeyTestHost(pqcDir);
+        _lotService = new FabricationLotService(_pqcHost.KeyManagement, _pqcHost.CryptoProvider);
 
         _depotRepoMock
             .Setup(r => r.UpsertDepotFormulationAsync(It.IsAny<DepotFormulationRecord>(), It.IsAny<CancellationToken>()))
@@ -64,11 +85,44 @@ public sealed class DepotStudioComponentTests : BunitContext
             .Setup(r => r.SaveCalibrationSnapshotAsync(It.IsAny<DepotCalibrationSnapshotRecord>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((DepotCalibrationSnapshotRecord snap, CancellationToken _) => snap with { SnapshotId = "calib_test_1" });
 
+        _lotRepoMock
+            .Setup(r => r.UpsertLotAsync(It.IsAny<FabricationLotRecord>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((FabricationLotRecord lot, CancellationToken _) => string.IsNullOrWhiteSpace(lot.LotId) ? lot with { LotId = "lot_studio_test_1" } : lot);
+
+        _lotRepoMock
+            .Setup(r => r.RecordQcCheckAsync(It.IsAny<FabricationQcCheckRecord>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((FabricationQcCheckRecord chk, CancellationToken _) => string.IsNullOrWhiteSpace(chk.CheckId) ? chk with { CheckId = $"qc_{Guid.NewGuid():N}" } : chk);
+
         Services.AddSingleton<IWeaverLocalizer>(_localizer);
         Services.AddSingleton<ITimeReleaseDepotService>(_depotService);
         Services.AddSingleton<IDepotCalibrationService>(_calibrationService);
+        Services.AddSingleton<IFabricationLotService>(_lotService);
         Services.AddSingleton(_depotRepoMock.Object);
         Services.AddSingleton(_assayRepoMock.Object);
+        Services.AddSingleton(_lotRepoMock.Object);
+    }
+
+    /// <inheritdoc/>
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            string root = _pqcHost.RootDirectory;
+            _pqcHost.Dispose();
+            if (Directory.Exists(root))
+            {
+                try
+                {
+                    Directory.Delete(root, recursive: true);
+                }
+                catch
+                {
+                    // Best-effort cleanup.
+                }
+            }
+        }
+
+        base.Dispose(disposing);
     }
 
     /// <summary>
@@ -224,5 +278,64 @@ public sealed class DepotStudioComponentTests : BunitContext
 
         Assert.Contains("FTM_HEMATOCRIT_CRITICAL", cut.Find("#calibration-safety-alerts").TextContent);
         Assert.Contains("Critical Safety Ceiling", cut.Find("#calibration-safety-badge").TextContent);
+    }
+
+    /// <summary>
+    /// Verifies the Milestone 35 Wet-Lab Batch Fabrication &amp; Cryptographic QC Lot Release workflow in bUnit:
+    /// minting an adaptive lot, fail-closed quarantine on contaminated endotoxin reading, re-testing all 5 gates,
+    /// and issuing a live-verified NIST FIPS 204 ML-DSA-65 Certificate of Analysis.
+    /// </summary>
+    [Fact]
+    public void DepotStudio_WetLabLotFabricationAndQcRelease_QuarantinesThenSignsMlDsa65Certificate()
+    {
+        // WHAT: Drives the full Milestone 35 UI workflow in DepotStudio using fresh cut.Find queries.
+        // WHY:  Verifies adaptive lot minting, 5-gate QC entry, quarantine blocking, and verified ML-DSA-65 CoA display.
+        // HOW:  Mints a lot, submits a failing endotoxin reading and triggers quarantine, then submits all 5 passing gates
+        //       and verifies the ML-DSA-65 SIGNATURE VERIFIED badge and SHA-256 certificate card render cleanly.
+        IRenderedComponent<DepotStudio> cut = Render<DepotStudio>();
+
+        Assert.NotNull(cut.Find("#wet-lab-lot-release-panel"));
+        cut.Find("#btn-mint-fabrication-lot").Click();
+        Assert.NotNull(cut.Find("#active-lot-summary"));
+        Assert.Contains("lot_studio_test_1", cut.Find("#active-lot-summary").TextContent);
+
+        // 1. Submit failing Endotoxin reading (0.85 EU/mL > 0.50 EU/mL) and verify fail-closed quarantine
+        cut.Find("#select-qc-gate").Change(FabricationQcGateType.EndotoxinSterility.ToString());
+        cut.Find("#input-qc-measured").Change("0.85");
+        cut.Find("#btn-record-qc-gate").Click();
+        Assert.Contains("FAIL", cut.Find("#lot-qc-checks-table").TextContent);
+
+        cut.Find("#btn-release-lot").Click();
+        Assert.NotNull(cut.Find("#lot-quarantine-banner"));
+        Assert.Contains("Quarantined", cut.Find("#lot-status-badge").TextContent);
+
+        // 2. Record passing readings for all 5 pharmaceutical QC gates
+        cut.Find("#select-qc-gate").Change(FabricationQcGateType.GelFoldingYield.ToString());
+        cut.Find("#input-qc-measured").Change("92.4");
+        cut.Find("#btn-record-qc-gate").Click();
+
+        cut.Find("#select-qc-gate").Change(FabricationQcGateType.EndotoxinSterility.ToString());
+        cut.Find("#input-qc-measured").Change("0.12");
+        cut.Find("#btn-record-qc-gate").Click();
+
+        cut.Find("#select-qc-gate").Change(FabricationQcGateType.HydrodynamicSizePdi.ToString());
+        cut.Find("#input-qc-measured").Change("61.5");
+        cut.Find("#input-qc-secondary").Change("0.11");
+        cut.Find("#btn-record-qc-gate").Click();
+
+        cut.Find("#select-qc-gate").Change(FabricationQcGateType.PayloadEncapsulation.ToString());
+        cut.Find("#input-qc-measured").Change("88.5");
+        cut.Find("#input-qc-secondary").Change("1.2");
+        cut.Find("#btn-record-qc-gate").Click();
+
+        cut.Find("#select-qc-gate").Change(FabricationQcGateType.CpGMethylation.ToString());
+        cut.Find("#input-qc-measured").Change("97.9");
+        cut.Find("#btn-record-qc-gate").Click();
+
+        // 3. Execute cryptographic release -> Released + Verified ML-DSA-65 Certificate of Analysis
+        cut.Find("#btn-release-lot").Click();
+        Assert.NotNull(cut.Find("#lot-certificate-card"));
+        Assert.Contains("ML-DSA-65 SIGNATURE VERIFIED", cut.Find("#lot-certificate-verified-badge").TextContent);
+        Assert.Contains("Released (ML-DSA-65 Signed)", cut.Find("#lot-status-badge").TextContent);
     }
 }

@@ -213,9 +213,9 @@ Mobile heads execute within deterministic platform coordinators enforcing strict
    - Automatically zeroes sensitive session keys and locks the biometric vault on `DidEnterBackground`.
 3. **Unified Mobile Runner (`MobileEntryPoint.RunAsync`)**:
    - Coordinates platform hosts, diagnostic self-verification, and background alert delivery via `INativeNotificationSink`.
-4. **Milestone 34 Longitudinal Depot Calibration MVVM Parity (`PatientClinicalWorkspaceViewModel`)**:
-   - Exposes `RecordDepotAssayAsync`, `GetDepotAssaysAsync`, `CalibrateDepotAsync`, and `GetLatestDepotCalibrationAsync` with observable `RecordedDepotAssays` and `LatestDepotCalibration` bindings backed by 100% REST SDK parity across `INanoWeaverNodeClient`, `NanoWeaverNodeClient`, and `WeaverNodeApiClient`.
-   - Includes 23 new localized longitudinal assay, adaptive telemetry, and clinical safety guardrail strings across all 18 community languages (including Arabic RTL).
+4. **Milestone 34 & 35 Clinical Depot & Wet-Lab Lot MVVM Parity (`PatientClinicalWorkspaceViewModel`)**:
+   - Exposes Milestone 34 longitudinal calibration commands (`RecordDepotAssayAsync`, `GetDepotAssaysAsync`, `CalibrateDepotAsync`, `GetLatestDepotCalibrationAsync`) and Milestone 35 wet-lab lot release commands (`CreateFabricationLotAsync`, `GetFabricationLotsAsync`, `RecordFabricationQcAsync`, `ReleaseFabricationLotAsync`, `GetFabricationLotCertificateAsync`) with observable `RecordedDepotAssays`, `LatestDepotCalibration`, `FabricationLots`, `LatestLotRelease`, and `LatestLotCertificate` bindings backed by 100% REST SDK parity across `INanoWeaverNodeClient`, `NanoWeaverNodeClient`, and `WeaverNodeApiClient`.
+   - Includes localized longitudinal assay, clinical safety guardrail, and wet-lab cryptographic QC release strings across all 18 community languages (including Arabic RTL).
 
 ---
 

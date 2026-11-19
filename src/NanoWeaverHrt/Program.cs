@@ -148,6 +148,8 @@ public class Program
         builder.Services.AddSingleton<ITimeReleaseDepotService, TimeReleaseDepotService>();
         builder.Services.AddSingleton<IDepotAssayRepository, DepotAssayRepository>();
         builder.Services.AddSingleton<IDepotCalibrationService, DepotCalibrationService>();
+        builder.Services.AddSingleton<IFabricationLotRepository, FabricationLotRepository>();
+        builder.Services.AddSingleton<IFabricationLotService, FabricationLotService>();
         builder.Services.AddSingleton<IAssetIntegrityService, AssetIntegrityService>();
         builder.Services.AddSingleton<ISubjectAccessRepository, SubjectAccessRepository>();
         builder.Services.AddSingleton<ISubjectAccessService, SubjectAccessService>();
@@ -4826,6 +4828,442 @@ public class Program
         .WithSummary("Retrieves the latest adaptive Bayesian calibration snapshot for a depot formulation.")
         .WithDescription("Returns the most recent persisted calibration snapshot, safety alerts, and recalibrated trajectory for Administrator, authorized Researcher, or Patient self.")
         .Produces<DepotCalibrationResponse>(StatusCodes.Status200OK)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden)
+        .Produces<SecureProblemDetails>(StatusCodes.Status404NotFound);
+
+        // ---------------------------------------------------------------------
+        // REST API: Wet-Lab Batch Fabrication & Cryptographic QC Lot Release (Milestone 35)
+        // ---------------------------------------------------------------------
+        app.MapPost("/api/fabrication/lots", async (
+            CreateFabricationLotRequest? request,
+            IDepotFormulationRepository depotRepository,
+            IDepotAssayRepository assayRepository,
+            IFabricationLotRepository lotRepository,
+            IFabricationLotService lotService,
+            ISubjectAccessService subjectAccess,
+            ProfileDataProtector protector,
+            IComplianceAuditService audit,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Mints a new patient-specific wet-lab nanocarrier fabrication lot linked to an active depot formulation.
+            // WHY:  Bridges adaptive longitudinal depot calibration directly into physical batch synthesis with Opentrons SHA-256 provenance.
+            // HOW:  Validates inputs and Admin/Researcher access, inherits latest calibration targets if requested, persists lot, and audits.
+            if (request is null || string.IsNullOrWhiteSpace(request.DepotId))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "DepotId must not be empty.");
+            }
+
+            // WHY `!`: Authentication middleware guarantees CurrentUser is populated with an authenticated UserAccount before reaching this handler.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            if (caller.Role != UserRole.Administrator && caller.Role != UserRole.Researcher)
+            {
+                return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: Administrator or Researcher role required to create fabrication lots.");
+            }
+
+            DepotFormulationRecord? depot = await depotRepository.GetDepotFormulationByIdAsync(request.DepotId.Trim(), ct);
+            if (depot is null)
+            {
+                return SecureProblemResult(context, StatusCodes.Status404NotFound, $"Depot formulation '{request.DepotId.Trim()}' was not found.");
+            }
+
+            if (caller.Role == UserRole.Researcher)
+            {
+                SubjectAccessLevel? accessLevel = await subjectAccess.GetEffectiveAccessLevelAsync(caller.Username, depot.PatientId, ct);
+                if (!accessLevel.HasValue)
+                {
+                    return SecureProblemResult(context, StatusCodes.Status403Forbidden, $"Forbidden: Caller does not possess subject access to patient '{depot.PatientId}'.");
+                }
+            }
+
+            string? calibrationSnapshotId = null;
+            double targetMassMg = depot.InitialNanocarrierMassMg;
+            double targetErosionRate = depot.DailyErosionRatePercent;
+
+            if (request.UseLatestCalibration)
+            {
+                DepotCalibrationSnapshotRecord? latestCal = await assayRepository.GetLatestCalibrationSnapshotAsync(depot.DepotId, ct);
+                if (latestCal is not null)
+                {
+                    calibrationSnapshotId = latestCal.SnapshotId;
+                    targetMassMg = latestCal.RecommendedNextMassMg;
+                    targetErosionRate = Math.Round(
+                        Math.Clamp(
+                            depot.DailyErosionRatePercent * (depot.DailyErosionRatePercent / latestCal.InferredDailyErosionRatePercent),
+                            0.20,
+                            2.00),
+                        3);
+                }
+            }
+
+            string opentronsSha256 = string.IsNullOrWhiteSpace(request.OpentronsProtocolSha256)
+                ? lotService.ComputeOpentronsProtocolSha256(
+                    depot.DepotId,
+                    depot.PatientId,
+                    depot.Regimen,
+                    depot.PolymerMatrixType,
+                    targetMassMg,
+                    targetErosionRate)
+                : request.OpentronsProtocolSha256.Trim().ToLowerInvariant();
+
+            FabricationLotRecord saved = await lotRepository.UpsertLotAsync(new FabricationLotRecord
+            {
+                DepotId = depot.DepotId,
+                CalibrationSnapshotId = calibrationSnapshotId,
+                PatientId = depot.PatientId,
+                Regimen = depot.Regimen,
+                PolymerMatrixType = depot.PolymerMatrixType,
+                TargetMassMg = targetMassMg,
+                TargetErosionRatePercent = targetErosionRate,
+                CpGMethylationRequired = request.CpGMethylationRequired,
+                OpentronsProtocolSha256 = opentronsSha256,
+                LotStatus = FabricationLotStatus.Draft,
+                CreatedAtUtc = DateTimeOffset.UtcNow
+            }, ct);
+
+            audit.LogAction(
+                caller.Username,
+                "FABRICATION_LOT_CREATE",
+                $"fabrication-lot:{saved.LotId}",
+                JsonSerializer.Serialize(new
+                {
+                    lotId = saved.LotId,
+                    depotId = saved.DepotId,
+                    patientId = saved.PatientId,
+                    calibrationSnapshotId = saved.CalibrationSnapshotId,
+                    targetMassMg = saved.TargetMassMg,
+                    targetErosionRatePercent = saved.TargetErosionRatePercent,
+                    opentronsProtocolSha256 = saved.OpentronsProtocolSha256
+                }));
+
+            FabricationLotResponse response = FabricationLotMapper.ToLotResponse(saved, [], protector);
+            return Results.Created($"/api/fabrication/lots/{saved.LotId}", response);
+        })
+        .WithName("CreateFabricationLot")
+        .WithTags("Wet-Lab Fabrication & QC")
+        .WithSummary("Mints a new patient-specific wet-lab nanocarrier fabrication lot from a depot formulation.")
+        .WithDescription("Creates a physical batch record optionally inheriting Milestone 34 adaptive mass/erosion calibration targets and binds it to an Opentrons protocol SHA-256 digest.")
+        .Accepts<CreateFabricationLotRequest>("application/json")
+        .Produces<FabricationLotResponse>(StatusCodes.Status201Created)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden)
+        .Produces<SecureProblemDetails>(StatusCodes.Status404NotFound);
+
+        app.MapGet("/api/fabrication/lots/{patientId}", async (
+            string patientId,
+            IFabricationLotRepository lotRepository,
+            ISubjectAccessService subjectAccess,
+            ProfileDataProtector protector,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Retrieves all wet-lab fabrication lots and their QC check histories for a specific patient.
+            // WHY:  Allows authorized clinicians and patients to inspect active batches, QC verdicts, and release certificates.
+            // HOW:  Enforces Admin, Patient self, or Researcher-with-grant access and projects lots with decrypted QC notes.
+            if (string.IsNullOrWhiteSpace(patientId))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "PatientId must not be empty.");
+            }
+
+            string normalizedPatientId = patientId.Trim();
+
+            // WHY `!`: Authentication middleware guarantees CurrentUser is populated with an authenticated UserAccount before reaching this handler.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            bool isAuthorized = caller.Role == UserRole.Administrator ||
+                (caller.Role == UserRole.Patient && string.Equals(caller.Username, normalizedPatientId, StringComparison.OrdinalIgnoreCase));
+
+            if (!isAuthorized && caller.Role == UserRole.Researcher)
+            {
+                SubjectAccessLevel? accessLevel = await subjectAccess.GetEffectiveAccessLevelAsync(caller.Username, normalizedPatientId, ct);
+                if (accessLevel.HasValue)
+                {
+                    isAuthorized = true;
+                }
+            }
+
+            if (!isAuthorized)
+            {
+                return SecureProblemResult(context, StatusCodes.Status403Forbidden, $"Forbidden: Caller is not authorized to access fabrication lots for patient '{normalizedPatientId}'.");
+            }
+
+            IReadOnlyList<FabricationLotRecord> lots = await lotRepository.GetLotsByPatientIdAsync(normalizedPatientId, ct);
+            List<FabricationLotResponse> responses = new(lots.Count);
+            for (int i = 0; i < lots.Count; i++)
+            {
+                IReadOnlyList<FabricationQcCheckRecord> checks = await lotRepository.GetQcChecksByLotAsync(lots[i].LotId, ct);
+                responses.Add(FabricationLotMapper.ToLotResponse(lots[i], checks, protector));
+            }
+
+            return Results.Ok(responses);
+        })
+        .WithName("GetPatientFabricationLots")
+        .WithTags("Wet-Lab Fabrication & QC")
+        .WithSummary("Lists all wet-lab nanocarrier fabrication lots and QC checks for a patient.")
+        .WithDescription("Returns patient-specific fabrication lots ordered newest first for Administrator, cohort-authorized Researcher, or Patient self.")
+        .Produces<IReadOnlyList<FabricationLotResponse>>(StatusCodes.Status200OK)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden);
+
+        app.MapPost("/api/fabrication/lots/{lotId}/qc", async (
+            string lotId,
+            RecordFabricationQcRequest? request,
+            IFabricationLotRepository lotRepository,
+            IFabricationLotService lotService,
+            ISubjectAccessService subjectAccess,
+            ProfileDataProtector protector,
+            IComplianceAuditService audit,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Records a single pharmaceutical wet-lab QC measurement against an active fabrication lot.
+            // WHY:  Logs verifiable benchtop gel, endotoxin, DLS, HPLC, and CpG methylation readings prior to release.
+            // HOW:  Validates inputs and caller role/grant, evaluates single gate, encrypts technician notes, persists check, and audits.
+            if (string.IsNullOrWhiteSpace(lotId))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "LotId must not be empty.");
+            }
+
+            if (request is null || !Enum.IsDefined(request.GateType))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Request body must specify a valid wet-lab QC gateType.");
+            }
+
+            // WHY `!`: Authentication middleware guarantees CurrentUser is populated with an authenticated UserAccount before reaching this handler.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            if (caller.Role != UserRole.Administrator && caller.Role != UserRole.Researcher)
+            {
+                return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: Administrator or Researcher role required to record wet-lab QC checks.");
+            }
+
+            FabricationLotRecord? lot = await lotRepository.GetLotByIdAsync(lotId.Trim(), ct);
+            if (lot is null)
+            {
+                return SecureProblemResult(context, StatusCodes.Status404NotFound, $"Fabrication lot '{lotId.Trim()}' was not found.");
+            }
+
+            if (caller.Role == UserRole.Researcher)
+            {
+                SubjectAccessLevel? accessLevel = await subjectAccess.GetEffectiveAccessLevelAsync(caller.Username, lot.PatientId, ct);
+                if (!accessLevel.HasValue)
+                {
+                    return SecureProblemResult(context, StatusCodes.Status403Forbidden, $"Forbidden: Caller does not possess subject access to patient '{lot.PatientId}'.");
+                }
+            }
+
+            FabricationQcGateEvaluation gateEval = lotService.EvaluateSingleGate(
+                request.GateType,
+                request.MeasuredValue,
+                request.SecondaryValue);
+
+            string? encryptedNotes = string.IsNullOrWhiteSpace(request.TechnicianNotes)
+                ? null
+                : protector.EncryptDataUri(request.TechnicianNotes);
+
+            FabricationQcCheckRecord savedCheck = await lotRepository.RecordQcCheckAsync(new FabricationQcCheckRecord
+            {
+                LotId = lot.LotId,
+                PatientId = lot.PatientId,
+                GateType = request.GateType,
+                MeasuredValue = request.MeasuredValue,
+                SecondaryValue = request.SecondaryValue,
+                ThresholdValue = gateEval.ThresholdValue,
+                Passed = gateEval.Passed,
+                RecordedAtUtc = request.RecordedAtUtc ?? DateTimeOffset.UtcNow,
+                NotesEncrypted = encryptedNotes
+            }, ct);
+
+            if (lot.LotStatus is FabricationLotStatus.Draft or FabricationLotStatus.Quarantined)
+            {
+                await lotRepository.UpsertLotAsync(lot with { LotStatus = FabricationLotStatus.QcPending }, ct);
+            }
+
+            audit.LogAction(
+                caller.Username,
+                "FABRICATION_QC_RECORD",
+                $"fabrication-lot:{lot.LotId}",
+                JsonSerializer.Serialize(new
+                {
+                    checkId = savedCheck.CheckId,
+                    gateType = savedCheck.GateType,
+                    measuredValue = savedCheck.MeasuredValue,
+                    secondaryValue = savedCheck.SecondaryValue,
+                    passed = savedCheck.Passed
+                }));
+
+            FabricationQcCheckResponse response = FabricationLotMapper.ToQcResponse(savedCheck, protector);
+            return Results.Created($"/api/fabrication/lots/{lot.LotId}/qc/{savedCheck.CheckId}", response);
+        })
+        .WithName("RecordFabricationQcCheck")
+        .WithTags("Wet-Lab Fabrication & QC")
+        .WithSummary("Records a pharmaceutical wet-lab quality control check measurement against a fabrication lot.")
+        .WithDescription("Evaluates the measurement against pharmaceutical release limits, encrypts optional technician notes with AES-256-GCM, and logs a 21 CFR Part 11 audit event.")
+        .Accepts<RecordFabricationQcRequest>("application/json")
+        .Produces<FabricationQcCheckResponse>(StatusCodes.Status201Created)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden)
+        .Produces<SecureProblemDetails>(StatusCodes.Status404NotFound);
+
+        app.MapPost("/api/fabrication/lots/{lotId}/release", async (
+            string lotId,
+            IFabricationLotRepository lotRepository,
+            IFabricationLotService lotService,
+            ISubjectAccessService subjectAccess,
+            ProfileDataProtector protector,
+            IComplianceAuditService audit,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Executes deterministic 5-gate wet-lab verification and signs an ML-DSA-65 Certificate of Analysis if all pass.
+            // WHY:  Provides fail-closed cryptographic release control preventing contaminated or mis-folded lots from clinical use.
+            // HOW:  Authorizes caller, runs IFabricationLotService.EvaluateAndSignLotRelease, updates lot status/signature, and logs audit event.
+            if (string.IsNullOrWhiteSpace(lotId))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "LotId must not be empty.");
+            }
+
+            // WHY `!`: Authentication middleware guarantees CurrentUser is populated with an authenticated UserAccount before reaching this handler.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            if (caller.Role != UserRole.Administrator && caller.Role != UserRole.Researcher)
+            {
+                return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: Administrator or Researcher role required to release fabrication lots.");
+            }
+
+            FabricationLotRecord? lot = await lotRepository.GetLotByIdAsync(lotId.Trim(), ct);
+            if (lot is null)
+            {
+                return SecureProblemResult(context, StatusCodes.Status404NotFound, $"Fabrication lot '{lotId.Trim()}' was not found.");
+            }
+
+            if (caller.Role == UserRole.Researcher)
+            {
+                SubjectAccessLevel? accessLevel = await subjectAccess.GetEffectiveAccessLevelAsync(caller.Username, lot.PatientId, ct);
+                if (!accessLevel.HasValue)
+                {
+                    return SecureProblemResult(context, StatusCodes.Status403Forbidden, $"Forbidden: Caller does not possess subject access to patient '{lot.PatientId}'.");
+                }
+            }
+
+            IReadOnlyList<FabricationQcCheckRecord> checks = await lotRepository.GetQcChecksByLotAsync(lot.LotId, ct);
+            FabricationLotReleaseEvaluation evaluation = lotService.EvaluateAndSignLotRelease(lot, checks);
+
+            FabricationLotRecord updatedLot = evaluation.Certificate is not null
+                ? lot with
+                {
+                    LotStatus = FabricationLotStatus.Released,
+                    CertificatePayloadSha256 = evaluation.Certificate.PayloadSha256,
+                    CertificateSignatureBase64 = evaluation.Certificate.SignatureBase64,
+                    CertificateSignerKeyId = evaluation.Certificate.SignerKeyId,
+                    ReleasedAtUtc = evaluation.Certificate.IssuedAtUtc
+                }
+                : lot with
+                {
+                    LotStatus = FabricationLotStatus.Quarantined,
+                    CertificatePayloadSha256 = null,
+                    CertificateSignatureBase64 = null,
+                    CertificateSignerKeyId = null,
+                    ReleasedAtUtc = null
+                };
+
+            FabricationLotRecord persistedLot = await lotRepository.UpsertLotAsync(updatedLot, ct);
+            bool verified = evaluation.Certificate is not null && lotService.VerifyLotCertificate(evaluation.Certificate);
+
+            audit.LogAction(
+                caller.Username,
+                evaluation.ResultStatus == FabricationLotStatus.Released ? "FABRICATION_LOT_RELEASE" : "FABRICATION_LOT_QUARANTINE",
+                $"fabrication-lot:{persistedLot.LotId}",
+                JsonSerializer.Serialize(new
+                {
+                    lotId = persistedLot.LotId,
+                    patientId = persistedLot.PatientId,
+                    resultStatus = evaluation.ResultStatus,
+                    payloadSha256 = evaluation.Certificate?.PayloadSha256,
+                    failureCount = evaluation.FailureReasons.Count
+                }));
+
+            FabricationLotReleaseResponse response = new()
+            {
+                Lot = FabricationLotMapper.ToLotResponse(persistedLot, checks, protector),
+                Evaluation = evaluation,
+                CertificateVerified = verified
+            };
+
+            return Results.Ok(response);
+        })
+        .WithName("ReleaseFabricationLot")
+        .WithTags("Wet-Lab Fabrication & QC")
+        .WithSummary("Evaluates all required 5-gate wet-lab QC assays and signs an ML-DSA-65 Certificate of Analysis on pass.")
+        .WithDescription("Transitions the lot to Released with a post-quantum ML-DSA-65 digital signature if every mandatory QC gate passed, or Quarantined if any gate is missing or out of specification.")
+        .Produces<FabricationLotReleaseResponse>(StatusCodes.Status200OK)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden)
+        .Produces<SecureProblemDetails>(StatusCodes.Status404NotFound);
+
+        app.MapGet("/api/fabrication/lots/{lotId}/certificate", async (
+            string lotId,
+            IFabricationLotRepository lotRepository,
+            IFabricationLotService lotService,
+            ISubjectAccessService subjectAccess,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Reconstructs and cryptographically verifies the signed Certificate of Analysis for a released lot.
+            // WHY:  Allows clinicians and patients to audit post-quantum ML-DSA-65 lot provenance prior to administration.
+            // HOW:  Authorizes Admin / Patient self / Researcher-with-grant, reconstructs certificate, verifies live, and returns 200 OK.
+            if (string.IsNullOrWhiteSpace(lotId))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "LotId must not be empty.");
+            }
+
+            FabricationLotRecord? lot = await lotRepository.GetLotByIdAsync(lotId.Trim(), ct);
+            if (lot is null)
+            {
+                return SecureProblemResult(context, StatusCodes.Status404NotFound, $"Fabrication lot '{lotId.Trim()}' was not found.");
+            }
+
+            // WHY `!`: Authentication middleware guarantees CurrentUser is populated with an authenticated UserAccount before reaching this handler.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            bool isAuthorized = caller.Role == UserRole.Administrator ||
+                (caller.Role == UserRole.Patient && string.Equals(caller.Username, lot.PatientId, StringComparison.OrdinalIgnoreCase));
+
+            if (!isAuthorized && caller.Role == UserRole.Researcher)
+            {
+                SubjectAccessLevel? accessLevel = await subjectAccess.GetEffectiveAccessLevelAsync(caller.Username, lot.PatientId, ct);
+                if (accessLevel.HasValue)
+                {
+                    isAuthorized = true;
+                }
+            }
+
+            if (!isAuthorized)
+            {
+                return SecureProblemResult(context, StatusCodes.Status403Forbidden, $"Forbidden: Caller is not authorized to access certificates for patient '{lot.PatientId}'.");
+            }
+
+            IReadOnlyList<FabricationQcCheckRecord> checks = await lotRepository.GetQcChecksByLotAsync(lot.LotId, ct);
+            FabricationLotCertificate? certificate = lotService.ReconstructCertificate(lot, checks);
+            if (certificate is null)
+            {
+                return SecureProblemResult(context, StatusCodes.Status404NotFound, $"No signed Certificate of Analysis exists for lot '{lot.LotId}'.");
+            }
+
+            bool signatureVerified = lotService.VerifyLotCertificate(certificate);
+            return Results.Ok(new FabricationLotCertificateResponse
+            {
+                Certificate = certificate,
+                SignatureVerified = signatureVerified
+            });
+        })
+        .WithName("GetFabricationLotCertificate")
+        .WithTags("Wet-Lab Fabrication & QC")
+        .WithSummary("Retrieves and cryptographically verifies the signed ML-DSA-65 Certificate of Analysis for a released lot.")
+        .WithDescription("Reconstructs the canonical certificate payload from persisted lot and QC records and verifies its NIST FIPS 204 ML-DSA-65 signature live.")
+        .Produces<FabricationLotCertificateResponse>(StatusCodes.Status200OK)
         .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
         .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
         .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden)

@@ -1648,4 +1648,76 @@ public interface INanoWeaverNodeClient
         string bearerToken,
         string depotId,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Mints a new patient-specific wet-lab nanocarrier fabrication lot via POST /api/fabrication/lots.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="request">Fabrication lot creation payload linking to a parent depot formulation.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The created wet-lab fabrication lot response.</returns>
+    Task<FabricationLotResponse> CreateFabricationLotAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CreateFabricationLotRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Retrieves all wet-lab nanocarrier fabrication lots for a patient via GET /api/fabrication/lots/{patientId}.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="patientId">Target patient identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Read-only list of fabrication lots ordered newest first.</returns>
+    Task<IReadOnlyList<FabricationLotResponse>> GetFabricationLotsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string patientId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Records a single pharmaceutical wet-lab QC measurement against a fabrication lot via POST /api/fabrication/lots/{lotId}/qc.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="lotId">Target fabrication lot identifier.</param>
+    /// <param name="request">Wet-lab QC measurement payload.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The persisted wet-lab QC check response.</returns>
+    Task<FabricationQcCheckResponse> RecordFabricationQcAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        RecordFabricationQcRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Executes 5-gate pharmaceutical QC verification and ML-DSA-65 release signing via POST /api/fabrication/lots/{lotId}/release.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="lotId">Target fabrication lot identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Release evaluation response containing updated lot state and optional signed Certificate of Analysis.</returns>
+    Task<FabricationLotReleaseResponse> ReleaseFabricationLotAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Retrieves and cryptographically verifies the signed Certificate of Analysis via GET /api/fabrication/lots/{lotId}/certificate.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="lotId">Target fabrication lot identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The verified Certificate of Analysis response if released; otherwise <see langword="null"/> when the server returns 404.</returns>
+    Task<FabricationLotCertificateResponse?> GetFabricationLotCertificateAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        CancellationToken ct = default);
 }

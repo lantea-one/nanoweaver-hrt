@@ -108,7 +108,7 @@ flowchart TD
 ### 9. Standalone Multi-Platform Desktop & Mobile Applications
 - **Cross-Platform Native Clients**: Dedicated platform heads for Linux (`x86_64` / `arm64`), macOS (Universal Apple Silicon & Intel), Windows (`win-x64`), Android, iOS, and iPadOS sharing 100% of ViewModels and client SDK logic.
 - **Client Key Vault & 15-Minute Inactivity Lock**: Private keys (Ed25519 & ML-DSA-65) reside strictly within client AES-256-GCM encrypted vaults, with background tray monitoring, notification badging, and automated session zeroization on idle inactivity.
-- **Direct Portable Executables & Sovereign Code Signing**: Release packages across Windows (direct portable `nanoweaver-hrt-desktop-portable-x64.exe` / `NanoWeaverHrt.exe`, dual-scope `nanoweaver-hrt-desktop-installer.exe`, and `NanoWeaverHrt.msix`), ArchLinux (`.pkg.tar.zst` and AUR), Debian/Ubuntu (`.deb`), Fedora (`.rpm`), macOS (`NanoWeaverHrt.dmg`), and Mobile (`.apk`, `.ipa`), signed with the sovereign X.509 `id-kp-codeSigning` Root CA and 90-day short-lived leaf certificates. See [**Desktop & Mobile Applications Guide**](docs/desktop-and-mobile-gui.md) and [**Release v2026.11.19.1**](https://git.lantea.one/lantea-one/nanoweaver-hrt/releases/tag/v2026.11.19.1).
+- **Direct Portable Executables & Sovereign Code Signing**: Release packages across Windows (direct portable `nanoweaver-hrt-desktop-portable-x64.exe` / `NanoWeaverHrt.exe`, dual-scope `nanoweaver-hrt-desktop-installer.exe`, and `NanoWeaverHrt.msix`), ArchLinux (`.pkg.tar.zst` and AUR), Debian/Ubuntu (`.deb`), Fedora (`.rpm`), macOS (`NanoWeaverHrt.dmg`), and Mobile (`.apk`, `.ipa`), signed with the sovereign X.509 `id-kp-codeSigning` Root CA and 90-day short-lived leaf certificates. See [**Desktop & Mobile Applications Guide**](docs/desktop-and-mobile-gui.md) and [**Release v2026.11.19.2**](https://git.lantea.one/lantea-one/nanoweaver-hrt/releases/tag/v2026.11.19.2).
 
 ---
 
@@ -230,7 +230,7 @@ Comprehensive documentation, biomedical engineering primers, architectural diagr
 * **[Post-Quantum Cryptography & Regulatory Compliance](docs/compliance-and-security.md)**: NIST FIPS 203 (ML-KEM-768), FIPS 204 (ML-DSA-65), HIPAA Safe Harbor, GDPR Article 17 crypto-shredding, and FDA 21 CFR Part 11 audit trails.
 * **[Vendored JavaScript Subsystem & SRI Integrity](docs/vendored-javascript.md)**: Subresource Integrity (SRI) dynamic hashing, zero external CDNs, and browser crypto test vectors.
 * **[REST API Reference & Test Harness](docs/api-reference.md)**: Programmatic minimal endpoints, JSON schemas, and test execution.
-* **[Release Notes & Architecture Evolution](docs/release-notes.md)**: Chronological changelog across platform releases (`v2026.10.29.1` through `v2026.11.19.1`).
+* **[Release Notes & Architecture Evolution](docs/release-notes.md)**: Chronological changelog across platform releases (`v2026.10.29.1` through `v2026.11.19.2`).
 * **[Scientific Research & Legal Disclaimer](docs/disclaimer.md)**: Formal scientific research scope, medical non-advice, and BSL-1 biosafety declarations.
 
 ---

@@ -4,6 +4,25 @@
 
 ---
 
+## v2026.11.19.2 — Sovereign Patient-Specific Wet-Lab Batch Fabrication & Cryptographic Quality-Control Lot Release (Milestone 35 / Forgejo Issues #198–#202) (2026-11-19)
+
+Completes **Milestone 35 (`P185`–`P189` / Forgejo Issues `#198`–`#202`)** plus all Renovate `.NET 10` dependency upgrades (`bunit 2.15.2`, `Swashbuckle.AspNetCore 11.0.1` / `Microsoft.OpenApi 3.11.0`, `MySqlConnector 3.0.0`, `StackExchange.Redis 3.4.35`, `Microsoft.NET.Test.Sdk 18.12.0`, `valkey:9-alpine`), closing the full clinical loop from adaptive longitudinal depot calibration to physically fabricated, post-quantum certified patient batches:
+* **Phase 1: Wet-Lab Fabrication Lot Persistence & Multi-Engine Migration 015 (Forgejo #198 / P185)**:
+  - Added `Migration015_FabricationLotLedger` (`Version = 15`) across SQLite, PostgreSQL, DuckDB, and MySQL/MariaDB creating `weaver_fabrication_lots` and `weaver_fabrication_qc_checks` with foreign-key linkage to `weaver_depot_formulations`.
+  - Implemented `IFabricationLotRepository` and `FabricationLotRepository` with dialect-neutral upserts, chronological QC history queries, and atomic GDPR Article 17 erasure cascades (`DeleteByPatientIdAsync`).
+* **Phase 2: 5-Gate Pharmaceutical Wet-Lab QC Verification & ML-DSA-65 Lot Release Engine (Forgejo #199 / P186)**:
+  - Implemented `IFabricationLotService` and `FabricationLotService` enforcing zero-LINQ 5-gate pharmaceutical release criteria: `GelFoldingYield` (≥ 85.0%), `EndotoxinSterility` (0.00–0.50 EU/mL per USP `<85>`), `HydrodynamicSizePdi` (15.0–120.0 nm and PDI ≤ 0.20), `PayloadEncapsulation` (≥ 80.0% and \|mass deviation\| ≤ 5.0%), and `CpGMethylation` (≥ 95.0% when required).
+  - Signs canonical UTF-8 JSON Certificate of Analysis payloads using NIST FIPS 204 **ML-DSA-65** (`IKeyManagementService.SignWithNodeSigningKey`) strictly on 100% gate pass, quarantines incomplete or out-of-spec lots fail-closed, and detects post-release tampering on live `ReconstructCertificate` + `VerifyLotCertificate`.
+* **Phase 3: Minimal API Endpoints, Audit Trail & Client REST SDK Parity (Forgejo #200 / P187)**:
+  - Appended 5 typed Minimal API endpoints to `Program.cs`: `POST /api/fabrication/lots`, `GET /api/fabrication/lots/{patientId}`, `POST /api/fabrication/lots/{lotId}/qc`, `POST /api/fabrication/lots/{lotId}/release`, and `GET /api/fabrication/lots/{lotId}/certificate` with adaptive Milestone 34 calibration inheritance, AES-256-GCM encrypted technician notes, RBAC/subject-access gating, and 21 CFR Part 11 audit logging (`FABRICATION_LOT_CREATE`, `FABRICATION_QC_RECORD`, `FABRICATION_LOT_RELEASE`, `FABRICATION_LOT_QUARANTINE`).
+  - Added full Client REST SDK parity across `INanoWeaverNodeClient`, `NanoWeaverNodeClient`, and `WeaverNodeApiClient`.
+* **Phase 4: Sovereign DepotStudio Wet-Lab Lot Release UI, 18-Language Localization & GUI Core Parity (Forgejo #201 / P188)**:
+  - Extended `DepotStudio.razor` with the integrated Wet-Lab Batch Fabrication & Cryptographic QC Lot Release panel, added 18 localized `FabricationLot.*` keys across all 18 community languages (including Arabic RTL), and added full MVVM ViewModel parity on `PatientClinicalWorkspaceViewModel`.
+* **Phase 5: End-to-End Verification, Documentation Parity & CalVer Release Closeout (Forgejo #202 / P189)**:
+  - Verified 100% pass across all 8 automated verification gates (`./scripts/verify-all.sh`), 100.00% C# & JS line/branch coverage, 0 uncovered lines in `coverage-baseline.json`, live local browser E2E verification, and synchronized Forgejo Pages documentation.
+
+---
+
 ## v2026.11.19.1 — Longitudinal Serum Assay Calibration & Adaptive Depot Re-Dosing Engine (Milestone 34 / Forgejo Issues #187–#191) (2026-11-19)
 
 Completes **Milestone 34 (`P180`–`P184` / Forgejo Issues `#187`–`#191`)**, closing the loop between theoretical 180-day subcutaneous nanocarrier depot kinetics and real-world longitudinal patient serum hormone assays across persistence, systems biology calibration, Minimal APIs, Client REST SDK, sovereign Blazor UI, 18-language localization, and GUI Core ViewModels:

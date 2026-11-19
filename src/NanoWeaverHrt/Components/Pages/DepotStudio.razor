@@ -2,6 +2,7 @@
 @using System.Globalization
 @using System.Text
 @using NanoWeaverHrt.Endocrine
+@using NanoWeaverHrt.Fabrication
 @using NanoWeaverHrt.Localization
 @using NanoWeaverHrt.Models
 @using NanoWeaverHrt.Storage
@@ -9,6 +10,8 @@
 @inject IDepotCalibrationService CalibrationService
 @inject IDepotFormulationRepository DepotRepository
 @inject IDepotAssayRepository AssayRepository
+@inject IFabricationLotRepository LotRepository
+@inject IFabricationLotService LotService
 @inject IWeaverLocalizer Localizer
 @inject IJSRuntime JS
 
@@ -473,6 +476,174 @@
             </div>
         }
     </section>
+
+    <!-- Wet-Lab Batch Fabrication & Cryptographic QC Lot Release Panel (Milestone 35) -->
+    <section id="wet-lab-lot-release-panel" class="card panel mt-4" role="region" aria-label="@T("FabricationLot.SectionTitle")">
+        <div class="panel-header">
+            <div>
+                <h3>@T("FabricationLot.SectionTitle")</h3>
+                <p class="subtext">@T("FabricationLot.SectionDesc")</p>
+            </div>
+            @if (_activeLot != null)
+            {
+                <span id="lot-status-badge" class="badge @GetLotStatusBadgeClass(_activeLot.LotStatus) font-mono">
+                    @T($"FabricationLot.Status.{_activeLot.LotStatus}")
+                </span>
+            }
+        </div>
+
+        <div class="d-flex align-items-center gap-3 mt-3">
+            <label class="d-flex align-items-center gap-2" for="chk-lot-cpg-required">
+                <input id="chk-lot-cpg-required" type="checkbox" @bind="_lotCpGRequired" />
+                <span>@T("FabricationLot.CpGRequiredLabel")</span>
+            </label>
+            <button id="btn-mint-fabrication-lot" class="btn btn-primary" @onclick="MintFabricationLotAsync" disabled="@_isLotBusy">
+                @T("FabricationLot.MintLotButton")
+            </button>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(_lotErrorMessage))
+        {
+            <div id="lot-validation-error" class="alert alert-danger mt-3" role="alert">@_lotErrorMessage</div>
+        }
+
+        @if (_activeLot != null)
+        {
+            <div id="active-lot-summary" class="telemetry-grid mt-4">
+                <div class="card stat-card">
+                    <div class="stat-label">Lot ID</div>
+                    <div class="stat-value-compact font-mono text-accent" title="@_activeLot.LotId">@_activeLot.LotId</div>
+                    <div class="stat-sub text-break-all">Depot: @_activeLot.DepotId</div>
+                </div>
+                <div class="card stat-card">
+                    <div class="stat-label">Target Payload Mass</div>
+                    <div class="stat-value font-mono">@_activeLot.TargetMassMg.ToString("F2") <small class="text-muted">mg</small></div>
+                    <div class="stat-sub text-break-all">@(_activeLot.CalibrationSnapshotId != null ? $"Adaptive Calibration ({_activeLot.CalibrationSnapshotId})" : "Baseline Depot Target")</div>
+                </div>
+                <div class="card stat-card">
+                    <div class="stat-label">Target Daily Erosion</div>
+                    <div class="stat-value font-mono">@_activeLot.TargetErosionRatePercent.ToString("F3")%/d</div>
+                    <div class="stat-sub">@_activeLot.PolymerMatrixType</div>
+                </div>
+                <div class="card stat-card">
+                    <div class="stat-label">Opentrons Protocol SHA-256</div>
+                    <div class="stat-value-compact font-mono" title="@_activeLot.OpentronsProtocolSha256">@_activeLot.OpentronsProtocolSha256</div>
+                    <div class="stat-sub">Protocol API v2 Provenance</div>
+                </div>
+            </div>
+
+            <div class="telemetry-grid mt-4">
+                <div class="form-group">
+                    <label class="form-label" for="select-qc-gate">@T("FabricationLot.GateLabel")</label>
+                    <select id="select-qc-gate" class="form-control" value="@_selectedQcGate" @onchange="HandleQcGateChanged">
+                        <option value="@FabricationQcGateType.GelFoldingYield">1. Agarose Gel Folding Yield (&gt;= 85.0%)</option>
+                        <option value="@FabricationQcGateType.EndotoxinSterility">2. LAL Endotoxin Sterility (&lt;= 0.50 EU/mL)</option>
+                        <option value="@FabricationQcGateType.HydrodynamicSizePdi">3. DLS Diameter (15–120 nm) &amp; PDI (&lt;= 0.20)</option>
+                        <option value="@FabricationQcGateType.PayloadEncapsulation">4. HPLC Encapsulation (&gt;= 80%) &amp; Mass Dev (&lt;= 5%)</option>
+                        <option value="@FabricationQcGateType.CpGMethylation">5. M.SssI CpG Methylation (&gt;= 95.0%)</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="input-qc-measured">@T("FabricationLot.MeasuredValueLabel")</label>
+                    <input id="input-qc-measured" type="number" class="form-control font-mono" @bind="_qcMeasuredValue" step="0.01" />
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="input-qc-secondary">@T("FabricationLot.SecondaryValueLabel")</label>
+                    <input id="input-qc-secondary" type="number" class="form-control font-mono" @bind="_qcSecondaryValue" step="0.01" />
+                </div>
+            </div>
+
+            <div class="d-flex align-items-center gap-2 mt-3">
+                <button id="btn-record-qc-gate" class="btn btn-outline" @onclick="RecordQcGateAsync" disabled="@_isLotBusy">
+                    @T("FabricationLot.RecordQcButton")
+                </button>
+                <button id="btn-release-lot" class="btn btn-primary" @onclick="ReleaseFabricationLotAsync" disabled="@_isLotBusy">
+                    @T("FabricationLot.ReleaseLotButton")
+                </button>
+            </div>
+
+            @if (_lotQcChecks.Count > 0)
+            {
+                <div class="table-container mt-4">
+                    <table id="lot-qc-checks-table" class="data-table">
+                        <caption class="sr-only">Recorded Wet-Lab Pharmaceutical Quality Control Checks</caption>
+                        <thead>
+                            <tr>
+                                <th scope="col">QC Gate</th>
+                                <th scope="col">Measured</th>
+                                <th scope="col">Secondary</th>
+                                <th scope="col">Threshold</th>
+                                <th scope="col">Verdict</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (FabricationQcCheckRecord chk in _lotQcChecks)
+                            {
+                                <tr>
+                                    <td class="font-mono">@chk.GateType</td>
+                                    <td class="font-mono">@chk.MeasuredValue.ToString("F2")</td>
+                                    <td class="font-mono">@(chk.SecondaryValue.HasValue ? chk.SecondaryValue.Value.ToString("F3") : "—")</td>
+                                    <td class="font-mono">@chk.ThresholdValue.ToString("F2")</td>
+                                    <td>
+                                        <span class="badge @(chk.Passed ? "badge-success" : "badge-danger") font-mono">
+                                            @(chk.Passed ? "PASS" : "FAIL")
+                                        </span>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+
+            @if (_lotReleaseEvaluation != null)
+            {
+                @if (_lotReleaseEvaluation.Certificate != null)
+                {
+                    <div id="lot-certificate-card" class="card stat-card mt-4" role="status">
+                        <div class="d-flex align-items-center gap-2">
+                            <h4>@T("FabricationLot.CertificateTitle")</h4>
+                            <span id="lot-certificate-verified-badge" class="badge @(_lotCertificateVerified ? "badge-success" : "badge-danger") font-mono">
+                                @(_lotCertificateVerified ? T("FabricationLot.CertificateVerified") : "SIGNATURE INVALID")
+                            </span>
+                        </div>
+                        <div class="telemetry-grid mt-3">
+                            <div>
+                                <div class="stat-label">Algorithm</div>
+                                <div class="font-mono text-accent">@_lotReleaseEvaluation.Certificate.SignatureAlgorithm</div>
+                            </div>
+                            <div>
+                                <div class="stat-label">Signer Key ID</div>
+                                <div class="font-mono text-break-all">@_lotReleaseEvaluation.Certificate.SignerKeyId</div>
+                            </div>
+                            <div>
+                                <div class="stat-label">Canonical Payload SHA-256</div>
+                                <div class="font-mono text-break-all" title="@_lotReleaseEvaluation.Certificate.PayloadSha256">@_lotReleaseEvaluation.Certificate.PayloadSha256</div>
+                            </div>
+                            <div>
+                                <div class="stat-label">Issued UTC</div>
+                                <div class="font-mono">@_lotReleaseEvaluation.Certificate.IssuedAtUtc.ToString("u", CultureInfo.InvariantCulture)</div>
+                            </div>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div id="lot-quarantine-banner" class="alert alert-danger mt-4" role="alert">
+                        <strong>@T("FabricationLot.QuarantineTitle")</strong>
+                        <ul class="mt-2">
+                            @foreach (string reason in _lotReleaseEvaluation.FailureReasons)
+                            {
+                                <li>@reason</li>
+                            }
+                        </ul>
+                    </div>
+                }
+            }
+        }
+    </section>
 }
 
 @code {
@@ -565,6 +736,61 @@
     /// Currently active community localization language.
     /// </summary>
     private WeaverLanguage _currentLanguage = WeaverLanguage.English;
+
+    /// <summary>
+    /// Active wet-lab fabrication lot minted from the current depot session.
+    /// </summary>
+    private FabricationLotRecord? _activeLot;
+
+    /// <summary>
+    /// Latest persisted Milestone 34 calibration snapshot identifier for adaptive lot minting.
+    /// </summary>
+    private string? _latestCalibrationSnapshotId;
+
+    /// <summary>
+    /// Recorded wet-lab QC checks for <see cref="_activeLot"/>.
+    /// </summary>
+    private readonly List<FabricationQcCheckRecord> _lotQcChecks = [];
+
+    /// <summary>
+    /// Most recent 5-gate wet-lab release evaluation for <see cref="_activeLot"/>.
+    /// </summary>
+    private FabricationLotReleaseEvaluation? _lotReleaseEvaluation;
+
+    /// <summary>
+    /// Indicates whether the active Certificate of Analysis passed live ML-DSA-65 verification.
+    /// </summary>
+    private bool _lotCertificateVerified;
+
+    /// <summary>
+    /// Toggle indicating whether CpG enzymatic methylation verification is mandatory on newly minted lots.
+    /// </summary>
+    private bool _lotCpGRequired = true;
+
+    /// <summary>
+    /// Currently selected wet-lab pharmaceutical QC gate in the entry form.
+    /// </summary>
+    private FabricationQcGateType _selectedQcGate = FabricationQcGateType.GelFoldingYield;
+
+    /// <summary>
+    /// Primary measured laboratory value entered for the active QC gate.
+    /// </summary>
+    private double _qcMeasuredValue = 92.4;
+
+    /// <summary>
+    /// Optional secondary laboratory value (DLS PDI or gravimetric mass deviation %).
+    /// </summary>
+    private double? _qcSecondaryValue;
+
+    /// <summary>
+    /// Validation or operational error message displayed in the wet-lab lot release panel.
+    /// </summary>
+    private string? _lotErrorMessage;
+
+    /// <summary>
+    /// Indicates whether an asynchronous lot persistence or signing operation is running.
+    /// </summary>
+    private bool _isLotBusy;
 
     /// <summary>
     /// Resolves a localized UI string for the active community language.
@@ -781,7 +1007,7 @@
                 Observations = _recordedAssays
             });
 
-            await AssayRepository.SaveCalibrationSnapshotAsync(new DepotCalibrationSnapshotRecord
+            DepotCalibrationSnapshotRecord savedSnap = await AssayRepository.SaveCalibrationSnapshotAsync(new DepotCalibrationSnapshotRecord
             {
                 DepotId = _activeDepotId,
                 PatientId = patientId,
@@ -794,6 +1020,7 @@
                 ComputedAtUtc = DateTimeOffset.UtcNow
             });
 
+            _latestCalibrationSnapshotId = savedSnap.SnapshotId;
             _calibrationResult = result;
         }
         finally
@@ -812,8 +1039,14 @@
         // HOW:  Clears _recordedAssays, nulls _calibrationResult, _activeDepotId, and _assayErrorMessage.
         _recordedAssays.Clear();
         _calibrationResult = null;
+        _latestCalibrationSnapshotId = null;
         _activeDepotId = null;
         _assayErrorMessage = null;
+        _activeLot = null;
+        _lotQcChecks.Clear();
+        _lotReleaseEvaluation = null;
+        _lotCertificateVerified = false;
+        _lotErrorMessage = null;
     }
 
     /// <summary>
@@ -989,4 +1222,200 @@
             }
         }
     }
+
+    /// <summary>
+    /// Updates default measurement placeholders when the operator switches the active pharmaceutical QC gate.
+    /// </summary>
+    /// <param name="e">Change event arguments carrying the selected <see cref="FabricationQcGateType"/> name.</param>
+    private void HandleQcGateChanged(ChangeEventArgs e)
+    {
+        // WHAT: Updates default laboratory measurement inputs to typical passing reference values for the selected gate.
+        // WHY:  Streamlines benchtop QC entry and reminds operators of expected units per gate.
+        // HOW:  Parses FabricationQcGateType and assigns gate-specific default primary/secondary values.
+        if (Enum.TryParse(e.Value?.ToString(), out FabricationQcGateType gate))
+        {
+            _selectedQcGate = gate;
+            (_qcMeasuredValue, _qcSecondaryValue) = gate switch
+            {
+                FabricationQcGateType.GelFoldingYield => (92.4, (double?)null),
+                FabricationQcGateType.EndotoxinSterility => (0.14, (double?)null),
+                FabricationQcGateType.HydrodynamicSizePdi => (62.0, (double?)0.12),
+                FabricationQcGateType.PayloadEncapsulation => (89.0, (double?)1.5),
+                _ => (98.2, (double?)null)
+            };
+        }
+    }
+
+    /// <summary>
+    /// Mints a new patient-specific wet-lab nanocarrier fabrication lot inheriting active depot or calibrated parameters.
+    /// </summary>
+    /// <returns>A task representing the asynchronous lot creation operation.</returns>
+    private async Task MintFabricationLotAsync()
+    {
+        // WHAT: Persists a new wet-lab fabrication lot bound to the active depot formulation and Opentrons SHA-256 digest.
+        // WHY:  Milestone 35 (P188): Connects adaptive Milestone 34 recommendations directly into physical batch manufacturing.
+        // HOW:  Ensures the parent depot exists in DepotRepository, selects calibrated or baseline mass/erosion, and upserts lot.
+        _lotErrorMessage = null;
+        _isLotBusy = true;
+        try
+        {
+            TimeReleaseDepotParameters baseline = BuildBaselineParameters();
+            string patientId = "depot-studio-session";
+            if (string.IsNullOrWhiteSpace(_activeDepotId))
+            {
+                _activeDepotId = $"depot_studio_{Guid.NewGuid():N}";
+                await DepotRepository.UpsertDepotFormulationAsync(new DepotFormulationRecord
+                {
+                    DepotId = _activeDepotId,
+                    PatientId = patientId,
+                    Regimen = baseline.Regimen,
+                    PolymerMatrixType = baseline.MatrixType.ToString(),
+                    InitialNanocarrierMassMg = baseline.InitialPayloadMassMg,
+                    DailyErosionRatePercent = baseline.DailyErosionRatePercent,
+                    ReleaseKineticsModel = baseline.KineticsModel.ToString(),
+                    TargetHorizonDays = baseline.TargetHorizonDays,
+                    CreatedAtUtc = DateTimeOffset.UtcNow
+                });
+            }
+
+            double targetMassMg = _calibrationResult?.RecommendedNextMassMg ?? baseline.InitialPayloadMassMg;
+            double targetErosion = _calibrationResult?.RecommendedNextErosionRatePercent ?? baseline.DailyErosionRatePercent;
+            string opentronsSha = LotService.ComputeOpentronsProtocolSha256(
+                _activeDepotId,
+                patientId,
+                baseline.Regimen,
+                baseline.MatrixType.ToString(),
+                targetMassMg,
+                targetErosion);
+
+            _activeLot = await LotRepository.UpsertLotAsync(new FabricationLotRecord
+            {
+                DepotId = _activeDepotId,
+                CalibrationSnapshotId = _latestCalibrationSnapshotId,
+                PatientId = patientId,
+                Regimen = baseline.Regimen,
+                PolymerMatrixType = baseline.MatrixType.ToString(),
+                TargetMassMg = targetMassMg,
+                TargetErosionRatePercent = targetErosion,
+                CpGMethylationRequired = _lotCpGRequired,
+                OpentronsProtocolSha256 = opentronsSha,
+                LotStatus = FabricationLotStatus.Draft,
+                CreatedAtUtc = DateTimeOffset.UtcNow
+            });
+
+            _lotQcChecks.Clear();
+            _lotReleaseEvaluation = null;
+            _lotCertificateVerified = false;
+        }
+        finally
+        {
+            _isLotBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Evaluates and persists a single pharmaceutical wet-lab QC measurement for the active lot.
+    /// </summary>
+    /// <returns>A task representing the asynchronous QC persistence operation.</returns>
+    private async Task RecordQcGateAsync()
+    {
+        // WHAT: Evaluates the entered QC gate reading via IFabricationLotService and logs it to IFabricationLotRepository.
+        // WHY:  Captures verifiable 5-gate wet-lab evidence prior to cryptographic Certificate of Analysis signing.
+        // HOW:  Validates an active lot exists, runs EvaluateSingleGate, persists check, and transitions lot to QcPending.
+        _lotErrorMessage = null;
+        if (_activeLot is null)
+        {
+            _lotErrorMessage = "Mint a wet-lab fabrication lot before recording QC checks.";
+            return;
+        }
+
+        _isLotBusy = true;
+        try
+        {
+            FabricationQcGateEvaluation eval = LotService.EvaluateSingleGate(_selectedQcGate, _qcMeasuredValue, _qcSecondaryValue);
+            FabricationQcCheckRecord saved = await LotRepository.RecordQcCheckAsync(new FabricationQcCheckRecord
+            {
+                LotId = _activeLot.LotId,
+                PatientId = _activeLot.PatientId,
+                GateType = _selectedQcGate,
+                MeasuredValue = _qcMeasuredValue,
+                SecondaryValue = _qcSecondaryValue,
+                ThresholdValue = eval.ThresholdValue,
+                Passed = eval.Passed,
+                RecordedAtUtc = DateTimeOffset.UtcNow
+            });
+
+            _lotQcChecks.Add(saved);
+            if (_activeLot.LotStatus is FabricationLotStatus.Draft or FabricationLotStatus.Quarantined)
+            {
+                _activeLot = await LotRepository.UpsertLotAsync(_activeLot with { LotStatus = FabricationLotStatus.QcPending });
+            }
+        }
+        finally
+        {
+            _isLotBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Executes 5-gate pharmaceutical verification and signs a post-quantum ML-DSA-65 Certificate of Analysis on pass.
+    /// </summary>
+    /// <returns>A task representing the asynchronous cryptographic release operation.</returns>
+    private async Task ReleaseFabricationLotAsync()
+    {
+        // WHAT: Evaluates all required wet-lab QC gates on the active lot and transitions it to Released or Quarantined.
+        // WHY:  Enforces fail-closed clinical safety with live NIST FIPS 204 ML-DSA-65 cryptographic verification.
+        // HOW:  Calls IFabricationLotService.EvaluateAndSignLotRelease, persists updated lot metadata, and runs VerifyLotCertificate.
+        _lotErrorMessage = null;
+        if (_activeLot is null)
+        {
+            _lotErrorMessage = "Mint a wet-lab fabrication lot before executing lot release.";
+            return;
+        }
+
+        _isLotBusy = true;
+        try
+        {
+            FabricationLotReleaseEvaluation eval = LotService.EvaluateAndSignLotRelease(_activeLot, _lotQcChecks);
+            FabricationLotRecord updated = eval.Certificate is not null
+                ? _activeLot with
+                {
+                    LotStatus = FabricationLotStatus.Released,
+                    CertificatePayloadSha256 = eval.Certificate.PayloadSha256,
+                    CertificateSignatureBase64 = eval.Certificate.SignatureBase64,
+                    CertificateSignerKeyId = eval.Certificate.SignerKeyId,
+                    ReleasedAtUtc = eval.Certificate.IssuedAtUtc
+                }
+                : _activeLot with
+                {
+                    LotStatus = FabricationLotStatus.Quarantined,
+                    CertificatePayloadSha256 = null,
+                    CertificateSignatureBase64 = null,
+                    CertificateSignerKeyId = null,
+                    ReleasedAtUtc = null
+                };
+
+            _activeLot = await LotRepository.UpsertLotAsync(updated);
+            _lotReleaseEvaluation = eval;
+            _lotCertificateVerified = eval.Certificate is not null && LotService.VerifyLotCertificate(eval.Certificate);
+        }
+        finally
+        {
+            _isLotBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Resolves the sovereign theme CSS badge class corresponding to a <see cref="FabricationLotStatus"/> value.
+    /// </summary>
+    /// <param name="status">Current wet-lab fabrication lot lifecycle status.</param>
+    /// <returns>A CSS badge utility class name.</returns>
+    private static string GetLotStatusBadgeClass(FabricationLotStatus status) => status switch
+    {
+        FabricationLotStatus.Released => "badge-success",
+        FabricationLotStatus.Quarantined => "badge-danger",
+        FabricationLotStatus.Revoked => "badge-danger",
+        FabricationLotStatus.QcPending => "badge-warning",
+        _ => "badge-outline"
+    };
 }

@@ -429,3 +429,14 @@ The scheduled CI workflows (`.forgejo/workflows/rotate-codesign-certs.yml` and `
 2. If remaining validity is less than 30 days (`2,592,000` seconds), generates a fresh 90-day leaf certificate signed by the Sovereign Root CA and a fresh 90-day OpenPGP signing keypair.
 3. Automatically commits updated public trust anchors in `docs/assets/keys/` and publishes them to documentation wiki mirrors.
 
+---
+
+## 9. Wet-Lab Batch Chain of Custody & ML-DSA-65 Lot Release Certificates (Milestone 35)
+
+To extend FDA 21 CFR Part 11 integrity from computational modeling into physical nanocarrier synthesis:
+- **Deterministic Canonical Payload Binding**: `FabricationLotService` serializes the lot ID, parent depot ID, optional Milestone 34 calibration snapshot ID, target mass, erosion rate, Opentrons protocol SHA-256 digest, UTC issuance timestamp, and every evaluated QC gate into deterministic UTF-8 JSON and hashes it with SHA-256.
+- **NIST FIPS 204 ML-DSA-65 Signing**: Certificates of Analysis are signed directly inside `IKeyManagementService.SignWithNodeSigningKey` without exposing private key material, and re-verified live on every `GET /api/fabrication/lots/{lotId}/certificate` lookup via `IPostQuantumCryptoProvider.VerifySignature`.
+- **Fail-Closed Quarantine & Tamper Evidence**: Missing or failed wet-lab gates transition the lot to `Quarantined` with `Certificate = null`. Any post-release modification to persisted lot mass, protocol digest, or QC rows causes canonical hash reconstruction to diverge and flags `signatureVerified: false`.
+- **PHI Encryption & GDPR Erasure**: Optional wet-lab technician notes are encrypted at rest with AES-256-GCM (`ProfileDataProtector`), every lifecycle step emits a hash-chained 21 CFR Part 11 audit event (`FABRICATION_LOT_CREATE`, `FABRICATION_QC_RECORD`, `FABRICATION_LOT_RELEASE`, `FABRICATION_LOT_QUARANTINE`), and `IFabricationLotRepository.DeleteByPatientIdAsync` provides atomic GDPR Article 17 erasure cascades.
+
+

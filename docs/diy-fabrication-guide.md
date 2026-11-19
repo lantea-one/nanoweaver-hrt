@@ -188,6 +188,22 @@ Transitioning from weekly injections or daily topicals to twice-yearly outpatien
 
 ---
 
+## 7. 5-Gate Pharmaceutical Wet-Lab QC & Cryptographic Lot Release (Milestone 35)
+
+Before any patient-specific nanocarrier batch is cleared for clinical administration, the fabricating node enforces a **fail-closed 5-gate pharmaceutical QC checklist** in `/depot-studio` or via `POST /api/fabrication/lots/{lotId}/qc`:
+
+| Gate | Assay Method | Acceptance Criterion | Failure Mode Prevented |
+| :--- | :--- | :--- | :--- |
+| 1. `GelFoldingYield` | 2% Agarose Gel Densitometry | ≥ 85.0% monomeric origami band | Misfolded cages / staple aggregation |
+| 2. `EndotoxinSterility` | LAL Endotoxin Assay (USP `<85>`) | 0.00 to ≤ 0.50 EU/mL | Gram-negative bacterial pyrogen contamination |
+| 3. `HydrodynamicSizePdi` | Dynamic Light Scattering (DLS) | 15.0–120.0 nm diameter and PDI ≤ 0.20 | Polydisperse clumping or degraded nanostructures |
+| 4. `PayloadEncapsulation` | HPLC Assay + Gravimetric Mass | ≥ 80.0% encapsulation and \|mass deviation\| ≤ 5.0% | Under-dosed or burst-prone depots |
+| 5. `CpGMethylation` | M.SssI Enzymatic Methylation | ≥ 95.0% CpG methylation (when required) | TLR9 innate immune inflammation |
+
+When all required gates pass, `POST /api/fabrication/lots/{lotId}/release` mints an immutable **NIST FIPS 204 ML-DSA-65 Certificate of Analysis (CoA)** binding the lot's adaptive payload mass, polymer erosion rate, Opentrons Protocol API v2 SHA-256 digest, and every QC measurement to the node's persistent signing key. If any required gate is missing or fails, the lot is automatically transitioned to `Quarantined` and no signature is issued.
+
+---
+
 ## Next Steps
 * Walk through the end-to-end software pipeline in [**Guided DNA Workflow Wizard**](workflow-wizard.md).
 * Review endocrine setpoints in [**Endocrine Hub & Pharmacodynamics**](endocrine-hub.md).
