@@ -8,10 +8,6 @@ on:
       - '.forgejo/workflows/deploy-pages.yml'
   workflow_dispatch:
 
-# The git-pages upload authenticates with the run's token, which requires write access to the repository
-permissions:
-  contents: write
-
 # Serialize concurrent deployments to prevent upload race conditions
 concurrency:
   group: "pages-publish"
@@ -21,7 +17,11 @@ jobs:
   deploy-pages:
     name: Publish Documentation Wiki to Forgejo Pages
     if: forgejo.ref == 'refs/heads/main'
-    runs-on: heimdall-ci
+    # WHAT: Run on the containerized vidar-ci runner (label: vidar).
+    # WHY:  Publishing static docs/ to Forgejo Pages is a quick ~10-second task and avoids
+    #       queuing behind long-running GUI packaging jobs on heimdall-ci.
+    # HOW:  Target the vidar label of the vidar-ci containerized runner.
+    runs-on: vidar
     timeout-minutes: 15
     steps:
       - name: Checkout Source Code

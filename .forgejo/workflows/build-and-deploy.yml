@@ -20,9 +20,6 @@ jobs:
     #       or small-task runners (vidar-ci).
     # HOW:  Select the asgard-ci containerized runner label and provision SDKs via setup actions.
     runs-on: asgard-ci
-    permissions:
-      contents: read
-      packages: write
 
     steps:
       - name: Checkout Source Code
@@ -200,6 +197,11 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.PACKAGE_TOKEN || secrets.GITHUB_TOKEN }}
 
+      - name: Resolve CalVer Package Version
+        id: calver
+        run: |
+          echo "version=$(./scripts/packaging/get-version.sh)" >> "$GITHUB_OUTPUT"
+
       - name: Extract Web Docker Image Metadata
         id: meta-web
         uses: docker/metadata-action@v5
@@ -208,8 +210,8 @@ jobs:
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/nanoweaver-hrt-web
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,format=short,prefix=sha-
-            type=semver,pattern={{version}}
+            type=raw,value=${{ steps.calver.outputs.version }},enable=${{ startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/heads/release/') }}
+            type=ref,event=pr
 
       - name: Build and Push Web & Parser Container Image
         # WHAT: Build this image for linux/amd64 only, never the runner's native architecture.
@@ -224,6 +226,7 @@ jobs:
           context: .
           file: docker/web/Dockerfile.web
           platforms: linux/amd64
+          provenance: false
           push: ${{ github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/tags/v')) }}
           tags: ${{ steps.meta-web.outputs.tags }}
           labels: ${{ steps.meta-web.outputs.labels }}
@@ -236,8 +239,8 @@ jobs:
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/nanoweaver-hrt-simulation
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,format=short,prefix=sha-
-            type=semver,pattern={{version}}
+            type=raw,value=${{ steps.calver.outputs.version }},enable=${{ startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/heads/release/') }}
+            type=ref,event=pr
 
       - name: Build and Push Simulation Container Image
         # WHAT: Build this image for linux/amd64 only, never the runner's native architecture.
@@ -253,6 +256,7 @@ jobs:
           context: .
           file: docker/simulation/Dockerfile.simulation
           platforms: linux/amd64
+          provenance: false
           push: ${{ github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/tags/v')) }}
           tags: ${{ steps.meta-simulation.outputs.tags }}
           labels: ${{ steps.meta-simulation.outputs.labels }}
@@ -279,8 +283,6 @@ jobs:
     #       scripts/packaging/build-all-packages.sh, uploads discrete artifact bundles,
     #       and attaches direct binary downloads to Forgejo continuous and tagged releases.
     runs-on: heimdall-ci
-    permissions:
-      contents: write
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4

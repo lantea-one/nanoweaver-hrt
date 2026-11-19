@@ -177,22 +177,22 @@ ASSET_FILES=()
 
 # Windows Binaries
 for f in "${PACKAGES_DIR}/windows"/*.exe "${PACKAGES_DIR}/windows"/*.msix "${PACKAGES_DIR}/windows"/*.p7s "${PACKAGES_DIR}/windows"/*.asc "${PACKAGES_DIR}/windows"/*.sig; do
-    [[ -f "${f}" ]] && ASSET_FILES+=("${f}")
+    [[ -f "${f}" && "$(basename "${f}")" != SHA256SUMS* ]] && ASSET_FILES+=("${f}")
 done
 
 # Linux Packages
 for f in "${PACKAGES_DIR}/linux"/*.deb "${PACKAGES_DIR}/linux"/*.rpm "${PACKAGES_DIR}/linux"/*.pkg.tar.zst "${PACKAGES_DIR}/linux"/*.p7s "${PACKAGES_DIR}/linux"/*.asc "${PACKAGES_DIR}/linux"/*.sig; do
-    [[ -f "${f}" ]] && ASSET_FILES+=("${f}")
+    [[ -f "${f}" && "$(basename "${f}")" != SHA256SUMS* ]] && ASSET_FILES+=("${f}")
 done
 
 # macOS Packages
 for f in "${PACKAGES_DIR}/macos"/*.dmg "${PACKAGES_DIR}/macos"/*.tar.gz "${PACKAGES_DIR}/macos"/*.p7s "${PACKAGES_DIR}/macos"/*.asc "${PACKAGES_DIR}/macos"/*.sig; do
-    [[ -f "${f}" ]] && ASSET_FILES+=("${f}")
+    [[ -f "${f}" && "$(basename "${f}")" != SHA256SUMS* ]] && ASSET_FILES+=("${f}")
 done
 
 # Mobile Packages
 for f in "${PACKAGES_DIR}/mobile"/*.apk "${PACKAGES_DIR}/mobile"/*.ipa "${PACKAGES_DIR}/mobile"/*.p7s "${PACKAGES_DIR}/mobile"/*.asc "${PACKAGES_DIR}/mobile"/*.sig; do
-    [[ -f "${f}" ]] && ASSET_FILES+=("${f}")
+    [[ -f "${f}" && "$(basename "${f}")" != SHA256SUMS* ]] && ASSET_FILES+=("${f}")
 done
 
 # Master Manifest & Trust Anchors
@@ -200,8 +200,26 @@ for f in "${PACKAGES_DIR}"/SHA256SUMS* "${ROOT_DIR}/docs/assets/keys"/nanoweaver
     [[ -f "${f}" ]] && ASSET_FILES+=("${f}")
 done
 
+# WHAT: Fetch existing release assets to prevent duplicate asset uploads on re-runs.
+# WHY:  Re-running or concurrently pushing a release branch and tag otherwise attaches duplicate assets.
+# HOW:  Query GET /releases/{id}/assets and remove any existing asset matching the incoming filename before upload.
+EXISTING_ASSETS_JSON="$(curl -s -H "${AUTH_HEADER}" "${API_BASE}/releases/${RELEASE_ID}/assets" || echo "[]")"
+
 for asset in "${ASSET_FILES[@]}"; do
     filename="$(basename "${asset}")"
+    EXISTING_ASSET_IDS="$(python3 -c "
+import json, sys
+try:
+    assets = json.loads(sys.argv[1])
+    for a in assets:
+        if isinstance(a, dict) and a.get('name') == sys.argv[2]:
+            print(a.get('id', ''))
+except Exception:
+    pass
+" "${EXISTING_ASSETS_JSON}" "${filename}")"
+    for old_id in ${EXISTING_ASSET_IDS}; do
+        [[ -n "${old_id}" ]] && curl -s -X DELETE -H "${AUTH_HEADER}" "${API_BASE}/releases/${RELEASE_ID}/assets/${old_id}" >/dev/null 2>&1 || true
+    done
     echo "  -> Attaching direct release file: ${filename}..."
     curl -s -X POST \
         -H "${AUTH_HEADER}" \
