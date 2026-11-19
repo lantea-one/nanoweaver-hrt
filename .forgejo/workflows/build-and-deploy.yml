@@ -9,6 +9,7 @@ on:
 
 env:
   REGISTRY: git.lantea.one
+  XDG_RUNTIME_DIR: /tmp
 
 jobs:
   build-test-and-publish:

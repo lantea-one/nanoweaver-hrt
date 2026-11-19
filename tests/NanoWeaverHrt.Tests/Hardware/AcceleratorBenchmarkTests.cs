@@ -448,7 +448,7 @@ public sealed class AcceleratorBenchmarkTests : IDisposable
     }
 
     /// <summary>
-    /// Verifies that exceptions during sysfs file access (such as permissions denial) are handled safely.
+    /// Verifies that exceptions during sysfs file access (such as permissions denial or kernel I/O error) are handled safely.
     /// </summary>
     [Fact]
     public void Sysfs_UnreadableFiles_CatchesExceptionAndFallsBackToDefaults()
@@ -460,19 +460,25 @@ public sealed class AcceleratorBenchmarkTests : IDisposable
         Directory.CreateDirectory(hwmon0Dir);
 
         string labelFile = Path.Combine(deviceDir, "label");
-        File.WriteAllText(labelFile, "Test Label");
-
         string tempFile = Path.Combine(hwmon0Dir, "temp1_input");
-        File.WriteAllText(tempFile, "60000");
-
         string powerFile = Path.Combine(hwmon0Dir, "power1_average");
-        File.WriteAllText(powerFile, "80000000");
 
         if (OperatingSystem.IsLinux())
         {
-            File.SetUnixFileMode(labelFile, UnixFileMode.None);
-            File.SetUnixFileMode(tempFile, UnixFileMode.None);
-            File.SetUnixFileMode(powerFile, UnixFileMode.None);
+            // WHAT: Creates symbolic links pointing to /proc/self/mem for simulated unreadable sysfs files.
+            // WHY:  Containerized CI runners execute as root (UID 0 with CAP_DAC_OVERRIDE), which bypasses
+            //       UnixFileMode.None (chmod 0000). /proc/self/mem satisfies File.Exists() as a regular file
+            //       while deterministically throwing IOException (EIO) on File.ReadAllText() at offset 0 for all UIDs.
+            // HOW:  Links label, temp1_input, and power1_average to /proc/self/mem.
+            File.CreateSymbolicLink(labelFile, "/proc/self/mem");
+            File.CreateSymbolicLink(tempFile, "/proc/self/mem");
+            File.CreateSymbolicLink(powerFile, "/proc/self/mem");
+        }
+        else
+        {
+            File.WriteAllText(labelFile, "Test Label");
+            File.WriteAllText(tempFile, "60000");
+            File.WriteAllText(powerFile, "80000000");
         }
 
         DefaultAcceleratorTelemetryProvider provider = new(_testSysfsRoot);
