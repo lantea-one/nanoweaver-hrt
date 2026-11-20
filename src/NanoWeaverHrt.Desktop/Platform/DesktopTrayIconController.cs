@@ -236,13 +236,50 @@ public sealed class DesktopTrayIconController : ITrayIconController, IDisposable
         ArgumentNullException.ThrowIfNull(summary);
         ArgumentNullException.ThrowIfNull(instanceSummaries);
 
-        (TrayHealthBadge badge, string statusKey) = summary.Severity switch
-        {
-            ClinicalWorkspaceSeverity.Critical => (TrayHealthBadge.Critical, "Gui.DepotWorkspace.TrayCritical"),
-            ClinicalWorkspaceSeverity.Warning => (TrayHealthBadge.Warning, "Gui.DepotWorkspace.TrayWarning"),
-            ClinicalWorkspaceSeverity.Optimal => (TrayHealthBadge.Healthy, "Gui.DepotWorkspace.TrayOptimal"),
-            _ => (TrayHealthBadge.Idle, "Status.Offline")
-        };
+        (TrayHealthBadge badge, string statusKey) = summary.NewFederatedRecallCount > 0
+            ? (TrayHealthBadge.Critical, "Gui.DepotWorkspace.TrayFederatedRecall")
+            : summary.Severity switch
+            {
+                ClinicalWorkspaceSeverity.Critical => (TrayHealthBadge.Critical, "Gui.DepotWorkspace.TrayCritical"),
+                ClinicalWorkspaceSeverity.Warning when summary.FailedPeerSyncCount > 0 && summary.QuarantinedLotCount == 0 && summary.ActiveSafetyAlertCount == 0 =>
+                    (TrayHealthBadge.Warning, "Gui.DepotWorkspace.TrayPeerSyncFailed"),
+                ClinicalWorkspaceSeverity.Warning => (TrayHealthBadge.Warning, "Gui.DepotWorkspace.TrayWarning"),
+                ClinicalWorkspaceSeverity.Optimal => (TrayHealthBadge.Healthy, "Gui.DepotWorkspace.TrayOptimal"),
+                _ => (TrayHealthBadge.Idle, "Status.Offline")
+            };
+
+        ApplyLocalizedState(badge, statusKey, isMainWindowVisible, areNotificationsMuted, instanceSummaries);
+    }
+
+    /// <summary>
+    /// Escalates federated peer revocation pull-sync telemetry directly onto the desktop system tray badge,
+    /// highlighting newly imported upstream recalls as <see cref="TrayHealthBadge.Critical"/> and peer sync
+    /// failures as <see cref="TrayHealthBadge.Warning"/>.
+    /// </summary>
+    /// <param name="newlyImportedRecalls">Count of newly discovered federated recall tombstones pulled from peer labs.</param>
+    /// <param name="failedPeerSyncCount">Count of subscribed peer endpoints whose most recent sync attempt failed.</param>
+    /// <param name="isMainWindowVisible">True when the primary desktop window is currently shown.</param>
+    /// <param name="areNotificationsMuted">True when OS notifications are muted.</param>
+    /// <param name="instanceSummaries">Current per-node status lines to display in the tray menu.</param>
+    public void ApplyFederatedSyncState(
+        int newlyImportedRecalls,
+        int failedPeerSyncCount,
+        bool isMainWindowVisible,
+        bool areNotificationsMuted,
+        IReadOnlyList<string> instanceSummaries)
+    {
+        // WHAT: Maps federated peer pull-sync outcomes onto desktop tray icon badges and localized tooltips.
+        // WHY:  Milestone 39 (P207): Immediately alerts minimized desktop clinicians to newly imported upstream lot recalls or peer outages.
+        // HOW:  Checks newlyImportedRecalls first (Critical), then failedPeerSyncCount (Warning), else Healthy.
+        ArgumentOutOfRangeException.ThrowIfNegative(newlyImportedRecalls);
+        ArgumentOutOfRangeException.ThrowIfNegative(failedPeerSyncCount);
+        ArgumentNullException.ThrowIfNull(instanceSummaries);
+
+        (TrayHealthBadge badge, string statusKey) = newlyImportedRecalls > 0
+            ? (TrayHealthBadge.Critical, "Gui.DepotWorkspace.TrayFederatedRecall")
+            : failedPeerSyncCount > 0
+                ? (TrayHealthBadge.Warning, "Gui.DepotWorkspace.TrayPeerSyncFailed")
+                : (TrayHealthBadge.Healthy, "Gui.DepotWorkspace.TrayOptimal");
 
         ApplyLocalizedState(badge, statusKey, isMainWindowVisible, areNotificationsMuted, instanceSummaries);
     }

@@ -65,48 +65,14 @@ echo ">> Target Tag:       ${TAG_NAME}"
 echo ">> Release Title:    ${RELEASE_TITLE}"
 echo ">> Is Pre-release:   ${IS_PRERELEASE}"
 
-# WHAT: Format rich markdown release notes detailing direct download links.
-# WHY:  Provides users immediate clickable download links for every platform and signature.
-# HOW:  Construct release description with direct file links on git.lantea.one.
-RELEASE_NOTES=$(cat << EOF
-### Sovereign Research & Clinical Therapeutics Release
-
-Automated release of **NanoWeaver HRT** with direct binary downloads for Windows, Linux, macOS, and Mobile.
-All packages are signed and verifiable against the Sovereign Root CA and OpenPGP archive key.
-
-#### Direct Windows Executables
-- [nanoweaver-hrt-desktop-installer.exe](https://${REGISTRY}/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/nanoweaver-hrt-desktop-installer.exe): Dual-scope Windows GUI installer (Standard user & Administrator scopes)
-- [nanoweaver-hrt-desktop-portable-x64.exe](https://${REGISTRY}/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/nanoweaver-hrt-desktop-portable-x64.exe): Standalone single-file portable Windows executable (Zero installation)
-- [NanoWeaverHrt.exe](https://${REGISTRY}/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/NanoWeaverHrt.exe): Direct portable executable
-- [NanoWeaverHrt.msix](https://${REGISTRY}/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/NanoWeaverHrt.msix): Windows Store application package
-
-#### Linux Distribution Packages
-- [nanoweaver-hrt-desktop-amd64.deb](https://${REGISTRY}/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/nanoweaver-hrt-desktop-amd64.deb): Debian / Ubuntu x86_64
-- [nanoweaver-hrt-desktop-arm64.deb](https://${REGISTRY}/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/nanoweaver-hrt-desktop-arm64.deb): Debian / Ubuntu arm64
-- [nanoweaver-hrt-desktop-amd64.rpm](https://${REGISTRY}/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/nanoweaver-hrt-desktop-amd64.rpm): Fedora / RHEL x86_64
-- [nanoweaver-hrt-desktop-arm64.rpm](https://${REGISTRY}/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/nanoweaver-hrt-desktop-arm64.rpm): Fedora / RHEL aarch64
-- [nanoweaver-hrt-desktop-x86_64.pkg.tar.zst](https://${REGISTRY}/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/nanoweaver-hrt-desktop-x86_64.pkg.tar.zst): ArchLinux / CachyOS x86_64
-- [nanoweaver-hrt-desktop-arm64.pkg.tar.zst](https://${REGISTRY}/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/nanoweaver-hrt-desktop-arm64.pkg.tar.zst): ArchLinux aarch64
-
-#### Apple macOS Disk Images
-- [NanoWeaverHrt.dmg](https://${REGISTRY}/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/NanoWeaverHrt.dmg): Universal Apple Silicon + Intel Disk Image
-- [NanoWeaverHrt-macos-arm64.dmg](https://${REGISTRY}/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/NanoWeaverHrt-macos-arm64.dmg): Apple Silicon Disk Image
-- [NanoWeaverHrt-macos-amd64.dmg](https://${REGISTRY}/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/NanoWeaverHrt-macos-amd64.dmg): Intel x86_64 Disk Image
-- [NanoWeaverHrt-macos-universal.app.tar.gz](https://${REGISTRY}/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/NanoWeaverHrt-macos-universal.app.tar.gz): Universal macOS Application Bundle Archive
-
-#### Mobile Application Packages
-- [nanoweaver-hrt-mobile-android.apk](https://${REGISTRY}/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/nanoweaver-hrt-mobile-android.apk): Android application package
-- [nanoweaver-hrt-mobile-ios.ipa](https://${REGISTRY}/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/nanoweaver-hrt-mobile-ios.ipa): iOS application package
-- [nanoweaver-hrt-mobile-ipados.ipa](https://${REGISTRY}/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/nanoweaver-hrt-mobile-ipados.ipa): iPadOS application package
-
-#### Verification & Trust Anchors
-- [SHA256SUMS](https://${REGISTRY}/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/SHA256SUMS): SHA-256 Release Catalog
-- [SHA256SUMS.p7s](https://${REGISTRY}/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/SHA256SUMS.p7s): Detached X.509 CMS Signature
-- [SHA256SUMS.asc](https://${REGISTRY}/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/SHA256SUMS.asc): Detached OpenPGP Armored Signature
-- [nanoweaver-codesign-root-ca.crt](https://${REGISTRY}/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/nanoweaver-codesign-root-ca.crt): Sovereign Root CA Trust Anchor
-- [nanoweaver-archive-keyring.asc](https://${REGISTRY}/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/nanoweaver-archive-keyring.asc): OpenPGP Public Keyring
-EOF
-)
+# WHAT: Extract detailed milestone release notes from docs/release-notes.md and append direct download links.
+# WHY:  Guarantees every Forgejo Release carries full phase-by-phase release notes plus clickable signed downloads.
+# HOW:  Invokes scripts/packaging/extract-release-notes.py targeting TAG_NAME, REGISTRY, and GITHUB_REPOSITORY.
+RELEASE_NOTES="$(python3 "${ROOT_DIR}/scripts/packaging/extract-release-notes.py" \
+    --tag "${TAG_NAME}" \
+    --registry "${REGISTRY}" \
+    --repo "${GITHUB_REPOSITORY}" \
+    --notes-file "${ROOT_DIR}/docs/release-notes.md")"
 
 # WHAT: Query if a release matching TAG_NAME already exists on Forgejo.
 # WHY:  If tag 'nightly' already exists, we must recreate or replace it to attach fresh build assets.
@@ -126,6 +92,14 @@ if [[ "${HTTP_CODE}" == "200" ]]; then
         echo "Recreating rolling nightly release on Forgejo..."
         curl -s -X DELETE -H "${AUTH_HEADER}" "${API_BASE}/releases/${RELEASE_ID}" >/dev/null 2>&1 || true
         RELEASE_ID=""
+    elif [[ -n "${RELEASE_ID}" ]]; then
+        echo "Synchronizing detailed release notes onto existing release (ID: ${RELEASE_ID})..."
+        PATCH_PAYLOAD="$(python3 -c "import json, sys; print(json.dumps({'name': sys.argv[1], 'body': sys.argv[2]}))" "${RELEASE_TITLE}" "${RELEASE_NOTES}")"
+        curl -s -X PATCH \
+            -H "${AUTH_HEADER}" \
+            -H "Content-Type: application/json" \
+            -d "${PATCH_PAYLOAD}" \
+            "${API_BASE}/releases/${RELEASE_ID}" >/dev/null 2>&1 || true
     fi
 fi
 

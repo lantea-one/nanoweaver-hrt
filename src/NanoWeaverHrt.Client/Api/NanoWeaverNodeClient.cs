@@ -4323,4 +4323,157 @@ public sealed class NanoWeaverNodeClient : INanoWeaverNodeClient
         List<FederatedLotRevocationRecord>? list = await resp.Content.ReadFromJsonAsync<List<FederatedLotRevocationRecord>>(JsonOptions, ct);
         return list ?? (IReadOnlyList<FederatedLotRevocationRecord>)Array.Empty<FederatedLotRevocationRecord>();
     }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<FederatedPeerSyncEndpointRecord>> GetFederatedPeerSyncEndpointsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/federation/peers/revocation-sync to retrieve configured peer pull-sync subscriptions.
+        // WHY:  Milestone 39 (P207): Lets desktop and mobile shells display automated peer sync health and endpoints.
+        // HOW:  Validates arguments, sends authenticated GET request, and returns deserialized list or empty array.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/federation/peers/revocation-sync");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        List<FederatedPeerSyncEndpointRecord>? list = await resp.Content.ReadFromJsonAsync<List<FederatedPeerSyncEndpointRecord>>(JsonOptions, ct);
+        return list ?? (IReadOnlyList<FederatedPeerSyncEndpointRecord>)Array.Empty<FederatedPeerSyncEndpointRecord>();
+    }
+
+    /// <inheritdoc/>
+    public async Task<FederatedPeerSyncEndpointRecord> UpsertFederatedPeerSyncEndpointAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        UpsertFederatedPeerSyncEndpointRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/federation/peers/revocation-sync to create or update a peer pull-sync subscription.
+        // WHY:  Milestone 39 (P207): Enables remote desktop/mobile configuration of automated peer recall pull-sync.
+        // HOW:  Validates inputs, sends authenticated JSON POST, and deserializes FederatedPeerSyncEndpointRecord.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/federation/peers/revocation-sync");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        FederatedPeerSyncEndpointRecord? record = await resp.Content.ReadFromJsonAsync<FederatedPeerSyncEndpointRecord>(JsonOptions, ct);
+        return record ?? throw new InvalidOperationException("Endpoint returned empty or null peer sync subscription payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<bool> DeleteFederatedPeerSyncEndpointAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string peerId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches DELETE /api/federation/peers/revocation-sync/{peerId} to remove a peer pull-sync subscription.
+        // WHY:  Milestone 39 (P207): Allows decommissioning subscribed peer labs from desktop/mobile shells.
+        // HOW:  Returns false on 404 Not Found, throws NodeApiException on other errors, and returns true on 2xx.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(peerId);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/federation/peers/revocation-sync/{Uri.EscapeDataString(peerId)}");
+
+        using HttpRequestMessage req = new(HttpMethod.Delete, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (resp.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return false;
+        }
+
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        return true;
+    }
+
+    /// <inheritdoc/>
+    public async Task<FederatedPeerSyncRunResult> RunFederatedPeerSyncAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string peerId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/federation/peers/revocation-sync/{peerId}/run for an on-demand peer pull-sync.
+        // WHY:  Milestone 39 (P207): Allows clinicians to pull urgent upstream recalls on demand.
+        // HOW:  Validates inputs, posts authenticated request, and deserializes FederatedPeerSyncRunResult.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(peerId);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/federation/peers/revocation-sync/{Uri.EscapeDataString(peerId)}/run");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        FederatedPeerSyncRunResult? result = await resp.Content.ReadFromJsonAsync<FederatedPeerSyncRunResult>(JsonOptions, ct);
+        return result ?? throw new InvalidOperationException("Endpoint returned empty or null peer sync run payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<FederatedPeerSyncSweepResult> RunAllFederatedPeerSyncAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/federation/peers/revocation-sync/run-all to sweep all enabled peer labs.
+        // WHY:  Milestone 39 (P207): Provides single-click full federation recall synchronization in desktop/mobile UIs.
+        // HOW:  Validates inputs, posts authenticated request, and deserializes FederatedPeerSyncSweepResult.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/federation/peers/revocation-sync/run-all");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        FederatedPeerSyncSweepResult? result = await resp.Content.ReadFromJsonAsync<FederatedPeerSyncSweepResult>(JsonOptions, ct);
+        return result ?? throw new InvalidOperationException("Endpoint returned empty or null peer sync sweep payload.");
+    }
 }

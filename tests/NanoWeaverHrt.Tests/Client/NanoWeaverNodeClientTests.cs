@@ -4307,6 +4307,63 @@ public sealed class NanoWeaverNodeClientTests : IDisposable
         await Assert.ThrowsAsync<NodeApiException>(() => _client.GetFederatedRevocationsAsync(_localProfile, "valid_token"));
         await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetFederatedRevocationsAsync(null!, "valid_token"));
         await Assert.ThrowsAsync<ArgumentException>(() => _client.GetFederatedRevocationsAsync(_localProfile, ""));
+
+        // 12. GetFederatedPeerSyncEndpointsAsync (Milestone 39)
+        FederatedPeerSyncEndpointRecord sampleEndpoint = new FederatedPeerSyncEndpointRecord().GetExamples();
+        _httpHandler.SetResponse("/api/federation/peers/revocation-sync", HttpStatusCode.OK, JsonSerializer.Serialize(new[] { sampleEndpoint }, webOpts));
+        Assert.Single(await _client.GetFederatedPeerSyncEndpointsAsync(_localProfile, "valid_token"));
+        _httpHandler.SetResponse("/api/federation/peers/revocation-sync", HttpStatusCode.OK, "null");
+        Assert.Empty(await _client.GetFederatedPeerSyncEndpointsAsync(_localProfile, "valid_token"));
+        _httpHandler.SetResponse("/api/federation/peers/revocation-sync", HttpStatusCode.Forbidden, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetFederatedPeerSyncEndpointsAsync(_localProfile, "valid_token"));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetFederatedPeerSyncEndpointsAsync(null!, "valid_token"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetFederatedPeerSyncEndpointsAsync(_localProfile, ""));
+
+        // 13. UpsertFederatedPeerSyncEndpointAsync (Milestone 39)
+        UpsertFederatedPeerSyncEndpointRequest upsertReq = new UpsertFederatedPeerSyncEndpointRequest().GetExamples();
+        _httpHandler.SetResponse("/api/federation/peers/revocation-sync", HttpStatusCode.OK, JsonSerializer.Serialize(sampleEndpoint, webOpts));
+        Assert.Equal("clinic-zurich-01", (await _client.UpsertFederatedPeerSyncEndpointAsync(_localProfile, "valid_token", upsertReq)).PeerId);
+        _httpHandler.SetResponse("/api/federation/peers/revocation-sync", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.UpsertFederatedPeerSyncEndpointAsync(_localProfile, "valid_token", upsertReq));
+        _httpHandler.SetResponse("/api/federation/peers/revocation-sync", HttpStatusCode.BadRequest, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.UpsertFederatedPeerSyncEndpointAsync(_localProfile, "valid_token", upsertReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.UpsertFederatedPeerSyncEndpointAsync(null!, "valid_token", upsertReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.UpsertFederatedPeerSyncEndpointAsync(_localProfile, "", upsertReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.UpsertFederatedPeerSyncEndpointAsync(_localProfile, "valid_token", null!));
+
+        // 14. DeleteFederatedPeerSyncEndpointAsync (Milestone 39)
+        _httpHandler.SetResponse("/api/federation/peers/revocation-sync/clinic-zurich-01", HttpStatusCode.NoContent, "");
+        Assert.True(await _client.DeleteFederatedPeerSyncEndpointAsync(_localProfile, "valid_token", "clinic-zurich-01"));
+        _httpHandler.SetResponse("/api/federation/peers/revocation-sync/clinic-zurich-01", HttpStatusCode.NotFound, "{}");
+        Assert.False(await _client.DeleteFederatedPeerSyncEndpointAsync(_localProfile, "valid_token", "clinic-zurich-01"));
+        _httpHandler.SetResponse("/api/federation/peers/revocation-sync/clinic-zurich-01", HttpStatusCode.Forbidden, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.DeleteFederatedPeerSyncEndpointAsync(_localProfile, "valid_token", "clinic-zurich-01"));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.DeleteFederatedPeerSyncEndpointAsync(null!, "valid_token", "clinic-zurich-01"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.DeleteFederatedPeerSyncEndpointAsync(_localProfile, "", "clinic-zurich-01"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.DeleteFederatedPeerSyncEndpointAsync(_localProfile, "valid_token", ""));
+
+        // 15. RunFederatedPeerSyncAsync (Milestone 39)
+        FederatedPeerSyncRunResult sampleRun = new FederatedPeerSyncRunResult().GetExamples();
+        _httpHandler.SetResponse("/api/federation/peers/revocation-sync/clinic-zurich-01/run", HttpStatusCode.OK, JsonSerializer.Serialize(sampleRun, webOpts));
+        Assert.True((await _client.RunFederatedPeerSyncAsync(_localProfile, "valid_token", "clinic-zurich-01")).Succeeded);
+        _httpHandler.SetResponse("/api/federation/peers/revocation-sync/clinic-zurich-01/run", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.RunFederatedPeerSyncAsync(_localProfile, "valid_token", "clinic-zurich-01"));
+        _httpHandler.SetResponse("/api/federation/peers/revocation-sync/clinic-zurich-01/run", HttpStatusCode.UnprocessableEntity, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.RunFederatedPeerSyncAsync(_localProfile, "valid_token", "clinic-zurich-01"));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.RunFederatedPeerSyncAsync(null!, "valid_token", "clinic-zurich-01"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.RunFederatedPeerSyncAsync(_localProfile, "", "clinic-zurich-01"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.RunFederatedPeerSyncAsync(_localProfile, "valid_token", ""));
+
+        // 16. RunAllFederatedPeerSyncAsync (Milestone 39)
+        FederatedPeerSyncSweepResult sampleSweep = new FederatedPeerSyncSweepResult().GetExamples();
+        _httpHandler.SetResponse("/api/federation/peers/revocation-sync/run-all", HttpStatusCode.OK, JsonSerializer.Serialize(sampleSweep, webOpts));
+        Assert.Equal(1, (await _client.RunAllFederatedPeerSyncAsync(_localProfile, "valid_token")).PeersSucceeded);
+        _httpHandler.SetResponse("/api/federation/peers/revocation-sync/run-all", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.RunAllFederatedPeerSyncAsync(_localProfile, "valid_token"));
+        _httpHandler.SetResponse("/api/federation/peers/revocation-sync/run-all", HttpStatusCode.Forbidden, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.RunAllFederatedPeerSyncAsync(_localProfile, "valid_token"));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.RunAllFederatedPeerSyncAsync(null!, "valid_token"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.RunAllFederatedPeerSyncAsync(_localProfile, ""));
     }
 
     /// <summary>

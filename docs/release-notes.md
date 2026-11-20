@@ -4,6 +4,27 @@
 
 ---
 
+## v2026.11.19.6 — Automated Peer Revocation Pull-Sync, Active Federation Transport & Automated Detailed Release Notes (Milestone 39 / Forgejo Issues #231–#235) (2026-11-19)
+
+Completes **Milestone 39 (`P205`–`P209` / Forgejo Issues `#231`–`#235`)** plus Renovate CI updates (`#229`–`#230`, `#236`–`#237`: `actions/setup-dotnet@v6`, `actions/setup-node@v7`, `docker/setup-buildx-action@v4`, `softprops/action-gh-release@v3`), delivering SSRF-hardened automated pull-synchronization of ML-DSA-65 signed peer revocation feeds, desktop system-tray recall escalation, per-milestone audited Pull Requests, and automated detailed release-notes publishing across Forgejo and GitHub Releases:
+* **Phase 1: Federated Peer Sync Endpoint Persistence & Multi-Engine Migration 018 (Forgejo #231 / P205)**:
+  - Added `Migration018_FederatedPeerSyncState` (`Version = 18`) across SQLite, PostgreSQL, DuckDB, and MySQL/MariaDB creating `weaver_federated_peer_sync_endpoints` with indexes on `(enabled, last_attempt_utc)` and `(pinned_key_id)`.
+  - Implemented `IFederatedPeerSyncRepository` and `FederatedPeerSyncRepository` isolating non-PHI federation subscriptions from patient-scoped GDPR erasure cascades while preserving historical `created_at_utc`, `last_success_utc`, and cumulative `total_imported_count` across edits and transient failures.
+* **Phase 2: SSRF-Hardened Peer Revocation Pull-Sync Engine & Background Hosted Worker (Forgejo #232 / P206)**:
+  - Implemented `IFederatedDnsResolver` / `SystemFederatedDnsResolver`, `IFederatedPeerSyncService` / `FederatedPeerSyncService`, and `FederatedRevocationSyncHostedService` (`FederatedSync:Enabled`, `FederatedSync:PollTickSeconds`).
+  - Enforced strict SSRF defense (HTTPS-only outside explicit loopback opt-in, zero embedded credentials/query/fragment, IPv4-mapped IPv6 unwrapping, RFC 1918 / RFC 4193 ULA / link-local / cloud IMDS `169.254.169.254` / CGNAT / multicast / dual-A-record blocking), zero auto-redirects, 512 KiB `ArrayPool<byte>.Shared` response capping, pinned active ML-DSA-65 peer key verification (`TrustedPeer` only), idempotent new-recall counting, and FDA 21 CFR Part 11 audit events (`FABRICATION_PEER_SUBSCRIPTION_UPSERT`, `FABRICATION_PEER_SUBSCRIPTION_DELETE`, `FABRICATION_PEER_SYNC_SUCCESS`, `FABRICATION_PEER_SYNC_FAILURE`).
+* **Phase 3: Minimal API Endpoints, Client SDK, ViewModel & Desktop Tray Escalation (Forgejo #233 / P207)**:
+  - Appended 5 authenticated Minimal API endpoints to `Program.cs` (`GET /api/federation/peers/revocation-sync`, `POST /api/federation/peers/revocation-sync`, `DELETE /api/federation/peers/revocation-sync/{peerId}`, `POST /api/federation/peers/revocation-sync/{peerId}/run`, and `POST /api/federation/peers/revocation-sync/run-all`) with declarative RBAC gating (`AdministratorOnly` for config mutations, `AdministratorOrResearcher` for read/run).
+  - Added full SDK & MVVM parity across `INanoWeaverNodeClient`, `NanoWeaverNodeClient`, `WeaverNodeApiClient`, and `DepotAndLotWorkspaceViewModel`, and upgraded `DesktopTrayIconController` (`ApplyClinicalSafetyState` and `ApplyFederatedSyncState`) to escalate newly imported federated recalls (`Critical`) and peer sync failures (`Warning`) to localized desktop tray badges.
+* **Phase 4: Sovereign DepotStudio Automated Peer Sync UI, 18-Language Localization & 100.00% Coverage (Forgejo #234 / P208)**:
+  - Extended `#federated-revocation-sync-panel` in `DepotStudio.razor` with the Automated Peer Endpoint Subscriptions manager (add/save, "Sync Now", "Sync All Peers", remove, live status/error badges, zero inline styles).
+  - Added 18 localized `FabricationLot.PeerSync*` and `Gui.DepotWorkspace.Tray*` keys across all 18 community languages (`149` keys per catalog) with full bUnit and localization test coverage.
+* **Phase 5: Automated Detailed Release Notes, 8-Gate Verification & Per-Milestone PR Closeout (Forgejo #235 / P209)**:
+  - Added `scripts/packaging/extract-release-notes.py` and wired it into `scripts/packaging/publish-forgejo-release.sh` and `.github/workflows/build-and-deploy.yml` so every Forgejo and GitHub Release automatically carries full detailed milestone release notes plus signed direct download links.
+  - Verified 100% pass across all 8 automated verification gates (`./scripts/verify-all.sh`), 100.00% C# & JS line/branch coverage, 0 incomplete docblocks, and 0 uncovered lines in `coverage-baseline.json`.
+
+---
+
 ## v2026.11.19.5 — Federated Peer Lot Revocation Sync & Cross-Node Recall Gossip Ledger (Milestone 38 / Forgejo Issues #224–#228) (2026-11-19)
 
 Completes **Milestone 38 (`P200`–`P204` / Forgejo Issues `#224`–`#228`)**, enabling cross-node propagation of permanent wet-lab lot recalls via NIST FIPS 204 ML-DSA-65 signed de-identified revocation feeds so receiving clinics automatically block upstream recalled Certificates of Analysis fail-closed:
