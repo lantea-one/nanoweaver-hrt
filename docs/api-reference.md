@@ -916,6 +916,26 @@ Verifies a peer laboratory's `SignedLotRevocationFeed` against canonical SHA-256
 Lists all cryptographically verified upstream peer laboratory recall tombstones persisted in `weaver_federated_lot_revocations`, ordered newest imported first (`200 OK`).
 * **Role Requirement**: `Administrator` or `Researcher`.
 
+#### `GET /api/federation/peers/revocation-sync`
+Lists all configured automated federated peer revocation pull-sync endpoint subscriptions (`weaver_federated_peer_sync_endpoints`), including pinned ML-DSA-65 key identifiers, polling cadence, and latest sync telemetry (`200 OK`).
+* **Role Requirement**: `Administrator` or `Researcher`.
+
+#### `POST /api/federation/peers/revocation-sync`
+Creates or updates an automated federated peer revocation pull-sync subscription (`UpsertFederatedPeerSyncEndpointRequest`). Enforces strict SSRF validation (HTTPS required unless `allowLoopbackHttp` is explicitly enabled on loopback-only hosts, zero embedded credentials/query/fragment, zero private/RFC 1918/RFC 4193/link-local/IMDS `169.254.169.254`/CGNAT/multicast IPs) and requires `pinnedKeyId` to match an active `ML-DSA-65` peer key in `weaver_peer_keys`. Logs `FABRICATION_PEER_SUBSCRIPTION_UPSERT` (`200 OK` or `400 Bad Request`).
+* **Role Requirement**: `Administrator` only.
+
+#### `DELETE /api/federation/peers/revocation-sync/{peerId}`
+Removes a configured automated peer revocation pull-sync subscription and logs `FABRICATION_PEER_SUBSCRIPTION_DELETE` (`204 No Content`, `400 Bad Request`, or `404 Not Found`).
+* **Role Requirement**: `Administrator` only.
+
+#### `POST /api/federation/peers/revocation-sync/{peerId}/run`
+Executes an immediate SSRF-hardened, redirect-disabled, 512 KiB-bounded revocation pull-sync against the specified peer endpoint, verifying pinned active ML-DSA-65 trust (`TrustedPeer` only) before upserting newly discovered recall tombstones and logging `FABRICATION_PEER_SYNC_SUCCESS` or `FABRICATION_PEER_SYNC_FAILURE` (`200 OK`, `400 Bad Request`, `404 Not Found`, or `422 Unprocessable Entity`).
+* **Role Requirement**: `Administrator` or `Researcher`.
+
+#### `POST /api/federation/peers/revocation-sync/run-all`
+Executes an immediate revocation pull-sync sweep across all enabled peer subscriptions and returns aggregate per-peer telemetry and newly imported recall counts (`200 OK`).
+* **Role Requirement**: `Administrator` or `Researcher`.
+
 ---
 
 ### `POST /api/fabrication/gel/analyze`

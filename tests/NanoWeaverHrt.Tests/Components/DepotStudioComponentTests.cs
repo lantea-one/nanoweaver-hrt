@@ -4,6 +4,7 @@ using Moq;
 using NanoWeaverHrt.Components.Pages;
 using NanoWeaverHrt.Endocrine;
 using NanoWeaverHrt.Fabrication;
+using NanoWeaverHrt.Federation;
 using NanoWeaverHrt.Localization;
 using NanoWeaverHrt.Models;
 using NanoWeaverHrt.Storage;
@@ -65,6 +66,16 @@ public sealed class DepotStudioComponentTests : BunitContext
     private readonly Mock<IPeerKeyRegistry> _peerRegistryMock = new();
 
     /// <summary>
+    /// Mocked automated peer revocation pull-sync service for Milestone 39 UI tests.
+    /// </summary>
+    private readonly Mock<IFederatedPeerSyncService> _peerSyncMock = new();
+
+    /// <summary>
+    /// In-memory list of peer subscriptions managed by <see cref="_peerSyncMock"/>.
+    /// </summary>
+    private readonly List<FederatedPeerSyncEndpointRecord> _peerSyncEndpoints = [];
+
+    /// <summary>
     /// In-memory stored revocation record for verifying post-revocation checks in bUnit.
     /// </summary>
     private FabricationLotRevocationRecord? _storedRevocation;
@@ -119,6 +130,14 @@ public sealed class DepotStudioComponentTests : BunitContext
             .Setup(p => p.ListAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
 
+        _lotRepoMock
+            .Setup(r => r.ListFederatedRevocationsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        _peerSyncMock
+            .Setup(s => s.ListSubscriptionsAsync(It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => _peerSyncEndpoints.ToList());
+
         Services.AddSingleton<IWeaverLocalizer>(_localizer);
         Services.AddSingleton<ITimeReleaseDepotService>(_depotService);
         Services.AddSingleton<IDepotCalibrationService>(_calibrationService);
@@ -127,6 +146,7 @@ public sealed class DepotStudioComponentTests : BunitContext
         Services.AddSingleton(_assayRepoMock.Object);
         Services.AddSingleton(_lotRepoMock.Object);
         Services.AddSingleton(_peerRegistryMock.Object);
+        Services.AddSingleton(_peerSyncMock.Object);
     }
 
     /// <inheritdoc/>
@@ -378,5 +398,70 @@ public sealed class DepotStudioComponentTests : BunitContext
 
         cut.Find("#btn-verify-peer-certificate").Click();
         Assert.Contains("REVOKED", cut.Find("#peer-verify-trust-badge").TextContent);
+    }
+
+    /// <summary>
+    /// Verifies Milestone 39 (P208) Automated Peer Endpoint Subscriptions UI inside <see cref="DepotStudio"/>:
+    /// validation error handling, subscription creation, individual sync (success and failure), sweep-all, and removal.
+    /// </summary>
+    [Fact]
+    public void DepotStudio_AutomatedPeerSyncPanel_SavesSyncsSweepsAndRemovesSubscriptions()
+    {
+        FederatedPeerSyncEndpointRecord sampleEndpoint = new FederatedPeerSyncEndpointRecord().GetExamples();
+        _peerSyncMock
+            .Setup(s => s.UpsertSubscriptionAsync(It.Is<UpsertFederatedPeerSyncEndpointRequest>(r => r.PeerId == "bad"), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new ArgumentException("SSRF policy rejected endpoint URL."));
+        _peerSyncMock
+            .Setup(s => s.UpsertSubscriptionAsync(It.Is<UpsertFederatedPeerSyncEndpointRequest>(r => r.PeerId == "clinic-zurich-01"), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() =>
+            {
+                _peerSyncEndpoints.Clear();
+                _peerSyncEndpoints.Add(sampleEndpoint);
+                return sampleEndpoint;
+            });
+        _peerSyncMock
+            .Setup(s => s.SyncPeerAsync("clinic-zurich-01", It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FederatedPeerSyncRunResult().GetExamples());
+        _peerSyncMock
+            .Setup(s => s.SyncAllEnabledPeersAsync(It.IsAny<string>(), false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FederatedPeerSyncSweepResult().GetExamples());
+        _peerSyncMock
+            .Setup(s => s.DeleteSubscriptionAsync("clinic-zurich-01", It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() =>
+            {
+                _peerSyncEndpoints.Clear();
+                return true;
+            });
+
+        IRenderedComponent<DepotStudio> cut = Render<DepotStudio>();
+        Assert.NotNull(cut.Find("#automated-peer-sync-section"));
+        Assert.NotNull(cut.Find("#peer-sync-empty"));
+
+        // 1. Validation error displays alert banner
+        cut.Find("#input-peer-sync-id").Change("bad");
+        cut.Find("#btn-save-peer-sync").Click();
+        Assert.Contains("SSRF policy rejected endpoint URL.", cut.Find("#peer-sync-error").TextContent);
+
+        // 2. Valid save populates table
+        cut.Find("#input-peer-sync-id").Change("clinic-zurich-01");
+        cut.Find("#input-peer-sync-name").Change("Zurich Sovereign Origami Lab");
+        cut.Find("#input-peer-sync-url").Change("https://lab-zurich.lantea.one");
+        cut.Find("#input-peer-sync-key").Change("peer-mldsa65-zurich-2026");
+        cut.Find("#btn-save-peer-sync").Click();
+        Assert.Contains("Saved automated peer sync subscription", cut.Find("#peer-sync-status").TextContent);
+        Assert.NotNull(cut.Find("#peer-sync-endpoints-table"));
+
+        // 3. Individual Sync Now (success)
+        cut.Find("#btn-run-peer-clinic-zurich-01").Click();
+        Assert.Contains("Synchronized 1 new recall", cut.Find("#peer-sync-status").TextContent);
+
+        // 4. Sync All Peers
+        cut.Find("#btn-sync-all-peers").Click();
+        Assert.Contains("Swept 1 peer(s)", cut.Find("#peer-sync-status").TextContent);
+
+        // 5. Remove subscription restores empty state
+        cut.Find("#btn-remove-peer-clinic-zurich-01").Click();
+        Assert.Contains("Removed peer sync subscription", cut.Find("#peer-sync-status").TextContent);
+        Assert.NotNull(cut.Find("#peer-sync-empty"));
     }
 }

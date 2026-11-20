@@ -601,4 +601,106 @@ public sealed class DepotAndLotWorkspaceViewModelTests
         Assert.Null(vm.LastRevocationFeedImport);
         Assert.Empty(vm.FederatedRevocations);
     }
+
+    /// <summary>
+    /// Verifies Milestone 39 (P207) automated peer revocation pull-sync commands, severity escalation,
+    /// error handling, and sensitive cache cleanup on <see cref="DepotAndLotWorkspaceViewModel"/>.
+    /// </summary>
+    [Fact]
+    public async Task FederatedPeerSyncCommands_SummaryEscalationAndCacheCleanup_WorkDeterministically()
+    {
+        InstanceProfile profile = CreateProfile();
+
+        Mock<INanoWeaverNodeClient> clientMock = new();
+        DepotAndLotWorkspaceViewModel vm = new(clientMock.Object, () => profile, () => "token");
+
+        FederatedPeerSyncEndpointRecord healthyEp = new FederatedPeerSyncEndpointRecord().GetExamples();
+        FederatedPeerSyncEndpointRecord failedEp = healthyEp with { PeerId = "clinic-failed-02", LastStatus = FederatedPeerSyncStatus.Failed, LastError = "HTTP 503" };
+        UpsertFederatedPeerSyncEndpointRequest upsertReq = new UpsertFederatedPeerSyncEndpointRequest().GetExamples();
+        FederatedPeerSyncRunResult runResult = new FederatedPeerSyncRunResult().GetExamples() with { ImportedCount = 2 };
+        FederatedPeerSyncSweepResult sweepResult = new FederatedPeerSyncSweepResult().GetExamples() with { TotalNewRevocationsImported = 3 };
+        FederatedLotRevocationRecord fedRev = new FederatedLotRevocationRecord().GetExamples();
+
+        // 1. LoadPeerSyncEndpointsAsync (success + failed endpoint escalates summary to Warning)
+        clientMock.Setup(c => c.GetFederatedPeerSyncEndpointsAsync(profile, "token", It.IsAny<CancellationToken>()))
+            .ReturnsAsync([healthyEp, failedEp]);
+        IReadOnlyList<FederatedPeerSyncEndpointRecord> loaded = await vm.LoadPeerSyncEndpointsAsync();
+        Assert.Equal(2, loaded.Count);
+        Assert.Equal(2, vm.PeerSyncEndpoints.Count);
+        DepotWorkspaceSummary warnSummary = vm.BuildSummary();
+        Assert.Equal(1, warnSummary.FailedPeerSyncCount);
+        Assert.Equal(0, warnSummary.NewFederatedRecallCount);
+        Assert.Equal(ClinicalWorkspaceSeverity.Warning, warnSummary.Severity);
+
+        // Load error branch
+        clientMock.Setup(c => c.GetFederatedPeerSyncEndpointsAsync(profile, "token", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("load peers failed"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.LoadPeerSyncEndpointsAsync());
+        Assert.Equal("load peers failed", vm.ErrorMessage);
+
+        // 2. UpsertPeerSyncEndpointAsync (guard + success + error)
+        await Assert.ThrowsAsync<ArgumentNullException>(() => vm.UpsertPeerSyncEndpointAsync(null!));
+        clientMock.Setup(c => c.UpsertFederatedPeerSyncEndpointAsync(profile, "token", upsertReq, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(healthyEp);
+        clientMock.Setup(c => c.GetFederatedPeerSyncEndpointsAsync(profile, "token", It.IsAny<CancellationToken>()))
+            .ReturnsAsync([healthyEp]);
+        FederatedPeerSyncEndpointRecord saved = await vm.UpsertPeerSyncEndpointAsync(upsertReq);
+        Assert.Equal("clinic-zurich-01", saved.PeerId);
+
+        clientMock.Setup(c => c.UpsertFederatedPeerSyncEndpointAsync(profile, "token", upsertReq, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("upsert peer failed"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.UpsertPeerSyncEndpointAsync(upsertReq));
+        Assert.Equal("upsert peer failed", vm.ErrorMessage);
+
+        // 3. DeletePeerSyncEndpointAsync (guard + success + error)
+        await Assert.ThrowsAsync<ArgumentException>(() => vm.DeletePeerSyncEndpointAsync(" "));
+        clientMock.Setup(c => c.DeleteFederatedPeerSyncEndpointAsync(profile, "token", "clinic-zurich-01", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        Assert.True(await vm.DeletePeerSyncEndpointAsync("clinic-zurich-01"));
+
+        clientMock.Setup(c => c.DeleteFederatedPeerSyncEndpointAsync(profile, "token", "clinic-zurich-01", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("delete peer failed"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.DeletePeerSyncEndpointAsync("clinic-zurich-01"));
+        Assert.Equal("delete peer failed", vm.ErrorMessage);
+
+        // 4. RunPeerSyncAsync (guard + success escalates summary to Critical + error)
+        await Assert.ThrowsAsync<ArgumentException>(() => vm.RunPeerSyncAsync(" "));
+        clientMock.Setup(c => c.RunFederatedPeerSyncAsync(profile, "token", "clinic-zurich-01", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(runResult);
+        clientMock.Setup(c => c.GetFederatedRevocationsAsync(profile, "token", It.IsAny<CancellationToken>()))
+            .ReturnsAsync([fedRev]);
+        FederatedPeerSyncRunResult run = await vm.RunPeerSyncAsync("clinic-zurich-01");
+        Assert.Same(runResult, run);
+        Assert.Same(runResult, vm.LastPeerSyncRun);
+        Assert.Null(vm.LastPeerSyncSweep);
+        DepotWorkspaceSummary runSummary = vm.BuildSummary();
+        Assert.Equal(2, runSummary.NewFederatedRecallCount);
+        Assert.Equal(ClinicalWorkspaceSeverity.Critical, runSummary.Severity);
+
+        clientMock.Setup(c => c.RunFederatedPeerSyncAsync(profile, "token", "clinic-zurich-01", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("run peer failed"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.RunPeerSyncAsync("clinic-zurich-01"));
+        Assert.Equal("run peer failed", vm.ErrorMessage);
+
+        // 5. RunAllPeerSyncAsync (success overrides with sweep count + error)
+        clientMock.Setup(c => c.RunAllFederatedPeerSyncAsync(profile, "token", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(sweepResult);
+        FederatedPeerSyncSweepResult sweep = await vm.RunAllPeerSyncAsync();
+        Assert.Same(sweepResult, sweep);
+        Assert.Same(sweepResult, vm.LastPeerSyncSweep);
+        DepotWorkspaceSummary sweepSummary = vm.BuildSummary();
+        Assert.Equal(3, sweepSummary.NewFederatedRecallCount);
+        Assert.Equal(ClinicalWorkspaceSeverity.Critical, sweepSummary.Severity);
+
+        clientMock.Setup(c => c.RunAllFederatedPeerSyncAsync(profile, "token", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("sweep failed"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.RunAllPeerSyncAsync());
+        Assert.Equal("sweep failed", vm.ErrorMessage);
+
+        // 6. Cache cleanup resets all peer sync observable state
+        vm.ClearSensitiveClinicalCache();
+        Assert.Empty(vm.PeerSyncEndpoints);
+        Assert.Null(vm.LastPeerSyncRun);
+        Assert.Null(vm.LastPeerSyncSweep);
+    }
 }

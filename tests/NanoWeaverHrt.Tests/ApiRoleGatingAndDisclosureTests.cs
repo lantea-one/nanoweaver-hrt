@@ -1368,4 +1368,17 @@ public sealed class ApiRoleGatingAndDisclosureTests : IClassFixture<WebApplicati
             }
         }
     }
+
+    /// <summary>
+    /// Verifies exact route role gating for all 5 Milestone 39 federated peer revocation pull-sync routes.
+    /// </summary>
+    [Fact]
+    public void ResolveRouteRoleRequirement_FederatedPeerRevocationSyncRoutes_EnforcesAdminVsResearcherSplit()
+    {
+        Assert.Equal(Program.RouteRoleRequirement.AdministratorOrResearcher, Program.ResolveRouteRoleRequirement(HttpMethods.Get, "/api/federation/peers/revocation-sync"));
+        Assert.Equal(Program.RouteRoleRequirement.AdministratorOnly, Program.ResolveRouteRoleRequirement(HttpMethods.Post, "/api/federation/peers/revocation-sync"));
+        Assert.Equal(Program.RouteRoleRequirement.AdministratorOnly, Program.ResolveRouteRoleRequirement(HttpMethods.Delete, "/api/federation/peers/revocation-sync/peer-zurich"));
+        Assert.Equal(Program.RouteRoleRequirement.AdministratorOrResearcher, Program.ResolveRouteRoleRequirement(HttpMethods.Post, "/api/federation/peers/revocation-sync/peer-zurich/run"));
+        Assert.Equal(Program.RouteRoleRequirement.AdministratorOrResearcher, Program.ResolveRouteRoleRequirement(HttpMethods.Post, "/api/federation/peers/revocation-sync/run-all"));
+    }
 }

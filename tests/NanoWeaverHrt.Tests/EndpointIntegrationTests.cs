@@ -2726,4 +2726,188 @@ public sealed class EndpointIntegrationTests : IClassFixture<WebApplicationFacto
             Assert.Contains(entries, e => e.Action == "FABRICATION_REVOCATION_FEED_IMPORT");
         }
     }
+
+    /// <summary>
+    /// End-to-end integration test for Milestone 39 (P207): verifies RBAC, RFC 7807 validation, SSRF rejection,
+    /// live loopback ML-DSA-65 pull-sync ingestion, 422 failure mapping, sweep aggregation, deletion, and audit trails
+    /// across all 5 <c>/api/federation/peers/revocation-sync*</c> Minimal API endpoints.
+    /// </summary>
+    [Fact]
+    public async Task FederatedPeerRevocationSyncEndpoints_FullLifecycleAndRbac_WorkEndToEnd()
+    {
+        string tokenRes = await ProvisionUserAndGetTokenAsync("m39_researcher", UserRole.Researcher);
+        string tokenPat = await ProvisionUserAndGetTokenAsync("m39_patient", UserRole.Patient);
+
+        using HttpClient clientAnon = _factory.CreateClient();
+        HttpClient clientAdmin = _client;
+        using HttpClient clientRes = CreateClientWithBearer(tokenRes);
+        using HttpClient clientPat = CreateClientWithBearer(tokenPat);
+
+        // 1. Auth & Role gates: 401 anon, 403 patient on all 5, 403 researcher on POST upsert & DELETE
+        Assert.Equal(HttpStatusCode.Unauthorized, (await clientAnon.GetAsync("/api/federation/peers/revocation-sync")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientPat.GetAsync("/api/federation/peers/revocation-sync")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientPat.PostAsJsonAsync("/api/federation/peers/revocation-sync", new UpsertFederatedPeerSyncEndpointRequest())).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientRes.PostAsJsonAsync("/api/federation/peers/revocation-sync", new UpsertFederatedPeerSyncEndpointRequest())).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientRes.DeleteAsync("/api/federation/peers/revocation-sync/peer-1")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientPat.PostAsync("/api/federation/peers/revocation-sync/peer-1/run", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientPat.PostAsync("/api/federation/peers/revocation-sync/run-all", null)).StatusCode);
+
+        // 2. Null body & invalid payload -> 400; whitespace peerId -> 400; missing peerId -> 404
+        using StringContent nullBody = new("null", System.Text.Encoding.UTF8, "application/json");
+        Assert.Equal(HttpStatusCode.BadRequest, (await clientAdmin.PostAsync("/api/federation/peers/revocation-sync", nullBody)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await clientAdmin.PostAsJsonAsync("/api/federation/peers/revocation-sync", new UpsertFederatedPeerSyncEndpointRequest
+        {
+            PeerId = "ssrf-peer",
+            DisplayName = "SSRF Blocked",
+            BaseUrl = "http://169.254.169.254",
+            PinnedKeyId = "missing",
+            SyncIntervalMinutes = 15,
+            AllowLoopbackHttp = false
+        })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await clientAdmin.DeleteAsync("/api/federation/peers/revocation-sync/%20")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await clientAdmin.DeleteAsync("/api/federation/peers/revocation-sync/unknown-peer")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await clientRes.PostAsync("/api/federation/peers/revocation-sync/%20/run", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await clientRes.PostAsync("/api/federation/peers/revocation-sync/unknown-peer/run", null)).StatusCode);
+
+        // 3. Spin up an isolated ML-DSA-65 peer keystore and loopback TCP HTTP server serving a real signed revocation feed
+        string peerKeyDir = Path.Combine(Path.GetTempPath(), $"nw_m39_peer_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(peerKeyDir);
+        using SubjectKeyTestHost peerHost = new(peerKeyDir);
+        FabricationLotService peerLotService = new(peerHost.KeyManagement, peerHost.CryptoProvider);
+        SignedLotRevocationFeed signedFeed = peerLotService.BuildSignedRevocationFeed(
+            [
+                new FabricationLotRevocationRecord
+                {
+                    LotId = "LOT-M39-PULL-001",
+                    PatientId = "remote-pat",
+                    PayloadSha256 = new string('9', 64),
+                    RevokedBy = "peer_director",
+                    RevocationReason = "Automated pull-sync cold-chain excursion recall",
+                    RevokedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-10)
+                }
+            ]);
+
+        using (IServiceScope regScope = _factory.Services.CreateScope())
+        {
+            IPeerKeyRegistry peerKeyRegistry = regScope.ServiceProvider.GetRequiredService<IPeerKeyRegistry>();
+            await peerKeyRegistry.TryRegisterAsync(new PeerKeyRecord
+            {
+                KeyId = signedFeed.SignerKeyId,
+                Label = "Loopback Peer Lab",
+                Algorithm = KeyAlgorithm.MlDsa65,
+                PublicKeyBase64 = signedFeed.SignerPublicKeyBase64,
+                RegisteredBy = "admin",
+                RegisteredAtUtc = DateTimeOffset.UtcNow
+            });
+        }
+
+        string feedJson = JsonSerializer.Serialize(signedFeed);
+        int responseMode = 0; // 0 = 200 OK signed feed, 1 = 503 failure
+        using System.Net.Sockets.TcpListener listener = new(IPAddress.Loopback, 0);
+        listener.Start();
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+
+        using CancellationTokenSource serverCts = new();
+        Task serverTask = Task.Run(async () =>
+        {
+            while (!serverCts.IsCancellationRequested)
+            {
+                try
+                {
+                    using System.Net.Sockets.TcpClient tcp = await listener.AcceptTcpClientAsync(serverCts.Token);
+                    await using System.Net.Sockets.NetworkStream netStream = tcp.GetStream();
+                    byte[] reqBuf = new byte[2048];
+                    _ = await netStream.ReadAsync(reqBuf, serverCts.Token);
+                    byte[] bodyBytes = responseMode == 0
+                        ? System.Text.Encoding.UTF8.GetBytes(feedJson)
+                        : System.Text.Encoding.UTF8.GetBytes("{\"error\":\"down\"}");
+                    string statusLine = responseMode == 0 ? "HTTP/1.1 200 OK" : "HTTP/1.1 503 Service Unavailable";
+                    string header = $"{statusLine}\r\nContent-Type: application/json\r\nContent-Length: {bodyBytes.Length}\r\nConnection: close\r\n\r\n";
+                    byte[] headerBytes = System.Text.Encoding.ASCII.GetBytes(header);
+                    await netStream.WriteAsync(headerBytes, serverCts.Token);
+                    await netStream.WriteAsync(bodyBytes, serverCts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+            }
+        });
+
+        try
+        {
+            // 4. Administrator upserts loopback subscription -> 200 OK
+            HttpResponseMessage upsertResp = await clientAdmin.PostAsJsonAsync("/api/federation/peers/revocation-sync", new UpsertFederatedPeerSyncEndpointRequest
+            {
+                PeerId = "peer-loopback-01",
+                DisplayName = "Loopback Sovereign Lab",
+                BaseUrl = $"http://127.0.0.1:{port}",
+                PinnedKeyId = signedFeed.SignerKeyId,
+                Enabled = true,
+                SyncIntervalMinutes = 15,
+                AllowLoopbackHttp = true
+            });
+            Assert.Equal(HttpStatusCode.OK, upsertResp.StatusCode);
+            FederatedPeerSyncEndpointRecord? saved = await upsertResp.Content.ReadFromJsonAsync<FederatedPeerSyncEndpointRecord>();
+            Assert.NotNull(saved);
+            Assert.Equal("peer-loopback-01", saved.PeerId);
+
+            // 5. Researcher lists endpoints -> 200 OK
+            HttpResponseMessage listResp = await clientRes.GetAsync("/api/federation/peers/revocation-sync");
+            Assert.Equal(HttpStatusCode.OK, listResp.StatusCode);
+            List<FederatedPeerSyncEndpointRecord>? listed = await listResp.Content.ReadFromJsonAsync<List<FederatedPeerSyncEndpointRecord>>();
+            Assert.NotNull(listed);
+            Assert.Contains(listed, e => e.PeerId == "peer-loopback-01");
+
+            // 6. Researcher triggers manual /run -> 200 OK, imports 1 new recall tombstone
+            HttpResponseMessage runResp = await clientRes.PostAsync("/api/federation/peers/revocation-sync/peer-loopback-01/run", null);
+            Assert.Equal(HttpStatusCode.OK, runResp.StatusCode);
+            FederatedPeerSyncRunResult? runResult = await runResp.Content.ReadFromJsonAsync<FederatedPeerSyncRunResult>();
+            Assert.NotNull(runResult);
+            Assert.True(runResult.Succeeded);
+            Assert.Equal(1, runResult.ImportedCount);
+
+            // 7. Researcher triggers /run-all -> 200 OK (idempotent 0 new recalls)
+            HttpResponseMessage sweepResp = await clientRes.PostAsync("/api/federation/peers/revocation-sync/run-all", null);
+            Assert.Equal(HttpStatusCode.OK, sweepResp.StatusCode);
+            FederatedPeerSyncSweepResult? sweepResult = await sweepResp.Content.ReadFromJsonAsync<FederatedPeerSyncSweepResult>();
+            Assert.NotNull(sweepResult);
+            Assert.True(sweepResult.PeersSucceeded >= 1);
+
+            // 8. Upstream returns 503 -> /run returns 422 Unprocessable Entity
+            responseMode = 1;
+            HttpResponseMessage failRunResp = await clientRes.PostAsync("/api/federation/peers/revocation-sync/peer-loopback-01/run", null);
+            Assert.Equal(HttpStatusCode.UnprocessableEntity, failRunResp.StatusCode);
+
+            // 9. Administrator deletes subscription -> 204 No Content
+            Assert.Equal(HttpStatusCode.NoContent, (await clientAdmin.DeleteAsync("/api/federation/peers/revocation-sync/peer-loopback-01")).StatusCode);
+
+            using (IServiceScope auditScope = _factory.Services.CreateScope())
+            {
+                IComplianceAuditService audit = auditScope.ServiceProvider.GetRequiredService<IComplianceAuditService>();
+                IReadOnlyList<AuditRecord> entries = audit.GetAuditRecords(500);
+                Assert.Contains(entries, e => e.Action == "FABRICATION_PEER_SUBSCRIPTION_UPSERT");
+                Assert.Contains(entries, e => e.Action == "FABRICATION_PEER_SYNC_SUCCESS");
+                Assert.Contains(entries, e => e.Action == "FABRICATION_PEER_SYNC_FAILURE");
+                Assert.Contains(entries, e => e.Action == "FABRICATION_PEER_SUBSCRIPTION_DELETE");
+            }
+        }
+        finally
+        {
+            serverCts.Cancel();
+            listener.Stop();
+            await serverTask;
+            if (Directory.Exists(peerKeyDir))
+            {
+                try
+                {
+                    Directory.Delete(peerKeyDir, recursive: true);
+                }
+                catch
+                {
+                    // Best-effort temp cleanup.
+                }
+            }
+        }
+    }
 }

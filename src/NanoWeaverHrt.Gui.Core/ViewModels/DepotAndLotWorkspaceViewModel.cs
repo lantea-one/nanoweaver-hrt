@@ -56,6 +56,8 @@ public enum ClinicalWorkspaceSeverity
 /// <param name="RecommendedNextMassMg">Recommended next-cycle nanocarrier payload mass in milligrams, or <see langword="null"/>.</param>
 /// <param name="Severity">Aggregate clinical severity classification across calibration and lot statuses.</param>
 /// <param name="SeverityAccentHex">Sovereign high-contrast dark-mode hex color code corresponding to <paramref name="Severity"/>.</param>
+/// <param name="FailedPeerSyncCount">Number of subscribed federated peer revocation sync endpoints currently in <see cref="FederatedPeerSyncStatus.Failed"/> state.</param>
+/// <param name="NewFederatedRecallCount">Number of newly discovered federated recall tombstones imported by the most recent pull-sync operation.</param>
 public sealed record DepotWorkspaceSummary(
     string? ActivePatientId,
     int FormulationCount,
@@ -68,7 +70,9 @@ public sealed record DepotWorkspaceSummary(
     int? AdjustedRedoseDay,
     double? RecommendedNextMassMg,
     ClinicalWorkspaceSeverity Severity,
-    string SeverityAccentHex);
+    string SeverityAccentHex,
+    int FailedPeerSyncCount = 0,
+    int NewFederatedRecallCount = 0);
 
 /// <summary>
 /// Native cross-platform MVVM ViewModel unifying Milestones 33–36 clinical workflows:
@@ -843,7 +847,22 @@ public sealed class DepotAndLotWorkspaceViewModel : INotifyPropertyChanged
         int? redoseDay = _latestCalibration != null ? _latestCalibration.AdjustedRedoseDay : null;
         double? nextMass = _latestCalibration != null ? _latestCalibration.RecommendedNextMassMg : null;
 
-        ClinicalWorkspaceSeverity severity = ResolveWorkspaceSeverity(quarantined, revoked);
+        int failedPeerSyncs = 0;
+        for (int i = 0; i < _peerSyncEndpoints.Count; i++)
+        {
+            if (_peerSyncEndpoints[i].LastStatus == FederatedPeerSyncStatus.Failed)
+            {
+                failedPeerSyncs++;
+            }
+        }
+
+        int newFederatedRecalls = _lastPeerSyncSweep != null
+            ? _lastPeerSyncSweep.TotalNewRevocationsImported
+            : _lastPeerSyncRun != null
+                ? _lastPeerSyncRun.ImportedCount
+                : 0;
+
+        ClinicalWorkspaceSeverity severity = ResolveWorkspaceSeverity(quarantined, revoked, failedPeerSyncs, newFederatedRecalls);
         string accentHex = MapSeverityToPaletteHex(severity);
 
         return new DepotWorkspaceSummary(
@@ -858,7 +877,9 @@ public sealed class DepotAndLotWorkspaceViewModel : INotifyPropertyChanged
             AdjustedRedoseDay: redoseDay,
             RecommendedNextMassMg: nextMass,
             Severity: severity,
-            SeverityAccentHex: accentHex);
+            SeverityAccentHex: accentHex,
+            FailedPeerSyncCount: failedPeerSyncs,
+            NewFederatedRecallCount: newFederatedRecalls);
     }
 
     /// <summary>
@@ -956,27 +977,37 @@ public sealed class DepotAndLotWorkspaceViewModel : INotifyPropertyChanged
         LatestExportedRevocationFeed = null;
         LastRevocationFeedImport = null;
         FederatedRevocations = [];
+        PeerSyncEndpoints = [];
+        LastPeerSyncRun = null;
+        LastPeerSyncSweep = null;
         ErrorMessage = null;
     }
 
     /// <summary>
-    /// Resolves the highest clinical severity across calibration guardrails, lot states, and certificate verification.
+    /// Resolves the highest clinical severity across calibration guardrails, lot states, certificate verification,
+    /// and federated peer revocation pull-sync telemetry.
     /// </summary>
     /// <param name="quarantinedCount">Count of quarantined lots.</param>
     /// <param name="revokedCount">Count of revoked lots.</param>
+    /// <param name="failedPeerSyncCount">Count of federated peer sync endpoints in Failed state.</param>
+    /// <param name="newFederatedRecallCount">Count of newly imported federated recall tombstones.</param>
     /// <returns>The resolved <see cref="ClinicalWorkspaceSeverity"/>.</returns>
-    private ClinicalWorkspaceSeverity ResolveWorkspaceSeverity(int quarantinedCount, int revokedCount)
+    private ClinicalWorkspaceSeverity ResolveWorkspaceSeverity(
+        int quarantinedCount,
+        int revokedCount,
+        int failedPeerSyncCount,
+        int newFederatedRecallCount)
     {
         // WHAT: Evaluates fail-closed clinical priority ordering (Critical > Warning > Optimal > Idle).
-        // WHY:  Guarantees severe clinical alerts or recalled batches are never masked by healthy formulations.
-        // HOW:  Checks critical safety ceiling, revoked lots, and failed verification first, then warnings, then loaded state.
+        // WHY:  Guarantees severe clinical alerts, recalled batches, or newly imported federated recalls are never masked.
+        // HOW:  Checks critical safety ceiling, revoked lots, failed verification, and new federated recalls first, then warnings, then loaded state.
         bool calibrationCritical = _latestCalibration != null && _latestCalibration.OverallSafetyStatus == DepotSafetyStatus.CriticalSafety;
         bool verificationCritical = _lastCertificateVerification != null &&
             (_lastCertificateVerification.IsRevoked ||
              _lastCertificateVerification.TrustSource == FabricationCertificateTrustSource.InvalidSignature ||
              _lastCertificateVerification.TrustSource == FabricationCertificateTrustSource.RevokedSigner);
 
-        if (calibrationCritical || revokedCount > 0 || verificationCritical)
+        if (calibrationCritical || revokedCount > 0 || verificationCritical || newFederatedRecallCount > 0)
         {
             return ClinicalWorkspaceSeverity.Critical;
         }
@@ -987,7 +1018,7 @@ public sealed class DepotAndLotWorkspaceViewModel : INotifyPropertyChanged
         bool verificationWarning = _lastCertificateVerification != null &&
             _lastCertificateVerification.TrustSource == FabricationCertificateTrustSource.UntrustedSigner;
 
-        if (calibrationWarning || quarantinedCount > 0 || verificationWarning)
+        if (calibrationWarning || quarantinedCount > 0 || verificationWarning || failedPeerSyncCount > 0)
         {
             return ClinicalWorkspaceSeverity.Warning;
         }
@@ -1283,6 +1314,223 @@ public sealed class DepotAndLotWorkspaceViewModel : INotifyPropertyChanged
             IReadOnlyList<FederatedLotRevocationRecord> list = await _client.GetFederatedRevocationsAsync(profile, token, ct).ConfigureAwait(false);
             FederatedRevocations = list;
             return list;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Backing field for <see cref="PeerSyncEndpoints"/>.
+    /// </summary>
+    private IReadOnlyList<FederatedPeerSyncEndpointRecord> _peerSyncEndpoints = [];
+
+    /// <summary>
+    /// Backing field for <see cref="LastPeerSyncRun"/>.
+    /// </summary>
+    private FederatedPeerSyncRunResult? _lastPeerSyncRun;
+
+    /// <summary>
+    /// Backing field for <see cref="LastPeerSyncSweep"/>.
+    /// </summary>
+    private FederatedPeerSyncSweepResult? _lastPeerSyncSweep;
+
+    /// <summary>
+    /// Gets the list of configured automated federated peer revocation pull-sync subscriptions.
+    /// </summary>
+    public IReadOnlyList<FederatedPeerSyncEndpointRecord> PeerSyncEndpoints
+    {
+        get => _peerSyncEndpoints;
+        private set
+        {
+            _peerSyncEndpoints = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Gets the outcome of the most recent single-peer revocation pull-sync run.
+    /// </summary>
+    public FederatedPeerSyncRunResult? LastPeerSyncRun
+    {
+        get => _lastPeerSyncRun;
+        private set
+        {
+            _lastPeerSyncRun = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Gets the aggregate outcome of the most recent multi-peer revocation pull-sync sweep.
+    /// </summary>
+    public FederatedPeerSyncSweepResult? LastPeerSyncSweep
+    {
+        get => _lastPeerSyncSweep;
+        private set
+        {
+            _lastPeerSyncSweep = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Loads configured automated peer revocation pull-sync subscriptions via GET /api/federation/peers/revocation-sync.
+    /// </summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Ordered list of configured <see cref="FederatedPeerSyncEndpointRecord"/> entries.</returns>
+    public async Task<IReadOnlyList<FederatedPeerSyncEndpointRecord>> LoadPeerSyncEndpointsAsync(CancellationToken ct = default)
+    {
+        // WHAT: Queries configured automated peer pull-sync subscriptions and updates PeerSyncEndpoints.
+        // WHY:  Milestone 39 (P207): Lets desktop and mobile clinicians inspect peer sync status and tray alerts.
+        // HOW:  Resolves session, invokes GetFederatedPeerSyncEndpointsAsync, and updates observable state.
+        var (profile, token) = ResolveEffectiveSession();
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            IReadOnlyList<FederatedPeerSyncEndpointRecord> list = await _client.GetFederatedPeerSyncEndpointsAsync(profile, token, ct).ConfigureAwait(false);
+            PeerSyncEndpoints = list;
+            return list;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Creates or updates an automated peer revocation pull-sync subscription and refreshes <see cref="PeerSyncEndpoints"/>.
+    /// </summary>
+    /// <param name="request">Peer subscription configuration payload.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The persisted <see cref="FederatedPeerSyncEndpointRecord"/>.</returns>
+    public async Task<FederatedPeerSyncEndpointRecord> UpsertPeerSyncEndpointAsync(
+        UpsertFederatedPeerSyncEndpointRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Persists a peer pull-sync subscription and reloads the peer subscription list.
+        // WHY:  Milestone 39 (P207): Enables native desktop/mobile peer subscription configuration.
+        // HOW:  Validates request, invokes UpsertFederatedPeerSyncEndpointAsync, and refreshes PeerSyncEndpoints.
+        ArgumentNullException.ThrowIfNull(request);
+        var (profile, token) = ResolveEffectiveSession();
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            FederatedPeerSyncEndpointRecord saved = await _client.UpsertFederatedPeerSyncEndpointAsync(profile, token, request, ct).ConfigureAwait(false);
+            PeerSyncEndpoints = await _client.GetFederatedPeerSyncEndpointsAsync(profile, token, ct).ConfigureAwait(false);
+            return saved;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Removes an automated peer revocation pull-sync subscription and refreshes <see cref="PeerSyncEndpoints"/>.
+    /// </summary>
+    /// <param name="peerId">Target peer subscription identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>True when deleted; false when not found.</returns>
+    public async Task<bool> DeletePeerSyncEndpointAsync(string peerId, CancellationToken ct = default)
+    {
+        // WHAT: Deletes a peer subscription by peerId and reloads PeerSyncEndpoints.
+        // WHY:  Milestone 39 (P207): Allows decommissioning peer labs from desktop/mobile shells.
+        // HOW:  Validates peerId, calls DeleteFederatedPeerSyncEndpointAsync, and refreshes PeerSyncEndpoints.
+        ArgumentException.ThrowIfNullOrWhiteSpace(peerId);
+        var (profile, token) = ResolveEffectiveSession();
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            bool deleted = await _client.DeleteFederatedPeerSyncEndpointAsync(profile, token, peerId, ct).ConfigureAwait(false);
+            PeerSyncEndpoints = await _client.GetFederatedPeerSyncEndpointsAsync(profile, token, ct).ConfigureAwait(false);
+            return deleted;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Executes an immediate pull-sync against one subscribed peer and refreshes peer endpoints and federated recalls.
+    /// </summary>
+    /// <param name="peerId">Target peer subscription identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The <see cref="FederatedPeerSyncRunResult"/> produced by the pull-sync.</returns>
+    public async Task<FederatedPeerSyncRunResult> RunPeerSyncAsync(string peerId, CancellationToken ct = default)
+    {
+        // WHAT: Triggers an on-demand revocation pull-sync for one peer and refreshes endpoints + federated recalls.
+        // WHY:  Milestone 39 (P207): Surfaces newly pulled recalls immediately in native UIs and tray summaries.
+        // HOW:  Calls RunFederatedPeerSyncAsync, updates LastPeerSyncRun, clears stale sweep, and refreshes lists.
+        ArgumentException.ThrowIfNullOrWhiteSpace(peerId);
+        var (profile, token) = ResolveEffectiveSession();
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            FederatedPeerSyncRunResult result = await _client.RunFederatedPeerSyncAsync(profile, token, peerId, ct).ConfigureAwait(false);
+            LastPeerSyncRun = result;
+            LastPeerSyncSweep = null;
+            PeerSyncEndpoints = await _client.GetFederatedPeerSyncEndpointsAsync(profile, token, ct).ConfigureAwait(false);
+            FederatedRevocations = await _client.GetFederatedRevocationsAsync(profile, token, ct).ConfigureAwait(false);
+            return result;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Executes an immediate revocation pull-sync sweep across all enabled peers and refreshes endpoints and recalls.
+    /// </summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The aggregate <see cref="FederatedPeerSyncSweepResult"/>.</returns>
+    public async Task<FederatedPeerSyncSweepResult> RunAllPeerSyncAsync(CancellationToken ct = default)
+    {
+        // WHAT: Triggers a full sweep across all enabled peers and reloads endpoints and federated recalls.
+        // WHY:  Milestone 39 (P207): Powers one-click multi-peer synchronization and desktop tray alert escalation.
+        // HOW:  Calls RunAllFederatedPeerSyncAsync, updates LastPeerSyncSweep, and refreshes PeerSyncEndpoints + FederatedRevocations.
+        var (profile, token) = ResolveEffectiveSession();
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            FederatedPeerSyncSweepResult sweep = await _client.RunAllFederatedPeerSyncAsync(profile, token, ct).ConfigureAwait(false);
+            LastPeerSyncSweep = sweep;
+            PeerSyncEndpoints = await _client.GetFederatedPeerSyncEndpointsAsync(profile, token, ct).ConfigureAwait(false);
+            FederatedRevocations = await _client.GetFederatedRevocationsAsync(profile, token, ct).ConfigureAwait(false);
+            return sweep;
         }
         catch (Exception ex)
         {

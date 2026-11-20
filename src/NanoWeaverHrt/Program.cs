@@ -150,6 +150,18 @@ public class Program
         builder.Services.AddSingleton<IDepotCalibrationService, DepotCalibrationService>();
         builder.Services.AddSingleton<IFabricationLotRepository, FabricationLotRepository>();
         builder.Services.AddSingleton<IFabricationLotService, FabricationLotService>();
+        builder.Services.AddSingleton<IFederatedPeerSyncRepository, FederatedPeerSyncRepository>();
+        builder.Services.AddSingleton<IFederatedDnsResolver, SystemFederatedDnsResolver>();
+        builder.Services.AddHttpClient(FederatedPeerSyncService.HttpClientName, client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(15);
+        }).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+        {
+            AllowAutoRedirect = false,
+            ConnectTimeout = TimeSpan.FromSeconds(5)
+        });
+        builder.Services.AddSingleton<IFederatedPeerSyncService, FederatedPeerSyncService>();
+        builder.Services.AddHostedService<FederatedRevocationSyncHostedService>();
         builder.Services.AddSingleton<IAssetIntegrityService, AssetIntegrityService>();
         builder.Services.AddSingleton<ISubjectAccessRepository, SubjectAccessRepository>();
         builder.Services.AddSingleton<ISubjectAccessService, SubjectAccessService>();
@@ -5648,6 +5660,155 @@ public class Program
         .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
         .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden);
 
+        app.MapGet("/api/federation/peers/revocation-sync", async (
+            IFederatedPeerSyncService peerSyncService,
+            CancellationToken ct) =>
+        {
+            // WHAT: Lists all configured automated peer revocation pull-sync endpoint subscriptions.
+            // WHY:  Milestone 39 (P207): Lets Administrators and Researchers audit subscribed peer labs and sync health.
+            // HOW:  Middleware enforces AdministratorOrResearcher role; handler queries ListSubscriptionsAsync directly.
+            IReadOnlyList<FederatedPeerSyncEndpointRecord> endpoints = await peerSyncService.ListSubscriptionsAsync(false, ct);
+            return Results.Ok(endpoints);
+        })
+        .WithName("ListFederatedPeerSyncEndpoints")
+        .WithTags("Wet-Lab Fabrication & QC")
+        .WithSummary("Lists all configured automated peer revocation pull-sync endpoint subscriptions.")
+        .WithDescription("Returns all subscribed peer laboratory endpoints, pinned ML-DSA-65 key IDs, polling cadence, and latest sync telemetry.")
+        .Produces<IReadOnlyList<FederatedPeerSyncEndpointRecord>>(StatusCodes.Status200OK)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden);
+
+        app.MapPost("/api/federation/peers/revocation-sync", async (
+            UpsertFederatedPeerSyncEndpointRequest? request,
+            IFederatedPeerSyncService peerSyncService,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Creates or updates an SSRF-validated, ML-DSA-65 pinned peer revocation pull-sync subscription.
+            // WHY:  Milestone 39 (P207): Enables Administrators to configure automated cross-node recall pull-sync.
+            // HOW:  Middleware enforces AdministratorOnly; handler validates request body and delegates to UpsertSubscriptionAsync.
+            if (request is null)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Peer sync subscription payload is required.");
+            }
+
+            // WHY `!`: Authentication middleware guarantees CurrentUser is populated before reaching this handler.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            try
+            {
+                FederatedPeerSyncEndpointRecord saved = await peerSyncService.UpsertSubscriptionAsync(request, caller.Username, ct);
+                return Results.Ok(saved);
+            }
+            catch (ArgumentException ex)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, ex.Message);
+            }
+        })
+        .WithName("UpsertFederatedPeerSyncEndpoint")
+        .WithTags("Wet-Lab Fabrication & QC")
+        .WithSummary("Creates or updates an automated federated peer revocation pull-sync subscription.")
+        .WithDescription("Validates SSRF transport policy and pinned active ML-DSA-65 peer key before persisting subscription configuration and recording a 21 CFR Part 11 audit event.")
+        .Accepts<UpsertFederatedPeerSyncEndpointRequest>("application/json")
+        .Produces<FederatedPeerSyncEndpointRecord>(StatusCodes.Status200OK)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden);
+
+        app.MapDelete("/api/federation/peers/revocation-sync/{peerId}", async (
+            string peerId,
+            IFederatedPeerSyncService peerSyncService,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Removes a configured peer revocation pull-sync endpoint subscription by peerId.
+            // WHY:  Milestone 39 (P207): Lets Administrators decommission peer laboratory subscriptions with audit logging.
+            // HOW:  Middleware enforces AdministratorOnly; handler returns 204 when removed or 404 when unknown.
+            if (string.IsNullOrWhiteSpace(peerId))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Peer identifier is required.");
+            }
+
+            // WHY `!`: Authentication middleware guarantees CurrentUser is populated before reaching this handler.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            bool deleted = await peerSyncService.DeleteSubscriptionAsync(peerId, caller.Username, ct);
+            if (!deleted)
+            {
+                return SecureProblemResult(context, StatusCodes.Status404NotFound, $"Peer sync subscription '{peerId}' was not found.");
+            }
+
+            return Results.NoContent();
+        })
+        .WithName("DeleteFederatedPeerSyncEndpoint")
+        .WithTags("Wet-Lab Fabrication & QC")
+        .WithSummary("Deletes an automated federated peer revocation pull-sync subscription.")
+        .WithDescription("Removes the peer subscription row and appends FABRICATION_PEER_SUBSCRIPTION_DELETE to the audit ledger.")
+        .Produces(StatusCodes.Status204NoContent)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden)
+        .Produces<SecureProblemDetails>(StatusCodes.Status404NotFound);
+
+        app.MapPost("/api/federation/peers/revocation-sync/{peerId}/run", async (
+            string peerId,
+            IFederatedPeerSyncService peerSyncService,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Triggers an on-demand SSRF-hardened, ML-DSA-65 verified revocation pull-sync for one peer.
+            // WHY:  Milestone 39 (P207): Allows Administrators and Researchers to pull urgent recalls immediately.
+            // HOW:  Delegates to SyncPeerAsync, returning 404 if unknown, 422 on verification/transport failure, or 200 on success.
+            if (string.IsNullOrWhiteSpace(peerId))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Peer identifier is required.");
+            }
+
+            // WHY `!`: Authentication middleware guarantees CurrentUser is populated before reaching this handler.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            FederatedPeerSyncRunResult result = await peerSyncService.SyncPeerAsync(peerId, caller.Username, ct);
+            if (!result.EndpointFound)
+            {
+                return SecureProblemResult(context, StatusCodes.Status404NotFound, result.Summary);
+            }
+
+            if (!result.Succeeded)
+            {
+                return SecureProblemResult(context, StatusCodes.Status422UnprocessableEntity, result.Summary);
+            }
+
+            return Results.Ok(result);
+        })
+        .WithName("RunFederatedPeerSyncEndpoint")
+        .WithTags("Wet-Lab Fabrication & QC")
+        .WithSummary("Executes an immediate SSRF-hardened, ML-DSA-65 verified revocation pull-sync against one peer.")
+        .WithDescription("Fetches the peer's signed revocation feed, validates pinned key and ML-DSA-65 integrity, upserts new recall tombstones, and updates sync telemetry.")
+        .Produces<FederatedPeerSyncRunResult>(StatusCodes.Status200OK)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden)
+        .Produces<SecureProblemDetails>(StatusCodes.Status404NotFound)
+        .Produces<SecureProblemDetails>(StatusCodes.Status422UnprocessableEntity);
+
+        app.MapPost("/api/federation/peers/revocation-sync/run-all", async (
+            IFederatedPeerSyncService peerSyncService,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Triggers an immediate revocation pull-sync sweep across all enabled peer subscriptions.
+            // WHY:  Milestone 39 (P207): Lets operators synchronize every subscribed laboratory on demand.
+            // HOW:  Calls SyncAllEnabledPeersAsync with dueOnly: false and returns aggregate sweep telemetry.
+            // WHY `!`: Authentication middleware guarantees CurrentUser is populated before reaching this handler.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            FederatedPeerSyncSweepResult sweep = await peerSyncService.SyncAllEnabledPeersAsync(caller.Username, false, ct);
+            return Results.Ok(sweep);
+        })
+        .WithName("RunAllFederatedPeerSyncEndpoints")
+        .WithTags("Wet-Lab Fabrication & QC")
+        .WithSummary("Executes an immediate revocation pull-sync sweep across all enabled federated peers.")
+        .WithDescription("Synchronizes every enabled peer endpoint sequentially and returns per-peer outcomes plus aggregate recall import counts.")
+        .Produces<FederatedPeerSyncSweepResult>(StatusCodes.Status200OK)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden);
+
         app.Run();
     }
 
@@ -5859,7 +6020,8 @@ public class Program
     /// </remarks>
     private static readonly RoleGatedRoute[] AdministratorMutationRoutes =
     [
-        new("/api/services", MatchDescendants: true)
+        new("/api/services", MatchDescendants: true),
+        new("/api/federation/peers/revocation-sync", MatchDescendants: false)
     ];
 
     /// <summary>
@@ -5962,7 +6124,9 @@ public class Program
 
         bool isReadOnly = HttpMethods.IsGet(method);
 
-        if (MatchesAnyRoute(path, AdministratorRoutes) || (!isReadOnly && MatchesAnyRoute(path, AdministratorMutationRoutes)))
+        if (MatchesAnyRoute(path, AdministratorRoutes)
+            || (!isReadOnly && MatchesAnyRoute(path, AdministratorMutationRoutes))
+            || (HttpMethods.IsDelete(method) && path.StartsWithSegments("/api/federation/peers/revocation-sync", StringComparison.OrdinalIgnoreCase)))
         {
             return RouteRoleRequirement.AdministratorOnly;
         }

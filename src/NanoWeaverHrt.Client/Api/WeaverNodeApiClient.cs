@@ -2184,4 +2184,77 @@ public sealed class WeaverNodeApiClient : INanoWeaverNodeClient, IDisposable
         string effectiveToken = ResolveBearerToken(bearerToken);
         return _innerClient.GetFederatedRevocationsAsync(profile, effectiveToken, ct);
     }
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<FederatedPeerSyncEndpointRecord>> GetFederatedPeerSyncEndpointsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/federation/peers/revocation-sync using provided or cached session token.
+        // WHY:  Milestone 39 (P207): Lists configured automated peer revocation pull-sync subscriptions.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GetFederatedPeerSyncEndpointsAsync(profile, effectiveToken, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<FederatedPeerSyncEndpointRecord> UpsertFederatedPeerSyncEndpointAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        UpsertFederatedPeerSyncEndpointRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/federation/peers/revocation-sync using provided or cached session token.
+        // WHY:  Milestone 39 (P207): Creates or updates an automated peer revocation pull-sync subscription.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.UpsertFederatedPeerSyncEndpointAsync(profile, effectiveToken, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<bool> DeleteFederatedPeerSyncEndpointAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string peerId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches DELETE /api/federation/peers/revocation-sync/{peerId} using provided or cached session token.
+        // WHY:  Milestone 39 (P207): Removes an automated peer revocation pull-sync subscription.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.DeleteFederatedPeerSyncEndpointAsync(profile, effectiveToken, peerId, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<FederatedPeerSyncRunResult> RunFederatedPeerSyncAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string peerId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/federation/peers/revocation-sync/{peerId}/run using provided or cached session token.
+        // WHY:  Milestone 39 (P207): Triggers an on-demand revocation pull-sync against one subscribed peer.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.RunFederatedPeerSyncAsync(profile, effectiveToken, peerId, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<FederatedPeerSyncSweepResult> RunAllFederatedPeerSyncAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/federation/peers/revocation-sync/run-all using provided or cached session token.
+        // WHY:  Milestone 39 (P207): Triggers an immediate revocation pull-sync sweep across all enabled peers.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.RunAllFederatedPeerSyncAsync(profile, effectiveToken, ct);
+    }
 }

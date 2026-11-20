@@ -4,6 +4,7 @@
 @using System.Text.Json
 @using NanoWeaverHrt.Endocrine
 @using NanoWeaverHrt.Fabrication
+@using NanoWeaverHrt.Federation
 @using NanoWeaverHrt.Localization
 @using NanoWeaverHrt.Models
 @using NanoWeaverHrt.Storage
@@ -14,6 +15,7 @@
 @inject IFabricationLotRepository LotRepository
 @inject IFabricationLotService LotService
 @inject IPeerKeyRegistry PeerKeyRegistry
+@inject IFederatedPeerSyncService PeerSyncService
 @inject IWeaverLocalizer Localizer
 @inject IJSRuntime JS
 
@@ -790,6 +792,122 @@
         {
             <p class="subtext mt-3">@T("FabricationLot.RevocationFeedEmpty")</p>
         }
+
+        <!-- Automated Peer Endpoint Subscriptions (Milestone 39) -->
+        <div id="automated-peer-sync-section" class="mt-4 pt-3 border-top">
+            <div class="panel-header">
+                <div>
+                    <h4>@T("FabricationLot.PeerSyncTitle")</h4>
+                    <p class="subtext">@T("FabricationLot.PeerSyncDesc")</p>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <button id="btn-sync-all-peers" class="btn btn-primary" @onclick="RunAllPeerSyncAsync" disabled="@_isSyncingRevocationFeed">
+                        @T("FabricationLot.PeerSyncRunAllButton")
+                    </button>
+                </div>
+            </div>
+
+            <div class="grid-2 mt-3">
+                <div class="form-group">
+                    <label class="form-label" for="input-peer-sync-id">@T("FabricationLot.PeerSyncPeerIdLabel")</label>
+                    <input id="input-peer-sync-id" class="form-control font-mono" type="text" @bind="_peerSyncPeerId" placeholder="clinic-zurich-01" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="input-peer-sync-name">@T("FabricationLot.PeerSyncDisplayNameLabel")</label>
+                    <input id="input-peer-sync-name" class="form-control" type="text" @bind="_peerSyncDisplayName" placeholder="Zurich Sovereign Lab" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="input-peer-sync-url">@T("FabricationLot.PeerSyncBaseUrlLabel")</label>
+                    <input id="input-peer-sync-url" class="form-control font-mono" type="url" @bind="_peerSyncBaseUrl" placeholder="https://lab-zurich.lantea.one" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="input-peer-sync-key">@T("FabricationLot.PeerSyncPinnedKeyLabel")</label>
+                    <input id="input-peer-sync-key" class="form-control font-mono" type="text" @bind="_peerSyncPinnedKeyId" placeholder="64-hex ML-DSA-65 Key ID" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="input-peer-sync-interval">@T("FabricationLot.PeerSyncIntervalLabel")</label>
+                    <input id="input-peer-sync-interval" class="form-control" type="number" min="1" max="10080" @bind="_peerSyncIntervalMinutes" />
+                </div>
+                <div class="form-group d-flex flex-column justify-content-center gap-2">
+                    <label class="form-check-label" for="chk-peer-sync-enabled">
+                        <input id="chk-peer-sync-enabled" class="form-check-input" type="checkbox" @bind="_peerSyncEnabled" />
+                        @T("FabricationLot.PeerSyncEnabledLabel")
+                    </label>
+                    <label class="form-check-label" for="chk-peer-sync-loopback">
+                        <input id="chk-peer-sync-loopback" class="form-check-input" type="checkbox" @bind="_peerSyncAllowLoopback" />
+                        @T("FabricationLot.PeerSyncLoopbackLabel")
+                    </label>
+                </div>
+            </div>
+
+            <div class="d-flex align-items-center gap-2 mt-3">
+                <button id="btn-save-peer-sync" class="btn btn-outline" @onclick="SavePeerSyncSubscriptionAsync" disabled="@_isSyncingRevocationFeed">
+                    @T("FabricationLot.PeerSyncSaveButton")
+                </button>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(_peerSyncErrorMessage))
+            {
+                <div id="peer-sync-error" class="alert alert-danger mt-3" role="alert">@_peerSyncErrorMessage</div>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(_peerSyncStatusMessage))
+            {
+                <div id="peer-sync-status" class="alert alert-success mt-3" role="status">@_peerSyncStatusMessage</div>
+            }
+
+            @if (_peerSyncEndpoints.Count > 0)
+            {
+                <div class="table-responsive mt-3">
+                    <table id="peer-sync-endpoints-table" class="table">
+                        <thead>
+                            <tr>
+                                <th>@T("FabricationLot.PeerSyncColEndpoint")</th>
+                                <th>@T("FabricationLot.PeerSyncColStatus")</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (FederatedPeerSyncEndpointRecord ep in _peerSyncEndpoints)
+                            {
+                                string badgeClass = ep.LastStatus == FederatedPeerSyncStatus.Succeeded
+                                    ? "badge badge-success"
+                                    : ep.LastStatus == FederatedPeerSyncStatus.Failed
+                                        ? "badge badge-danger"
+                                        : "badge badge-outline";
+                                <tr data-peer-id="@ep.PeerId">
+                                    <td>
+                                        <div class="font-bold">@ep.DisplayName <span class="font-mono subtext">(@ep.PeerId)</span></div>
+                                        <div class="font-mono text-break-all subtext">@ep.BaseUrl</div>
+                                        <div class="font-mono text-break-all subtext">@ep.PinnedKeyId</div>
+                                    </td>
+                                    <td>
+                                        <span class="@badgeClass">@ep.LastStatus</span>
+                                        <span class="subtext font-mono">(@ep.TotalImportedCount)</span>
+                                        @if (!string.IsNullOrWhiteSpace(ep.LastError))
+                                        {
+                                            <div class="subtext text-danger">@ep.LastError</div>
+                                        }
+                                    </td>
+                                    <td class="d-flex align-items-center gap-2">
+                                        <button id="btn-run-peer-@ep.PeerId" class="btn btn-outline" @onclick="() => RunSinglePeerSyncAsync(ep.PeerId)" disabled="@_isSyncingRevocationFeed">
+                                            @T("FabricationLot.PeerSyncRunOneButton")
+                                        </button>
+                                        <button id="btn-remove-peer-@ep.PeerId" class="btn btn-outline" @onclick="() => DeletePeerSyncSubscriptionAsync(ep.PeerId)" disabled="@_isSyncingRevocationFeed">
+                                            @T("FabricationLot.PeerSyncRemoveButton")
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else
+            {
+                <p id="peer-sync-empty" class="subtext mt-3">@T("FabricationLot.PeerSyncEmpty")</p>
+            }
+        </div>
     </section>
 }
 
@@ -1877,6 +1995,182 @@
         try
         {
             _federatedRecalls = await LotRepository.ListFederatedRevocationsAsync();
+            _peerSyncEndpoints = await PeerSyncService.ListSubscriptionsAsync();
+        }
+        finally
+        {
+            _isSyncingRevocationFeed = false;
+        }
+    }
+
+    /// <summary>
+    /// Configured automated federated peer revocation pull-sync endpoint subscriptions.
+    /// </summary>
+    private IReadOnlyList<FederatedPeerSyncEndpointRecord> _peerSyncEndpoints = [];
+
+    /// <summary>
+    /// Input binding for the peer subscription identifier.
+    /// </summary>
+    private string _peerSyncPeerId = string.Empty;
+
+    /// <summary>
+    /// Input binding for the peer laboratory display name.
+    /// </summary>
+    private string _peerSyncDisplayName = string.Empty;
+
+    /// <summary>
+    /// Input binding for the peer endpoint base URL.
+    /// </summary>
+    private string _peerSyncBaseUrl = string.Empty;
+
+    /// <summary>
+    /// Input binding for the pinned ML-DSA-65 signing key identifier.
+    /// </summary>
+    private string _peerSyncPinnedKeyId = string.Empty;
+
+    /// <summary>
+    /// Input binding for the background sync interval in minutes.
+    /// </summary>
+    private int _peerSyncIntervalMinutes = 15;
+
+    /// <summary>
+    /// Input binding controlling whether scheduled pull-sync is enabled for the subscription.
+    /// </summary>
+    private bool _peerSyncEnabled = true;
+
+    /// <summary>
+    /// Input binding controlling explicit loopback HTTP opt-in for local laboratory testing.
+    /// </summary>
+    private bool _peerSyncAllowLoopback;
+
+    /// <summary>
+    /// Sanitized error banner message for automated peer sync actions.
+    /// </summary>
+    private string? _peerSyncErrorMessage;
+
+    /// <summary>
+    /// Success status banner message for automated peer sync actions.
+    /// </summary>
+    private string? _peerSyncStatusMessage;
+
+    /// <summary>
+    /// Persists a new or updated automated peer revocation pull-sync subscription from the Depot Studio form.
+    /// </summary>
+    /// <returns>A task representing the asynchronous save operation.</returns>
+    private async Task SavePeerSyncSubscriptionAsync()
+    {
+        // WHAT: Validates and saves an automated peer revocation pull-sync subscription.
+        // WHY:  Milestone 39 (P208): Enables Administrators to register SSRF-hardened peer laboratories from Depot Studio.
+        // HOW:  Invokes PeerSyncService.UpsertSubscriptionAsync, refreshes _peerSyncEndpoints, and displays feedback banners.
+        _isSyncingRevocationFeed = true;
+        _peerSyncErrorMessage = null;
+        _peerSyncStatusMessage = null;
+        try
+        {
+            FederatedPeerSyncEndpointRecord saved = await PeerSyncService.UpsertSubscriptionAsync(
+                new UpsertFederatedPeerSyncEndpointRequest
+                {
+                    PeerId = _peerSyncPeerId,
+                    DisplayName = _peerSyncDisplayName,
+                    BaseUrl = _peerSyncBaseUrl,
+                    PinnedKeyId = _peerSyncPinnedKeyId,
+                    SyncIntervalMinutes = _peerSyncIntervalMinutes,
+                    Enabled = _peerSyncEnabled,
+                    AllowLoopbackHttp = _peerSyncAllowLoopback
+                },
+                "studio_operator");
+            _peerSyncEndpoints = await PeerSyncService.ListSubscriptionsAsync();
+            _peerSyncStatusMessage = $"Saved automated peer sync subscription '{saved.PeerId}' ({saved.BaseUrl}).";
+        }
+        catch (ArgumentException ex)
+        {
+            _peerSyncErrorMessage = ex.Message;
+        }
+        finally
+        {
+            _isSyncingRevocationFeed = false;
+        }
+    }
+
+    /// <summary>
+    /// Triggers an on-demand revocation pull-sync against a single subscribed peer laboratory.
+    /// </summary>
+    /// <param name="peerId">The peer subscription identifier to synchronize.</param>
+    /// <returns>A task representing the asynchronous sync operation.</returns>
+    private async Task RunSinglePeerSyncAsync(string peerId)
+    {
+        // WHAT: Executes an immediate ML-DSA-65 verified pull-sync against one subscribed peer.
+        // WHY:  Milestone 39 (P208): Lets clinicians pull urgent upstream recalls on demand.
+        // HOW:  Calls PeerSyncService.SyncPeerAsync and refreshes both peer telemetry and federated recall tables.
+        _isSyncingRevocationFeed = true;
+        _peerSyncErrorMessage = null;
+        _peerSyncStatusMessage = null;
+        try
+        {
+            FederatedPeerSyncRunResult result = await PeerSyncService.SyncPeerAsync(peerId, "studio_operator");
+            _peerSyncEndpoints = await PeerSyncService.ListSubscriptionsAsync();
+            _federatedRecalls = await LotRepository.ListFederatedRevocationsAsync();
+            if (result.Succeeded)
+            {
+                _peerSyncStatusMessage = result.Summary;
+            }
+            else
+            {
+                _peerSyncErrorMessage = result.Summary;
+            }
+        }
+        finally
+        {
+            _isSyncingRevocationFeed = false;
+        }
+    }
+
+    /// <summary>
+    /// Triggers an immediate revocation pull-sync sweep across all enabled peer subscriptions.
+    /// </summary>
+    /// <returns>A task representing the asynchronous sweep operation.</returns>
+    private async Task RunAllPeerSyncAsync()
+    {
+        // WHAT: Runs a full sweep across all enabled federated peer revocation endpoints.
+        // WHY:  Milestone 39 (P208): Provides single-click cluster-wide recall synchronization.
+        // HOW:  Calls PeerSyncService.SyncAllEnabledPeersAsync and refreshes peer endpoints plus federated recall tables.
+        _isSyncingRevocationFeed = true;
+        _peerSyncErrorMessage = null;
+        _peerSyncStatusMessage = null;
+        try
+        {
+            FederatedPeerSyncSweepResult sweep = await PeerSyncService.SyncAllEnabledPeersAsync("studio_operator", dueOnly: false);
+            _peerSyncEndpoints = await PeerSyncService.ListSubscriptionsAsync();
+            _federatedRecalls = await LotRepository.ListFederatedRevocationsAsync();
+            _peerSyncStatusMessage = $"Swept {sweep.PeersAttempted} peer(s): {sweep.PeersSucceeded} succeeded, {sweep.PeersFailed} failed, {sweep.TotalNewRevocationsImported} new recall(s) imported.";
+        }
+        finally
+        {
+            _isSyncingRevocationFeed = false;
+        }
+    }
+
+    /// <summary>
+    /// Removes a configured automated peer revocation pull-sync subscription.
+    /// </summary>
+    /// <param name="peerId">The peer subscription identifier to delete.</param>
+    /// <returns>A task representing the asynchronous deletion operation.</returns>
+    private async Task DeletePeerSyncSubscriptionAsync(string peerId)
+    {
+        // WHAT: Deletes the specified peer subscription and reloads the peer table.
+        // WHY:  Milestone 39 (P208): Allows Administrators to decommission peer sync subscriptions from Depot Studio.
+        // HOW:  Calls PeerSyncService.DeleteSubscriptionAsync and refreshes _peerSyncEndpoints.
+        _isSyncingRevocationFeed = true;
+        _peerSyncErrorMessage = null;
+        _peerSyncStatusMessage = null;
+        try
+        {
+            bool deleted = await PeerSyncService.DeleteSubscriptionAsync(peerId, "studio_operator");
+            _peerSyncEndpoints = await PeerSyncService.ListSubscriptionsAsync();
+            if (deleted)
+            {
+                _peerSyncStatusMessage = $"Removed peer sync subscription '{peerId}'.";
+            }
         }
         finally
         {

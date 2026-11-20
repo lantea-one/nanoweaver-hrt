@@ -54,7 +54,8 @@ public sealed class DatabaseMigrationRunner : IDisposable
                 new Migration014_DepotLongitudinalAssays(),
                 new Migration015_FabricationLotLedger(),
                 new Migration016_FabricationLotRevocation(),
-                new Migration017_FederatedRevocationFeed()
+                new Migration017_FederatedRevocationFeed(),
+                new Migration018_FederatedPeerSyncState()
             }.OrderBy(m => m.Version).ToList();
         }
     }

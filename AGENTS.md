@@ -63,9 +63,10 @@
 11. **Sovereign Forgejo Git Remote Enforcement & Dynamic CalVer Branching**:
     - Never commit, push, or mirror to GitHub. Downstream GitHub mirrors are automated.
     - Only commit and push directly to the authoritative sovereign Forgejo remote (`origin` on `git.lantea.one`).
-    - **Branching Model**:
-      - Feature development and atomic work packages land strictly on the default tracking branch (`main`).
-      - Production and milestone releases are cut to dedicated versioned release branches: `release/vYYYY.MM.DD.N` (e.g. `release/v2026.11.10.1`) and tagged `vYYYY.MM.DD.N`.
+    - **Branching & Pull Request Model**:
+      - Each milestone MUST be developed on a dedicated feature branch (e.g., `milestone/m39-...`), opened as an auditable Forgejo Pull Request targeting `main` linking its 5 Forgejo work-package issues, verified green in CI, and merged/closed cleanly into `main`.
+      - Production and milestone releases are cut from `main` to dedicated versioned release branches: `release/vYYYY.MM.DD.N` (e.g. `release/v2026.11.19.6`) and tagged `vYYYY.MM.DD.N`.
+      - Every Forgejo and GitHub mirror Release MUST carry full detailed release notes automatically extracted from `docs/release-notes.md` via `scripts/packaging/extract-release-notes.py`.
     - **Dynamic CalVer Versioning Law**:
       - Engineers must never manually update individual version strings across project files, manifests, and packaging scripts.
       - Versioning is resolved dynamically from the active release branch name (`release/vYYYY.MM.DD.N` -> `YYYY.MM.DD.N`), git tag (`vYYYY.MM.DD.N`), or CI environment ref (`PACKAGE_VERSION`, `GITHUB_REF_NAME`, `FORGEJO_REF_NAME`) via `scripts/packaging/get-version.sh` and evaluation properties in `Directory.Build.props`.

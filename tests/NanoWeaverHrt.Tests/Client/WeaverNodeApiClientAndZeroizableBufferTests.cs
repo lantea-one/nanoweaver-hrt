@@ -1841,6 +1841,10 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         SignedLotRevocationFeed signedFeed = new SignedLotRevocationFeed().GetExamples();
         ImportRevocationFeedResponse importFeedResp = new ImportRevocationFeedResponse().GetExamples();
         FederatedLotRevocationRecord fedRevRec = new FederatedLotRevocationRecord().GetExamples();
+        FederatedPeerSyncEndpointRecord syncEp = new FederatedPeerSyncEndpointRecord().GetExamples();
+        UpsertFederatedPeerSyncEndpointRequest syncReq = new UpsertFederatedPeerSyncEndpointRequest().GetExamples();
+        FederatedPeerSyncRunResult syncRun = new FederatedPeerSyncRunResult().GetExamples();
+        FederatedPeerSyncSweepResult syncSweep = new FederatedPeerSyncSweepResult().GetExamples();
 
         innerMock.Setup(i => i.CreateFabricationLotAsync(profile, "tok", createReq, It.IsAny<CancellationToken>())).ReturnsAsync(lot);
         innerMock.Setup(i => i.GetFabricationLotsAsync(profile, "tok", "patient_alice", It.IsAny<CancellationToken>())).ReturnsAsync([lot]);
@@ -1853,6 +1857,11 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         innerMock.Setup(i => i.GetSignedRevocationFeedAsync(profile, "tok", It.IsAny<CancellationToken>())).ReturnsAsync(signedFeed);
         innerMock.Setup(i => i.ImportSignedRevocationFeedAsync(profile, "tok", signedFeed, It.IsAny<CancellationToken>())).ReturnsAsync(importFeedResp);
         innerMock.Setup(i => i.GetFederatedRevocationsAsync(profile, "tok", It.IsAny<CancellationToken>())).ReturnsAsync([fedRevRec]);
+        innerMock.Setup(i => i.GetFederatedPeerSyncEndpointsAsync(profile, "tok", It.IsAny<CancellationToken>())).ReturnsAsync([syncEp]);
+        innerMock.Setup(i => i.UpsertFederatedPeerSyncEndpointAsync(profile, "tok", syncReq, It.IsAny<CancellationToken>())).ReturnsAsync(syncEp);
+        innerMock.Setup(i => i.DeleteFederatedPeerSyncEndpointAsync(profile, "tok", "clinic-zurich-01", It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        innerMock.Setup(i => i.RunFederatedPeerSyncAsync(profile, "tok", "clinic-zurich-01", It.IsAny<CancellationToken>())).ReturnsAsync(syncRun);
+        innerMock.Setup(i => i.RunAllFederatedPeerSyncAsync(profile, "tok", It.IsAny<CancellationToken>())).ReturnsAsync(syncSweep);
 
         WeaverNodeApiClient client = new(innerMock.Object);
         Assert.Equal(lot.LotId, (await client.CreateFabricationLotAsync(profile, "tok", createReq)).LotId);
@@ -1866,6 +1875,11 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         Assert.Equal(signedFeed.FeedVersion, (await client.GetSignedRevocationFeedAsync(profile, "tok")).FeedVersion);
         Assert.Equal(1, (await client.ImportSignedRevocationFeedAsync(profile, "tok", signedFeed)).ImportedCount);
         Assert.Single(await client.GetFederatedRevocationsAsync(profile, "tok"));
+        Assert.Single(await client.GetFederatedPeerSyncEndpointsAsync(profile, "tok"));
+        Assert.Equal("clinic-zurich-01", (await client.UpsertFederatedPeerSyncEndpointAsync(profile, "tok", syncReq)).PeerId);
+        Assert.True(await client.DeleteFederatedPeerSyncEndpointAsync(profile, "tok", "clinic-zurich-01"));
+        Assert.True((await client.RunFederatedPeerSyncAsync(profile, "tok", "clinic-zurich-01")).Succeeded);
+        Assert.Equal(1, (await client.RunAllFederatedPeerSyncAsync(profile, "tok")).PeersSucceeded);
 
         client.Dispose();
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.CreateFabricationLotAsync(profile, "tok", createReq));
@@ -1879,5 +1893,10 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetSignedRevocationFeedAsync(profile, "tok"));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ImportSignedRevocationFeedAsync(profile, "tok", signedFeed));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetFederatedRevocationsAsync(profile, "tok"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetFederatedPeerSyncEndpointsAsync(profile, "tok"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.UpsertFederatedPeerSyncEndpointAsync(profile, "tok", syncReq));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.DeleteFederatedPeerSyncEndpointAsync(profile, "tok", "clinic-zurich-01"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.RunFederatedPeerSyncAsync(profile, "tok", "clinic-zurich-01"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.RunAllFederatedPeerSyncAsync(profile, "tok"));
     }
 }

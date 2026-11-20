@@ -118,4 +118,69 @@ public sealed class DesktopClinicalIntegrationTests
             }
         }
     }
+
+    /// <summary>
+    /// Verifies Milestone 39 (P207) desktop system tray escalation for newly imported federated recalls
+    /// and peer revocation sync failures via both <see cref="DesktopTrayIconController.ApplyClinicalSafetyState"/>
+    /// and <see cref="DesktopTrayIconController.ApplyFederatedSyncState"/>.
+    /// </summary>
+    [Fact]
+    public void DesktopTrayIconController_EscalatesFederatedRecallsAndPeerSyncFailures()
+    {
+        WeaverLocalizer localizer = new();
+        using DesktopTrayIconController tray = new(localizer: localizer, language: WeaverLanguage.English);
+
+        // ApplyClinicalSafetyState with newly pulled federated recalls -> Critical
+        DepotWorkspaceSummary fedRecallSummary = new(
+            ActivePatientId: "pat-1",
+            FormulationCount: 1,
+            AssayCount: 1,
+            TotalLotCount: 1,
+            ReleasedLotCount: 1,
+            QuarantinedLotCount: 0,
+            RevokedLotCount: 0,
+            ActiveSafetyAlertCount: 0,
+            AdjustedRedoseDay: 180,
+            RecommendedNextMassMg: 16.0,
+            Severity: ClinicalWorkspaceSeverity.Critical,
+            SeverityAccentHex: "#FF2A85",
+            FailedPeerSyncCount: 0,
+            NewFederatedRecallCount: 2);
+        tray.ApplyClinicalSafetyState(fedRecallSummary, false, false, ["Zurich Lab"]);
+        Assert.Equal(TrayHealthBadge.Critical, tray.CurrentState.Badge);
+
+        // ApplyClinicalSafetyState with peer sync failure only -> Warning with TrayPeerSyncFailed
+        DepotWorkspaceSummary peerFailSummary = fedRecallSummary with
+        {
+            Severity = ClinicalWorkspaceSeverity.Warning,
+            FailedPeerSyncCount = 1,
+            NewFederatedRecallCount = 0
+        };
+        tray.ApplyClinicalSafetyState(peerFailSummary, false, false, ["Zurich Lab"]);
+        Assert.Equal(TrayHealthBadge.Warning, tray.CurrentState.Badge);
+
+        // ApplyClinicalSafetyState with Warning from quarantined lot + failed peer -> TrayWarning
+        DepotWorkspaceSummary mixedWarnSummary = peerFailSummary with { QuarantinedLotCount = 1 };
+        tray.ApplyClinicalSafetyState(mixedWarnSummary, true, false, ["Zurich Lab"]);
+        Assert.Equal(TrayHealthBadge.Warning, tray.CurrentState.Badge);
+
+        // ApplyClinicalSafetyState with Warning from active safety alert + failed peer -> TrayWarning
+        DepotWorkspaceSummary alertWarnSummary = peerFailSummary with { ActiveSafetyAlertCount = 1 };
+        tray.ApplyClinicalSafetyState(alertWarnSummary, true, false, ["Zurich Lab"]);
+        Assert.Equal(TrayHealthBadge.Warning, tray.CurrentState.Badge);
+
+        // Direct ApplyFederatedSyncState: guards + Critical / Warning / Healthy
+        Assert.Throws<ArgumentOutOfRangeException>(() => tray.ApplyFederatedSyncState(-1, 0, true, false, []));
+        Assert.Throws<ArgumentOutOfRangeException>(() => tray.ApplyFederatedSyncState(0, -1, true, false, []));
+        Assert.Throws<ArgumentNullException>(() => tray.ApplyFederatedSyncState(0, 0, true, false, null!));
+
+        tray.ApplyFederatedSyncState(1, 0, false, false, ["Peer A"]);
+        Assert.Equal(TrayHealthBadge.Critical, tray.CurrentState.Badge);
+
+        tray.ApplyFederatedSyncState(0, 2, false, false, ["Peer A"]);
+        Assert.Equal(TrayHealthBadge.Warning, tray.CurrentState.Badge);
+
+        tray.ApplyFederatedSyncState(0, 0, true, false, ["Peer A"]);
+        Assert.Equal(TrayHealthBadge.Healthy, tray.CurrentState.Badge);
+    }
 }

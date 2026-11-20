@@ -1802,4 +1802,70 @@ public interface INanoWeaverNodeClient
         InstanceProfile profile,
         string bearerToken,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Lists all configured automated peer revocation pull-sync endpoint subscriptions via GET /api/federation/peers/revocation-sync.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Read-only list of persisted <see cref="FederatedPeerSyncEndpointRecord"/> subscriptions.</returns>
+    Task<IReadOnlyList<FederatedPeerSyncEndpointRecord>> GetFederatedPeerSyncEndpointsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Creates or updates an SSRF-validated, ML-DSA-65 pinned peer revocation pull-sync subscription via POST /api/federation/peers/revocation-sync.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="request">Peer endpoint subscription configuration payload.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The persisted <see cref="FederatedPeerSyncEndpointRecord"/>.</returns>
+    Task<FederatedPeerSyncEndpointRecord> UpsertFederatedPeerSyncEndpointAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        UpsertFederatedPeerSyncEndpointRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Deletes a configured peer revocation pull-sync subscription via DELETE /api/federation/peers/revocation-sync/{peerId}.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="peerId">Target peer subscription identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>True when deleted (204 No Content); false when the peer subscription did not exist (404 Not Found).</returns>
+    Task<bool> DeleteFederatedPeerSyncEndpointAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string peerId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Executes an immediate SSRF-hardened, ML-DSA-65 verified revocation pull-sync against one peer via POST /api/federation/peers/revocation-sync/{peerId}/run.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="peerId">Target peer subscription identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The <see cref="FederatedPeerSyncRunResult"/> produced by the pull-sync run.</returns>
+    Task<FederatedPeerSyncRunResult> RunFederatedPeerSyncAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string peerId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Executes an immediate revocation pull-sync sweep across all enabled peers via POST /api/federation/peers/revocation-sync/run-all.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The aggregate <see cref="FederatedPeerSyncSweepResult"/> across all enabled peer subscriptions.</returns>
+    Task<FederatedPeerSyncSweepResult> RunAllFederatedPeerSyncAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        CancellationToken ct = default);
 }
