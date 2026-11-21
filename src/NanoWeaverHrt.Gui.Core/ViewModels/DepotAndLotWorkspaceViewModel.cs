@@ -58,6 +58,7 @@ public enum ClinicalWorkspaceSeverity
 /// <param name="SeverityAccentHex">Sovereign high-contrast dark-mode hex color code corresponding to <paramref name="Severity"/>.</param>
 /// <param name="FailedPeerSyncCount">Number of subscribed federated peer revocation sync endpoints currently in <see cref="FederatedPeerSyncStatus.Failed"/> state.</param>
 /// <param name="NewFederatedRecallCount">Number of newly discovered federated recall tombstones imported by the most recent pull-sync operation.</param>
+/// <param name="CompromisedColdChainLotCount">Number of inspected lots flagged thermally compromised, expired, or custody-tampered (fail-closed unsafe for implantation).</param>
 public sealed record DepotWorkspaceSummary(
     string? ActivePatientId,
     int FormulationCount,
@@ -72,7 +73,8 @@ public sealed record DepotWorkspaceSummary(
     ClinicalWorkspaceSeverity Severity,
     string SeverityAccentHex,
     int FailedPeerSyncCount = 0,
-    int NewFederatedRecallCount = 0);
+    int NewFederatedRecallCount = 0,
+    int CompromisedColdChainLotCount = 0);
 
 /// <summary>
 /// Native cross-platform MVVM ViewModel unifying Milestones 33–36 clinical workflows:
@@ -862,7 +864,9 @@ public sealed class DepotAndLotWorkspaceViewModel : INotifyPropertyChanged
                 ? _lastPeerSyncRun.ImportedCount
                 : 0;
 
-        ClinicalWorkspaceSeverity severity = ResolveWorkspaceSeverity(quarantined, revoked, failedPeerSyncs, newFederatedRecalls);
+        int compromisedColdChain = _latestLotStability != null && !_latestLotStability.IsSafeForImplantation ? 1 : 0;
+
+        ClinicalWorkspaceSeverity severity = ResolveWorkspaceSeverity(quarantined, revoked, failedPeerSyncs, newFederatedRecalls, compromisedColdChain);
         string accentHex = MapSeverityToPaletteHex(severity);
 
         return new DepotWorkspaceSummary(
@@ -879,7 +883,8 @@ public sealed class DepotAndLotWorkspaceViewModel : INotifyPropertyChanged
             Severity: severity,
             SeverityAccentHex: accentHex,
             FailedPeerSyncCount: failedPeerSyncs,
-            NewFederatedRecallCount: newFederatedRecalls);
+            NewFederatedRecallCount: newFederatedRecalls,
+            CompromisedColdChainLotCount: compromisedColdChain);
     }
 
     /// <summary>
@@ -980,34 +985,38 @@ public sealed class DepotAndLotWorkspaceViewModel : INotifyPropertyChanged
         PeerSyncEndpoints = [];
         LastPeerSyncRun = null;
         LastPeerSyncSweep = null;
+        LatestLotStability = null;
+        LatestCustodyLedger = null;
         ErrorMessage = null;
     }
 
     /// <summary>
     /// Resolves the highest clinical severity across calibration guardrails, lot states, certificate verification,
-    /// and federated peer revocation pull-sync telemetry.
+    /// federated peer revocation pull-sync telemetry, and cold-chain thermal stability.
     /// </summary>
     /// <param name="quarantinedCount">Count of quarantined lots.</param>
     /// <param name="revokedCount">Count of revoked lots.</param>
     /// <param name="failedPeerSyncCount">Count of federated peer sync endpoints in Failed state.</param>
     /// <param name="newFederatedRecallCount">Count of newly imported federated recall tombstones.</param>
+    /// <param name="compromisedColdChainCount">Count of lots flagged thermally compromised, expired, or custody-tampered.</param>
     /// <returns>The resolved <see cref="ClinicalWorkspaceSeverity"/>.</returns>
     private ClinicalWorkspaceSeverity ResolveWorkspaceSeverity(
         int quarantinedCount,
         int revokedCount,
         int failedPeerSyncCount,
-        int newFederatedRecallCount)
+        int newFederatedRecallCount,
+        int compromisedColdChainCount)
     {
         // WHAT: Evaluates fail-closed clinical priority ordering (Critical > Warning > Optimal > Idle).
-        // WHY:  Guarantees severe clinical alerts, recalled batches, or newly imported federated recalls are never masked.
-        // HOW:  Checks critical safety ceiling, revoked lots, failed verification, and new federated recalls first, then warnings, then loaded state.
+        // WHY:  Guarantees severe clinical alerts, recalled batches, compromised cold-chain lots, or newly imported federated recalls are never masked.
+        // HOW:  Checks critical safety ceiling, revoked lots, failed verification, compromised cold chain, and new federated recalls first, then warnings, then loaded state.
         bool calibrationCritical = _latestCalibration != null && _latestCalibration.OverallSafetyStatus == DepotSafetyStatus.CriticalSafety;
         bool verificationCritical = _lastCertificateVerification != null &&
             (_lastCertificateVerification.IsRevoked ||
              _lastCertificateVerification.TrustSource == FabricationCertificateTrustSource.InvalidSignature ||
              _lastCertificateVerification.TrustSource == FabricationCertificateTrustSource.RevokedSigner);
 
-        if (calibrationCritical || revokedCount > 0 || verificationCritical || newFederatedRecallCount > 0)
+        if (calibrationCritical || revokedCount > 0 || verificationCritical || newFederatedRecallCount > 0 || compromisedColdChainCount > 0)
         {
             return ClinicalWorkspaceSeverity.Critical;
         }
@@ -1017,8 +1026,9 @@ public sealed class DepotAndLotWorkspaceViewModel : INotifyPropertyChanged
              _latestCalibration.OverallSafetyStatus == DepotSafetyStatus.AdvisoryDrift);
         bool verificationWarning = _lastCertificateVerification != null &&
             _lastCertificateVerification.TrustSource == FabricationCertificateTrustSource.UntrustedSigner;
+        bool coldChainAdvisory = _latestLotStability != null && _latestLotStability.Status == ThermalStabilityStatus.AdvisoryExcursion;
 
-        if (calibrationWarning || quarantinedCount > 0 || verificationWarning || failedPeerSyncCount > 0)
+        if (calibrationWarning || quarantinedCount > 0 || verificationWarning || failedPeerSyncCount > 0 || coldChainAdvisory)
         {
             return ClinicalWorkspaceSeverity.Warning;
         }
@@ -1531,6 +1541,177 @@ public sealed class DepotAndLotWorkspaceViewModel : INotifyPropertyChanged
             PeerSyncEndpoints = await _client.GetFederatedPeerSyncEndpointsAsync(profile, token, ct).ConfigureAwait(false);
             FederatedRevocations = await _client.GetFederatedRevocationsAsync(profile, token, ct).ConfigureAwait(false);
             return sweep;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Backing field for <see cref="LatestLotStability"/>.
+    /// </summary>
+    private LotStabilityReport? _latestLotStability;
+
+    /// <summary>
+    /// Backing field for <see cref="LatestCustodyLedger"/>.
+    /// </summary>
+    private CustodyHandoffLedgerResponse? _latestCustodyLedger;
+
+    /// <summary>
+    /// Gets the most recently evaluated Arrhenius cold-chain thermal stability report for <see cref="SelectedLotId"/>.
+    /// </summary>
+    public LotStabilityReport? LatestLotStability
+    {
+        get => _latestLotStability;
+        private set
+        {
+            _latestLotStability = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Gets the most recently loaded SHA-256 hash-chained custody handoff ledger for <see cref="SelectedLotId"/>.
+    /// </summary>
+    public CustodyHandoffLedgerResponse? LatestCustodyLedger
+    {
+        get => _latestCustodyLedger;
+        private set
+        {
+            _latestCustodyLedger = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Evaluates Arrhenius cold-chain thermal stability for <see cref="SelectedLotId"/> via GET /api/fabrication/lots/{lotId}/stability.
+    /// </summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The evaluated <see cref="LotStabilityReport"/>.</returns>
+    public async Task<LotStabilityReport> LoadSelectedLotStabilityAsync(CancellationToken ct = default)
+    {
+        // WHAT: Queries Arrhenius potency, shelf-life days, and custody-chain status for the active fabrication lot.
+        // WHY:  Milestone 40 (P212): Drives native cold-chain telemetry cards and desktop tray safety alerts.
+        // HOW:  Validates SelectedLotId, calls GetLotStabilityAsync, and updates LatestLotStability.
+        string lotId = RequireSelectedLotId();
+        var (profile, token) = ResolveEffectiveSession();
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            LotStabilityReport report = await _client.GetLotStabilityAsync(profile, token, lotId, ct).ConfigureAwait(false);
+            LatestLotStability = report;
+            return report;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Logs a cold-chain temperature excursion for <see cref="SelectedLotId"/> via POST /api/fabrication/lots/{lotId}/thermal-excursions
+    /// and updates <see cref="LatestLotStability"/>.
+    /// </summary>
+    /// <param name="request">Thermal excursion temperature, duration, storage tier, and sensor payload.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The persisted <see cref="ThermalExcursionResponse"/>.</returns>
+    public async Task<ThermalExcursionResponse> RecordThermalExcursionAsync(
+        RecordThermalExcursionRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Submits a sensor temperature observation and updates LatestLotStability immediately.
+        // WHY:  Milestone 40 (P212): Surfaces recalculated Arrhenius potency and tray critical alerts in native shells.
+        // HOW:  Validates inputs, posts to RecordThermalExcursionAsync, and stores StabilityAfterExcursion.
+        ArgumentNullException.ThrowIfNull(request);
+        string lotId = RequireSelectedLotId();
+        var (profile, token) = ResolveEffectiveSession();
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            ThermalExcursionResponse response = await _client.RecordThermalExcursionAsync(profile, token, lotId, request, ct).ConfigureAwait(false);
+            LatestLotStability = response.StabilityAfterExcursion;
+            return response;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Loads the SHA-256 hash-chained custody handoff ledger for <see cref="SelectedLotId"/> via GET /api/fabrication/lots/{lotId}/custody-handoffs.
+    /// </summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The verified <see cref="CustodyHandoffLedgerResponse"/>.</returns>
+    public async Task<CustodyHandoffLedgerResponse> LoadSelectedLotCustodyLedgerAsync(CancellationToken ct = default)
+    {
+        // WHAT: Fetches the verified custody handoff timeline for the active fabrication lot.
+        // WHY:  Milestone 40 (P212): Displays physical chain-of-custody provenance across desktop and mobile views.
+        // HOW:  Validates SelectedLotId, calls GetCustodyHandoffsAsync, and updates LatestCustodyLedger.
+        string lotId = RequireSelectedLotId();
+        var (profile, token) = ResolveEffectiveSession();
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            CustodyHandoffLedgerResponse ledger = await _client.GetCustodyHandoffsAsync(profile, token, lotId, ct).ConfigureAwait(false);
+            LatestCustodyLedger = ledger;
+            return ledger;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Appends a SHA-256 hash-chained custody handoff for <see cref="SelectedLotId"/> and refreshes
+    /// <see cref="LatestCustodyLedger"/> and <see cref="LatestLotStability"/>.
+    /// </summary>
+    /// <param name="request">Custody stage, actors, facility code, and handoff temperature payload.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The persisted <see cref="CustodyHandoffRecord"/>.</returns>
+    public async Task<CustodyHandoffRecord> RecordCustodyHandoffAsync(
+        RecordCustodyHandoffRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Submits a physical custody transition and reloads both custody ledger and stability status.
+        // WHY:  Milestone 40 (P212): Keeps native clinic custody timelines synchronized after each handoff.
+        // HOW:  Validates request and SelectedLotId, posts handoff, then refreshes ledger and stability reports.
+        ArgumentNullException.ThrowIfNull(request);
+        string lotId = RequireSelectedLotId();
+        var (profile, token) = ResolveEffectiveSession();
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            CustodyHandoffRecord record = await _client.RecordCustodyHandoffAsync(profile, token, lotId, request, ct).ConfigureAwait(false);
+            LatestCustodyLedger = await _client.GetCustodyHandoffsAsync(profile, token, lotId, ct).ConfigureAwait(false);
+            LatestLotStability = await _client.GetLotStabilityAsync(profile, token, lotId, ct).ConfigureAwait(false);
+            return record;
         }
         catch (Exception ex)
         {

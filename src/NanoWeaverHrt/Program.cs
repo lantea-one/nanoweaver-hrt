@@ -150,6 +150,8 @@ public class Program
         builder.Services.AddSingleton<IDepotCalibrationService, DepotCalibrationService>();
         builder.Services.AddSingleton<IFabricationLotRepository, FabricationLotRepository>();
         builder.Services.AddSingleton<IFabricationLotService, FabricationLotService>();
+        builder.Services.AddSingleton<IColdChainCustodyRepository, ColdChainCustodyRepository>();
+        builder.Services.AddSingleton<IColdChainStabilityService, ColdChainStabilityService>();
         builder.Services.AddSingleton<IFederatedPeerSyncRepository, FederatedPeerSyncRepository>();
         builder.Services.AddSingleton<IFederatedDnsResolver, SystemFederatedDnsResolver>();
         builder.Services.AddHttpClient(FederatedPeerSyncService.HttpClientName, client =>
@@ -5366,6 +5368,7 @@ public class Program
             FabricationLotCertificate? certificate,
             IFabricationLotRepository lotRepository,
             IFabricationLotService lotService,
+            IColdChainStabilityService coldChainService,
             IPeerKeyRegistry peerKeyRegistry,
             IComplianceAuditService audit,
             HttpContext context,
@@ -5411,6 +5414,7 @@ public class Program
                 certificate,
                 matchedPeer,
                 revocation);
+            report = await coldChainService.ApplyColdChainStabilityGateAsync(report, ct);
 
             audit.LogAction(
                 caller.Username,
@@ -5808,6 +5812,177 @@ public class Program
         .Produces<FederatedPeerSyncSweepResult>(StatusCodes.Status200OK)
         .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
         .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden);
+
+        app.MapPost("/api/fabrication/lots/{lotId}/thermal-excursions", async (
+            string lotId,
+            RecordThermalExcursionRequest? request,
+            IFabricationLotRepository lotRepository,
+            IColdChainStabilityService coldChainService,
+            ISubjectAccessService subjectAccess,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Logs a cold-chain temperature-duration observation and returns recalculated Arrhenius lot stability.
+            // WHY:  Milestone 40 (P212): Tracks thermal excursions from wet-lab release through clinical storage.
+            // HOW:  Validates payload, authorizes Administrator or granted Researcher on the lot's patient, and calls RecordThermalExcursionAsync.
+            if (string.IsNullOrWhiteSpace(lotId) || request is null)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Valid lotId and thermal excursion payload are required.");
+            }
+
+            (FabricationLotRecord? lot, IResult? denial, UserAccount caller) = await AuthorizeColdChainLotAccessAsync(
+                lotId.Trim(), allowPatientSelf: false, lotRepository, subjectAccess, context, ct);
+            if (denial is not null)
+            {
+                return denial;
+            }
+
+            try
+            {
+                // WHY `!`: AuthorizeColdChainLotAccessAsync guarantees lot is non-null whenever denial is null.
+                ThermalExcursionResponse? response = await coldChainService.RecordThermalExcursionAsync(lot!.LotId, request, caller.Username, ct);
+                return Results.Created($"/api/fabrication/lots/{lot.LotId}/stability", response);
+            }
+            catch (ArgumentException ex)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, ex.Message);
+            }
+        })
+        .WithName("RecordLotThermalExcursion")
+        .WithTags("Wet-Lab Fabrication & QC")
+        .WithSummary("Records a cold-chain temperature excursion for a wet-lab fabrication lot.")
+        .WithDescription("Persists a sensor temperature-duration observation with AES-256-GCM encrypted notes, updates Arrhenius potency and shelf life, and records a 21 CFR Part 11 audit event.")
+        .Accepts<RecordThermalExcursionRequest>("application/json")
+        .Produces<ThermalExcursionResponse>(StatusCodes.Status201Created)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden)
+        .Produces<SecureProblemDetails>(StatusCodes.Status404NotFound);
+
+        app.MapGet("/api/fabrication/lots/{lotId}/stability", async (
+            string lotId,
+            IFabricationLotRepository lotRepository,
+            IColdChainStabilityService coldChainService,
+            ISubjectAccessService subjectAccess,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Evaluates live Arrhenius cold-chain potency, shelf-life projection, and custody-chain integrity for a lot.
+            // WHY:  Milestone 40 (P212): Lets clinicians and patients inspect real-time thermal stability before implantation.
+            // HOW:  Authorizes Administrator, granted Researcher, or matching Patient self and invokes EvaluateLotStabilityAsync.
+            if (string.IsNullOrWhiteSpace(lotId))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Valid lotId is required.");
+            }
+
+            (FabricationLotRecord? lot, IResult? denial, _) = await AuthorizeColdChainLotAccessAsync(
+                lotId.Trim(), allowPatientSelf: true, lotRepository, subjectAccess, context, ct);
+            if (denial is not null)
+            {
+                return denial;
+            }
+
+            // WHY `!`: AuthorizeColdChainLotAccessAsync guarantees lot is non-null whenever denial is null.
+            LotStabilityReport? report = await coldChainService.EvaluateLotStabilityAsync(lot!.LotId, ct);
+            return Results.Ok(report);
+        })
+        .WithName("GetLotColdChainStability")
+        .WithTags("Wet-Lab Fabrication & QC")
+        .WithSummary("Evaluates Arrhenius cold-chain stability, remaining shelf life, and custody-chain validity for a lot.")
+        .WithDescription("Computes remaining active potency percentage, thermal budget utilization, projected shelf life at -20°C and 4°C, and SHA-256 custody integrity.")
+        .Produces<LotStabilityReport>(StatusCodes.Status200OK)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden)
+        .Produces<SecureProblemDetails>(StatusCodes.Status404NotFound);
+
+        app.MapPost("/api/fabrication/lots/{lotId}/custody-handoffs", async (
+            string lotId,
+            RecordCustodyHandoffRequest? request,
+            IFabricationLotRepository lotRepository,
+            IColdChainStabilityService coldChainService,
+            ISubjectAccessService subjectAccess,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Appends a SHA-256 hash-chained physical custody handoff while blocking unsafe PatientAdministration fail-closed.
+            // WHY:  Milestone 40 (P212): Enforces 21 CFR Part 11 custody provenance and blocks administration of compromised/recalled lots.
+            // HOW:  Authorizes Administrator or granted Researcher, maps ArgumentException -> 400 and InvalidOperationException -> 422.
+            if (string.IsNullOrWhiteSpace(lotId) || request is null)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Valid lotId and custody handoff payload are required.");
+            }
+
+            (FabricationLotRecord? lot, IResult? denial, UserAccount caller) = await AuthorizeColdChainLotAccessAsync(
+                lotId.Trim(), allowPatientSelf: false, lotRepository, subjectAccess, context, ct);
+            if (denial is not null)
+            {
+                return denial;
+            }
+
+            try
+            {
+                // WHY `!`: AuthorizeColdChainLotAccessAsync guarantees lot is non-null whenever denial is null.
+                CustodyHandoffRecord? handoff = await coldChainService.RecordCustodyHandoffAsync(lot!.LotId, request, caller.Username, ct);
+                return Results.Created($"/api/fabrication/lots/{lot.LotId}/custody-handoffs", handoff);
+            }
+            catch (ArgumentException ex)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return SecureProblemResult(context, StatusCodes.Status422UnprocessableEntity, ex.Message);
+            }
+        })
+        .WithName("RecordLotCustodyHandoff")
+        .WithTags("Wet-Lab Fabrication & QC")
+        .WithSummary("Appends a SHA-256 hash-chained physical custody handoff for a wet-lab fabrication lot.")
+        .WithDescription("Records a tamper-evident custody transition and blocks PatientAdministration fail-closed with HTTP 422 if the lot is recalled, quarantined, expired, melted, or chain-tampered.")
+        .Accepts<RecordCustodyHandoffRequest>("application/json")
+        .Produces<CustodyHandoffRecord>(StatusCodes.Status201Created)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden)
+        .Produces<SecureProblemDetails>(StatusCodes.Status404NotFound)
+        .Produces<SecureProblemDetails>(StatusCodes.Status422UnprocessableEntity);
+
+        app.MapGet("/api/fabrication/lots/{lotId}/custody-handoffs", async (
+            string lotId,
+            IFabricationLotRepository lotRepository,
+            IColdChainStabilityService coldChainService,
+            ISubjectAccessService subjectAccess,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Retrieves the full chronological SHA-256 hash-chained custody handoff ledger for a fabrication lot.
+            // WHY:  Milestone 40 (P212): Lets clinicians, auditors, and patients inspect verified physical custody provenance.
+            // HOW:  Authorizes Administrator, granted Researcher, or matching Patient self and calls GetCustodyLedgerAsync.
+            if (string.IsNullOrWhiteSpace(lotId))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Valid lotId is required.");
+            }
+
+            (FabricationLotRecord? lot, IResult? denial, _) = await AuthorizeColdChainLotAccessAsync(
+                lotId.Trim(), allowPatientSelf: true, lotRepository, subjectAccess, context, ct);
+            if (denial is not null)
+            {
+                return denial;
+            }
+
+            // WHY `!`: AuthorizeColdChainLotAccessAsync guarantees lot is non-null whenever denial is null.
+            CustodyHandoffLedgerResponse? ledger = await coldChainService.GetCustodyLedgerAsync(lot!.LotId, ct);
+            return Results.Ok(ledger);
+        })
+        .WithName("GetLotCustodyHandoffs")
+        .WithTags("Wet-Lab Fabrication & QC")
+        .WithSummary("Lists the verified SHA-256 hash-chained custody handoff ledger for a wet-lab fabrication lot.")
+        .WithDescription("Returns all chronological custody handoffs alongside live genesis-to-tail SHA-256 integrity status.")
+        .Produces<CustodyHandoffLedgerResponse>(StatusCodes.Status200OK)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden)
+        .Produces<SecureProblemDetails>(StatusCodes.Status404NotFound);
 
         app.Run();
     }
@@ -6934,6 +7109,60 @@ public class Program
         {
             sessionTracker.Revoke(token);
         }
+    }
+
+    /// <summary>
+    /// Resolves a wet-lab fabrication lot and enforces role and subject-level authorization for cold-chain
+    /// stability and custody ledger routes.
+    /// </summary>
+    /// <param name="lotId">Trimmed target fabrication lot identifier.</param>
+    /// <param name="allowPatientSelf">True for read-only endpoints permitting matching Patient self-access; false for mutations.</param>
+    /// <param name="lotRepository">Fabrication lot repository.</param>
+    /// <param name="subjectAccess">Subject-level grant service.</param>
+    /// <param name="context">Active HTTP context carrying the authenticated user.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The resolved lot (when authorized), an optional RFC 7807 denial result, and the authenticated caller.</returns>
+    private static async Task<(FabricationLotRecord? Lot, IResult? Denial, UserAccount Caller)> AuthorizeColdChainLotAccessAsync(
+        string lotId,
+        bool allowPatientSelf,
+        IFabricationLotRepository lotRepository,
+        ISubjectAccessService subjectAccess,
+        HttpContext context,
+        CancellationToken ct)
+    {
+        // WHAT: Centralizes lot lookup plus Administrator/Researcher-grant/Patient-self authorization across all 4 cold-chain endpoints.
+        // WHY:  Avoids duplicating per-route RBAC branch trees and keeps Gate 7 coverage ratchet spotless.
+        // HOW:  Blocks Patients on mutation endpoints upfront, loads lot (404 when absent), and verifies Researcher grant or Patient self-match.
+        // WHY `!`: Authentication middleware guarantees CurrentUser is populated before reaching any authenticated handler.
+        UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+        if (!allowPatientSelf && caller.Role == UserRole.Patient)
+        {
+            return (null, SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: Administrator or Researcher role required for cold-chain mutations."), caller);
+        }
+
+        FabricationLotRecord? lot = await lotRepository.GetLotByIdAsync(lotId, ct);
+        if (lot is null)
+        {
+            return (null, SecureProblemResult(context, StatusCodes.Status404NotFound, $"Fabrication lot '{lotId}' was not found."), caller);
+        }
+
+        if (caller.Role == UserRole.Patient)
+        {
+            if (!string.Equals(caller.Username, lot.PatientId, StringComparison.OrdinalIgnoreCase))
+            {
+                return (null, SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: Patients may only inspect their own fabrication lots."), caller);
+            }
+        }
+        else if (caller.Role == UserRole.Researcher)
+        {
+            SubjectAccessLevel? accessLevel = await subjectAccess.GetEffectiveAccessLevelAsync(caller.Username, lot.PatientId, ct);
+            if (!accessLevel.HasValue)
+            {
+                return (null, SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: Researcher lacks active subject access grant for this patient."), caller);
+            }
+        }
+
+        return (lot, null, caller);
     }
 }
 

@@ -221,6 +221,9 @@ Mobile heads execute within deterministic platform coordinators enforcing strict
 5. **Milestone 39 Automated Peer Revocation Pull-Sync & Tray Escalation (`DepotAndLotWorkspaceViewModel`, `DesktopTrayIconController`)**:
    - Exposes `LoadPeerSyncEndpointsAsync`, `UpsertPeerSyncEndpointAsync`, `DeletePeerSyncEndpointAsync`, `RunPeerSyncAsync`, and `RunAllPeerSyncAsync` across `INanoWeaverNodeClient`, `NanoWeaverNodeClient`, `WeaverNodeApiClient`, and `DepotAndLotWorkspaceViewModel`, projecting `FailedPeerSyncCount` and `NewFederatedRecallCount` onto `DepotWorkspaceSummary`.
    - Escalates newly pulled federated lot recalls (`TrayHealthBadge.Critical`, `Gui.DepotWorkspace.TrayFederatedRecall`) and failing peer sync endpoints (`TrayHealthBadge.Warning`, `Gui.DepotWorkspace.TrayPeerSyncFailed`) directly into the localized desktop system tray via `DesktopTrayIconController.ApplyClinicalSafetyState` and `ApplyFederatedSyncState`.
+6. **Milestone 40 Cold-Chain Thermal Stability & SHA-256 Custody Ledger (`DepotAndLotWorkspaceViewModel`, `DesktopTrayIconController`)**:
+   - Exposes `LoadSelectedLotStabilityAsync`, `RecordThermalExcursionAsync`, `LoadSelectedLotCustodyLedgerAsync`, and `RecordCustodyHandoffAsync` across `INanoWeaverNodeClient`, `NanoWeaverNodeClient`, `WeaverNodeApiClient`, and `DepotAndLotWorkspaceViewModel`, tracking `LatestLotStability`, `LatestCustodyLedger`, and `CompromisedColdChainLotCount` on `DepotWorkspaceSummary`.
+   - Escalates unsafe/compromised lots (`!IsSafeForImplantation`) to `TrayHealthBadge.Critical` (`Gui.DepotWorkspace.TrayColdChainCompromised`) and `AdvisoryExcursion` lots to `TrayHealthBadge.Warning` via `DesktopTrayIconController.ApplyClinicalSafetyState`.
 
 ---
 

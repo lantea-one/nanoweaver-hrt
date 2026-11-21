@@ -16,6 +16,7 @@
 @inject IFabricationLotService LotService
 @inject IPeerKeyRegistry PeerKeyRegistry
 @inject IFederatedPeerSyncService PeerSyncService
+@inject IColdChainStabilityService ColdChainService
 @inject IWeaverLocalizer Localizer
 @inject IJSRuntime JS
 
@@ -679,6 +680,198 @@
                     <p class="subtext font-mono">Revoked by @_activeLotRevocation.RevokedBy at @_activeLotRevocation.RevokedAtUtc.ToString("u", CultureInfo.InvariantCulture)</p>
                 </div>
             }
+
+            <!-- Cold-Chain Thermal Stability, Arrhenius Shelf-Life & SHA-256 Chain-of-Custody Panel (Milestone 40) -->
+            <div id="cold-chain-custody-panel" class="card stat-card mt-4" role="region" aria-label="@T("ColdChain.SectionTitle")">
+                <div class="panel-header">
+                    <div>
+                        <h4>@T("ColdChain.SectionTitle")</h4>
+                        <p class="subtext">@T("ColdChain.SectionSubtitle")</p>
+                    </div>
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <span id="cc-implantation-badge" class="badge @((_activeLotStability?.IsSafeForImplantation ?? true) ? "badge-success" : "badge-danger") font-mono">
+                            @((_activeLotStability?.IsSafeForImplantation ?? true) ? T("ColdChain.ImplantationStatusSafe") : T("ColdChain.ImplantationStatusBlocked"))
+                        </span>
+                        <span id="cc-custody-chain-badge" class="badge @((_activeLotCustodyLedger?.CustodyChainValid ?? true) ? "badge-success" : "badge-danger") font-mono">
+                            @((_activeLotCustodyLedger?.CustodyChainValid ?? true) ? T("ColdChain.CustodyChainVerified") : T("ColdChain.CustodyChainTampered"))
+                        </span>
+                        <span id="cc-stability-status-badge" class="badge @GetColdChainBadgeClass(_activeLotStability?.Status ?? ThermalStabilityStatus.Optimal) font-mono">
+                            @(_activeLotStability?.Status ?? ThermalStabilityStatus.Optimal)
+                        </span>
+                    </div>
+                </div>
+
+                <div class="telemetry-grid mt-3">
+                    <div>
+                        <div class="stat-label">@T("ColdChain.RemainingPotencyLabel")</div>
+                        <div id="cc-remaining-potency" class="stat-value font-mono">@((_activeLotStability?.RemainingPotencyPercent ?? 100.0).ToString("F2", CultureInfo.InvariantCulture))%</div>
+                    </div>
+                    <div>
+                        <div class="stat-label">@T("ColdChain.ThermalBudgetUsedLabel")</div>
+                        <div id="cc-budget-consumed" class="stat-value font-mono">@((_activeLotStability?.CumulativeThermalBudgetUsedPercent ?? 0.0).ToString("F2", CultureInfo.InvariantCulture))%</div>
+                    </div>
+                    <div>
+                        <div class="stat-label">@T("ColdChain.ShelfLifeRemainingLabel")</div>
+                        <div id="cc-shelf-life" class="stat-value-compact font-mono">
+                            @((_activeLotStability?.EstimatedRemainingShelfLifeDaysAtMinus20C ?? 365.0).ToString("F1", CultureInfo.InvariantCulture)) d (-20°C) / @((_activeLotStability?.EstimatedRemainingShelfLifeDaysAt4C ?? 23.7).ToString("F1", CultureInfo.InvariantCulture)) d (+4°C)
+                        </div>
+                    </div>
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(_coldChainErrorMessage))
+                {
+                    <div id="cc-error" class="alert alert-danger mt-3" role="alert">@_coldChainErrorMessage</div>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(_coldChainStatusMessage))
+                {
+                    <div id="cc-status" class="alert alert-success mt-3" role="status">@_coldChainStatusMessage</div>
+                }
+
+                <div class="mt-4 pt-3 border-top">
+                    <h5>@T("ColdChain.LogExcursionTitle")</h5>
+                    <div class="telemetry-grid mt-2">
+                        <div class="form-group">
+                            <label class="form-label" for="select-cc-tier">Storage Tier</label>
+                            <select id="select-cc-tier" class="form-control" @bind="_ccStorageTier">
+                                <option value="@ThermalStorageTier.UltraColdMinus80">Ultra-Cold (-80°C)</option>
+                                <option value="@ThermalStorageTier.FrozenMinus20">Frozen Standard (-20°C)</option>
+                                <option value="@ThermalStorageTier.Refrigerated2To8">Refrigerated (2–8°C)</option>
+                                <option value="@ThermalStorageTier.AmbientControlled">Ambient Controlled (&gt; 8–25°C)</option>
+                                <option value="@ThermalStorageTier.ThermalExcursion">Thermal Excursion (&gt; 25°C / Unplanned)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="input-cc-temp">Temperature (°C)</label>
+                            <input id="input-cc-temp" type="number" class="form-control font-mono" @bind="_ccTemperatureCelsius" step="0.5" min="-196.0" max="121.0" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="input-cc-duration">Exposure Duration (Hours)</label>
+                            <input id="input-cc-duration" type="number" class="form-control font-mono" @bind="_ccDurationHours" step="0.5" min="0.1" max="87600.0" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="input-cc-sensor">Calibrated Sensor ID</label>
+                            <input id="input-cc-sensor" type="text" class="form-control font-mono" @bind="_ccSensorId" placeholder="NIST-PROBE-01" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="input-cc-notes">Operator Notes (AES-256-GCM)</label>
+                            <input id="input-cc-notes" type="text" class="form-control" @bind="_ccNotes" placeholder="Optional cold-box transfer observation" />
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-center gap-2 mt-2">
+                        <button id="btn-cc-log-excursion" class="btn btn-outline" @onclick="RecordColdChainExcursionAsync" disabled="@_isLotBusy">
+                            @T("ColdChain.LogExcursionSubmit")
+                        </button>
+                    </div>
+
+                    @if (_activeLotExcursions.Count > 0)
+                    {
+                        <div class="table-container mt-3">
+                            <table id="cc-excursions-table" class="data-table">
+                                <caption class="sr-only">Recorded Cold-Chain Thermal Intervals</caption>
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Tier</th>
+                                        <th scope="col">Temp (°C)</th>
+                                        <th scope="col">Duration (h)</th>
+                                        <th scope="col">Sensor ID</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (ThermalExcursionResponse ex in _activeLotExcursions)
+                                    {
+                                        <tr>
+                                            <td class="font-mono">@ex.StorageTier</td>
+                                            <td class="font-mono">@ex.TemperatureCelsius.ToString("F2", CultureInfo.InvariantCulture)</td>
+                                            <td class="font-mono">@ex.DurationHours.ToString("F2", CultureInfo.InvariantCulture)</td>
+                                            <td class="font-mono">@ex.SensorId</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <p id="cc-excursions-empty" class="subtext mt-2">@T("ColdChain.ExcursionHistoryEmpty")</p>
+                    }
+                </div>
+
+                <div class="mt-4 pt-3 border-top">
+                    <h5>@T("ColdChain.RecordHandoffTitle")</h5>
+                    <div class="telemetry-grid mt-2">
+                        <div class="form-group">
+                            <label class="form-label" for="select-cc-stage">Custody Stage</label>
+                            <select id="select-cc-stage" class="form-control" @bind="_ccCustodyStage">
+                                <option value="@CustodyStage.WetLabRelease">Wet-Lab Release</option>
+                                <option value="@CustodyStage.ColdChainDispatch">Cold-Chain Dispatch</option>
+                                <option value="@CustodyStage.ClinicReceipt">Clinic Receipt</option>
+                                <option value="@CustodyStage.PreImplantInspection">Pre-Implant Inspection</option>
+                                <option value="@CustodyStage.PatientAdministration">Patient Administration (Gated)</option>
+                                <option value="@CustodyStage.QuarantineDisposal">Quarantine Disposal (Terminal)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="input-cc-from">From Custodian</label>
+                            <input id="input-cc-from" type="text" class="form-control" @bind="_ccFromCustodian" placeholder="wetlab_operator" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="input-cc-to">To Custodian / Clinic</label>
+                            <input id="input-cc-to" type="text" class="form-control" @bind="_ccToCustodian" placeholder="cold_courier_01" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="input-cc-facility">Facility Code</label>
+                            <input id="input-cc-facility" type="text" class="form-control font-mono" @bind="_ccLocationFacility" placeholder="ZRH-LAB-01" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="input-cc-handoff-temp">Handoff Temp (°C)</label>
+                            <input id="input-cc-handoff-temp" type="number" class="form-control font-mono" @bind="_ccHandoffTempCelsius" step="0.5" min="-196.0" max="121.0" />
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-center gap-2 mt-2">
+                        <button id="btn-cc-record-handoff" class="btn btn-primary" @onclick="RecordColdChainHandoffAsync" disabled="@_isLotBusy">
+                            @T("ColdChain.RecordHandoffSubmit")
+                        </button>
+                    </div>
+
+                    @if (_activeLotCustodyLedger != null && _activeLotCustodyLedger.Handoffs.Count > 0)
+                    {
+                        <div class="table-container mt-3">
+                            <table id="cc-custody-table" class="data-table">
+                                <caption class="sr-only">Verified SHA-256 Chain-of-Custody Timeline</caption>
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Stage</th>
+                                        <th scope="col">From &rarr; To</th>
+                                        <th scope="col">Facility</th>
+                                        <th scope="col">Temp (°C)</th>
+                                        <th scope="col">Potency</th>
+                                        <th scope="col">SHA-256 Digest</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (CustodyHandoffRecord h in _activeLotCustodyLedger.Handoffs)
+                                    {
+                                        string shortHash = h.EntrySha256.Length > 12 ? h.EntrySha256[..12] : h.EntrySha256;
+                                        <tr>
+                                            <td class="font-mono">@h.Stage</td>
+                                            <td>@h.FromActor &rarr; @h.ToActor</td>
+                                            <td class="font-mono">@h.FacilityCode</td>
+                                            <td class="font-mono">@h.TemperatureCelsius.ToString("F2", CultureInfo.InvariantCulture)</td>
+                                            <td class="font-mono">@h.PotencyPercentAtHandoff.ToString("F2", CultureInfo.InvariantCulture)%</td>
+                                            <td class="font-mono" title="@h.EntrySha256">@shortHash&hellip;</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <p id="cc-custody-empty" class="subtext mt-2">@T("ColdChain.CustodyTimelineEmpty")</p>
+                    }
+                </div>
+            </div>
         }
     </section>
 
@@ -710,11 +903,17 @@
         @if (_peerVerificationReport != null)
         {
             <div id="peer-verify-result-card" class="card stat-card mt-4" role="status">
-                <div class="d-flex align-items-center gap-2">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
                     <span id="peer-verify-trust-badge" class="badge @(_peerVerificationReport.IsTrusted ? "badge-success" : "badge-danger") font-mono">
                         @(_peerVerificationReport.IsTrusted ? T("FabricationLot.VerifierTrustedBadge") : _peerVerificationReport.IsRevoked ? "REVOKED" : _peerVerificationReport.TrustSource.ToString().ToUpperInvariant())
                     </span>
                     <span class="badge badge-outline font-mono">@_peerVerificationReport.TrustSource</span>
+                    @if (_peerVerificationReport.ColdChainStatus.HasValue)
+                    {
+                        <span id="peer-verify-coldchain-badge" class="badge @((_peerVerificationReport.IsSafeForImplantation ?? false) ? "badge-success" : "badge-danger") font-mono">
+                            @_peerVerificationReport.ColdChainStatus (@((_peerVerificationReport.RemainingPotencyPercent ?? 0.0).ToString("F2", CultureInfo.InvariantCulture))%)
+                        </span>
+                    }
                 </div>
                 <p class="mt-2 text-main">@_peerVerificationReport.Summary</p>
                 <div class="subtext font-mono text-break-all mt-1">
@@ -1346,6 +1545,11 @@
         _revokeReason = string.Empty;
         _peerVerificationReport = null;
         _verifyErrorMessage = null;
+        _activeLotStability = null;
+        _activeLotExcursions.Clear();
+        _activeLotCustodyLedger = null;
+        _coldChainErrorMessage = null;
+        _coldChainStatusMessage = null;
     }
 
     /// <summary>
@@ -1605,6 +1809,10 @@
             _lotQcChecks.Clear();
             _lotReleaseEvaluation = null;
             _lotCertificateVerified = false;
+            _activeLotExcursions.Clear();
+            _coldChainErrorMessage = null;
+            _coldChainStatusMessage = null;
+            await RefreshColdChainStateAsync();
         }
         finally
         {
@@ -1697,6 +1905,7 @@
             _activeLot = await LotRepository.UpsertLotAsync(updated);
             _lotReleaseEvaluation = eval;
             _lotCertificateVerified = eval.Certificate is not null && LotService.VerifyLotCertificate(eval.Certificate);
+            await RefreshColdChainStateAsync();
         }
         finally
         {
@@ -1770,6 +1979,7 @@
                 RevocationReason = _revokeReason.Trim(),
                 RevokedAtUtc = DateTimeOffset.UtcNow
             });
+            await RefreshColdChainStateAsync();
         }
         finally
         {
@@ -1830,7 +2040,8 @@
                 }
             }
 
-            _peerVerificationReport = LotService.VerifyCertificateAgainstTrustAnchor(certificate, matchedPeer, revocation);
+            FabricationCertificateVerificationReport baseReport = LotService.VerifyCertificateAgainstTrustAnchor(certificate, matchedPeer, revocation);
+            _peerVerificationReport = await ColdChainService.ApplyColdChainStabilityGateAsync(baseReport);
         }
         catch (JsonException)
         {
@@ -2177,4 +2388,217 @@
             _isSyncingRevocationFeed = false;
         }
     }
+
+    /// <summary>
+    /// Cached Arrhenius thermal stability and shelf-life evaluation report for <see cref="_activeLot"/>.
+    /// </summary>
+    private LotStabilityReport? _activeLotStability;
+
+    /// <summary>
+    /// Chronological list of thermal excursion intervals logged for <see cref="_activeLot"/> during the studio session.
+    /// </summary>
+    private readonly List<ThermalExcursionResponse> _activeLotExcursions = [];
+
+    /// <summary>
+    /// Cached verified SHA-256 chain-of-custody handoff ledger for <see cref="_activeLot"/>.
+    /// </summary>
+    private CustodyHandoffLedgerResponse? _activeLotCustodyLedger;
+
+    /// <summary>
+    /// Selected cold-chain storage tier classification for a new thermal excursion entry.
+    /// </summary>
+    private ThermalStorageTier _ccStorageTier = ThermalStorageTier.FrozenMinus20;
+
+    /// <summary>
+    /// Observed cold-chain vial temperature in degrees Celsius for a new thermal excursion entry.
+    /// </summary>
+    private double _ccTemperatureCelsius = -20.0;
+
+    /// <summary>
+    /// Observed exposure duration in hours for a new thermal excursion entry.
+    /// </summary>
+    private double _ccDurationHours = 2.0;
+
+    /// <summary>
+    /// Calibrated temperature probe or datalogger identifier.
+    /// </summary>
+    private string _ccSensorId = "NIST-PROBE-01";
+
+    /// <summary>
+    /// Optional operator notes encrypted with AES-256-GCM when recording a thermal excursion.
+    /// </summary>
+    private string _ccNotes = string.Empty;
+
+    /// <summary>
+    /// Selected physical chain-of-custody lifecycle stage for a new custody handoff entry.
+    /// </summary>
+    private CustodyStage _ccCustodyStage = CustodyStage.WetLabRelease;
+
+    /// <summary>
+    /// Releasing custodian or courier identifier for a new custody handoff entry.
+    /// </summary>
+    private string _ccFromCustodian = "wetlab_operator";
+
+    /// <summary>
+    /// Receiving custodian, courier, or clinic identifier for a new custody handoff entry.
+    /// </summary>
+    private string _ccToCustodian = "cold_courier_01";
+
+    /// <summary>
+    /// Standardized facility or laboratory site code where a custody handoff occurs.
+    /// </summary>
+    private string _ccLocationFacility = "ZRH-LAB-01";
+
+    /// <summary>
+    /// Observed vial temperature in degrees Celsius at the time of a custody handoff.
+    /// </summary>
+    private double _ccHandoffTempCelsius = -19.5;
+
+    /// <summary>
+    /// Error alert message displayed in the cold-chain thermal stability and custody ledger panel.
+    /// </summary>
+    private string? _coldChainErrorMessage;
+
+    /// <summary>
+    /// Confirmation status message displayed in the cold-chain thermal stability and custody ledger panel.
+    /// </summary>
+    private string? _coldChainStatusMessage;
+
+    /// <summary>
+    /// Refreshes the Arrhenius stability evaluation and verified SHA-256 custody ledger for <see cref="_activeLot"/>.
+    /// </summary>
+    /// <returns>A task representing the asynchronous refresh operation.</returns>
+    private async Task RefreshColdChainStateAsync()
+    {
+        // WHAT: Queries IColdChainStabilityService for the active lot's live Arrhenius potency and SHA-256 custody ledger.
+        // WHY:  Milestone 40 (P213): Keeps cold-chain implantation badges and custody timelines synchronized across lifecycle events.
+        // HOW:  Clears cached cold-chain DTOs when _activeLot is null; otherwise calls EvaluateLotStabilityAsync and GetCustodyLedgerAsync.
+        if (_activeLot is null)
+        {
+            _activeLotStability = null;
+            _activeLotCustodyLedger = null;
+            return;
+        }
+
+        _activeLotStability = await ColdChainService.EvaluateLotStabilityAsync(_activeLot.LotId);
+        _activeLotCustodyLedger = await ColdChainService.GetCustodyLedgerAsync(_activeLot.LotId);
+    }
+
+    /// <summary>
+    /// Logs a cold-chain temperature interval for <see cref="_activeLot"/> and updates Arrhenius potency and shelf-life metrics.
+    /// </summary>
+    /// <returns>A task representing the asynchronous excursion logging operation.</returns>
+    private async Task RecordColdChainExcursionAsync()
+    {
+        // WHAT: Submits a temperature-duration interval to IColdChainStabilityService and updates UI telemetry.
+        // WHY:  Milestone 40 (P213): Evaluates Arrhenius thermal degradation and dsDNA melting cliffs interactively.
+        // HOW:  Guards on _activeLot, calls RecordThermalExcursionAsync, appends response to _activeLotExcursions, and handles validation exceptions.
+        _coldChainErrorMessage = null;
+        _coldChainStatusMessage = null;
+        if (_activeLot is null)
+        {
+            _coldChainErrorMessage = "Mint a fabrication lot before recording thermal intervals.";
+            return;
+        }
+
+        _isLotBusy = true;
+        try
+        {
+            ThermalExcursionResponse? recorded = await ColdChainService.RecordThermalExcursionAsync(
+                _activeLot.LotId,
+                new RecordThermalExcursionRequest
+                {
+                    TemperatureCelsius = _ccTemperatureCelsius,
+                    DurationHours = _ccDurationHours,
+                    StorageTier = _ccStorageTier,
+                    SensorId = _ccSensorId,
+                    Notes = string.IsNullOrWhiteSpace(_ccNotes) ? null : _ccNotes
+                },
+                "depot-studio-operator");
+
+            if (recorded is not null)
+            {
+                _activeLotExcursions.Add(recorded);
+                _activeLotStability = recorded.StabilityAfterExcursion;
+                _coldChainStatusMessage = string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"Recorded {recorded.TemperatureCelsius:F1}°C / {recorded.DurationHours:F1}h interval: {recorded.StabilityAfterExcursion.RemainingPotencyPercent:F2}% potency remaining.");
+            }
+        }
+        catch (ArgumentException ex)
+        {
+            _coldChainErrorMessage = ex.Message;
+        }
+        finally
+        {
+            _isLotBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Appends a SHA-256 hash-chained physical custody handoff for <see cref="_activeLot"/>, surfacing fail-closed blocks in UI alerts.
+    /// </summary>
+    /// <returns>A task representing the asynchronous custody handoff operation.</returns>
+    private async Task RecordColdChainHandoffAsync()
+    {
+        // WHAT: Commits a hash-chained custody handoff via IColdChainStabilityService and refreshes stability/ledger views.
+        // WHY:  Milestone 40 (P213): Enforces fail-closed blocking of compromised or recalled PatientAdministration handoffs in Depot Studio.
+        // HOW:  Calls RecordCustodyHandoffAsync, refreshes cold-chain state, and maps ArgumentException / InvalidOperationException to #cc-error.
+        _coldChainErrorMessage = null;
+        _coldChainStatusMessage = null;
+        if (_activeLot is null)
+        {
+            _coldChainErrorMessage = "Mint a fabrication lot before recording custody handoffs.";
+            return;
+        }
+
+        _isLotBusy = true;
+        try
+        {
+            CustodyHandoffRecord? recorded = await ColdChainService.RecordCustodyHandoffAsync(
+                _activeLot.LotId,
+                new RecordCustodyHandoffRequest
+                {
+                    Stage = _ccCustodyStage,
+                    FromActor = _ccFromCustodian,
+                    ToActor = _ccToCustodian,
+                    FacilityCode = _ccLocationFacility,
+                    TemperatureCelsius = _ccHandoffTempCelsius
+                },
+                "depot-studio-operator");
+
+            await RefreshColdChainStateAsync();
+            if (recorded is not null)
+            {
+                _coldChainStatusMessage = $"Appended {recorded.Stage} custody handoff ({recorded.FromActor} -> {recorded.ToActor}).";
+            }
+        }
+        catch (ArgumentException ex)
+        {
+            _coldChainErrorMessage = ex.Message;
+        }
+        catch (InvalidOperationException ex)
+        {
+            await RefreshColdChainStateAsync();
+            _coldChainErrorMessage = string.IsNullOrWhiteSpace(ex.Message)
+                ? T("ColdChain.PatientAdministrationBlocked")
+                : ex.Message;
+        }
+        finally
+        {
+            _isLotBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Resolves the sovereign dark-mode CSS badge class for a <see cref="ThermalStabilityStatus"/> value.
+    /// </summary>
+    /// <param name="status">Evaluated cold-chain Arrhenius thermal stability tier.</param>
+    /// <returns>A CSS badge utility class name.</returns>
+    private static string GetColdChainBadgeClass(ThermalStabilityStatus status) => status switch
+    {
+        ThermalStabilityStatus.Optimal => "badge-success",
+        ThermalStabilityStatus.AdvisoryExcursion => "badge-warning",
+        _ => "badge-danger"
+    };
 }

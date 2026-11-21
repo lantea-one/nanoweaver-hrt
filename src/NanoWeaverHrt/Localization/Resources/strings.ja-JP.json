@@ -147,5 +147,22 @@
   "FabricationLot.PeerSyncRemoveButton": "削除",
   "FabricationLot.PeerSyncColEndpoint": "ピアおよびエンドポイント URL",
   "FabricationLot.PeerSyncColStatus": "状態と回収件数",
-  "FabricationLot.PeerSyncEmpty": "自動ピア失効同期エンドポイントは設定されていません。"
+  "FabricationLot.PeerSyncEmpty": "自動ピア失効同期エンドポイントは設定されていません。",
+  "Gui.DepotWorkspace.TrayColdChainCompromised": "コールドチェーン安定性が損なわれています",
+  "ColdChain.SectionTitle": "コールドチェーン熱安定性・保管履歴台帳",
+  "ColdChain.SectionSubtitle": "アレニウス則 DNA オリガミ熱力価バジェット • SHA-256 改ざん検知保管チェーン • フェイルクローズド移植ゲート",
+  "ColdChain.RemainingPotencyLabel": "残存力価 (%)",
+  "ColdChain.ShelfLifeRemainingLabel": "推定残存有効期間",
+  "ColdChain.ThermalBudgetUsedLabel": "消費済み熱バジェット (%)",
+  "ColdChain.ImplantationStatusSafe": "臨床移植可能（安全）",
+  "ColdChain.ImplantationStatusBlocked": "移植ブロック — コールドチェーン異常",
+  "ColdChain.CustodyChainVerified": "SHA-256 保管チェーン検証済み",
+  "ColdChain.CustodyChainTampered": "保管チェーン整合性エラー",
+  "ColdChain.LogExcursionTitle": "コールドチェーン温度区間・温度逸脱を記録",
+  "ColdChain.LogExcursionSubmit": "温度区間を記録して再計算",
+  "ColdChain.RecordHandoffTitle": "暗号学的保管引き継ぎを追加",
+  "ColdChain.RecordHandoffSubmit": "署名して保管引き継ぎを追加",
+  "ColdChain.CustodyTimelineEmpty": "この製造ロットの保管引き継ぎ履歴はまだ記録されていません。",
+  "ColdChain.ExcursionHistoryEmpty": "温度区間はまだ記録されていません。基準保管状態を仮定しています。",
+  "ColdChain.PatientAdministrationBlocked": "患者投与引き継ぎがブロックされました：ロット力価または保管チェーン整合性が損なわれています。"
 }

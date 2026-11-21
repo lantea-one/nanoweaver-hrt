@@ -901,8 +901,24 @@ Permanently transitions a fabrication lot to `Revoked`, persists a recall tombst
 * **Role Requirement**: `Administrator` only.
 
 #### `POST /api/fabrication/certificates/verify`
-Verifies an imported or local **ML-DSA-65** Certificate of Analysis JSON payload against mathematical SHA-256 + ML-DSA-65 integrity, this node's signing key, `IPeerKeyRegistry` (`LocalNode`, `TrustedPeer`, `RevokedSigner`, `UntrustedSigner`, or `InvalidSignature`), and both local (`weaver_fabrication_lot_revocations`) and federated (`weaver_federated_lot_revocations`) lot revocation tombstones (`200 OK`), logging `FABRICATION_CERT_VERIFY`.
+Verifies an imported or local **ML-DSA-65** Certificate of Analysis JSON payload against mathematical SHA-256 + ML-DSA-65 integrity, this node's signing key, `IPeerKeyRegistry` (`LocalNode`, `TrustedPeer`, `RevokedSigner`, `UntrustedSigner`, or `InvalidSignature`), both local (`weaver_fabrication_lot_revocations`) and federated (`weaver_federated_lot_revocations`) lot revocation tombstones, and (when present on the node) local cold-chain stability and SHA-256 custody-chain integrity (`200 OK`), enriching the response with `coldChainStatus`, `remainingPotencyPercent`, `custodyChainValid`, and `isSafeForImplantation` and logging `FABRICATION_CERT_VERIFY`. When a locally tracked lot is thermally expired/denatured or has a broken custody hash chain, `isTrusted` fails closed to `false`.
 * **Role Requirement**: `Administrator` or `Researcher`.
+
+#### `POST /api/fabrication/lots/{lotId}/thermal-excursions`
+Logs a cold-chain sensor temperature (`-196.0` to `+121.0°C`) and exposure duration (`> 0` to `87,600` hours) against a wet-lab fabrication lot (`201 Created` / `ThermalExcursionResponse`). Encrypts optional operator notes via AES-256-GCM, recalculates cumulative first-order Arrhenius remaining potency and shelf life (`-20°C` and `+4°C`), flags `CatastrophicDenaturation` above `42.0°C`, and emits a 21 CFR Part 11 `FABRICATION_THERMAL_LOG_RECORD` audit event.
+* **Role Requirement**: `Administrator` or cohort-authorized `Researcher` (`Patient` receives `403 Forbidden`).
+
+#### `GET /api/fabrication/lots/{lotId}/stability`
+Evaluates live Arrhenius cold-chain stability (`LotStabilityReport`) for a fabrication lot (`200 OK`), returning remaining active potency percentage, thermal budget utilization, projected safe shelf life at `-20°C` and `+4°C`, `status` (`Optimal`, `AdvisoryExcursion`, `ExpiredOrCompromised`, `CatastrophicDenaturation`), `custodyChainValid`, and `isSafeForImplantation`.
+* **Role Requirement**: `Administrator`, cohort-authorized `Researcher`, or `Patient` self.
+
+#### `POST /api/fabrication/lots/{lotId}/custody-handoffs`
+Appends a microsecond-normalized, SHA-256 hash-chained physical custody handoff (`CustodyHandoffRecord`, `201 Created`) spanning `WetLabRelease`, `ColdChainDispatch`, `ClinicReceipt`, `PreImplantInspection`, `PatientAdministration`, or terminal `QuarantineDisposal`, emitting `FABRICATION_CUSTODY_HANDOFF_RECORD`. Transitions to `PatientAdministration` fail closed with HTTP `422 Unprocessable Entity` if the lot is recalled, unreleased, expired, denatured below `90.0%` potency, or has a tampered custody hash chain.
+* **Role Requirement**: `Administrator` or cohort-authorized `Researcher` (`Patient` receives `403 Forbidden`).
+
+#### `GET /api/fabrication/lots/{lotId}/custody-handoffs`
+Retrieves the chronological SHA-256 hash-chained custody handoff ledger (`CustodyHandoffLedgerResponse`) with live genesis-to-tail verification (`200 OK`).
+* **Role Requirement**: `Administrator`, cohort-authorized `Researcher`, or `Patient` self.
 
 #### `GET /api/fabrication/revocations/feed`
 Exports all locally issued permanent lot revocation tombstones as a de-identified (zero patient IDs), canonically hashed, **ML-DSA-65** signed `SignedLotRevocationFeed` JSON document ready for peer node synchronization (`200 OK`).

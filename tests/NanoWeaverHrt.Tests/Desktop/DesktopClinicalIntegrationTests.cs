@@ -182,5 +182,14 @@ public sealed class DesktopClinicalIntegrationTests
 
         tray.ApplyFederatedSyncState(0, 0, true, false, ["Peer A"]);
         Assert.Equal(TrayHealthBadge.Healthy, tray.CurrentState.Badge);
+
+        // Milestone 40: Compromised cold-chain lot escalates tray to Critical
+        DepotWorkspaceSummary compromisedColdChain = fedRecallSummary with
+        {
+            NewFederatedRecallCount = 0,
+            CompromisedColdChainLotCount = 1
+        };
+        tray.ApplyClinicalSafetyState(compromisedColdChain, false, false, ["Zurich Lab"]);
+        Assert.Equal(TrayHealthBadge.Critical, tray.CurrentState.Badge);
     }
 }

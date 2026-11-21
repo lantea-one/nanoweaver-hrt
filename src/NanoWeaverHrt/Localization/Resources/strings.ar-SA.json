@@ -147,5 +147,22 @@
   "FabricationLot.PeerSyncRemoveButton": "إزالة",
   "FabricationLot.PeerSyncColEndpoint": "النظير وعنوان نقطة النهاية",
   "FabricationLot.PeerSyncColStatus": "الحالة وعمليات السحب",
-  "FabricationLot.PeerSyncEmpty": "لم يتم تكوين أي نقاط نهاية آلية لمزامنة الإلغاءات."
+  "FabricationLot.PeerSyncEmpty": "لم يتم تكوين أي نقاط نهاية آلية لمزامنة الإلغاءات.",
+  "Gui.DepotWorkspace.TrayColdChainCompromised": "تعرض استقرار سلسلة التبريد للخطر",
+  "ColdChain.SectionTitle": "الاستقرار الحراري لسلسلة التبريد وسجل سلسلة الحفظ",
+  "ColdChain.SectionSubtitle": "ميزانية الفعالية الحرارية لأوريغامي الحمض النووي (أرهينيوس) • سلسلة حفظ مقاومة للعبث SHA-256 • بوابة غرس آمنة",
+  "ColdChain.RemainingPotencyLabel": "الفعالية المتبقية (%)",
+  "ColdChain.ShelfLifeRemainingLabel": "مدة الصلاحية المقدرة المتبقية",
+  "ColdChain.ThermalBudgetUsedLabel": "الميزانية الحرارية المستهلكة (%)",
+  "ColdChain.ImplantationStatusSafe": "آمن للغرس السريري",
+  "ColdChain.ImplantationStatusBlocked": "تم حظر الغرس — سلسلة التبريد متضررة",
+  "ColdChain.CustodyChainVerified": "تم التحقق من سلسلة الحفظ SHA-256",
+  "ColdChain.CustodyChainTampered": "فشل سلامة سلسلة الحفظ",
+  "ColdChain.LogExcursionTitle": "تسجيل فترة درجة حرارة أو انحراف في سلسلة التبريد",
+  "ColdChain.LogExcursionSubmit": "تسجيل الفترة الحرارية وإعادة الحساب",
+  "ColdChain.RecordHandoffTitle": "إلحاق تسليم تشفيري لسلسلة الحفظ",
+  "ColdChain.RecordHandoffSubmit": "توقيع وإلحاق تسليم الحفظ",
+  "ColdChain.CustodyTimelineEmpty": "لم يتم تسجيل أي عمليات تسليم حفظ لهذه التشغيلة بعد.",
+  "ColdChain.ExcursionHistoryEmpty": "لم يتم تسجيل فترات حرارية بعد؛ يُفترض التخزين الاسمي القياسي.",
+  "ColdChain.PatientAdministrationBlocked": "تم حظر تسليم الإعطاء للمريض: فعالية التشغيلة أو سلامة سلسلة الحفظ متضررة."
 }

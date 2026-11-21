@@ -147,5 +147,22 @@
   "FabricationLot.PeerSyncRemoveButton": "Usuń",
   "FabricationLot.PeerSyncColEndpoint": "Partner i adres URL",
   "FabricationLot.PeerSyncColStatus": "Status i wycofania",
-  "FabricationLot.PeerSyncEmpty": "Nie skonfigurowano automatycznych punktów synchronizacji odwołań."
+  "FabricationLot.PeerSyncEmpty": "Nie skonfigurowano automatycznych punktów synchronizacji odwołań.",
+  "Gui.DepotWorkspace.TrayColdChainCompromised": "Stabilność łańcucha chłodniczego naruszona",
+  "ColdChain.SectionTitle": "Stabilność termiczna łańcucha chłodniczego i rejestr powiernictwa",
+  "ColdChain.SectionSubtitle": "Budżet termiczny Arrheniusa dla origami DNA • Łańcuch powiernictwa SHA-256 • Bramka fail-closed implantacji",
+  "ColdChain.RemainingPotencyLabel": "Pozostała moc biologiczna (%)",
+  "ColdChain.ShelfLifeRemainingLabel": "Szacowany pozostały okres trwałości",
+  "ColdChain.ThermalBudgetUsedLabel": "Zużyty budżet termiczny (%)",
+  "ColdChain.ImplantationStatusSafe": "BEZPIECZNE DO IMPLANTACJI KLINICZNEJ",
+  "ColdChain.ImplantationStatusBlocked": "IMPLANTACJA ZABLOKOWANA — ŁAŃCUCH CHŁODNICZY NARUSZONY",
+  "ColdChain.CustodyChainVerified": "ŁAŃCUCH POWIERNICTWA SHA-256 ZWERYFIKOWANY",
+  "ColdChain.CustodyChainTampered": "BŁĄD INTEGRALNOŚCI ŁAŃCUCHA POWIERNICTWA",
+  "ColdChain.LogExcursionTitle": "Zarejestruj przedział temperatury / odchylenie chłodnicze",
+  "ColdChain.LogExcursionSubmit": "Zapisz przedział termiczny i przelicz",
+  "ColdChain.RecordHandoffTitle": "Dodaj kryptograficzne przekazanie powiernictwa",
+  "ColdChain.RecordHandoffSubmit": "Podpisz i dodaj przekazanie",
+  "ColdChain.CustodyTimelineEmpty": "Dla tej partii produkcyjnej nie zarejestrowano jeszcze przekazań powiernictwa.",
+  "ColdChain.ExcursionHistoryEmpty": "Nie zarejestrowano jeszcze przedziałów termicznych; przyjęto bazowe przechowywanie nominalne.",
+  "ColdChain.PatientAdministrationBlocked": "Przekazanie do podania pacjentowi zablokowane: moc partii lub integralność powiernictwa jest naruszona."
 }

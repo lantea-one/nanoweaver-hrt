@@ -2257,4 +2257,66 @@ public sealed class WeaverNodeApiClient : INanoWeaverNodeClient, IDisposable
         string effectiveToken = ResolveBearerToken(bearerToken);
         return _innerClient.RunAllFederatedPeerSyncAsync(profile, effectiveToken, ct);
     }
+
+    /// <inheritdoc/>
+    public Task<ThermalExcursionResponse> RecordThermalExcursionAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        RecordThermalExcursionRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/fabrication/lots/{lotId}/thermal-excursions using provided or cached session token.
+        // WHY:  Milestone 40 (P212): Logs cold-chain excursions from managed desktop/mobile clients.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.RecordThermalExcursionAsync(profile, effectiveToken, lotId, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<LotStabilityReport> GetLotStabilityAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/fabrication/lots/{lotId}/stability using provided or cached session token.
+        // WHY:  Milestone 40 (P212): Queries Arrhenius thermal stability and shelf-life projections.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GetLotStabilityAsync(profile, effectiveToken, lotId, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<CustodyHandoffRecord> RecordCustodyHandoffAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        RecordCustodyHandoffRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/fabrication/lots/{lotId}/custody-handoffs using provided or cached session token.
+        // WHY:  Milestone 40 (P212): Records hash-chained physical custody handoffs.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.RecordCustodyHandoffAsync(profile, effectiveToken, lotId, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<CustodyHandoffLedgerResponse> GetCustodyHandoffsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/fabrication/lots/{lotId}/custody-handoffs using provided or cached session token.
+        // WHY:  Milestone 40 (P212): Loads verified SHA-256 chain-of-custody history.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GetCustodyHandoffsAsync(profile, effectiveToken, lotId, ct);
+    }
 }

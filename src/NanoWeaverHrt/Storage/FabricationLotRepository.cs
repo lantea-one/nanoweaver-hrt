@@ -346,6 +346,22 @@ public sealed class FabricationLotRepository : IFabricationLotRepository
             await using WeaverDbSession session = await _connectionFactory.OpenAsync(cancellationToken).ConfigureAwait(false);
             await using DbTransaction tx = await session.Connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
+            await using (DbCommand deleteCustody = session.CreateCommand(
+                $"DELETE FROM weaver_lot_custody_handoffs WHERE patient_id = {session.Dialect.Parameter("pid")}"))
+            {
+                deleteCustody.Transaction = tx;
+                WeaverDbParameters.Add(deleteCustody, "pid", patientId);
+                deletedTotal += await deleteCustody.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            await using (DbCommand deleteExcursions = session.CreateCommand(
+                $"DELETE FROM weaver_lot_thermal_excursions WHERE patient_id = {session.Dialect.Parameter("pid")}"))
+            {
+                deleteExcursions.Transaction = tx;
+                WeaverDbParameters.Add(deleteExcursions, "pid", patientId);
+                deletedTotal += await deleteExcursions.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+
             await using (DbCommand deleteRevocations = session.CreateCommand(
                 $"DELETE FROM weaver_fabrication_lot_revocations WHERE patient_id = {session.Dialect.Parameter("pid")}"))
             {

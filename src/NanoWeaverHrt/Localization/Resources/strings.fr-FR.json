@@ -147,5 +147,22 @@
   "FabricationLot.PeerSyncRemoveButton": "Supprimer",
   "FabricationLot.PeerSyncColEndpoint": "Pair et URL",
   "FabricationLot.PeerSyncColStatus": "Statut et rappels",
-  "FabricationLot.PeerSyncEmpty": "Aucun point de terminaison de synchronisation automatique des révocations n'est configuré."
+  "FabricationLot.PeerSyncEmpty": "Aucun point de terminaison de synchronisation automatique des révocations n'est configuré.",
+  "Gui.DepotWorkspace.TrayColdChainCompromised": "Stabilité de la chaîne du froid compromise",
+  "ColdChain.SectionTitle": "Stabilité thermique de chaîne du froid et registre de traçabilité",
+  "ColdChain.SectionSubtitle": "Budget thermique d'Arrhenius (origami ADN) • Chaîne de traçabilité SHA-256 infalsifiable • Verrou d'implantation fail-closed",
+  "ColdChain.RemainingPotencyLabel": "Activité restante (%)",
+  "ColdChain.ShelfLifeRemainingLabel": "Durée de conservation restante estimée",
+  "ColdChain.ThermalBudgetUsedLabel": "Budget thermique consommé (%)",
+  "ColdChain.ImplantationStatusSafe": "SÛR POUR IMPLANTATION CLINIQUE",
+  "ColdChain.ImplantationStatusBlocked": "IMPLANTATION BLOQUÉE — CHAÎNE DU FROID COMPROMISE",
+  "ColdChain.CustodyChainVerified": "CHAÎNE DE TRAÇABILITÉ SHA-256 VÉRIFIÉE",
+  "ColdChain.CustodyChainTampered": "ÉCHEC D'INTÉGRITÉ DE LA CHAÎNE DE TRAÇABILITÉ",
+  "ColdChain.LogExcursionTitle": "Consigner un intervalle thermique / excursion de température",
+  "ColdChain.LogExcursionSubmit": "Enregistrer l'intervalle et recalculer",
+  "ColdChain.RecordHandoffTitle": "Ajouter un transfert cryptographique de garde",
+  "ColdChain.RecordHandoffSubmit": "Signer et ajouter le transfert",
+  "ColdChain.CustodyTimelineEmpty": "Aucun transfert de garde enregistré pour ce lot pour le moment.",
+  "ColdChain.ExcursionHistoryEmpty": "Aucun intervalle thermique enregistré ; stockage nominal de référence supposé.",
+  "ColdChain.PatientAdministrationBlocked": "Administration patient bloquée : la puissance du lot ou l'intégrité de la garde est compromise."
 }

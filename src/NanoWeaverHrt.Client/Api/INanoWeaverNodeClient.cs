@@ -1868,4 +1868,64 @@ public interface INanoWeaverNodeClient
         InstanceProfile profile,
         string bearerToken,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Logs a cold-chain temperature excursion for a fabrication lot via POST /api/fabrication/lots/{lotId}/thermal-excursions.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="lotId">Target fabrication lot identifier.</param>
+    /// <param name="request">Thermal excursion temperature, duration, storage tier, and sensor payload.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Persisted <see cref="ThermalExcursionResponse"/> with recalculated Arrhenius stability.</returns>
+    Task<ThermalExcursionResponse> RecordThermalExcursionAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        RecordThermalExcursionRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Evaluates current Arrhenius thermal stability and custody-chain validity via GET /api/fabrication/lots/{lotId}/stability.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="lotId">Target fabrication lot identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The evaluated <see cref="LotStabilityReport"/>.</returns>
+    Task<LotStabilityReport> GetLotStabilityAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Appends a SHA-256 hash-chained physical custody handoff via POST /api/fabrication/lots/{lotId}/custody-handoffs.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="lotId">Target fabrication lot identifier.</param>
+    /// <param name="request">Custody stage, releasing/receiving actors, facility code, and temperature payload.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The persisted hash-chained <see cref="CustodyHandoffRecord"/>.</returns>
+    Task<CustodyHandoffRecord> RecordCustodyHandoffAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        RecordCustodyHandoffRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Retrieves the chronological SHA-256 hash-chained custody handoff ledger via GET /api/fabrication/lots/{lotId}/custody-handoffs.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="lotId">Target fabrication lot identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The verified <see cref="CustodyHandoffLedgerResponse"/>.</returns>
+    Task<CustodyHandoffLedgerResponse> GetCustodyHandoffsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        CancellationToken ct = default);
 }

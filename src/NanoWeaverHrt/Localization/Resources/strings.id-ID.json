@@ -147,5 +147,22 @@
   "FabricationLot.PeerSyncRemoveButton": "Hapus",
   "FabricationLot.PeerSyncColEndpoint": "Peer & URL Endpoint",
   "FabricationLot.PeerSyncColStatus": "Status & Penarikan",
-  "FabricationLot.PeerSyncEmpty": "Belum ada endpoint sinkronisasi pencabutan peer otomatis yang dikonfigurasi."
+  "FabricationLot.PeerSyncEmpty": "Belum ada endpoint sinkronisasi pencabutan peer otomatis yang dikonfigurasi.",
+  "Gui.DepotWorkspace.TrayColdChainCompromised": "Stabilitas Rantai Dingin Terganggu",
+  "ColdChain.SectionTitle": "Stabilitas Termal Rantai Dingin & Buku Besar Rantai Pengawasan",
+  "ColdChain.SectionSubtitle": "Anggaran Potensi Termal Arrhenius Origami DNA • Rantai Pengawasan SHA-256 Anti-Manipulasi • Gerbang Implantasi Fail-Closed",
+  "ColdChain.RemainingPotencyLabel": "Sisa Potensi (%)",
+  "ColdChain.ShelfLifeRemainingLabel": "Perkiraan Sisa Masa Simpan",
+  "ColdChain.ThermalBudgetUsedLabel": "Anggaran Termal Terpakai (%)",
+  "ColdChain.ImplantationStatusSafe": "AMAN UNTUK IMPLANTASI KLINIS",
+  "ColdChain.ImplantationStatusBlocked": "IMPLANTASI DIBLOKIR — RANTAI DINGIN TERGANGGU",
+  "ColdChain.CustodyChainVerified": "RANTAI PENGAWASAN SHA-256 TERVERIFIKASI",
+  "ColdChain.CustodyChainTampered": "KEGAGALAN INTEGRITAS RANTAI PENGAWASAN",
+  "ColdChain.LogExcursionTitle": "Catat Interval Suhu Rantai Dingin / Ekskursi",
+  "ColdChain.LogExcursionSubmit": "Catat Interval Termal & Hitung Ulang",
+  "ColdChain.RecordHandoffTitle": "Tambahkan Serah Terima Pengawasan Kriptografis",
+  "ColdChain.RecordHandoffSubmit": "Tandatangani & Tambahkan Serah Terima",
+  "ColdChain.CustodyTimelineEmpty": "Belum ada serah terima pengawasan yang tercatat untuk lot pabrikasi ini.",
+  "ColdChain.ExcursionHistoryEmpty": "Belum ada interval termal yang tercatat; penyimpanan nominal dasar diasumsikan.",
+  "ColdChain.PatientAdministrationBlocked": "Serah terima pemberian ke pasien diblokir: potensi lot atau integritas pengawasan terganggu."
 }

@@ -1845,6 +1845,12 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         UpsertFederatedPeerSyncEndpointRequest syncReq = new UpsertFederatedPeerSyncEndpointRequest().GetExamples();
         FederatedPeerSyncRunResult syncRun = new FederatedPeerSyncRunResult().GetExamples();
         FederatedPeerSyncSweepResult syncSweep = new FederatedPeerSyncSweepResult().GetExamples();
+        RecordThermalExcursionRequest excReq = new RecordThermalExcursionRequest().GetExamples();
+        ThermalExcursionResponse excResp = new ThermalExcursionResponse().GetExamples();
+        LotStabilityReport stabReport = new LotStabilityReport().GetExamples();
+        RecordCustodyHandoffRequest hndReq = new RecordCustodyHandoffRequest().GetExamples();
+        CustodyHandoffRecord hndRec = new CustodyHandoffRecord().GetExamples();
+        CustodyHandoffLedgerResponse ledgerResp = new CustodyHandoffLedgerResponse().GetExamples();
 
         innerMock.Setup(i => i.CreateFabricationLotAsync(profile, "tok", createReq, It.IsAny<CancellationToken>())).ReturnsAsync(lot);
         innerMock.Setup(i => i.GetFabricationLotsAsync(profile, "tok", "patient_alice", It.IsAny<CancellationToken>())).ReturnsAsync([lot]);
@@ -1862,6 +1868,10 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         innerMock.Setup(i => i.DeleteFederatedPeerSyncEndpointAsync(profile, "tok", "clinic-zurich-01", It.IsAny<CancellationToken>())).ReturnsAsync(true);
         innerMock.Setup(i => i.RunFederatedPeerSyncAsync(profile, "tok", "clinic-zurich-01", It.IsAny<CancellationToken>())).ReturnsAsync(syncRun);
         innerMock.Setup(i => i.RunAllFederatedPeerSyncAsync(profile, "tok", It.IsAny<CancellationToken>())).ReturnsAsync(syncSweep);
+        innerMock.Setup(i => i.RecordThermalExcursionAsync(profile, "tok", "lot-1", excReq, It.IsAny<CancellationToken>())).ReturnsAsync(excResp);
+        innerMock.Setup(i => i.GetLotStabilityAsync(profile, "tok", "lot-1", It.IsAny<CancellationToken>())).ReturnsAsync(stabReport);
+        innerMock.Setup(i => i.RecordCustodyHandoffAsync(profile, "tok", "lot-1", hndReq, It.IsAny<CancellationToken>())).ReturnsAsync(hndRec);
+        innerMock.Setup(i => i.GetCustodyHandoffsAsync(profile, "tok", "lot-1", It.IsAny<CancellationToken>())).ReturnsAsync(ledgerResp);
 
         WeaverNodeApiClient client = new(innerMock.Object);
         Assert.Equal(lot.LotId, (await client.CreateFabricationLotAsync(profile, "tok", createReq)).LotId);
@@ -1880,6 +1890,10 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         Assert.True(await client.DeleteFederatedPeerSyncEndpointAsync(profile, "tok", "clinic-zurich-01"));
         Assert.True((await client.RunFederatedPeerSyncAsync(profile, "tok", "clinic-zurich-01")).Succeeded);
         Assert.Equal(1, (await client.RunAllFederatedPeerSyncAsync(profile, "tok")).PeersSucceeded);
+        Assert.Equal("texc_20261119_001", (await client.RecordThermalExcursionAsync(profile, "tok", "lot-1", excReq)).ExcursionId);
+        Assert.True((await client.GetLotStabilityAsync(profile, "tok", "lot-1")).IsSafeForImplantation);
+        Assert.Equal("chnd_20261119_001", (await client.RecordCustodyHandoffAsync(profile, "tok", "lot-1", hndReq)).HandoffId);
+        Assert.True((await client.GetCustodyHandoffsAsync(profile, "tok", "lot-1")).CustodyChainValid);
 
         client.Dispose();
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.CreateFabricationLotAsync(profile, "tok", createReq));
@@ -1898,5 +1912,9 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.DeleteFederatedPeerSyncEndpointAsync(profile, "tok", "clinic-zurich-01"));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.RunFederatedPeerSyncAsync(profile, "tok", "clinic-zurich-01"));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.RunAllFederatedPeerSyncAsync(profile, "tok"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.RecordThermalExcursionAsync(profile, "tok", "lot-1", excReq));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetLotStabilityAsync(profile, "tok", "lot-1"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.RecordCustodyHandoffAsync(profile, "tok", "lot-1", hndReq));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetCustodyHandoffsAsync(profile, "tok", "lot-1"));
     }
 }

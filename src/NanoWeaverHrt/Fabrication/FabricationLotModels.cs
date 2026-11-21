@@ -579,6 +579,35 @@ public sealed record FabricationCertificateVerificationReport : IExamplesProvide
     public DateTimeOffset VerifiedAtUtc { get; init; } = DateTimeOffset.UtcNow;
 
     /// <summary>
+    /// Gets or initializes the evaluated local cold-chain thermal stability status when a local lot record exists; otherwise null.
+    /// </summary>
+    [Description("Evaluated local cold-chain thermal stability status when a local lot exists; null for external foreign CoAs.")]
+    [JsonPropertyName("coldChainStatus")]
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public ThermalStabilityStatus? ColdChainStatus { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the evaluated remaining active potency percentage when a local lot record exists; otherwise null.
+    /// </summary>
+    [Description("Remaining active potency percentage (0-100%) when a local lot exists; otherwise null.")]
+    [JsonPropertyName("remainingPotencyPercent")]
+    public double? RemainingPotencyPercent { get; init; }
+
+    /// <summary>
+    /// Gets or initializes whether the local custody hash chain verified cleanly when a local lot record exists; otherwise null.
+    /// </summary>
+    [Description("True when local SHA-256 custody chain is intact; null for external foreign CoAs.")]
+    [JsonPropertyName("custodyChainValid")]
+    public bool? CustodyChainValid { get; init; }
+
+    /// <summary>
+    /// Gets or initializes whether the local lot passes cold-chain implantation safety criteria when a local lot record exists; otherwise null.
+    /// </summary>
+    [Description("True when local lot meets cold-chain potency, expiry, and custody integrity criteria; null for external foreign CoAs.")]
+    [JsonPropertyName("isSafeForImplantation")]
+    public bool? IsSafeForImplantation { get; init; }
+
+    /// <summary>
     /// Generates a representative example instance of <see cref="FabricationCertificateVerificationReport"/> for OpenAPI documentation.
     /// </summary>
     /// <returns>A sample trusted peer verification report.</returns>

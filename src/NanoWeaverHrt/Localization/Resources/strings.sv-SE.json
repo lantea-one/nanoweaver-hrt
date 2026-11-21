@@ -147,5 +147,22 @@
   "FabricationLot.PeerSyncRemoveButton": "Ta bort",
   "FabricationLot.PeerSyncColEndpoint": "Peer & slutpunkts-URL",
   "FabricationLot.PeerSyncColStatus": "Status & återkallelser",
-  "FabricationLot.PeerSyncEmpty": "Inga automatiserade slutpunkter för återkallelsesynkronisering är konfigurerade."
+  "FabricationLot.PeerSyncEmpty": "Inga automatiserade slutpunkter för återkallelsesynkronisering är konfigurerade.",
+  "Gui.DepotWorkspace.TrayColdChainCompromised": "Kylkedjans stabilitet äventyrad",
+  "ColdChain.SectionTitle": "Termisk stabilitet i kylkedjan & spårbarhetsregister",
+  "ColdChain.SectionSubtitle": "Arrhenius DNA-origami-potensbudget • Manipulationssäker SHA-256-spårbarhetskedja • Fail-closed-implantationsspärr",
+  "ColdChain.RemainingPotencyLabel": "Återstående potens (%)",
+  "ColdChain.ShelfLifeRemainingLabel": "Beräknad återstående hållbarhet",
+  "ColdChain.ThermalBudgetUsedLabel": "Förbrukad termisk budget (%)",
+  "ColdChain.ImplantationStatusSafe": "SÄKER FÖR KLINISK IMPLANTATION",
+  "ColdChain.ImplantationStatusBlocked": "IMPLANTATION BLOCKERAD — KYLKEDJA ÄVENTYRAD",
+  "ColdChain.CustodyChainVerified": "SHA-256-SPÅRBARHETSKEDJA VERIFIERAD",
+  "ColdChain.CustodyChainTampered": "INTEGRITETSFEL I SPÅRBARHETSKEDJA",
+  "ColdChain.LogExcursionTitle": "Logga temperaturintervall / kylkedjeavvikelse",
+  "ColdChain.LogExcursionSubmit": "Registrera intervall & räkna om",
+  "ColdChain.RecordHandoffTitle": "Lägg till kryptografisk överlämning",
+  "ColdChain.RecordHandoffSubmit": "Signera & lägg till överlämning",
+  "ColdChain.CustodyTimelineEmpty": "Inga överlämningar har registrerats för denna tillverkningssats ännu.",
+  "ColdChain.ExcursionHistoryEmpty": "Inga termiska intervall har loggats ännu; nominell baslagring antas.",
+  "ColdChain.PatientAdministrationBlocked": "Patientadministrering blockerad: satspotens eller överlämningsintegritet är äventyrad."
 }

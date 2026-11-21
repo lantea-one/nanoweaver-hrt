@@ -147,5 +147,22 @@
   "FabricationLot.PeerSyncRemoveButton": "Eliminar",
   "FabricationLot.PeerSyncColEndpoint": "Par y URL del extremo",
   "FabricationLot.PeerSyncColStatus": "Estado y retiros",
-  "FabricationLot.PeerSyncEmpty": "No hay extremos de sincronización automática de revocaciones configurados."
+  "FabricationLot.PeerSyncEmpty": "No hay extremos de sincronización automática de revocaciones configurados.",
+  "Gui.DepotWorkspace.TrayColdChainCompromised": "Estabilidad de cadena de frío comprometida",
+  "ColdChain.SectionTitle": "Estabilidad térmica de cadena de frío y registro de custodia",
+  "ColdChain.SectionSubtitle": "Presupuesto térmico Arrhenius de origami de ADN • Cadena de custodia SHA-256 verificable • Compuerta fail-closed de implantación",
+  "ColdChain.RemainingPotencyLabel": "Potencia restante (%)",
+  "ColdChain.ShelfLifeRemainingLabel": "Vida útil restante estimada",
+  "ColdChain.ThermalBudgetUsedLabel": "Presupuesto térmico consumido (%)",
+  "ColdChain.ImplantationStatusSafe": "SEGURO PARA IMPLANTACIÓN CLÍNICA",
+  "ColdChain.ImplantationStatusBlocked": "IMPLANTACIÓN BLOQUEADA — CADENA DE FRÍO COMPROMETIDA",
+  "ColdChain.CustodyChainVerified": "CADENA DE CUSTODIA SHA-256 VERIFICADA",
+  "ColdChain.CustodyChainTampered": "FALLO DE INTEGRIDAD EN CADENA DE CUSTODIA",
+  "ColdChain.LogExcursionTitle": "Registrar intervalo térmico / excursión de cadena de frío",
+  "ColdChain.LogExcursionSubmit": "Registrar intervalo térmico y recalcular",
+  "ColdChain.RecordHandoffTitle": "Anexar traspaso criptográfico de custodia",
+  "ColdChain.RecordHandoffSubmit": "Firmar y anexar traspaso",
+  "ColdChain.CustodyTimelineEmpty": "Aún no se han registrado traspasos de custodia para este lote.",
+  "ColdChain.ExcursionHistoryEmpty": "Aún no hay intervalos térmicos registrados; se asume almacenamiento nominal base.",
+  "ColdChain.PatientAdministrationBlocked": "Traspaso de administración al paciente bloqueado: la potencia del lote o la integridad de custodia está comprometida."
 }
