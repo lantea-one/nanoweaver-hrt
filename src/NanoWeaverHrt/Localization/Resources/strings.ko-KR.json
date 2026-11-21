@@ -147,5 +147,22 @@
   "FabricationLot.PeerSyncRemoveButton": "제거",
   "FabricationLot.PeerSyncColEndpoint": "피어 및 엔드포인트 URL",
   "FabricationLot.PeerSyncColStatus": "상태 및 리콜",
-  "FabricationLot.PeerSyncEmpty": "구성된 자동 피어 폐기 동기화 엔드포인트가 없습니다."
+  "FabricationLot.PeerSyncEmpty": "구성된 자동 피어 폐기 동기화 엔드포인트가 없습니다.",
+  "Gui.DepotWorkspace.TrayColdChainCompromised": "콜드체인 안정성이 손상됨",
+  "ColdChain.SectionTitle": "콜드체인 열안정성 및 보관 이력 원장",
+  "ColdChain.SectionSubtitle": "아레니우스 DNA 오리가미 열역가 예산 • SHA-256 위변조 방지 보관 체인 • 페일-클로즈드 이식 게이트",
+  "ColdChain.RemainingPotencyLabel": "잔존 역가 (%)",
+  "ColdChain.ShelfLifeRemainingLabel": "예상 잔여 유효기간",
+  "ColdChain.ThermalBudgetUsedLabel": "소진된 열 예산 (%)",
+  "ColdChain.ImplantationStatusSafe": "임상 이식 안전",
+  "ColdChain.ImplantationStatusBlocked": "이식 차단 — 콜드체인 손상됨",
+  "ColdChain.CustodyChainVerified": "SHA-256 보관 체인 검증됨",
+  "ColdChain.CustodyChainTampered": "보관 체인 무결성 오류",
+  "ColdChain.LogExcursionTitle": "콜드체인 온도 구간 / 일탈 기록",
+  "ColdChain.LogExcursionSubmit": "온도 구간 기록 및 재계산",
+  "ColdChain.RecordHandoffTitle": "암호화 보관 인계 추가",
+  "ColdChain.RecordHandoffSubmit": "서명 및 보관 인계 추가",
+  "ColdChain.CustodyTimelineEmpty": "이 제조 로트에 대한 보관 인계 기록이 아직 없습니다.",
+  "ColdChain.ExcursionHistoryEmpty": "기록된 온도 구간이 아직 없으며 기본 정상 보관이 가정됩니다.",
+  "ColdChain.PatientAdministrationBlocked": "환자 투여 인계가 차단되었습니다: 로트 역가 또는 보관 무결성이 손상되었습니다."
 }

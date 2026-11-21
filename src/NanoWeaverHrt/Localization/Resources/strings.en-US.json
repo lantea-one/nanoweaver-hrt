@@ -147,5 +147,22 @@
   "FabricationLot.PeerSyncRemoveButton": "Remove",
   "FabricationLot.PeerSyncColEndpoint": "Peer & Endpoint URL",
   "FabricationLot.PeerSyncColStatus": "Status & Recalls",
-  "FabricationLot.PeerSyncEmpty": "No automated peer revocation sync endpoints are configured."
+  "FabricationLot.PeerSyncEmpty": "No automated peer revocation sync endpoints are configured.",
+  "Gui.DepotWorkspace.TrayColdChainCompromised": "Cold-Chain Stability Compromised",
+  "ColdChain.SectionTitle": "Cold-Chain Thermal Stability & Chain-of-Custody Ledger",
+  "ColdChain.SectionSubtitle": "Arrhenius DNA Origami Thermal Potency Budget • SHA-256 Tamper-Evident Custody Chain • Fail-Closed Implantation Gate",
+  "ColdChain.RemainingPotencyLabel": "Remaining Potency (%)",
+  "ColdChain.ShelfLifeRemainingLabel": "Estimated Remaining Shelf-Life",
+  "ColdChain.ThermalBudgetUsedLabel": "Thermal Budget Consumed (%)",
+  "ColdChain.ImplantationStatusSafe": "SAFE FOR CLINICAL IMPLANTATION",
+  "ColdChain.ImplantationStatusBlocked": "IMPLANTATION BLOCKED — COLD-CHAIN COMPROMISED",
+  "ColdChain.CustodyChainVerified": "SHA-256 CUSTODY CHAIN VERIFIED",
+  "ColdChain.CustodyChainTampered": "CUSTODY CHAIN INTEGRITY FAILURE",
+  "ColdChain.LogExcursionTitle": "Log Cold-Chain Temperature Interval / Excursion",
+  "ColdChain.LogExcursionSubmit": "Record Thermal Interval & Recalculate",
+  "ColdChain.RecordHandoffTitle": "Append Cryptographic Custody Handoff",
+  "ColdChain.RecordHandoffSubmit": "Sign & Append Custody Handoff",
+  "ColdChain.CustodyTimelineEmpty": "No custody handoffs recorded for this fabrication lot yet.",
+  "ColdChain.ExcursionHistoryEmpty": "No thermal intervals recorded yet; baseline nominal storage assumed.",
+  "ColdChain.PatientAdministrationBlocked": "Patient administration handoff blocked: lot potency or custody integrity is compromised."
 }

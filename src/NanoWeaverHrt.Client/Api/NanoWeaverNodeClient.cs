@@ -4476,4 +4476,134 @@ public sealed class NanoWeaverNodeClient : INanoWeaverNodeClient
         FederatedPeerSyncSweepResult? result = await resp.Content.ReadFromJsonAsync<FederatedPeerSyncSweepResult>(JsonOptions, ct);
         return result ?? throw new InvalidOperationException("Endpoint returned empty or null peer sync sweep payload.");
     }
+
+    /// <inheritdoc/>
+    public async Task<ThermalExcursionResponse> RecordThermalExcursionAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        RecordThermalExcursionRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/fabrication/lots/{lotId}/thermal-excursions to log a cold-chain temperature excursion.
+        // WHY:  Milestone 40 (P212): Lets desktop and mobile shells submit sensor temperature logs and view updated potency.
+        // HOW:  Validates inputs, posts authenticated JSON payload, and deserializes ThermalExcursionResponse.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(lotId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/fabrication/lots/{Uri.EscapeDataString(lotId)}/thermal-excursions");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        ThermalExcursionResponse? result = await resp.Content.ReadFromJsonAsync<ThermalExcursionResponse>(JsonOptions, ct);
+        return result ?? throw new InvalidOperationException("Endpoint returned empty or null thermal excursion payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<LotStabilityReport> GetLotStabilityAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/fabrication/lots/{lotId}/stability to evaluate Arrhenius cold-chain stability.
+        // WHY:  Milestone 40 (P212): Populates remaining potency, shelf life, and implantation safety badges in native shells.
+        // HOW:  Validates inputs, sends authenticated GET request, and deserializes LotStabilityReport.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(lotId);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/fabrication/lots/{Uri.EscapeDataString(lotId)}/stability");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        LotStabilityReport? report = await resp.Content.ReadFromJsonAsync<LotStabilityReport>(JsonOptions, ct);
+        return report ?? throw new InvalidOperationException("Endpoint returned empty or null lot stability payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<CustodyHandoffRecord> RecordCustodyHandoffAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        RecordCustodyHandoffRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/fabrication/lots/{lotId}/custody-handoffs to append a hash-chained custody transition.
+        // WHY:  Milestone 40 (P212): Records physical wet-lab to clinic handoffs and fail-closed administration gates.
+        // HOW:  Validates inputs, sends authenticated JSON POST, and deserializes CustodyHandoffRecord.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(lotId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/fabrication/lots/{Uri.EscapeDataString(lotId)}/custody-handoffs");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        CustodyHandoffRecord? record = await resp.Content.ReadFromJsonAsync<CustodyHandoffRecord>(JsonOptions, ct);
+        return record ?? throw new InvalidOperationException("Endpoint returned empty or null custody handoff payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<CustodyHandoffLedgerResponse> GetCustodyHandoffsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/fabrication/lots/{lotId}/custody-handoffs to fetch the verified custody ledger.
+        // WHY:  Milestone 40 (P212): Surfaces SHA-256 hash-chained batch custody history in desktop and mobile shells.
+        // HOW:  Validates inputs, sends authenticated GET request, and deserializes CustodyHandoffLedgerResponse.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(lotId);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/fabrication/lots/{Uri.EscapeDataString(lotId)}/custody-handoffs");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        CustodyHandoffLedgerResponse? ledger = await resp.Content.ReadFromJsonAsync<CustodyHandoffLedgerResponse>(JsonOptions, ct);
+        return ledger ?? throw new InvalidOperationException("Endpoint returned empty or null custody ledger payload.");
+    }
 }

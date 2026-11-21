@@ -147,5 +147,22 @@
   "FabricationLot.PeerSyncRemoveButton": "Видалити",
   "FabricationLot.PeerSyncColEndpoint": "Вузол та URL-адреса",
   "FabricationLot.PeerSyncColStatus": "Статус та відкликання",
-  "FabricationLot.PeerSyncEmpty": "Не налаштовано жодної автоматизованої точки синхронізації відкликань."
+  "FabricationLot.PeerSyncEmpty": "Не налаштовано жодної автоматизованої точки синхронізації відкликань.",
+  "Gui.DepotWorkspace.TrayColdChainCompromised": "Стабільність холодового ланцюга порушено",
+  "ColdChain.SectionTitle": "Термічна стабільність холодового ланцюга та реєстр передачі",
+  "ColdChain.SectionSubtitle": "Термічний бюджет Арреніуса для ДНК-оригамі • SHA-256 захищений ланцюг передачі • Fail-closed бар'єр імплантації",
+  "ColdChain.RemainingPotencyLabel": "Залишкова активність (%)",
+  "ColdChain.ShelfLifeRemainingLabel": "Орієнтовний залишковий термін придатності",
+  "ColdChain.ThermalBudgetUsedLabel": "Використаний термічний бюджет (%)",
+  "ColdChain.ImplantationStatusSafe": "БЕЗПЕЧНО ДЛЯ КЛІНІЧНОЇ ІМПЛАНТАЦІЇ",
+  "ColdChain.ImplantationStatusBlocked": "ІМПЛАНТАЦІЮ ЗАБЛОКОВАНО — ХОЛОДОВИЙ ЛАНЦЮГ ПОРУШЕНО",
+  "ColdChain.CustodyChainVerified": "SHA-256 ЛАНЦЮГ ПЕРЕДАЧІ ПІДТВЕРДЖЕНО",
+  "ColdChain.CustodyChainTampered": "ПОРУШЕННЯ ЦІЛІСНОСТІ ЛАНЦЮГА ПЕРЕДАЧІ",
+  "ColdChain.LogExcursionTitle": "Зареєструвати температурний інтервал / відхилення",
+  "ColdChain.LogExcursionSubmit": "Зберегти інтервал і перерахувати",
+  "ColdChain.RecordHandoffTitle": "Додати криптографічну передачу зберігання",
+  "ColdChain.RecordHandoffSubmit": "Підписати й додати передачу",
+  "ColdChain.CustodyTimelineEmpty": "Для цієї партії ще не зареєстровано жодної передачі зберігання.",
+  "ColdChain.ExcursionHistoryEmpty": "Температурні інтервали ще не зафіксовані; припускається номінальне базове зберігання.",
+  "ColdChain.PatientAdministrationBlocked": "Передачу для введення пацієнту заблоковано: активність партії або цілісність зберігання порушена."
 }

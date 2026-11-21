@@ -2910,4 +2910,185 @@ public sealed class EndpointIntegrationTests : IClassFixture<WebApplicationFacto
             }
         }
     }
+
+    /// <summary>
+    /// End-to-end integration test for Milestone 40 (P212): verifies all 4 cold-chain stability and custody ledger
+    /// Minimal API routes, role/subject-access gating, fail-closed <c>PatientAdministration</c> blocking (HTTP 422),
+    /// fail-closed <c>POST /api/fabrication/certificates/verify</c> cold-chain override, and 21 CFR Part 11 audit trails.
+    /// </summary>
+    [Fact]
+    public async Task ColdChainStabilityAndCustodyEndpoints_FullLifecycleRbacAndFailClosedGates_WorkEndToEnd()
+    {
+        string patSelf = "m40_patient_self";
+        string patOther = "m40_patient_other";
+        string researcher = "m40_researcher";
+
+        string tokSelf = await ProvisionUserAndGetTokenAsync(patSelf, UserRole.Patient);
+        string tokOther = await ProvisionUserAndGetTokenAsync(patOther, UserRole.Patient);
+        string tokRes = await ProvisionUserAndGetTokenAsync(researcher, UserRole.Researcher);
+
+        using HttpClient clientAnon = _factory.CreateClient();
+        using HttpClient clientSelf = CreateClientWithBearer(tokSelf);
+        using HttpClient clientOther = CreateClientWithBearer(tokOther);
+        using HttpClient clientRes = CreateClientWithBearer(tokRes);
+
+        // 1. Seed depot formulation, mint lot, pass all 5 QC gates, and release with ML-DSA-65 CoA
+        HttpResponseMessage depResp = await _client.PostAsJsonAsync("/api/depots/formulations", new CreateDepotFormulationRequest
+        {
+            PatientId = patSelf,
+            Regimen = TherapeuticRegimen.MaleToFemale,
+            PolymerMatrixType = "PLGA-PEG-PLGA",
+            InitialNanocarrierMassMg = 16.0,
+            DailyErosionRatePercent = 0.55,
+            ReleaseKineticsModel = "Korsmeyer-Peppas",
+            TargetHorizonDays = 180
+        });
+        Assert.Equal(HttpStatusCode.Created, depResp.StatusCode);
+        DepotFormulationResponse? dep = await depResp.Content.ReadFromJsonAsync<DepotFormulationResponse>();
+        Assert.NotNull(dep);
+
+        HttpResponseMessage lotResp = await _client.PostAsJsonAsync("/api/fabrication/lots", new CreateFabricationLotRequest
+        {
+            DepotId = dep.Formulation.DepotId,
+            UseLatestCalibration = false,
+            CpGMethylationRequired = true,
+            OpentronsProtocolSha256 = new string('7', 64)
+        });
+        Assert.Equal(HttpStatusCode.Created, lotResp.StatusCode);
+        FabricationLotResponse? lot = await lotResp.Content.ReadFromJsonAsync<FabricationLotResponse>();
+        Assert.NotNull(lot);
+        string lotId = lot.LotId;
+
+        await _client.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/qc", new RecordFabricationQcRequest { GateType = FabricationQcGateType.GelFoldingYield, MeasuredValue = 93.0 });
+        await _client.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/qc", new RecordFabricationQcRequest { GateType = FabricationQcGateType.EndotoxinSterility, MeasuredValue = 0.10 });
+        await _client.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/qc", new RecordFabricationQcRequest { GateType = FabricationQcGateType.HydrodynamicSizePdi, MeasuredValue = 60.0, SecondaryValue = 0.12 });
+        await _client.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/qc", new RecordFabricationQcRequest { GateType = FabricationQcGateType.PayloadEncapsulation, MeasuredValue = 89.0, SecondaryValue = 1.0 });
+        await _client.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/qc", new RecordFabricationQcRequest { GateType = FabricationQcGateType.CpGMethylation, MeasuredValue = 98.0 });
+        HttpResponseMessage relResp = await _client.PostAsync($"/api/fabrication/lots/{lotId}/release", null);
+        Assert.Equal(HttpStatusCode.OK, relResp.StatusCode);
+
+        HttpResponseMessage certResp = await _client.GetAsync($"/api/fabrication/lots/{lotId}/certificate");
+        Assert.Equal(HttpStatusCode.OK, certResp.StatusCode);
+        FabricationLotCertificateResponse? certDto = await certResp.Content.ReadFromJsonAsync<FabricationLotCertificateResponse>();
+        Assert.NotNull(certDto?.Certificate);
+
+        // 2. Auth, 400, 403, and 404 checks across all 4 endpoints
+        RecordThermalExcursionRequest validExc = new()
+        {
+            TemperatureCelsius = 4.0,
+            DurationHours = 2.0,
+            StorageTier = ThermalStorageTier.Refrigerated2To8,
+            SensorId = "PROBE-M40-01",
+            Notes = "Routine cold-box transfer"
+        };
+        RecordCustodyHandoffRequest validHandoff = new()
+        {
+            Stage = CustodyStage.WetLabRelease,
+            FromActor = "wetlab_admin",
+            ToActor = "courier_01",
+            FacilityCode = "ZRH-LAB-01",
+            TemperatureCelsius = -19.5
+        };
+
+        Assert.Equal(HttpStatusCode.Unauthorized, (await clientAnon.GetAsync($"/api/fabrication/lots/{lotId}/stability")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.GetAsync("/api/fabrication/lots/%20/stability")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.GetAsync("/api/fabrication/lots/%20/custody-handoffs")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/fabrication/lots/%20/thermal-excursions", validExc)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/fabrication/lots/%20/custody-handoffs", validHandoff)).StatusCode);
+        using (StringContent nullBody = new("null", Encoding.UTF8, "application/json"))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsync($"/api/fabrication/lots/{lotId}/thermal-excursions", nullBody)).StatusCode);
+            Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsync($"/api/fabrication/lots/{lotId}/custody-handoffs", nullBody)).StatusCode);
+        }
+
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/fabrication/lots/missing_lot_404/stability")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/fabrication/lots/missing_lot_404/custody-handoffs")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsJsonAsync("/api/fabrication/lots/missing_lot_404/thermal-excursions", validExc)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsJsonAsync("/api/fabrication/lots/missing_lot_404/custody-handoffs", validHandoff)).StatusCode);
+
+        // Patient self blocked on mutations, allowed on reads; other patient & ungranted researcher blocked on all
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientSelf.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/thermal-excursions", validExc)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientSelf.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/custody-handoffs", validHandoff)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientOther.GetAsync($"/api/fabrication/lots/{lotId}/stability")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientOther.GetAsync($"/api/fabrication/lots/{lotId}/custody-handoffs")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientRes.GetAsync($"/api/fabrication/lots/{lotId}/stability")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientRes.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/thermal-excursions", validExc)).StatusCode);
+
+        // Validation ArgumentException -> 400 Bad Request
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/thermal-excursions", validExc with { DurationHours = -5.0 })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/custody-handoffs", validHandoff with { FromActor = "" })).StatusCode);
+
+        // Grant Researcher access to patSelf
+        using (IServiceScope grantScope = _factory.Services.CreateScope())
+        {
+            ISubjectAccessService accessSvc = grantScope.ServiceProvider.GetRequiredService<ISubjectAccessService>();
+            await accessSvc.GrantSubjectAccessAsync("admin", researcher, patSelf, SubjectAccessLevel.FullReadAccess, "M40 clinical monitoring");
+        }
+
+        // 3. Researcher logs optimal thermal excursion (201) and custody handoff (201); Patient self reads stability & custody ledger (200)
+        HttpResponseMessage excResp = await clientRes.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/thermal-excursions", validExc);
+        Assert.Equal(HttpStatusCode.Created, excResp.StatusCode);
+        ThermalExcursionResponse? excDto = await excResp.Content.ReadFromJsonAsync<ThermalExcursionResponse>();
+        Assert.NotNull(excDto);
+        Assert.True(excDto.StabilityAfterExcursion.IsSafeForImplantation);
+
+        HttpResponseMessage hndResp = await clientRes.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/custody-handoffs", validHandoff);
+        Assert.Equal(HttpStatusCode.Created, hndResp.StatusCode);
+
+        HttpResponseMessage selfStabResp = await clientSelf.GetAsync($"/api/fabrication/lots/{lotId}/stability");
+        Assert.Equal(HttpStatusCode.OK, selfStabResp.StatusCode);
+        LotStabilityReport? selfStab = await selfStabResp.Content.ReadFromJsonAsync<LotStabilityReport>();
+        Assert.NotNull(selfStab);
+        Assert.True(selfStab.IsSafeForImplantation);
+
+        HttpResponseMessage selfLedResp = await clientSelf.GetAsync($"/api/fabrication/lots/{lotId}/custody-handoffs");
+        Assert.Equal(HttpStatusCode.OK, selfLedResp.StatusCode);
+        CustodyHandoffLedgerResponse? selfLedger = await selfLedResp.Content.ReadFromJsonAsync<CustodyHandoffLedgerResponse>();
+        Assert.NotNull(selfLedger);
+        Assert.True(selfLedger.CustodyChainValid);
+        Assert.Single(selfLedger.Handoffs);
+
+        // 4. Verify CoA passes while cold chain is safe
+        HttpResponseMessage verifySafeResp = await _client.PostAsJsonAsync("/api/fabrication/certificates/verify", certDto.Certificate);
+        Assert.Equal(HttpStatusCode.OK, verifySafeResp.StatusCode);
+        FabricationCertificateVerificationReport? verifySafe = await verifySafeResp.Content.ReadFromJsonAsync<FabricationCertificateVerificationReport>();
+        Assert.True(verifySafe!.IsTrusted);
+        Assert.True(verifySafe.IsSafeForImplantation);
+
+        // 5. Log catastrophic 48°C excursion -> CoA verify flips fail-closed to IsTrusted = false AND PatientAdministration returns 422!
+        HttpResponseMessage catResp = await _client.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/thermal-excursions", new RecordThermalExcursionRequest
+        {
+            TemperatureCelsius = 48.0,
+            DurationHours = 1.0,
+            StorageTier = ThermalStorageTier.ThermalExcursion,
+            SensorId = "PROBE-M40-MELT"
+        });
+        Assert.Equal(HttpStatusCode.Created, catResp.StatusCode);
+
+        HttpResponseMessage verifyCompromisedResp = await _client.PostAsJsonAsync("/api/fabrication/certificates/verify", certDto.Certificate);
+        Assert.Equal(HttpStatusCode.OK, verifyCompromisedResp.StatusCode);
+        FabricationCertificateVerificationReport? verifyCompromised = await verifyCompromisedResp.Content.ReadFromJsonAsync<FabricationCertificateVerificationReport>();
+        Assert.True(verifyCompromised!.SignatureValid);
+        Assert.False(verifyCompromised.IsTrusted);
+        Assert.Equal(ThermalStabilityStatus.CatastrophicDenaturation, verifyCompromised.ColdChainStatus);
+        Assert.False(verifyCompromised.IsSafeForImplantation);
+
+        HttpResponseMessage blockedAdminResp = await clientRes.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/custody-handoffs", new RecordCustodyHandoffRequest
+        {
+            Stage = CustodyStage.PatientAdministration,
+            FromActor = "clinic_rn",
+            ToActor = patSelf,
+            FacilityCode = "ZRH-CLINIC-01",
+            TemperatureCelsius = 4.0
+        });
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, blockedAdminResp.StatusCode);
+
+        using (IServiceScope auditScope = _factory.Services.CreateScope())
+        {
+            IComplianceAuditService audit = auditScope.ServiceProvider.GetRequiredService<IComplianceAuditService>();
+            IReadOnlyList<AuditRecord> entries = audit.GetAuditRecords(500);
+            Assert.Contains(entries, e => e.Action == "FABRICATION_THERMAL_LOG_RECORD");
+            Assert.Contains(entries, e => e.Action == "FABRICATION_CUSTODY_HANDOFF_RECORD");
+        }
+    }
 }

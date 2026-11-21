@@ -147,5 +147,22 @@
   "FabricationLot.PeerSyncRemoveButton": "Rimuovi",
   "FabricationLot.PeerSyncColEndpoint": "Peer e URL endpoint",
   "FabricationLot.PeerSyncColStatus": "Stato e richiami",
-  "FabricationLot.PeerSyncEmpty": "Nessun endpoint automatico di sincronizzazione delle revoche configurato."
+  "FabricationLot.PeerSyncEmpty": "Nessun endpoint automatico di sincronizzazione delle revoche configurato.",
+  "Gui.DepotWorkspace.TrayColdChainCompromised": "Stabilità della catena del freddo compromessa",
+  "ColdChain.SectionTitle": "Stabilità termica della catena del freddo e registro di custodia",
+  "ColdChain.SectionSubtitle": "Budget termico Arrhenius per origami di DNA • Catena di custodia SHA-256 a prova di manomissione • Blocco fail-closed impianto",
+  "ColdChain.RemainingPotencyLabel": "Potenza residua (%)",
+  "ColdChain.ShelfLifeRemainingLabel": "Durata di conservazione residua stimata",
+  "ColdChain.ThermalBudgetUsedLabel": "Budget termico consumato (%)",
+  "ColdChain.ImplantationStatusSafe": "SICURO PER IMPIANTO CLINICO",
+  "ColdChain.ImplantationStatusBlocked": "IMPIANTO BLOCCATO — CATENA DEL FREDDO COMPROMESSA",
+  "ColdChain.CustodyChainVerified": "CATENA DI CUSTODIA SHA-256 VERIFICATA",
+  "ColdChain.CustodyChainTampered": "ERRORE DI INTEGRITÀ DELLA CATENA DI CUSTODIA",
+  "ColdChain.LogExcursionTitle": "Registra intervallo termico / escursione della catena del freddo",
+  "ColdChain.LogExcursionSubmit": "Registra intervallo termico e ricalcola",
+  "ColdChain.RecordHandoffTitle": "Aggiungi passaggio di custodia crittografico",
+  "ColdChain.RecordHandoffSubmit": "Firma e aggiungi passaggio di custodia",
+  "ColdChain.CustodyTimelineEmpty": "Nessun passaggio di custodia ancora registrato per questo lotto.",
+  "ColdChain.ExcursionHistoryEmpty": "Nessun intervallo termico registrato; si presume conservazione nominale di base.",
+  "ColdChain.PatientAdministrationBlocked": "Somministrazione al paziente bloccata: potenza del lotto o integrità della custodia compromessa."
 }

@@ -71,9 +71,36 @@ public sealed class DepotStudioComponentTests : BunitContext
     private readonly Mock<IFederatedPeerSyncService> _peerSyncMock = new();
 
     /// <summary>
+    /// Mocked Arrhenius cold-chain thermal stability and SHA-256 custody ledger service for Milestone 40 UI tests.
+    /// </summary>
+    private readonly Mock<IColdChainStabilityService> _coldChainMock = new();
+
+    /// <summary>
     /// In-memory list of peer subscriptions managed by <see cref="_peerSyncMock"/>.
     /// </summary>
     private readonly List<FederatedPeerSyncEndpointRecord> _peerSyncEndpoints = [];
+
+    /// <summary>
+    /// In-memory list of cold-chain custody handoffs managed by <see cref="_coldChainMock"/>.
+    /// </summary>
+    private readonly List<CustodyHandoffRecord> _coldChainHandoffs = [];
+
+    /// <summary>
+    /// In-memory active cold-chain stability report returned by <see cref="_coldChainMock"/>.
+    /// </summary>
+    private LotStabilityReport _coldChainStability = new()
+    {
+        LotId = "lot_studio_test_1",
+        PatientId = "depot-studio-session",
+        RemainingPotencyPercent = 100.0,
+        CumulativeThermalBudgetUsedPercent = 0.0,
+        EstimatedRemainingShelfLifeDaysAtMinus20C = 365.0,
+        EstimatedRemainingShelfLifeDaysAt4C = 23.7,
+        Status = ThermalStabilityStatus.Optimal,
+        CustodyChainValid = true,
+        IsSafeForImplantation = true,
+        Summary = "Optimal cold-chain stability: 100.00% potency remaining (0.00% thermal budget used); custody chain verified."
+    };
 
     /// <summary>
     /// In-memory stored revocation record for verifying post-revocation checks in bUnit.
@@ -138,6 +165,33 @@ public sealed class DepotStudioComponentTests : BunitContext
             .Setup(s => s.ListSubscriptionsAsync(It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => _peerSyncEndpoints.ToList());
 
+        _coldChainMock
+            .Setup(c => c.EvaluateLotStabilityAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string lotId, CancellationToken _) => _coldChainStability with { LotId = lotId });
+
+        _coldChainMock
+            .Setup(c => c.GetCustodyLedgerAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string lotId, CancellationToken _) => new CustodyHandoffLedgerResponse
+            {
+                LotId = lotId,
+                PatientId = "depot-studio-session",
+                CustodyChainValid = _coldChainStability.CustodyChainValid,
+                ChainValidationSummary = _coldChainStability.CustodyChainValid
+                    ? $"Verified {_coldChainHandoffs.Count} hash-chained custody handoff(s) cleanly from genesis."
+                    : "Custody chain integrity compromised.",
+                Handoffs = _coldChainHandoffs.ToList()
+            });
+
+        _coldChainMock
+            .Setup(c => c.ApplyColdChainStabilityGateAsync(It.IsAny<FabricationCertificateVerificationReport>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((FabricationCertificateVerificationReport r, CancellationToken _) => r with
+            {
+                ColdChainStatus = _coldChainStability.Status,
+                RemainingPotencyPercent = _coldChainStability.RemainingPotencyPercent,
+                CustodyChainValid = _coldChainStability.CustodyChainValid,
+                IsSafeForImplantation = _coldChainStability.IsSafeForImplantation
+            });
+
         Services.AddSingleton<IWeaverLocalizer>(_localizer);
         Services.AddSingleton<ITimeReleaseDepotService>(_depotService);
         Services.AddSingleton<IDepotCalibrationService>(_calibrationService);
@@ -147,6 +201,7 @@ public sealed class DepotStudioComponentTests : BunitContext
         Services.AddSingleton(_lotRepoMock.Object);
         Services.AddSingleton(_peerRegistryMock.Object);
         Services.AddSingleton(_peerSyncMock.Object);
+        Services.AddSingleton(_coldChainMock.Object);
     }
 
     /// <inheritdoc/>
@@ -463,5 +518,128 @@ public sealed class DepotStudioComponentTests : BunitContext
         cut.Find("#btn-remove-peer-clinic-zurich-01").Click();
         Assert.Contains("Removed peer sync subscription", cut.Find("#peer-sync-status").TextContent);
         Assert.NotNull(cut.Find("#peer-sync-empty"));
+    }
+
+    /// <summary>
+    /// Verifies Milestone 40 (P213) Cold-Chain Thermal Stability, Arrhenius Shelf-Life &amp; SHA-256 Chain-of-Custody
+    /// Ledger interactions inside <see cref="DepotStudio"/>.
+    /// </summary>
+    [Fact]
+    public void DepotStudio_ColdChainAndCustodyPanel_LogsExcursionsAppendsCustodyAndBlocksCompromisedAdministration()
+    {
+        // WHAT: Exercises the Milestone 40 #cold-chain-custody-panel inside DepotStudio using fresh cut.Find queries.
+        // WHY:  Verifies Arrhenius stability badge updates, excursion logging, custody handoff chaining, and fail-closed administration blocks.
+        // HOW:  Mints a lot, logs an advisory thermal interval, appends a custody handoff, then triggers a blocked PatientAdministration attempt.
+        _coldChainMock
+            .Setup(c => c.RecordThermalExcursionAsync(It.IsAny<string>(), It.IsAny<RecordThermalExcursionRequest>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string lotId, RecordThermalExcursionRequest req, string op, CancellationToken _) =>
+            {
+                bool catastrophic = req.TemperatureCelsius > 42.0;
+                _coldChainStability = new LotStabilityReport
+                {
+                    LotId = lotId,
+                    PatientId = "depot-studio-session",
+                    RemainingPotencyPercent = catastrophic ? 72.50 : 99.64,
+                    CumulativeThermalBudgetUsedPercent = catastrophic ? 305.00 : 3.42,
+                    EstimatedRemainingShelfLifeDaysAtMinus20C = catastrophic ? 0.0 : 352.5,
+                    EstimatedRemainingShelfLifeDaysAt4C = catastrophic ? 0.0 : 22.9,
+                    Status = catastrophic ? ThermalStabilityStatus.CatastrophicDenaturation : ThermalStabilityStatus.Optimal,
+                    HasCatastrophicExcursion = catastrophic,
+                    CustodyChainValid = true,
+                    IsSafeForImplantation = !catastrophic,
+                    Summary = catastrophic
+                        ? "Catastrophic dsDNA origami denaturation (> 42.0°C excursion): 72.50% potency remaining. Permanently unsafe for implantation."
+                        : "Optimal cold-chain stability: 99.64% potency remaining (3.42% thermal budget used); custody chain verified."
+                };
+
+                return new ThermalExcursionResponse
+                {
+                    ExcursionId = "texc_bunit_01",
+                    LotId = lotId,
+                    PatientId = "depot-studio-session",
+                    TemperatureCelsius = req.TemperatureCelsius,
+                    DurationHours = req.DurationHours,
+                    StorageTier = req.StorageTier,
+                    SensorId = req.SensorId,
+                    Notes = req.Notes,
+                    RecordedBy = op,
+                    RecordedAtUtc = DateTimeOffset.UtcNow,
+                    StabilityAfterExcursion = _coldChainStability
+                };
+            });
+
+        _coldChainMock
+            .Setup(c => c.RecordCustodyHandoffAsync(It.IsAny<string>(), It.Is<RecordCustodyHandoffRequest>(r => r.Stage != CustodyStage.PatientAdministration), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string lotId, RecordCustodyHandoffRequest req, string _, CancellationToken _) =>
+            {
+                var rec = new CustodyHandoffRecord
+                {
+                    HandoffId = "chnd_bunit_01",
+                    LotId = lotId,
+                    PatientId = "depot-studio-session",
+                    Stage = req.Stage,
+                    FromActor = req.FromActor,
+                    ToActor = req.ToActor,
+                    FacilityCode = req.FacilityCode,
+                    TemperatureCelsius = req.TemperatureCelsius,
+                    PotencyPercentAtHandoff = _coldChainStability.RemainingPotencyPercent,
+                    ChainPrevSha256 = new string('0', 64),
+                    EntrySha256 = "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+                    RecordedAtUtc = DateTimeOffset.UtcNow
+                };
+                _coldChainHandoffs.Add(rec);
+                return rec;
+            });
+
+        _coldChainMock
+            .Setup(c => c.RecordCustodyHandoffAsync(It.IsAny<string>(), It.Is<RecordCustodyHandoffRequest>(r => r.Stage == CustodyStage.PatientAdministration), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Patient administration blocked fail-closed: Catastrophic dsDNA origami denaturation."));
+
+        IRenderedComponent<DepotStudio> cut = Render<DepotStudio>();
+        cut.Find("#btn-mint-fabrication-lot").Click();
+
+        Assert.NotNull(cut.Find("#cold-chain-custody-panel"));
+        Assert.NotNull(cut.Find("#cc-excursions-empty"));
+        Assert.NotNull(cut.Find("#cc-custody-empty"));
+        Assert.Contains("SAFE FOR CLINICAL IMPLANTATION", cut.Find("#cc-implantation-badge").TextContent);
+        Assert.Contains("SHA-256 CUSTODY CHAIN VERIFIED", cut.Find("#cc-custody-chain-badge").TextContent);
+
+        // 1. Log refrigerated interval -> populates excursions table and updates potency
+        cut.Find("#select-cc-tier").Change(ThermalStorageTier.Refrigerated2To8.ToString());
+        cut.Find("#input-cc-temp").Change("4.0");
+        cut.Find("#input-cc-duration").Change("6.0");
+        cut.Find("#input-cc-sensor").Change("NIST-PROBE-ZRH-04");
+        cut.Find("#input-cc-notes").Change("Routine transfer to cold box");
+        cut.Find("#btn-cc-log-excursion").Click();
+
+        Assert.Contains("99.64%", cut.Find("#cc-remaining-potency").TextContent);
+        Assert.Contains("NIST-PROBE-ZRH-04", cut.Find("#cc-excursions-table").TextContent);
+        Assert.Contains("99.64% potency remaining", cut.Find("#cc-status").TextContent);
+
+        // 2. Append WetLabRelease custody handoff -> populates custody table
+        cut.Find("#select-cc-stage").Change(CustodyStage.WetLabRelease.ToString());
+        cut.Find("#input-cc-from").Change("wetlab_lin");
+        cut.Find("#input-cc-to").Change("courier_07");
+        cut.Find("#input-cc-facility").Change("ZRH-LAB-01");
+        cut.Find("#input-cc-handoff-temp").Change("-19.8");
+        cut.Find("#btn-cc-record-handoff").Click();
+
+        Assert.Contains("wetlab_lin", cut.Find("#cc-custody-table").TextContent);
+        Assert.Contains("ZRH-LAB-01", cut.Find("#cc-custody-table").TextContent);
+        Assert.Contains("Appended WetLabRelease custody handoff", cut.Find("#cc-status").TextContent);
+
+        // 3. Log catastrophic 48°C excursion and attempt PatientAdministration -> blocked fail-closed!
+        cut.Find("#select-cc-tier").Change(ThermalStorageTier.ThermalExcursion.ToString());
+        cut.Find("#input-cc-temp").Change("48.0");
+        cut.Find("#input-cc-duration").Change("1.5");
+        cut.Find("#btn-cc-log-excursion").Click();
+
+        Assert.Contains("IMPLANTATION BLOCKED", cut.Find("#cc-implantation-badge").TextContent);
+        Assert.Contains("72.50%", cut.Find("#cc-remaining-potency").TextContent);
+
+        cut.Find("#select-cc-stage").Change(CustodyStage.PatientAdministration.ToString());
+        cut.Find("#btn-cc-record-handoff").Click();
+
+        Assert.Contains("Patient administration blocked fail-closed", cut.Find("#cc-error").TextContent);
     }
 }

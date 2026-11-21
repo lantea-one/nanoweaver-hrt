@@ -147,5 +147,22 @@
   "FabricationLot.PeerSyncRemoveButton": "Kaldır",
   "FabricationLot.PeerSyncColEndpoint": "Eş ve Uç Nokta URL'si",
   "FabricationLot.PeerSyncColStatus": "Durum ve Geri Çağırmalar",
-  "FabricationLot.PeerSyncEmpty": "Yapılandırılmış otomatik eş iptal senkronizasyon uç noktası yok."
+  "FabricationLot.PeerSyncEmpty": "Yapılandırılmış otomatik eş iptal senkronizasyon uç noktası yok.",
+  "Gui.DepotWorkspace.TrayColdChainCompromised": "Soğuk Zincir Kararlılığı Bozuldu",
+  "ColdChain.SectionTitle": "Soğuk Zincir Termal Kararlılığı ve Gözetim Zinciri Defteri",
+  "ColdChain.SectionSubtitle": "Arrhenius DNA Origami Termal Etkinlik Bütçesi • SHA-256 Kurcalama Korumalı Gözetim Zinciri • Fail-Closed İmplantasyon Kapısı",
+  "ColdChain.RemainingPotencyLabel": "Kalan Etkinlik (%)",
+  "ColdChain.ShelfLifeRemainingLabel": "Tahmini Kalan Raf Ömrü",
+  "ColdChain.ThermalBudgetUsedLabel": "Tüketilen Termal Bütçe (%)",
+  "ColdChain.ImplantationStatusSafe": "KLİNİK İMPLANTASYON İÇİN GÜVENLİ",
+  "ColdChain.ImplantationStatusBlocked": "İMPLANTASYON ENGELLENDİ — SOĞUK ZİNCİR BOZULDU",
+  "ColdChain.CustodyChainVerified": "SHA-256 GÖZETİM ZİNCİRİ DOĞRULANDI",
+  "ColdChain.CustodyChainTampered": "GÖZETİM ZİNCİRİ BÜTÜNLÜK HATASI",
+  "ColdChain.LogExcursionTitle": "Soğuk Zincir Sıcaklık Aralığı / Sapma Kaydet",
+  "ColdChain.LogExcursionSubmit": "Termal Aralığı Kaydet ve Yeniden Hesapla",
+  "ColdChain.RecordHandoffTitle": "Kriptografik Gözetim Devri Ekle",
+  "ColdChain.RecordHandoffSubmit": "İmzala ve Gözetim Devrini Ekle",
+  "ColdChain.CustodyTimelineEmpty": "Bu üretim partisi için henüz gözetim devri kaydedilmedi.",
+  "ColdChain.ExcursionHistoryEmpty": "Henüz termal aralık kaydedilmedi; temel nominal depolama varsayılıyor.",
+  "ColdChain.PatientAdministrationBlocked": "Hasta uygulama devri engellendi: parti etkinliği veya gözetim bütünlüğü bozulmuş."
 }

@@ -147,5 +147,22 @@
   "FabricationLot.PeerSyncRemoveButton": "Entfernen",
   "FabricationLot.PeerSyncColEndpoint": "Peer & Endpunkt-URL",
   "FabricationLot.PeerSyncColStatus": "Status & Rückrufe",
-  "FabricationLot.PeerSyncEmpty": "Keine automatisierten Peer-Widerrufsendpunkte konfiguriert."
+  "FabricationLot.PeerSyncEmpty": "Keine automatisierten Peer-Widerrufsendpunkte konfiguriert.",
+  "Gui.DepotWorkspace.TrayColdChainCompromised": "Kühlkettenstabilität beeinträchtigt",
+  "ColdChain.SectionTitle": "Kühlketten-Thermostabilität & lückenlose Übergabehistorie",
+  "ColdChain.SectionSubtitle": "Arrhenius-DNA-Origami-Potenzbudget • Manipulationssichere SHA-256-Übergabekette • Fail-Closed-Implantationssperre",
+  "ColdChain.RemainingPotencyLabel": "Verbleibende Potenz (%)",
+  "ColdChain.ShelfLifeRemainingLabel": "Geschätzte Restlaufzeit",
+  "ColdChain.ThermalBudgetUsedLabel": "Verbrauchtes Wärmebudget (%)",
+  "ColdChain.ImplantationStatusSafe": "SICHER FÜR KLINISCHE IMPLANTATION",
+  "ColdChain.ImplantationStatusBlocked": "IMPLANTATION GESPERRT — KÜHLKETTE BEEINTRÄCHTIGT",
+  "ColdChain.CustodyChainVerified": "SHA-256-ÜBERGABEKETTE VERIFIZIERT",
+  "ColdChain.CustodyChainTampered": "INTEGRITÄTSFEHLER DER ÜBERGABEKETTE",
+  "ColdChain.LogExcursionTitle": "Kühlketten-Temperaturintervall / Abweichung erfassen",
+  "ColdChain.LogExcursionSubmit": "Temperaturintervall erfassen & neu berechnen",
+  "ColdChain.RecordHandoffTitle": "Kryptografische Übergabe anhängen",
+  "ColdChain.RecordHandoffSubmit": "Signieren & Übergabe anhängen",
+  "ColdChain.CustodyTimelineEmpty": "Für diese Herstellungscharge wurden noch keine Übergaben erfasst.",
+  "ColdChain.ExcursionHistoryEmpty": "Noch keine Temperaturintervalle erfasst; nominelle Standardlagerung angenommen.",
+  "ColdChain.PatientAdministrationBlocked": "Patientenverabreichung blockiert: Chargenpotenz oder Übergabeintegrität ist beeinträchtigt."
 }

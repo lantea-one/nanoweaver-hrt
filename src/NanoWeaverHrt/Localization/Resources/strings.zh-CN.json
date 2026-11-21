@@ -147,5 +147,22 @@
   "FabricationLot.PeerSyncRemoveButton": "移除",
   "FabricationLot.PeerSyncColEndpoint": "对等节点与端点 URL",
   "FabricationLot.PeerSyncColStatus": "状态与召回计数",
-  "FabricationLot.PeerSyncEmpty": "尚未配置自动化对等吊销同步端点。"
+  "FabricationLot.PeerSyncEmpty": "尚未配置自动化对等吊销同步端点。",
+  "Gui.DepotWorkspace.TrayColdChainCompromised": "冷链热稳定性受损",
+  "ColdChain.SectionTitle": "冷链热稳定性与监管链账本",
+  "ColdChain.SectionSubtitle": "Arrhenius DNA 折纸热效价预算 • SHA-256 防篡改监管链 • 临床植入故障关闭门控",
+  "ColdChain.RemainingPotencyLabel": "剩余效价 (%)",
+  "ColdChain.ShelfLifeRemainingLabel": "预计剩余有效期",
+  "ColdChain.ThermalBudgetUsedLabel": "已消耗热预算 (%)",
+  "ColdChain.ImplantationStatusSafe": "可安全用于临床植入",
+  "ColdChain.ImplantationStatusBlocked": "已阻止植入 — 冷链受损",
+  "ColdChain.CustodyChainVerified": "SHA-256 监管链已验证",
+  "ColdChain.CustodyChainTampered": "监管链完整性校验失败",
+  "ColdChain.LogExcursionTitle": "记录冷链温度区间 / 温控偏离",
+  "ColdChain.LogExcursionSubmit": "记录温度区间并重新计算",
+  "ColdChain.RecordHandoffTitle": "追加加密监管交接记录",
+  "ColdChain.RecordHandoffSubmit": "签名并追加监管交接",
+  "ColdChain.CustodyTimelineEmpty": "该制备批次尚未记录任何监管交接。",
+  "ColdChain.ExcursionHistoryEmpty": "尚未记录温度区间；假定处于基准标称冷藏状态。",
+  "ColdChain.PatientAdministrationBlocked": "已阻止患者给药交接：批次效价或监管链完整性受损。"
 }

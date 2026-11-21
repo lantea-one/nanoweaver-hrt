@@ -819,3 +819,279 @@ public sealed record ImportRevocationFeedResponse : IExamplesProvider<ImportRevo
         ImportedAtUtc = DateTimeOffset.Parse("2026-11-19T16:15:00Z", CultureInfo.InvariantCulture)
     };
 }
+
+/// <summary>
+/// Request payload for logging a cold-chain temperature-duration observation against a wet-lab fabrication lot.
+/// </summary>
+[SwaggerSchema(Title = "RecordThermalExcursionRequest", Description = "Cold-chain temperature and exposure duration log request for a fabrication lot.")]
+public sealed record RecordThermalExcursionRequest : IExamplesProvider<RecordThermalExcursionRequest>
+{
+    /// <summary>
+    /// Gets or initializes the observed temperature in degrees Celsius (-196.0 to +121.0 °C).
+    /// </summary>
+    [Description("Observed vial or cold-box temperature in degrees Celsius (-196.0 to +121.0 °C).")]
+    [JsonPropertyName("temperatureCelsius")]
+    public double TemperatureCelsius { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the exposure duration in hours (> 0 to 87,600 h).
+    /// </summary>
+    [Description("Exposure duration in hours (> 0 to 87,600 hours).")]
+    [JsonPropertyName("durationHours")]
+    public double DurationHours { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the storage tier classification for this thermal observation.
+    /// </summary>
+    [Description("Cold-chain storage tier classification.")]
+    [JsonPropertyName("storageTier")]
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public ThermalStorageTier StorageTier { get; init; } = ThermalStorageTier.FrozenMinus20;
+
+    /// <summary>
+    /// Gets or initializes the calibrated temperature probe or datalogger identifier.
+    /// </summary>
+    [Description("Calibrated sensor or datalogger identifier (1-128 characters).")]
+    [JsonPropertyName("sensorId")]
+    public string SensorId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets or initializes optional operator notes encrypted at rest with AES-256-GCM.
+    /// </summary>
+    [Description("Optional operational notes encrypted at rest with AES-256-GCM (max 2,000 characters).")]
+    [JsonPropertyName("notes")]
+    public string? Notes { get; init; }
+
+    /// <summary>
+    /// Gets or initializes an optional deterministic UTC observation timestamp (defaults to current UTC time).
+    /// </summary>
+    [Description("Optional UTC timestamp of the sensor observation; defaults to server UTC time.")]
+    [JsonPropertyName("recordedAtUtc")]
+    public DateTimeOffset? RecordedAtUtc { get; init; }
+
+    /// <inheritdoc/>
+    public RecordThermalExcursionRequest GetExamples() => new()
+    {
+        TemperatureCelsius = 4.0,
+        DurationHours = 6.0,
+        StorageTier = ThermalStorageTier.Refrigerated2To8,
+        SensorId = "NIST-PROBE-ZRH-04",
+        Notes = "Transferred from -20°C freezer to clinic cold box prior to scheduled visit.",
+        RecordedAtUtc = DateTimeOffset.Parse("2026-11-19T14:30:00Z", CultureInfo.InvariantCulture)
+    };
+}
+
+/// <summary>
+/// Response payload returned after persisting a cold-chain thermal excursion and recalculating Arrhenius lot stability.
+/// </summary>
+[SwaggerSchema(Title = "ThermalExcursionResponse", Description = "Persisted cold-chain thermal observation with recalculated Arrhenius stability report.")]
+public sealed record ThermalExcursionResponse : IExamplesProvider<ThermalExcursionResponse>
+{
+    /// <summary>
+    /// Gets or initializes the unique identifier of the persisted thermal excursion record.
+    /// </summary>
+    [Description("Unique identifier of the persisted thermal excursion record.")]
+    [JsonPropertyName("excursionId")]
+    public string ExcursionId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets or initializes the associated wet-lab fabrication lot identifier.
+    /// </summary>
+    [Description("Associated wet-lab fabrication lot identifier.")]
+    [JsonPropertyName("lotId")]
+    public string LotId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets or initializes the patient identifier owning the lot.
+    /// </summary>
+    [Description("Patient identifier owning the lot.")]
+    [JsonPropertyName("patientId")]
+    public string PatientId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets or initializes the microsecond-normalized UTC timestamp of the observation.
+    /// </summary>
+    [Description("UTC timestamp of the observation.")]
+    [JsonPropertyName("recordedAtUtc")]
+    public DateTimeOffset RecordedAtUtc { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the recorded temperature in degrees Celsius.
+    /// </summary>
+    [Description("Recorded temperature in degrees Celsius.")]
+    [JsonPropertyName("temperatureCelsius")]
+    public double TemperatureCelsius { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the recorded exposure duration in hours.
+    /// </summary>
+    [Description("Recorded exposure duration in hours.")]
+    [JsonPropertyName("durationHours")]
+    public double DurationHours { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the cold-chain storage tier classification.
+    /// </summary>
+    [Description("Cold-chain storage tier classification.")]
+    [JsonPropertyName("storageTier")]
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public ThermalStorageTier StorageTier { get; init; } = ThermalStorageTier.FrozenMinus20;
+
+    /// <summary>
+    /// Gets or initializes the temperature sensor identifier.
+    /// </summary>
+    [Description("Calibrated sensor identifier.")]
+    [JsonPropertyName("sensorId")]
+    public string SensorId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets or initializes the optional decrypted operator notes.
+    /// </summary>
+    [Description("Optional operator notes (decrypted for authorized callers).")]
+    [JsonPropertyName("notes")]
+    public string? Notes { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the authenticated operator username who logged this observation.
+    /// </summary>
+    [Description("Authenticated operator username.")]
+    [JsonPropertyName("recordedBy")]
+    public string RecordedBy { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets or initializes the recalculated Arrhenius cold-chain stability report immediately following this excursion.
+    /// </summary>
+    [Description("Recalculated Arrhenius stability report immediately following this excursion.")]
+    [JsonPropertyName("stabilityAfterExcursion")]
+    public LotStabilityReport StabilityAfterExcursion { get; init; } = new();
+
+    /// <inheritdoc/>
+    public ThermalExcursionResponse GetExamples() => new()
+    {
+        ExcursionId = "texc_20261119_001",
+        LotId = "lot_20261119_001",
+        PatientId = "patient_alice",
+        RecordedAtUtc = DateTimeOffset.Parse("2026-11-19T14:30:00Z", CultureInfo.InvariantCulture),
+        TemperatureCelsius = 4.0,
+        DurationHours = 6.0,
+        StorageTier = ThermalStorageTier.Refrigerated2To8,
+        SensorId = "NIST-PROBE-ZRH-04",
+        Notes = "Transferred to clinic cold box prior to visit.",
+        RecordedBy = "dr_lin",
+        StabilityAfterExcursion = new LotStabilityReport().GetExamples()
+    };
+}
+
+/// <summary>
+/// Request payload for appending a SHA-256 hash-chained chain-of-custody handoff event to a fabrication lot.
+/// </summary>
+[SwaggerSchema(Title = "RecordCustodyHandoffRequest", Description = "Chain-of-custody handoff submission payload for a fabrication lot.")]
+public sealed record RecordCustodyHandoffRequest : IExamplesProvider<RecordCustodyHandoffRequest>
+{
+    /// <summary>
+    /// Gets or initializes the target chain-of-custody lifecycle stage.
+    /// </summary>
+    [Description("Physical custody lifecycle stage.")]
+    [JsonPropertyName("stage")]
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public CustodyStage Stage { get; init; } = CustodyStage.WetLabRelease;
+
+    /// <summary>
+    /// Gets or initializes the releasing custodian or courier identifier.
+    /// </summary>
+    [Description("Releasing custodian or courier identifier (1-128 characters).")]
+    [JsonPropertyName("fromActor")]
+    public string FromActor { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets or initializes the receiving custodian, clinic, or clinician identifier.
+    /// </summary>
+    [Description("Receiving custodian, clinic, or clinician identifier (1-128 characters).")]
+    [JsonPropertyName("toActor")]
+    public string ToActor { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets or initializes the standardized facility or laboratory site code.
+    /// </summary>
+    [Description("Standardized facility or laboratory site code (1-64 characters).")]
+    [JsonPropertyName("facilityCode")]
+    public string FacilityCode { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets or initializes the observed vial temperature in degrees Celsius at the moment of handoff.
+    /// </summary>
+    [Description("Observed temperature in degrees Celsius at handoff (-196.0 to +121.0 °C).")]
+    [JsonPropertyName("temperatureCelsius")]
+    public double TemperatureCelsius { get; init; }
+
+    /// <summary>
+    /// Gets or initializes an optional UTC timestamp for the handoff (defaults to server UTC time).
+    /// </summary>
+    [Description("Optional UTC timestamp of the custody handoff; defaults to server UTC time.")]
+    [JsonPropertyName("recordedAtUtc")]
+    public DateTimeOffset? RecordedAtUtc { get; init; }
+
+    /// <inheritdoc/>
+    public RecordCustodyHandoffRequest GetExamples() => new()
+    {
+        Stage = CustodyStage.ClinicReceipt,
+        FromActor = "cold-courier-07",
+        ToActor = "clinic_rn_chen",
+        FacilityCode = "ZRH-CLINIC-02",
+        TemperatureCelsius = -19.8,
+        RecordedAtUtc = DateTimeOffset.Parse("2026-11-19T15:00:00Z", CultureInfo.InvariantCulture)
+    };
+}
+
+/// <summary>
+/// Response payload containing a fabrication lot's full chronological custody handoff ledger
+/// alongside live SHA-256 hash-chain integrity verification status.
+/// </summary>
+[SwaggerSchema(Title = "CustodyHandoffLedgerResponse", Description = "Chronological SHA-256 hash-chained custody handoff ledger with live verification status.")]
+public sealed record CustodyHandoffLedgerResponse : IExamplesProvider<CustodyHandoffLedgerResponse>
+{
+    /// <summary>
+    /// Gets or initializes the fabrication lot identifier.
+    /// </summary>
+    [Description("Wet-lab fabrication lot identifier.")]
+    [JsonPropertyName("lotId")]
+    public string LotId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets or initializes the patient identifier owning the lot.
+    /// </summary>
+    [Description("Patient identifier owning the lot.")]
+    [JsonPropertyName("patientId")]
+    public string PatientId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets or initializes a value indicating whether the SHA-256 chain verified cleanly from genesis to tail.
+    /// </summary>
+    [Description("True when all custody handoffs verify cleanly from genesis to tail.")]
+    [JsonPropertyName("custodyChainValid")]
+    public bool CustodyChainValid { get; init; } = true;
+
+    /// <summary>
+    /// Gets or initializes a plain-English summary of the hash-chain verification verdict.
+    /// </summary>
+    [Description("Plain-English summary of hash-chain verification.")]
+    [JsonPropertyName("chainValidationSummary")]
+    public string ChainValidationSummary { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets or initializes the chronologically ordered custody handoff records for this lot.
+    /// </summary>
+    [Description("Chronologically ordered hash-chained custody handoffs.")]
+    [JsonPropertyName("handoffs")]
+    public IReadOnlyList<CustodyHandoffRecord> Handoffs { get; init; } = [];
+
+    /// <inheritdoc/>
+    public CustodyHandoffLedgerResponse GetExamples() => new()
+    {
+        LotId = "lot_20261119_001",
+        PatientId = "patient_alice",
+        CustodyChainValid = true,
+        ChainValidationSummary = "Verified 1 hash-chained custody handoff(s) cleanly from genesis.",
+        Handoffs = [new CustodyHandoffRecord().GetExamples()]
+    };
+}

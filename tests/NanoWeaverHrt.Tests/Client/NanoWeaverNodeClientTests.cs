@@ -4364,6 +4364,58 @@ public sealed class NanoWeaverNodeClientTests : IDisposable
         await Assert.ThrowsAsync<NodeApiException>(() => _client.RunAllFederatedPeerSyncAsync(_localProfile, "valid_token"));
         await Assert.ThrowsAsync<ArgumentNullException>(() => _client.RunAllFederatedPeerSyncAsync(null!, "valid_token"));
         await Assert.ThrowsAsync<ArgumentException>(() => _client.RunAllFederatedPeerSyncAsync(_localProfile, ""));
+
+        // 17. RecordThermalExcursionAsync (Milestone 40)
+        RecordThermalExcursionRequest excReq = new RecordThermalExcursionRequest().GetExamples();
+        ThermalExcursionResponse excResp = new ThermalExcursionResponse().GetExamples();
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_1/thermal-excursions", HttpStatusCode.Created, JsonSerializer.Serialize(excResp, webOpts));
+        Assert.Equal("texc_20261119_001", (await _client.RecordThermalExcursionAsync(_localProfile, "valid_token", "lot_1", excReq)).ExcursionId);
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_1/thermal-excursions", HttpStatusCode.Created, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.RecordThermalExcursionAsync(_localProfile, "valid_token", "lot_1", excReq));
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_1/thermal-excursions", HttpStatusCode.BadRequest, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.RecordThermalExcursionAsync(_localProfile, "valid_token", "lot_1", excReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.RecordThermalExcursionAsync(null!, "valid_token", "lot_1", excReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.RecordThermalExcursionAsync(_localProfile, "", "lot_1", excReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.RecordThermalExcursionAsync(_localProfile, "valid_token", "", excReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.RecordThermalExcursionAsync(_localProfile, "valid_token", "lot_1", null!));
+
+        // 18. GetLotStabilityAsync (Milestone 40)
+        LotStabilityReport stabSample = new LotStabilityReport().GetExamples();
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_1/stability", HttpStatusCode.OK, JsonSerializer.Serialize(stabSample, webOpts));
+        Assert.True((await _client.GetLotStabilityAsync(_localProfile, "valid_token", "lot_1")).IsSafeForImplantation);
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_1/stability", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.GetLotStabilityAsync(_localProfile, "valid_token", "lot_1"));
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_1/stability", HttpStatusCode.NotFound, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetLotStabilityAsync(_localProfile, "valid_token", "lot_1"));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetLotStabilityAsync(null!, "valid_token", "lot_1"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetLotStabilityAsync(_localProfile, "", "lot_1"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetLotStabilityAsync(_localProfile, "valid_token", ""));
+
+        // 19. RecordCustodyHandoffAsync (Milestone 40)
+        RecordCustodyHandoffRequest hndReq = new RecordCustodyHandoffRequest().GetExamples();
+        CustodyHandoffRecord hndRec = new CustodyHandoffRecord().GetExamples();
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_1/custody-handoffs", HttpStatusCode.Created, JsonSerializer.Serialize(hndRec, webOpts));
+        Assert.Equal("chnd_20261119_001", (await _client.RecordCustodyHandoffAsync(_localProfile, "valid_token", "lot_1", hndReq)).HandoffId);
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_1/custody-handoffs", HttpStatusCode.Created, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.RecordCustodyHandoffAsync(_localProfile, "valid_token", "lot_1", hndReq));
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_1/custody-handoffs", HttpStatusCode.UnprocessableEntity, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.RecordCustodyHandoffAsync(_localProfile, "valid_token", "lot_1", hndReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.RecordCustodyHandoffAsync(null!, "valid_token", "lot_1", hndReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.RecordCustodyHandoffAsync(_localProfile, "", "lot_1", hndReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.RecordCustodyHandoffAsync(_localProfile, "valid_token", "", hndReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.RecordCustodyHandoffAsync(_localProfile, "valid_token", "lot_1", null!));
+
+        // 20. GetCustodyHandoffsAsync (Milestone 40)
+        CustodyHandoffLedgerResponse ledgerSample = new CustodyHandoffLedgerResponse().GetExamples();
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_1/custody-handoffs", HttpStatusCode.OK, JsonSerializer.Serialize(ledgerSample, webOpts));
+        Assert.True((await _client.GetCustodyHandoffsAsync(_localProfile, "valid_token", "lot_1")).CustodyChainValid);
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_1/custody-handoffs", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.GetCustodyHandoffsAsync(_localProfile, "valid_token", "lot_1"));
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_1/custody-handoffs", HttpStatusCode.Forbidden, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetCustodyHandoffsAsync(_localProfile, "valid_token", "lot_1"));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetCustodyHandoffsAsync(null!, "valid_token", "lot_1"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetCustodyHandoffsAsync(_localProfile, "", "lot_1"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetCustodyHandoffsAsync(_localProfile, "valid_token", ""));
     }
 
     /// <summary>

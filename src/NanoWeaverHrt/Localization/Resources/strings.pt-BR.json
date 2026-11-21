@@ -147,5 +147,22 @@
   "FabricationLot.PeerSyncRemoveButton": "Remover",
   "FabricationLot.PeerSyncColEndpoint": "Par e URL do endpoint",
   "FabricationLot.PeerSyncColStatus": "Status e recalls",
-  "FabricationLot.PeerSyncEmpty": "Nenhum endpoint automatizado de sincronização de revogações configurado."
+  "FabricationLot.PeerSyncEmpty": "Nenhum endpoint automatizado de sincronização de revogações configurado.",
+  "Gui.DepotWorkspace.TrayColdChainCompromised": "Estabilidade da cadeia fria comprometida",
+  "ColdChain.SectionTitle": "Estabilidade térmica da cadeia fria e registro de custódia",
+  "ColdChain.SectionSubtitle": "Orçamento térmico Arrhenius de origami de DNA • Cadeia de custódia SHA-256 à prova de violação • Bloqueio fail-closed",
+  "ColdChain.RemainingPotencyLabel": "Potência restante (%)",
+  "ColdChain.ShelfLifeRemainingLabel": "Validade restante estimada",
+  "ColdChain.ThermalBudgetUsedLabel": "Orçamento térmico consumido (%)",
+  "ColdChain.ImplantationStatusSafe": "SEGURO PARA IMPLANTAÇÃO CLÍNICA",
+  "ColdChain.ImplantationStatusBlocked": "IMPLANTAÇÃO BLOQUEADA — CADEIA FRIA COMPROMETIDA",
+  "ColdChain.CustodyChainVerified": "CADEIA DE CUSTÓDIA SHA-256 VERIFICADA",
+  "ColdChain.CustodyChainTampered": "FALHA DE INTEGRIDADE NA CADEIA DE CUSTÓDIA",
+  "ColdChain.LogExcursionTitle": "Registrar intervalo térmico / excursão da cadeia fria",
+  "ColdChain.LogExcursionSubmit": "Registrar intervalo térmico e recalcular",
+  "ColdChain.RecordHandoffTitle": "Anexar transferência criptográfica de custódia",
+  "ColdChain.RecordHandoffSubmit": "Assinar e anexar transferência",
+  "ColdChain.CustodyTimelineEmpty": "Nenhuma transferência de custódia registrada para este lote até o momento.",
+  "ColdChain.ExcursionHistoryEmpty": "Nenhum intervalo térmico registrado ainda; armazenamento nominal padrão assumido.",
+  "ColdChain.PatientAdministrationBlocked": "Administração ao paciente bloqueada: potência do lote ou integridade da custódia comprometida."
 }

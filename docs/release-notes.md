@@ -4,6 +4,26 @@
 
 ---
 
+## v2026.11.19.7 — Cold-Chain Thermal Stability, Arrhenius Shelf-Life & Chain-of-Custody Ledger (Milestone 40 / Forgejo Issues #239–#243) (2026-11-19)
+
+Completes **Milestone 40 (`P210`–`P214` / Forgejo Issues `#239`–`#243`)**, extending FDA 21 CFR Part 11 traceability from physical ML-DSA-65 wet-lab lot release through cryogenic/refrigerated transit and clinic administration with deterministic Arrhenius potency modeling and tamper-evident SHA-256 custody provenance:
+* **Phase 1: Cold-Chain Excursion & Custody Ledger Persistence (`Migration019_ColdChainStabilityAndCustody` / Forgejo #239 / P210)**:
+  - Added `Migration019_ColdChainStabilityAndCustody` (`Version = 19`) across SQLite, PostgreSQL, DuckDB (omitting unsupported `ON DELETE CASCADE`), and MySQL/MariaDB creating `weaver_lot_thermal_excursions` and `weaver_lot_custody_handoffs` with 4 indexed query paths.
+  - Implemented `IColdChainCustodyRepository` and `ColdChainCustodyRepository` alongside atomic GDPR Article 17 erasure cascades in `FabricationLotRepository.DeleteByPatientIdAsync` deleting child custody handoffs and thermal excursions before fabrication lots.
+* **Phase 2: Arrhenius Potency Kinetics & Fail-Closed Custody Chain Engine (Forgejo #240 / P211)**:
+  - Implemented `IColdChainStabilityService` and `ColdChainStabilityService` (`Ea = 72,000 J/mol`, `R = 8.314462618`, `-20°C` 365-day ≥ 90% potency reference anchor, `10x` pre-melting penalty `37.0°C–42.0°C`, `100x` irreversible `CatastrophicDenaturation` above `42.0°C`).
+  - Implemented microsecond-normalized (`ticks - (ticks % 10)`) and 4-decimal-rounded SHA-256 custody hash chaining across all 4 SQL dialects, AES-256-GCM note encryption (`ProfileDataProtector.EncryptField`), fail-closed blocking on `PatientAdministration` and `ApplyColdChainStabilityGateAsync`, and 21 CFR Part 11 audit events (`FABRICATION_THERMAL_LOG_RECORD`, `FABRICATION_CUSTODY_HANDOFF_RECORD`).
+* **Phase 3: Cold-Chain & Custody Minimal API Endpoints, SDK Parity & Tray Escalation (Forgejo #241 / P212)**:
+  - Appended 4 authenticated Minimal API routes to `Program.cs` (`POST /api/fabrication/lots/{lotId}/thermal-excursions`, `GET /api/fabrication/lots/{lotId}/stability`, `POST /api/fabrication/lots/{lotId}/custody-handoffs`, `GET /api/fabrication/lots/{lotId}/custody-handoffs`) with shared RBAC/subject-grant authorization (`AuthorizeColdChainLotAccessAsync`) and enriched `POST /api/fabrication/certificates/verify` with fail-closed cold-chain gating.
+  - Added full SDK & MVVM parity across `INanoWeaverNodeClient`, `NanoWeaverNodeClient`, `WeaverNodeApiClient`, `DepotAndLotWorkspaceViewModel`, and `DesktopTrayIconController` (`CompromisedColdChainLotCount` → `TrayHealthBadge.Critical` / `Gui.DepotWorkspace.TrayColdChainCompromised`).
+* **Phase 4: Sovereign `DepotStudio` Cold-Chain Panel, 18-Language Localization & bUnit Suite (Forgejo #242 / P213)**:
+  - Added the `#cold-chain-custody-panel` interactive workstation inside `DepotStudio.razor` showing remaining potency, thermal budget consumed, projected `-20°C` and `+4°C` shelf-life days, fail-closed implantation/custody badges, thermal interval logger, and SHA-256 custody handoff ledger, plus cold-chain pill integration on `#peer-verify-result-card`.
+  - Added 17 `ColdChain.*` and `Gui.DepotWorkspace.TrayColdChainCompromised` localization keys across all 18 community languages (`166` keys per catalog) with full bUnit and localization parity tests.
+* **Phase 5: CalVer `v2026.11.19.7` Release, 8-Gate Verification & Audited Pull Request (Forgejo #243 / P214)**:
+  - Updated `<DefaultCalVerVersion>2026.11.19.7</DefaultCalVerVersion>` in `Directory.Build.props`, updated API/compliance/GUI documentation, and verified 100% pass across all 8 automated gates (`./scripts/verify-all.sh`) prior to audited PR merge and multi-platform signed CalVer release publication.
+
+---
+
 ## v2026.11.19.6 — Automated Peer Revocation Pull-Sync, Active Federation Transport & Automated Detailed Release Notes (Milestone 39 / Forgejo Issues #231–#235) (2026-11-19)
 
 Completes **Milestone 39 (`P205`–`P209` / Forgejo Issues `#231`–`#235`)** plus Renovate CI updates (`#229`–`#230`, `#236`–`#237`: `actions/setup-dotnet@v6`, `actions/setup-node@v7`, `docker/setup-buildx-action@v4`, `softprops/action-gh-release@v3`), delivering SSRF-hardened automated pull-synchronization of ML-DSA-65 signed peer revocation feeds, desktop system-tray recall escalation, per-milestone audited Pull Requests, and automated detailed release-notes publishing across Forgejo and GitHub Releases:

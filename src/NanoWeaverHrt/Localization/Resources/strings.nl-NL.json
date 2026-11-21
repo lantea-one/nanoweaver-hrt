@@ -147,5 +147,22 @@
   "FabricationLot.PeerSyncRemoveButton": "Verwijderen",
   "FabricationLot.PeerSyncColEndpoint": "Peer & eindpunt-URL",
   "FabricationLot.PeerSyncColStatus": "Status & terugroepingen",
-  "FabricationLot.PeerSyncEmpty": "Er zijn geen geautomatiseerde peer-intrekkingseindpunten geconfigureerd."
+  "FabricationLot.PeerSyncEmpty": "Er zijn geen geautomatiseerde peer-intrekkingseindpunten geconfigureerd.",
+  "Gui.DepotWorkspace.TrayColdChainCompromised": "Stabiliteit van koelketen aangetast",
+  "ColdChain.SectionTitle": "Thermische stabiliteit koelketen & beheeroverdracht-grootboek",
+  "ColdChain.SectionSubtitle": "Arrhenius DNA-origami potentiebudget • Fraudebestendige SHA-256 beheerketen • Fail-closed implantatiepoort",
+  "ColdChain.RemainingPotencyLabel": "Resterende potentie (%)",
+  "ColdChain.ShelfLifeRemainingLabel": "Geschatte resterende houdbaarheid",
+  "ColdChain.ThermalBudgetUsedLabel": "Verbruikt thermisch budget (%)",
+  "ColdChain.ImplantationStatusSafe": "VEILIG VOOR KLINISCHE IMPLANTATIE",
+  "ColdChain.ImplantationStatusBlocked": "IMPLANTATIE GEBLOKKEERD — KOELKETEN AANGETAST",
+  "ColdChain.CustodyChainVerified": "SHA-256 BEHEERKETEN GEVERIFIEERD",
+  "ColdChain.CustodyChainTampered": "INTEGRITEITSFOUT IN BEHEERKETEN",
+  "ColdChain.LogExcursionTitle": "Koelketen-temperatuurinterval / -afwijking registreren",
+  "ColdChain.LogExcursionSubmit": "Temperatuurinterval opslaan & herberekenen",
+  "ColdChain.RecordHandoffTitle": "Cryptografische beheeroverdracht toevoegen",
+  "ColdChain.RecordHandoffSubmit": "Ondertekenen & overdracht toevoegen",
+  "ColdChain.CustodyTimelineEmpty": "Er zijn nog geen beheeroverdrachten geregistreerd voor deze batch.",
+  "ColdChain.ExcursionHistoryEmpty": "Nog geen thermische intervallen geregistreerd; nominale basisopslag aangenomen.",
+  "ColdChain.PatientAdministrationBlocked": "Patiënttoediening geblokkeerd: batchpotentie of beheerintegriteit is aangetast."
 }

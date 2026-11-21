@@ -147,5 +147,22 @@
   "FabricationLot.PeerSyncRemoveButton": "हटाएँ",
   "FabricationLot.PeerSyncColEndpoint": "पीयर और एंडपॉइंट URL",
   "FabricationLot.PeerSyncColStatus": "स्थिति और रिकॉल",
-  "FabricationLot.PeerSyncEmpty": "कोई स्वचालित पीयर निरस्तीकरण सिंक एंडपॉइंट कॉन्फ़िगर नहीं है।"
+  "FabricationLot.PeerSyncEmpty": "कोई स्वचालित पीयर निरस्तीकरण सिंक एंडपॉइंट कॉन्फ़िगर नहीं है।",
+  "Gui.DepotWorkspace.TrayColdChainCompromised": "कोल्ड-चेन स्थिरता प्रभावित हुई",
+  "ColdChain.SectionTitle": "कोल्ड-चेन तापीय स्थिरता और कस्टडी श्रृंखला बही",
+  "ColdChain.SectionSubtitle": "अरहेनियस DNA ओरिगामी तापीय क्षमता बजट • SHA-256 छेड़छाड़-रोधी कस्टडी श्रृंखला • फेल-क्लोज़्ड इम्प्लांटेशन गेट",
+  "ColdChain.RemainingPotencyLabel": "शेष क्षमता (%)",
+  "ColdChain.ShelfLifeRemainingLabel": "अनुमानित शेष शेल्फ-लाइफ",
+  "ColdChain.ThermalBudgetUsedLabel": "उपयोग किया गया तापीय बजट (%)",
+  "ColdChain.ImplantationStatusSafe": "नैदानिक प्रत्यारोपण के लिए सुरक्षित",
+  "ColdChain.ImplantationStatusBlocked": "प्रत्यारोपण अवरुद्ध — कोल्ड-चेन प्रभावित",
+  "ColdChain.CustodyChainVerified": "SHA-256 कस्टडी श्रृंखला सत्यापित",
+  "ColdChain.CustodyChainTampered": "कस्टडी श्रृंखला अखंडता विफलता",
+  "ColdChain.LogExcursionTitle": "कोल्ड-चेन तापमान अंतराल / विचलन दर्ज करें",
+  "ColdChain.LogExcursionSubmit": "तापीय अंतराल दर्ज करें और पुनः गणना करें",
+  "ColdChain.RecordHandoffTitle": "क्रिप्टोग्राफिक कस्टडी हैंडऑफ जोड़ें",
+  "ColdChain.RecordHandoffSubmit": "हस्ताक्षर करें और कस्टडी हैंडऑफ जोड़ें",
+  "ColdChain.CustodyTimelineEmpty": "इस निर्माण लॉट के लिए अभी तक कोई कस्टडी हैंडऑफ दर्ज नहीं है।",
+  "ColdChain.ExcursionHistoryEmpty": "अभी तक कोई तापीय अंतराल दर्ज नहीं है; आधारभूत मानक भंडारण माना गया है।",
+  "ColdChain.PatientAdministrationBlocked": "रोगी प्रशासन हैंडऑफ अवरुद्ध: लॉट की क्षमता या कस्टडी अखंडता प्रभावित है।"
 }

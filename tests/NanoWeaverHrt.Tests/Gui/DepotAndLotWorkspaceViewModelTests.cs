@@ -703,4 +703,101 @@ public sealed class DepotAndLotWorkspaceViewModelTests
         Assert.Null(vm.LastPeerSyncRun);
         Assert.Null(vm.LastPeerSyncSweep);
     }
+
+    /// <summary>
+    /// Verifies Milestone 40 (P212) cold-chain thermal stability and custody ledger commands, severity escalation
+    /// (<c>Warning</c> on advisory excursion, <c>Critical</c> on compromised cold chain), error handling, and cache cleanup.
+    /// </summary>
+    [Fact]
+    public async Task ColdChainAndCustodyCommands_SeverityEscalationAndCacheCleanup_WorkDeterministically()
+    {
+        InstanceProfile profile = CreateProfile();
+        Mock<INanoWeaverNodeClient> clientMock = new();
+        DepotAndLotWorkspaceViewModel vm = new(clientMock.Object, () => profile, () => "token")
+        {
+            SelectedLotId = "lot_20261119_001"
+        };
+
+        LotStabilityReport advisoryReport = new LotStabilityReport().GetExamples() with
+        {
+            Status = ThermalStabilityStatus.AdvisoryExcursion,
+            IsSafeForImplantation = true
+        };
+        LotStabilityReport compromisedReport = new LotStabilityReport().GetExamples() with
+        {
+            Status = ThermalStabilityStatus.CatastrophicDenaturation,
+            IsSafeForImplantation = false
+        };
+        RecordThermalExcursionRequest excReq = new RecordThermalExcursionRequest().GetExamples();
+        ThermalExcursionResponse excResp = new ThermalExcursionResponse().GetExamples() with
+        {
+            StabilityAfterExcursion = compromisedReport
+        };
+        CustodyHandoffLedgerResponse ledgerResp = new CustodyHandoffLedgerResponse().GetExamples();
+        RecordCustodyHandoffRequest hndReq = new RecordCustodyHandoffRequest().GetExamples();
+        CustodyHandoffRecord hndRec = new CustodyHandoffRecord().GetExamples();
+
+        // 1. LoadSelectedLotStabilityAsync -> AdvisoryExcursion => Warning
+        clientMock.Setup(c => c.GetLotStabilityAsync(profile, "token", "lot_20261119_001", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(advisoryReport);
+        LotStabilityReport loadedStab = await vm.LoadSelectedLotStabilityAsync();
+        Assert.Same(advisoryReport, loadedStab);
+        Assert.Same(advisoryReport, vm.LatestLotStability);
+        DepotWorkspaceSummary advSummary = vm.BuildSummary();
+        Assert.Equal(0, advSummary.CompromisedColdChainLotCount);
+        Assert.Equal(ClinicalWorkspaceSeverity.Warning, advSummary.Severity);
+
+        clientMock.Setup(c => c.GetLotStabilityAsync(profile, "token", "lot_20261119_001", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("stab load fail"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.LoadSelectedLotStabilityAsync());
+        Assert.Equal("stab load fail", vm.ErrorMessage);
+
+        // 2. RecordThermalExcursionAsync -> Compromised => Critical
+        await Assert.ThrowsAsync<ArgumentNullException>(() => vm.RecordThermalExcursionAsync(null!));
+        clientMock.Setup(c => c.RecordThermalExcursionAsync(profile, "token", "lot_20261119_001", excReq, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(excResp);
+        ThermalExcursionResponse recordedExc = await vm.RecordThermalExcursionAsync(excReq);
+        Assert.Same(excResp, recordedExc);
+        DepotWorkspaceSummary critSummary = vm.BuildSummary();
+        Assert.Equal(1, critSummary.CompromisedColdChainLotCount);
+        Assert.Equal(ClinicalWorkspaceSeverity.Critical, critSummary.Severity);
+
+        clientMock.Setup(c => c.RecordThermalExcursionAsync(profile, "token", "lot_20261119_001", excReq, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("exc record fail"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.RecordThermalExcursionAsync(excReq));
+        Assert.Equal("exc record fail", vm.ErrorMessage);
+
+        // 3. LoadSelectedLotCustodyLedgerAsync
+        clientMock.Setup(c => c.GetCustodyHandoffsAsync(profile, "token", "lot_20261119_001", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ledgerResp);
+        CustodyHandoffLedgerResponse loadedLedger = await vm.LoadSelectedLotCustodyLedgerAsync();
+        Assert.Same(ledgerResp, loadedLedger);
+        Assert.Same(ledgerResp, vm.LatestCustodyLedger);
+
+        clientMock.Setup(c => c.GetCustodyHandoffsAsync(profile, "token", "lot_20261119_001", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("ledger load fail"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.LoadSelectedLotCustodyLedgerAsync());
+        Assert.Equal("ledger load fail", vm.ErrorMessage);
+
+        // 4. RecordCustodyHandoffAsync
+        await Assert.ThrowsAsync<ArgumentNullException>(() => vm.RecordCustodyHandoffAsync(null!));
+        clientMock.Setup(c => c.RecordCustodyHandoffAsync(profile, "token", "lot_20261119_001", hndReq, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(hndRec);
+        clientMock.Setup(c => c.GetCustodyHandoffsAsync(profile, "token", "lot_20261119_001", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ledgerResp);
+        clientMock.Setup(c => c.GetLotStabilityAsync(profile, "token", "lot_20261119_001", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(advisoryReport);
+        CustodyHandoffRecord savedHandoff = await vm.RecordCustodyHandoffAsync(hndReq);
+        Assert.Same(hndRec, savedHandoff);
+
+        clientMock.Setup(c => c.RecordCustodyHandoffAsync(profile, "token", "lot_20261119_001", hndReq, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("handoff blocked"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.RecordCustodyHandoffAsync(hndReq));
+        Assert.Equal("handoff blocked", vm.ErrorMessage);
+
+        // 5. Cache cleanup wipes stability & custody state
+        vm.ClearSensitiveClinicalCache();
+        Assert.Null(vm.LatestLotStability);
+        Assert.Null(vm.LatestCustodyLedger);
+    }
 }

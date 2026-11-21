@@ -147,5 +147,22 @@
   "FabricationLot.PeerSyncRemoveButton": "Xóa",
   "FabricationLot.PeerSyncColEndpoint": "Đối tác & URL điểm cuối",
   "FabricationLot.PeerSyncColStatus": "Trạng thái & thu hồi",
-  "FabricationLot.PeerSyncEmpty": "Chưa cấu hình điểm cuối đồng bộ thu hồi ngang hàng tự động nào."
+  "FabricationLot.PeerSyncEmpty": "Chưa cấu hình điểm cuối đồng bộ thu hồi ngang hàng tự động nào.",
+  "Gui.DepotWorkspace.TrayColdChainCompromised": "Độ ổn định chuỗi lạnh bị ảnh hưởng",
+  "ColdChain.SectionTitle": "Độ ổn định nhiệt chuỗi lạnh & Sổ cái chuỗi lưu giữ",
+  "ColdChain.SectionSubtitle": "Ngân sách hoạt lực nhiệt Arrhenius DNA Origami • Chuỗi lưu giữ SHA-256 chống giả mạo • Cổng cấy ghép fail-closed",
+  "ColdChain.RemainingPotencyLabel": "Hoạt lực còn lại (%)",
+  "ColdChain.ShelfLifeRemainingLabel": "Thời hạn sử dụng ước tính còn lại",
+  "ColdChain.ThermalBudgetUsedLabel": "Ngân sách nhiệt đã dùng (%)",
+  "ColdChain.ImplantationStatusSafe": "AN TOÀN ĐỂ CẤY GHÉP LÂM SÀNG",
+  "ColdChain.ImplantationStatusBlocked": "CHẶN CẤY GHÉP — CHUỖI LẠNH BỊ XÂM PHẠM",
+  "ColdChain.CustodyChainVerified": "CHUỖI LƯU GIỮ SHA-256 ĐÃ XÁC MINH",
+  "ColdChain.CustodyChainTampered": "LỖI TOÀN VẸN CHUỖI LƯU GIỮ",
+  "ColdChain.LogExcursionTitle": "Ghi nhận khoảng nhiệt độ / sai lệch chuỗi lạnh",
+  "ColdChain.LogExcursionSubmit": "Lưu khoảng nhiệt & tính lại",
+  "ColdChain.RecordHandoffTitle": "Thêm bàn giao lưu giữ mật mã",
+  "ColdChain.RecordHandoffSubmit": "Ký & thêm bàn giao lưu giữ",
+  "ColdChain.CustodyTimelineEmpty": "Chưa có bàn giao lưu giữ nào được ghi nhận cho lô chế tạo này.",
+  "ColdChain.ExcursionHistoryEmpty": "Chưa ghi nhận khoảng nhiệt nào; mặc định lưu trữ danh định chuẩn.",
+  "ColdChain.PatientAdministrationBlocked": "Chặn bàn giao dùng cho bệnh nhân: hoạt lực lô hoặc tính toàn vẹn lưu giữ bị ảnh hưởng."
 }
