@@ -224,6 +224,9 @@ Mobile heads execute within deterministic platform coordinators enforcing strict
 6. **Milestone 40 Cold-Chain Thermal Stability & SHA-256 Custody Ledger (`DepotAndLotWorkspaceViewModel`, `DesktopTrayIconController`)**:
    - Exposes `LoadSelectedLotStabilityAsync`, `RecordThermalExcursionAsync`, `LoadSelectedLotCustodyLedgerAsync`, and `RecordCustodyHandoffAsync` across `INanoWeaverNodeClient`, `NanoWeaverNodeClient`, `WeaverNodeApiClient`, and `DepotAndLotWorkspaceViewModel`, tracking `LatestLotStability`, `LatestCustodyLedger`, and `CompromisedColdChainLotCount` on `DepotWorkspaceSummary`.
    - Escalates unsafe/compromised lots (`!IsSafeForImplantation`) to `TrayHealthBadge.Critical` (`Gui.DepotWorkspace.TrayColdChainCompromised`) and `AdvisoryExcursion` lots to `TrayHealthBadge.Warning` via `DesktopTrayIconController.ApplyClinicalSafetyState`.
+7. **Milestone 41 Post-Implantation Pharmacovigilance & Tray Alert Escalation (`DepotAndLotWorkspaceViewModel`, `DesktopTrayIconController`)**:
+   - Exposes `LoadSelectedLotPharmacovigilanceAsync`, `LoadSelectedLotAdverseEventsAsync`, `RecordAdverseEventAsync`, and `RecordImmunogenicityAssayAsync` across `INanoWeaverNodeClient`, `NanoWeaverNodeClient`, `WeaverNodeApiClient`, and `DepotAndLotWorkspaceViewModel`, tracking `LatestPharmacovigilanceReport`, `ActiveLotAdverseEvents`, and `CriticalPharmacovigilanceLotCount` on `DepotWorkspaceSummary`.
+   - Escalates CTCAE Grade >= 3 or CARPA/TLR9 quarantine triggers (`CriticalPharmacovigilanceLotCount > 0`) to `TrayHealthBadge.Critical` (`Gui.DepotWorkspace.TrayPharmacovigilanceAlert`) and `Monitor` postures to `TrayHealthBadge.Warning` via `DesktopTrayIconController.ApplyClinicalSafetyState`.
 
 ---
 

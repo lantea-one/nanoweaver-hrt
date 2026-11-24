@@ -4606,4 +4606,134 @@ public sealed class NanoWeaverNodeClient : INanoWeaverNodeClient
         CustodyHandoffLedgerResponse? ledger = await resp.Content.ReadFromJsonAsync<CustodyHandoffLedgerResponse>(JsonOptions, ct);
         return ledger ?? throw new InvalidOperationException("Endpoint returned empty or null custody ledger payload.");
     }
+
+    /// <inheritdoc/>
+    public async Task<AdverseEventResponse> RecordLotAdverseEventAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        RecordAdverseEventRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/fabrication/lots/{lotId}/adverse-events to log a CTCAE v5.0 event.
+        // WHY:  Milestone 41 (P217): Enables native desktop/mobile apps to record post-implantation toxicity and observe quarantine escalation.
+        // HOW:  Validates arguments, sends authenticated JSON POST, and deserializes AdverseEventResponse.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(lotId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/fabrication/lots/{Uri.EscapeDataString(lotId)}/adverse-events");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        AdverseEventResponse? result = await resp.Content.ReadFromJsonAsync<AdverseEventResponse>(JsonOptions, ct);
+        return result ?? throw new InvalidOperationException("Endpoint returned empty or null adverse event payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<LotAdverseEventSummary>> GetLotAdverseEventsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/fabrication/lots/{lotId}/adverse-events to retrieve decrypted event timelines.
+        // WHY:  Milestone 41 (P217): Populates post-implantation clinical adverse event tables in native clients.
+        // HOW:  Validates inputs, sends authenticated GET, and returns non-null LotAdverseEventSummary list.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(lotId);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/fabrication/lots/{Uri.EscapeDataString(lotId)}/adverse-events");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        List<LotAdverseEventSummary>? result = await resp.Content.ReadFromJsonAsync<List<LotAdverseEventSummary>>(JsonOptions, ct);
+        return (IReadOnlyList<LotAdverseEventSummary>?)result ?? [];
+    }
+
+    /// <inheritdoc/>
+    public async Task<ImmunogenicityAssayResponse> RecordLotImmunogenicityAssayAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        RecordImmunogenicityAssayRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/fabrication/lots/{lotId}/immunogenicity to log a CARPA/TLR9 biomarker panel.
+        // WHY:  Milestone 41 (P217): Streams complement and cytokine assay telemetry from native clinical workstations.
+        // HOW:  Validates arguments, sends authenticated JSON POST, and deserializes ImmunogenicityAssayResponse.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(lotId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/fabrication/lots/{Uri.EscapeDataString(lotId)}/immunogenicity");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        ImmunogenicityAssayResponse? result = await resp.Content.ReadFromJsonAsync<ImmunogenicityAssayResponse>(JsonOptions, ct);
+        return result ?? throw new InvalidOperationException("Endpoint returned empty or null immunogenicity assay payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<LotPharmacovigilanceReport> GetLotPharmacovigilanceAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/fabrication/lots/{lotId}/pharmacovigilance to fetch aggregate safety posture.
+        // WHY:  Milestone 41 (P217): Drives CARPA quarantine alerts and tray escalation across native shells.
+        // HOW:  Validates inputs, sends authenticated GET request, and deserializes LotPharmacovigilanceReport.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(lotId);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/fabrication/lots/{Uri.EscapeDataString(lotId)}/pharmacovigilance");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        LotPharmacovigilanceReport? report = await resp.Content.ReadFromJsonAsync<LotPharmacovigilanceReport>(JsonOptions, ct);
+        return report ?? throw new InvalidOperationException("Endpoint returned empty or null pharmacovigilance report payload.");
+    }
 }

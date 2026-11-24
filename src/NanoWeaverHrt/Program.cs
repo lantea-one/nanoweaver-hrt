@@ -107,7 +107,13 @@ public class Program
         // WHY:  Decouples the web presentation and cryptographic transfer layer from the low-level pipeline readers.
         // HOW:  Registers singleton services into the Microsoft.Extensions.DependencyInjection container.
         builder.Services.AddSingleton<IConfigurationRepository, SystemConfigurationStore>();
-        builder.Services.AddSingleton<IStackServiceManager, StackServiceManager>();
+        // WHAT: Registers StackServiceManager with an explicit null probeClient so it uses its bounded 2-second DefaultProbeClient.
+        // WHY:  AddHttpClient registrations place a default 100-second HttpClient in DI, which the 3-parameter constructor would otherwise resolve and stall /api/services when simulation-node blackholes.
+        // HOW:  Constructs StackServiceManager via an explicit DI factory passing probeClient: null.
+        builder.Services.AddSingleton<IStackServiceManager>(sp => new StackServiceManager(
+            sp.GetRequiredService<IConfigurationRepository>(),
+            sp.GetRequiredService<IConfiguration>(),
+            probeClient: null));
         builder.Services.AddSingleton<IFabricationService, FabricationService>();
         builder.Services.AddSingleton<IPharmacogenomicsService, PharmacogenomicsService>();
         builder.Services.AddSingleton<IDatasetManager, DatasetTransferService>();
@@ -152,6 +158,8 @@ public class Program
         builder.Services.AddSingleton<IFabricationLotService, FabricationLotService>();
         builder.Services.AddSingleton<IColdChainCustodyRepository, ColdChainCustodyRepository>();
         builder.Services.AddSingleton<IColdChainStabilityService, ColdChainStabilityService>();
+        builder.Services.AddSingleton<IClinicalPharmacovigilanceRepository, ClinicalPharmacovigilanceRepository>();
+        builder.Services.AddSingleton<IClinicalPharmacovigilanceService, ClinicalPharmacovigilanceService>();
         builder.Services.AddSingleton<IFederatedPeerSyncRepository, FederatedPeerSyncRepository>();
         builder.Services.AddSingleton<IFederatedDnsResolver, SystemFederatedDnsResolver>();
         builder.Services.AddHttpClient(FederatedPeerSyncService.HttpClientName, client =>
@@ -5369,6 +5377,7 @@ public class Program
             IFabricationLotRepository lotRepository,
             IFabricationLotService lotService,
             IColdChainStabilityService coldChainService,
+            IClinicalPharmacovigilanceService pharmacovigilanceService,
             IPeerKeyRegistry peerKeyRegistry,
             IComplianceAuditService audit,
             HttpContext context,
@@ -5415,6 +5424,7 @@ public class Program
                 matchedPeer,
                 revocation);
             report = await coldChainService.ApplyColdChainStabilityGateAsync(report, ct);
+            report = await pharmacovigilanceService.ApplyPharmacovigilanceGateAsync(report, ct);
 
             audit.LogAction(
                 caller.Username,
@@ -5979,6 +5989,172 @@ public class Program
         .WithSummary("Lists the verified SHA-256 hash-chained custody handoff ledger for a wet-lab fabrication lot.")
         .WithDescription("Returns all chronological custody handoffs alongside live genesis-to-tail SHA-256 integrity status.")
         .Produces<CustodyHandoffLedgerResponse>(StatusCodes.Status200OK)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden)
+        .Produces<SecureProblemDetails>(StatusCodes.Status404NotFound);
+
+        app.MapPost("/api/fabrication/lots/{lotId}/adverse-events", async (
+            string lotId,
+            RecordAdverseEventRequest? request,
+            IFabricationLotRepository lotRepository,
+            IClinicalPharmacovigilanceService pharmacovigilanceService,
+            ISubjectAccessService subjectAccess,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Records a post-implantation CTCAE v5.0 adverse event and escalates severe events to automatic lot quarantine.
+            // WHY:  Milestone 41 (P217): Captures clinical reactions encrypted at rest and triggers immediate fail-closed lot quarantine.
+            // HOW:  Validates payload, authorizes Administrator or granted Researcher, delegates to RecordAdverseEventAsync, maps validation errors to 400.
+            if (string.IsNullOrWhiteSpace(lotId) || request is null)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Valid lotId and adverse event payload are required.");
+            }
+
+            (FabricationLotRecord? lot, IResult? denial, UserAccount caller) = await AuthorizeColdChainLotAccessAsync(
+                lotId.Trim(), allowPatientSelf: false, lotRepository, subjectAccess, context, ct);
+            if (denial is not null)
+            {
+                return denial;
+            }
+
+            try
+            {
+                // WHY `!`: AuthorizeColdChainLotAccessAsync guarantees lot is non-null whenever denial is null.
+                AdverseEventResponse? response = await pharmacovigilanceService.RecordAdverseEventAsync(lot!.LotId, request, caller.Username, ct);
+                return Results.Created($"/api/fabrication/lots/{lot.LotId}/adverse-events", response);
+            }
+            catch (ArgumentException ex)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, ex.Message);
+            }
+        })
+        .WithName("RecordLotAdverseEvent")
+        .WithTags("Wet-Lab Fabrication & QC")
+        .WithSummary("Records a post-implantation CTCAE v5.0 adverse event for a fabrication lot.")
+        .WithDescription("Encrypts optional clinical notes via AES-256-GCM, transitions Grade >= 3 events to Quarantined, and logs 21 CFR Part 11 audit trails.")
+        .Accepts<RecordAdverseEventRequest>("application/json")
+        .Produces<AdverseEventResponse>(StatusCodes.Status201Created)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden)
+        .Produces<SecureProblemDetails>(StatusCodes.Status404NotFound);
+
+        app.MapGet("/api/fabrication/lots/{lotId}/adverse-events", async (
+            string lotId,
+            IFabricationLotRepository lotRepository,
+            IClinicalPharmacovigilanceService pharmacovigilanceService,
+            ISubjectAccessService subjectAccess,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Retrieves chronological post-implantation adverse events with clinical notes decrypted for authorized callers.
+            // WHY:  Milestone 41 (P217): Enables clinicians, researchers, and patients to review adverse event history.
+            // HOW:  Authorizes Administrator, granted Researcher, or matching Patient self and invokes ListAdverseEventsAsync.
+            if (string.IsNullOrWhiteSpace(lotId))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Valid lotId is required.");
+            }
+
+            (FabricationLotRecord? lot, IResult? denial, _) = await AuthorizeColdChainLotAccessAsync(
+                lotId.Trim(), allowPatientSelf: true, lotRepository, subjectAccess, context, ct);
+            if (denial is not null)
+            {
+                return denial;
+            }
+
+            // WHY `!`: AuthorizeColdChainLotAccessAsync guarantees lot is non-null whenever denial is null.
+            IReadOnlyList<LotAdverseEventSummary>? events = await pharmacovigilanceService.ListAdverseEventsAsync(lot!.LotId, ct);
+            return Results.Ok(events);
+        })
+        .WithName("GetLotAdverseEvents")
+        .WithTags("Wet-Lab Fabrication & QC")
+        .WithSummary("Lists decrypted post-implantation CTCAE v5.0 adverse events for a fabrication lot.")
+        .WithDescription("Returns chronological adverse events recorded against the specified fabrication lot.")
+        .Produces<IReadOnlyList<LotAdverseEventSummary>>(StatusCodes.Status200OK)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden)
+        .Produces<SecureProblemDetails>(StatusCodes.Status404NotFound);
+
+        app.MapPost("/api/fabrication/lots/{lotId}/immunogenicity", async (
+            string lotId,
+            RecordImmunogenicityAssayRequest? request,
+            IFabricationLotRepository lotRepository,
+            IClinicalPharmacovigilanceService pharmacovigilanceService,
+            ISubjectAccessService subjectAccess,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Records a quantitative CARPA complement, TLR9 cytokine, and humoral anti-DNA panel for a lot.
+            // WHY:  Milestone 41 (P217): Detects subclinical complement/cytokine surges and auto-quarantines unsafe lots.
+            // HOW:  Authorizes Administrator or granted Researcher, delegates to RecordImmunogenicityAssayAsync, maps ArgumentException to 400.
+            if (string.IsNullOrWhiteSpace(lotId) || request is null)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Valid lotId and immunogenicity assay payload are required.");
+            }
+
+            (FabricationLotRecord? lot, IResult? denial, UserAccount caller) = await AuthorizeColdChainLotAccessAsync(
+                lotId.Trim(), allowPatientSelf: false, lotRepository, subjectAccess, context, ct);
+            if (denial is not null)
+            {
+                return denial;
+            }
+
+            try
+            {
+                // WHY `!`: AuthorizeColdChainLotAccessAsync guarantees lot is non-null whenever denial is null.
+                ImmunogenicityAssayResponse? response = await pharmacovigilanceService.RecordImmunogenicityAssayAsync(lot!.LotId, request, caller.Username, ct);
+                return Results.Created($"/api/fabrication/lots/{lot.LotId}/pharmacovigilance", response);
+            }
+            catch (ArgumentException ex)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, ex.Message);
+            }
+        })
+        .WithName("RecordLotImmunogenicityAssay")
+        .WithTags("Wet-Lab Fabrication & QC")
+        .WithSummary("Records a post-implantation CARPA/TLR9 immunogenicity panel for a fabrication lot.")
+        .WithDescription("Persists CH50, C3a, C5a, IL-6, TNF-alpha, anti-PEG IgM, anti-dsDNA IgG, and TLR9 activation biomarkers and auto-quarantines critical excursions.")
+        .Accepts<RecordImmunogenicityAssayRequest>("application/json")
+        .Produces<ImmunogenicityAssayResponse>(StatusCodes.Status201Created)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden)
+        .Produces<SecureProblemDetails>(StatusCodes.Status404NotFound);
+
+        app.MapGet("/api/fabrication/lots/{lotId}/pharmacovigilance", async (
+            string lotId,
+            IFabricationLotRepository lotRepository,
+            IClinicalPharmacovigilanceService pharmacovigilanceService,
+            ISubjectAccessService subjectAccess,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Evaluates live post-implantation pharmacovigilance posture, CARPA/TLR9 alerts, and quarantine status.
+            // WHY:  Milestone 41 (P217): Surfaces aggregate adverse event and immunogenicity surveillance to clinics and patients.
+            // HOW:  Authorizes Administrator, granted Researcher, or matching Patient self and calls EvaluateLotPharmacovigilanceAsync.
+            if (string.IsNullOrWhiteSpace(lotId))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Valid lotId is required.");
+            }
+
+            (FabricationLotRecord? lot, IResult? denial, _) = await AuthorizeColdChainLotAccessAsync(
+                lotId.Trim(), allowPatientSelf: true, lotRepository, subjectAccess, context, ct);
+            if (denial is not null)
+            {
+                return denial;
+            }
+
+            // WHY `!`: AuthorizeColdChainLotAccessAsync guarantees lot is non-null whenever denial is null.
+            LotPharmacovigilanceReport? report = await pharmacovigilanceService.EvaluateLotPharmacovigilanceAsync(lot!.LotId, ct);
+            return Results.Ok(report);
+        })
+        .WithName("GetLotPharmacovigilanceReport")
+        .WithTags("Wet-Lab Fabrication & QC")
+        .WithSummary("Evaluates aggregate post-implantation pharmacovigilance and CARPA/TLR9 posture for a lot.")
+        .WithDescription("Computes CTCAE severity ceiling, CARPA/TLR9/humoral signals, quarantine state, and decrypted event timelines.")
+        .Produces<LotPharmacovigilanceReport>(StatusCodes.Status200OK)
         .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
         .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
         .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden)

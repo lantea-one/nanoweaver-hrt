@@ -1928,4 +1928,64 @@ public interface INanoWeaverNodeClient
         string bearerToken,
         string lotId,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Records a post-implantation CTCAE v5.0 adverse event via POST /api/fabrication/lots/{lotId}/adverse-events.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="lotId">Target fabrication lot identifier.</param>
+    /// <param name="request">Adverse event grading, symptom category, onset latency, and optional notes.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Persisted <see cref="AdverseEventResponse"/> with updated pharmacovigilance posture.</returns>
+    Task<AdverseEventResponse> RecordLotAdverseEventAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        RecordAdverseEventRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Retrieves chronological post-implantation adverse events via GET /api/fabrication/lots/{lotId}/adverse-events.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="lotId">Target fabrication lot identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Chronological list of <see cref="LotAdverseEventSummary"/> records.</returns>
+    Task<IReadOnlyList<LotAdverseEventSummary>> GetLotAdverseEventsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Records a CARPA/TLR9 immunogenicity biomarker panel via POST /api/fabrication/lots/{lotId}/immunogenicity.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="lotId">Target fabrication lot identifier.</param>
+    /// <param name="request">Quantitative complement, cytokine, and antibody biomarker panel.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Persisted <see cref="ImmunogenicityAssayResponse"/> with updated pharmacovigilance posture.</returns>
+    Task<ImmunogenicityAssayResponse> RecordLotImmunogenicityAssayAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        RecordImmunogenicityAssayRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Evaluates aggregate post-implantation pharmacovigilance posture via GET /api/fabrication/lots/{lotId}/pharmacovigilance.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="lotId">Target fabrication lot identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The evaluated <see cref="LotPharmacovigilanceReport"/>.</returns>
+    Task<LotPharmacovigilanceReport> GetLotPharmacovigilanceAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        CancellationToken ct = default);
 }

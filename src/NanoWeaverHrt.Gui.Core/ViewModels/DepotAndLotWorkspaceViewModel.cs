@@ -59,6 +59,7 @@ public enum ClinicalWorkspaceSeverity
 /// <param name="FailedPeerSyncCount">Number of subscribed federated peer revocation sync endpoints currently in <see cref="FederatedPeerSyncStatus.Failed"/> state.</param>
 /// <param name="NewFederatedRecallCount">Number of newly discovered federated recall tombstones imported by the most recent pull-sync operation.</param>
 /// <param name="CompromisedColdChainLotCount">Number of inspected lots flagged thermally compromised, expired, or custody-tampered (fail-closed unsafe for implantation).</param>
+/// <param name="CriticalPharmacovigilanceLotCount">Number of inspected lots flagged for fail-closed quarantine by post-implantation pharmacovigilance or CARPA/TLR9 signals.</param>
 public sealed record DepotWorkspaceSummary(
     string? ActivePatientId,
     int FormulationCount,
@@ -74,7 +75,8 @@ public sealed record DepotWorkspaceSummary(
     string SeverityAccentHex,
     int FailedPeerSyncCount = 0,
     int NewFederatedRecallCount = 0,
-    int CompromisedColdChainLotCount = 0);
+    int CompromisedColdChainLotCount = 0,
+    int CriticalPharmacovigilanceLotCount = 0);
 
 /// <summary>
 /// Native cross-platform MVVM ViewModel unifying Milestones 33–36 clinical workflows:
@@ -865,8 +867,15 @@ public sealed class DepotAndLotWorkspaceViewModel : INotifyPropertyChanged
                 : 0;
 
         int compromisedColdChain = _latestLotStability != null && !_latestLotStability.IsSafeForImplantation ? 1 : 0;
+        int criticalPharmacovigilance = _latestPharmacovigilanceReport != null && _latestPharmacovigilanceReport.IsQuarantineTriggered ? 1 : 0;
 
-        ClinicalWorkspaceSeverity severity = ResolveWorkspaceSeverity(quarantined, revoked, failedPeerSyncs, newFederatedRecalls, compromisedColdChain);
+        ClinicalWorkspaceSeverity severity = ResolveWorkspaceSeverity(
+            quarantined,
+            revoked,
+            failedPeerSyncs,
+            newFederatedRecalls,
+            compromisedColdChain,
+            criticalPharmacovigilance);
         string accentHex = MapSeverityToPaletteHex(severity);
 
         return new DepotWorkspaceSummary(
@@ -884,7 +893,8 @@ public sealed class DepotAndLotWorkspaceViewModel : INotifyPropertyChanged
             SeverityAccentHex: accentHex,
             FailedPeerSyncCount: failedPeerSyncs,
             NewFederatedRecallCount: newFederatedRecalls,
-            CompromisedColdChainLotCount: compromisedColdChain);
+            CompromisedColdChainLotCount: compromisedColdChain,
+            CriticalPharmacovigilanceLotCount: criticalPharmacovigilance);
     }
 
     /// <summary>
@@ -987,36 +997,40 @@ public sealed class DepotAndLotWorkspaceViewModel : INotifyPropertyChanged
         LastPeerSyncSweep = null;
         LatestLotStability = null;
         LatestCustodyLedger = null;
+        LatestPharmacovigilanceReport = null;
+        ActiveLotAdverseEvents = [];
         ErrorMessage = null;
     }
 
     /// <summary>
     /// Resolves the highest clinical severity across calibration guardrails, lot states, certificate verification,
-    /// federated peer revocation pull-sync telemetry, and cold-chain thermal stability.
+    /// federated peer revocation pull-sync telemetry, cold-chain thermal stability, and post-implantation pharmacovigilance.
     /// </summary>
     /// <param name="quarantinedCount">Count of quarantined lots.</param>
     /// <param name="revokedCount">Count of revoked lots.</param>
     /// <param name="failedPeerSyncCount">Count of federated peer sync endpoints in Failed state.</param>
     /// <param name="newFederatedRecallCount">Count of newly imported federated recall tombstones.</param>
     /// <param name="compromisedColdChainCount">Count of lots flagged thermally compromised, expired, or custody-tampered.</param>
+    /// <param name="criticalPharmacovigilanceCount">Count of lots flagged for CARPA/CTCAE pharmacovigilance quarantine.</param>
     /// <returns>The resolved <see cref="ClinicalWorkspaceSeverity"/>.</returns>
     private ClinicalWorkspaceSeverity ResolveWorkspaceSeverity(
         int quarantinedCount,
         int revokedCount,
         int failedPeerSyncCount,
         int newFederatedRecallCount,
-        int compromisedColdChainCount)
+        int compromisedColdChainCount,
+        int criticalPharmacovigilanceCount)
     {
         // WHAT: Evaluates fail-closed clinical priority ordering (Critical > Warning > Optimal > Idle).
-        // WHY:  Guarantees severe clinical alerts, recalled batches, compromised cold-chain lots, or newly imported federated recalls are never masked.
-        // HOW:  Checks critical safety ceiling, revoked lots, failed verification, compromised cold chain, and new federated recalls first, then warnings, then loaded state.
+        // WHY:  Guarantees severe clinical alerts, recalled batches, compromised cold-chain lots, CARPA quarantines, or newly imported federated recalls are never masked.
+        // HOW:  Checks critical safety ceiling, revoked lots, failed verification, compromised cold chain, CARPA quarantine, and new federated recalls first, then warnings, then loaded state.
         bool calibrationCritical = _latestCalibration != null && _latestCalibration.OverallSafetyStatus == DepotSafetyStatus.CriticalSafety;
         bool verificationCritical = _lastCertificateVerification != null &&
             (_lastCertificateVerification.IsRevoked ||
              _lastCertificateVerification.TrustSource == FabricationCertificateTrustSource.InvalidSignature ||
              _lastCertificateVerification.TrustSource == FabricationCertificateTrustSource.RevokedSigner);
 
-        if (calibrationCritical || revokedCount > 0 || verificationCritical || newFederatedRecallCount > 0 || compromisedColdChainCount > 0)
+        if (calibrationCritical || revokedCount > 0 || verificationCritical || newFederatedRecallCount > 0 || compromisedColdChainCount > 0 || criticalPharmacovigilanceCount > 0)
         {
             return ClinicalWorkspaceSeverity.Critical;
         }
@@ -1027,8 +1041,9 @@ public sealed class DepotAndLotWorkspaceViewModel : INotifyPropertyChanged
         bool verificationWarning = _lastCertificateVerification != null &&
             _lastCertificateVerification.TrustSource == FabricationCertificateTrustSource.UntrustedSigner;
         bool coldChainAdvisory = _latestLotStability != null && _latestLotStability.Status == ThermalStabilityStatus.AdvisoryExcursion;
+        bool pvMonitor = _latestPharmacovigilanceReport != null && _latestPharmacovigilanceReport.Posture == PharmacovigilancePosture.Monitor;
 
-        if (calibrationWarning || quarantinedCount > 0 || verificationWarning || failedPeerSyncCount > 0 || coldChainAdvisory)
+        if (calibrationWarning || quarantinedCount > 0 || verificationWarning || failedPeerSyncCount > 0 || coldChainAdvisory || pvMonitor)
         {
             return ClinicalWorkspaceSeverity.Warning;
         }
@@ -1721,6 +1736,201 @@ public sealed class DepotAndLotWorkspaceViewModel : INotifyPropertyChanged
         finally
         {
             IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Backing field for <see cref="LatestPharmacovigilanceReport"/>.
+    /// </summary>
+    private LotPharmacovigilanceReport? _latestPharmacovigilanceReport;
+
+    /// <summary>
+    /// Backing field for <see cref="ActiveLotAdverseEvents"/>.
+    /// </summary>
+    private IReadOnlyList<LotAdverseEventSummary> _activeLotAdverseEvents = [];
+
+    /// <summary>
+    /// Gets the most recently evaluated post-implantation pharmacovigilance report for <see cref="SelectedLotId"/>.
+    /// </summary>
+    public LotPharmacovigilanceReport? LatestPharmacovigilanceReport
+    {
+        get => _latestPharmacovigilanceReport;
+        private set
+        {
+            _latestPharmacovigilanceReport = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Gets the chronological decrypted post-implantation adverse events loaded for <see cref="SelectedLotId"/>.
+    /// </summary>
+    public IReadOnlyList<LotAdverseEventSummary> ActiveLotAdverseEvents
+    {
+        get => _activeLotAdverseEvents;
+        private set
+        {
+            _activeLotAdverseEvents = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Evaluates post-implantation pharmacovigilance and CARPA/TLR9 signals for <see cref="SelectedLotId"/>
+    /// via GET /api/fabrication/lots/{lotId}/pharmacovigilance.
+    /// </summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The evaluated <see cref="LotPharmacovigilanceReport"/>.</returns>
+    public async Task<LotPharmacovigilanceReport> LoadSelectedLotPharmacovigilanceAsync(CancellationToken ct = default)
+    {
+        // WHAT: Queries aggregate pharmacovigilance posture, CARPA/TLR9 flags, and quarantine state for SelectedLotId.
+        // WHY:  Milestone 41 (P217): Powers native pharmacovigilance summary badges and desktop tray quarantine alerts.
+        // HOW:  Validates SelectedLotId, invokes GetLotPharmacovigilanceAsync, and updates LatestPharmacovigilanceReport & ActiveLotAdverseEvents.
+        string lotId = RequireSelectedLotId();
+        var (profile, token) = ResolveEffectiveSession();
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            LotPharmacovigilanceReport report = await _client.GetLotPharmacovigilanceAsync(profile, token, lotId, ct).ConfigureAwait(false);
+            LatestPharmacovigilanceReport = report;
+            ActiveLotAdverseEvents = report.AdverseEvents;
+            return report;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Loads decrypted chronological adverse events for <see cref="SelectedLotId"/>
+    /// via GET /api/fabrication/lots/{lotId}/adverse-events.
+    /// </summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Chronological list of <see cref="LotAdverseEventSummary"/> entries.</returns>
+    public async Task<IReadOnlyList<LotAdverseEventSummary>> LoadSelectedLotAdverseEventsAsync(CancellationToken ct = default)
+    {
+        // WHAT: Queries decrypted clinical adverse event history for SelectedLotId.
+        // WHY:  Milestone 41 (P217): Populates native adverse event timeline tables without raw ciphertext exposure.
+        // HOW:  Validates SelectedLotId, calls GetLotAdverseEventsAsync, and updates ActiveLotAdverseEvents.
+        string lotId = RequireSelectedLotId();
+        var (profile, token) = ResolveEffectiveSession();
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            IReadOnlyList<LotAdverseEventSummary> events = await _client.GetLotAdverseEventsAsync(profile, token, lotId, ct).ConfigureAwait(false);
+            ActiveLotAdverseEvents = events;
+            return events;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Records a post-implantation CTCAE v5.0 adverse event for <see cref="SelectedLotId"/> and updates
+    /// <see cref="LatestPharmacovigilanceReport"/>, <see cref="ActiveLotAdverseEvents"/>, and patient lots.
+    /// </summary>
+    /// <param name="request">CTCAE v5.0 adverse event grading, symptom category, onset hours, and optional notes.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The persisted <see cref="AdverseEventResponse"/>.</returns>
+    public async Task<AdverseEventResponse> RecordAdverseEventAsync(
+        RecordAdverseEventRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Submits a clinical adverse event and refreshes pharmacovigilance posture and lot statuses.
+        // WHY:  Milestone 41 (P217): Immediately surfaces Grade >= 3 auto-quarantine transitions in native views and tray badges.
+        // HOW:  Validates inputs, posts to RecordLotAdverseEventAsync, updates observable properties, and reloads lots if active patient is set.
+        ArgumentNullException.ThrowIfNull(request);
+        string lotId = RequireSelectedLotId();
+        var (profile, token) = ResolveEffectiveSession();
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            AdverseEventResponse response = await _client.RecordLotAdverseEventAsync(profile, token, lotId, request, ct).ConfigureAwait(false);
+            LatestPharmacovigilanceReport = response.ReportAfterEvent;
+            ActiveLotAdverseEvents = response.ReportAfterEvent.AdverseEvents;
+            await RefreshActivePatientLotsAsync(profile, token, ct).ConfigureAwait(false);
+            return response;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Records a CARPA/TLR9 immunogenicity panel for <see cref="SelectedLotId"/> and updates
+    /// <see cref="LatestPharmacovigilanceReport"/> and patient lot statuses.
+    /// </summary>
+    /// <param name="request">Complement, cytokine, and antibody biomarker panel payload.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The persisted <see cref="ImmunogenicityAssayResponse"/>.</returns>
+    public async Task<ImmunogenicityAssayResponse> RecordImmunogenicityAssayAsync(
+        RecordImmunogenicityAssayRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Submits an immunogenicity assay panel and refreshes pharmacovigilance quarantine status.
+        // WHY:  Milestone 41 (P217): Immediately reflects CARPA/TLR9 critical auto-quarantines across native UIs and tray indicators.
+        // HOW:  Validates inputs, posts to RecordLotImmunogenicityAssayAsync, updates observable posture, and refreshes patient lots.
+        ArgumentNullException.ThrowIfNull(request);
+        string lotId = RequireSelectedLotId();
+        var (profile, token) = ResolveEffectiveSession();
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            ImmunogenicityAssayResponse response = await _client.RecordLotImmunogenicityAssayAsync(profile, token, lotId, request, ct).ConfigureAwait(false);
+            LatestPharmacovigilanceReport = response.ReportAfterAssay;
+            ActiveLotAdverseEvents = response.ReportAfterAssay.AdverseEvents;
+            await RefreshActivePatientLotsAsync(profile, token, ct).ConfigureAwait(false);
+            return response;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Refreshes <see cref="FabricationLots"/> when <see cref="ActivePatientId"/> is currently selected.
+    /// </summary>
+    /// <param name="profile">Active instance connection profile.</param>
+    /// <param name="token">Active Bearer session token.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task representing the asynchronous lot refresh.</returns>
+    private async Task RefreshActivePatientLotsAsync(InstanceProfile profile, string token, CancellationToken ct)
+    {
+        // WHAT: Reloads patient fabrication lots when an active patient context exists.
+        // WHY:  Avoids duplicating patient-ID checks across adverse event and immunogenicity mutation commands.
+        // HOW:  Guards on _activePatientId and fetches updated FabricationLots via _client.GetFabricationLotsAsync.
+        if (!string.IsNullOrWhiteSpace(_activePatientId))
+        {
+            FabricationLots = await _client.GetFabricationLotsAsync(profile, token, _activePatientId, ct).ConfigureAwait(false);
         }
     }
 }

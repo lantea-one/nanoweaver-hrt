@@ -800,4 +800,120 @@ public sealed class DepotAndLotWorkspaceViewModelTests
         Assert.Null(vm.LatestLotStability);
         Assert.Null(vm.LatestCustodyLedger);
     }
+
+    /// <summary>
+    /// Verifies Milestone 41 (P217) pharmacovigilance and immunogenicity commands, severity escalation
+    /// (<c>Warning</c> on <c>Monitor</c>, <c>Critical</c> on <c>CarpaQuarantine</c>), active-patient lot refresh,
+    /// error handling, and cache cleanup.
+    /// </summary>
+    [Fact]
+    public async Task PharmacovigilanceCommands_SeverityEscalationAndCacheCleanup_WorkDeterministically()
+    {
+        InstanceProfile profile = CreateProfile();
+        Mock<INanoWeaverNodeClient> clientMock = new();
+        DepotAndLotWorkspaceViewModel vm = new(clientMock.Object, () => profile, () => "token")
+        {
+            SelectedLotId = "lot_20261123_001"
+        };
+
+        LotAdverseEventSummary sampleAe = new LotAdverseEventSummary().GetExamples();
+        LotPharmacovigilanceReport nominalReport = new LotPharmacovigilanceReport().GetExamples();
+        LotPharmacovigilanceReport monitorReport = nominalReport with
+        {
+            Posture = PharmacovigilancePosture.Monitor,
+            IsQuarantineTriggered = false,
+            AdverseEvents = [sampleAe]
+        };
+        LotPharmacovigilanceReport quarantineReport = nominalReport with
+        {
+            Posture = PharmacovigilancePosture.CarpaQuarantine,
+            IsQuarantineTriggered = true,
+            LotStatus = FabricationLotStatus.Quarantined,
+            AdverseEvents = [sampleAe]
+        };
+
+        RecordAdverseEventRequest aeReq = new RecordAdverseEventRequest().GetExamples();
+        AdverseEventResponse aeResp = new AdverseEventResponse
+        {
+            Event = sampleAe,
+            ReportAfterEvent = monitorReport
+        };
+        RecordImmunogenicityAssayRequest immReq = new RecordImmunogenicityAssayRequest().GetExamples();
+        ImmunogenicityAssayResponse immResp = new ImmunogenicityAssayResponse
+        {
+            Assay = new LotImmunogenicityAssayRecord().GetExamples(),
+            ReportAfterAssay = quarantineReport
+        };
+
+        // 1. LoadSelectedLotPharmacovigilanceAsync -> Nominal => Idle (no loaded lots/formulations yet)
+        clientMock.Setup(c => c.GetLotPharmacovigilanceAsync(profile, "token", "lot_20261123_001", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(nominalReport);
+        LotPharmacovigilanceReport loadedPv = await vm.LoadSelectedLotPharmacovigilanceAsync();
+        Assert.Same(nominalReport, loadedPv);
+        Assert.Same(nominalReport, vm.LatestPharmacovigilanceReport);
+        DepotWorkspaceSummary nomSummary = vm.BuildSummary();
+        Assert.Equal(0, nomSummary.CriticalPharmacovigilanceLotCount);
+        Assert.Equal(ClinicalWorkspaceSeverity.Idle, nomSummary.Severity);
+
+        clientMock.Setup(c => c.GetLotPharmacovigilanceAsync(profile, "token", "lot_20261123_001", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("pv load fail"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.LoadSelectedLotPharmacovigilanceAsync());
+        Assert.Equal("pv load fail", vm.ErrorMessage);
+
+        // 2. LoadSelectedLotAdverseEventsAsync
+        clientMock.Setup(c => c.GetLotAdverseEventsAsync(profile, "token", "lot_20261123_001", It.IsAny<CancellationToken>()))
+            .ReturnsAsync([sampleAe]);
+        IReadOnlyList<LotAdverseEventSummary> loadedEvents = await vm.LoadSelectedLotAdverseEventsAsync();
+        Assert.Single(loadedEvents);
+        Assert.Single(vm.ActiveLotAdverseEvents);
+
+        clientMock.Setup(c => c.GetLotAdverseEventsAsync(profile, "token", "lot_20261123_001", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("ae list fail"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.LoadSelectedLotAdverseEventsAsync());
+        Assert.Equal("ae list fail", vm.ErrorMessage);
+
+        // 3. RecordAdverseEventAsync without ActivePatientId -> Monitor => Warning
+        await Assert.ThrowsAsync<ArgumentNullException>(() => vm.RecordAdverseEventAsync(null!));
+        clientMock.Setup(c => c.RecordLotAdverseEventAsync(profile, "token", "lot_20261123_001", aeReq, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(aeResp);
+        AdverseEventResponse savedAe = await vm.RecordAdverseEventAsync(aeReq);
+        Assert.Same(aeResp, savedAe);
+        DepotWorkspaceSummary warnSummary = vm.BuildSummary();
+        Assert.Equal(0, warnSummary.CriticalPharmacovigilanceLotCount);
+        Assert.Equal(ClinicalWorkspaceSeverity.Warning, warnSummary.Severity);
+
+        clientMock.Setup(c => c.RecordLotAdverseEventAsync(profile, "token", "lot_20261123_001", aeReq, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("ae record fail"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.RecordAdverseEventAsync(aeReq));
+        Assert.Equal("ae record fail", vm.ErrorMessage);
+
+        // 4. RecordImmunogenicityAssayAsync with ActivePatientId set -> CarpaQuarantine => Critical & refreshes FabricationLots
+        vm.ActivePatientId = "patient_alice";
+        FabricationLotResponse quarantinedLotDto = new FabricationLotResponse().GetExamples() with
+        {
+            LotStatus = FabricationLotStatus.Quarantined
+        };
+        await Assert.ThrowsAsync<ArgumentNullException>(() => vm.RecordImmunogenicityAssayAsync(null!));
+        clientMock.Setup(c => c.RecordLotImmunogenicityAssayAsync(profile, "token", "lot_20261123_001", immReq, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(immResp);
+        clientMock.Setup(c => c.GetFabricationLotsAsync(profile, "token", "patient_alice", It.IsAny<CancellationToken>()))
+            .ReturnsAsync([quarantinedLotDto]);
+
+        ImmunogenicityAssayResponse savedImm = await vm.RecordImmunogenicityAssayAsync(immReq);
+        Assert.Same(immResp, savedImm);
+        Assert.Single(vm.FabricationLots);
+        DepotWorkspaceSummary critSummary = vm.BuildSummary();
+        Assert.Equal(1, critSummary.CriticalPharmacovigilanceLotCount);
+        Assert.Equal(ClinicalWorkspaceSeverity.Critical, critSummary.Severity);
+
+        clientMock.Setup(c => c.RecordLotImmunogenicityAssayAsync(profile, "token", "lot_20261123_001", immReq, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("imm record fail"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.RecordImmunogenicityAssayAsync(immReq));
+        Assert.Equal("imm record fail", vm.ErrorMessage);
+
+        // 5. Cache cleanup wipes pharmacovigilance & adverse event state
+        vm.ClearSensitiveClinicalCache();
+        Assert.Null(vm.LatestPharmacovigilanceReport);
+        Assert.Empty(vm.ActiveLotAdverseEvents);
+    }
 }

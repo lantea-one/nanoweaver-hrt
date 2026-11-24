@@ -4,6 +4,26 @@
 
 ---
 
+## v2026.11.23.1 — Post-Implantation Pharmacovigilance, Immunogenicity Surveillance & Automated Quarantine Escalation (Milestone 41 / Forgejo Issues #246–#250) (2026-11-23)
+
+Completes **Milestone 41 (`P215`–`P219` / Forgejo Issues `#246`–`#250`)**, establishing real-time post-implantation adverse event tracking, quantitative CARPA complement and TLR9 innate cytokine surveillance, automated fail-closed batch quarantine, and cross-node CoA trust revocation:
+* **Phase 1: Post-Implantation Adverse Event & Immunogenicity Persistence (`Migration020_ClinicalPharmacovigilance` / Forgejo #246 / P215)**:
+  - Added `Migration020_ClinicalPharmacovigilance` (`Version = 20`) across SQLite, PostgreSQL, DuckDB (omitting unsupported `ON DELETE CASCADE`), and MySQL/MariaDB creating `weaver_lot_adverse_events` and `weaver_lot_immunogenicity_assays` with 4 indexed query paths.
+  - Added `AdverseEventSeverityGrade`, `LotAdverseEventRecord`, `LotImmunogenicityAssayRecord`, `IClinicalPharmacovigilanceRepository`, `ClinicalPharmacovigilanceRepository`, and GDPR Article 17 erasure cascades in `FabricationLotRepository.DeleteByPatientIdAsync`.
+* **Phase 2: Immunogenicity Signal Detection & Fail-Closed Quarantine Escalation Engine (Forgejo #247 / P216)**:
+  - Implemented `IClinicalPharmacovigilanceService` and `ClinicalPharmacovigilanceService` enforcing CTCAE v5.0 severity grading (`Grade3Severe` / `Grade4LifeThreatening` automatic lot quarantine and emergency recall recommendation) plus CARPA (`CH50`, `C3a`, `C5a`, `anti-PEG IgM`), TLR9 cytokine storm (`IL-6`, `TNF-α`, `TLR9 activation index`), and humoral autoantibody (`anti-dsDNA IgG`) threshold gating.
+  - Protected clinical notes at rest via AES-256-GCM (`ProfileDataProtector.EncryptField`), preserved permanent `Revoked` tombstones while transitioning active lots to `FabricationLotStatus.Quarantined`, wired `ApplyPharmacovigilanceGateAsync` into `POST /api/fabrication/certificates/verify`, and logged 21 CFR Part 11 audit events (`FABRICATION_ADVERSE_EVENT_RECORD`, `FABRICATION_IMMUNOGENICITY_RECORD`, `FABRICATION_PHARMACOVIGILANCE_QUARANTINE`).
+* **Phase 3: Pharmacovigilance Minimal API Endpoints, Client SDK, ViewModel & Tray Alert Escalation (Forgejo #248 / P217)**:
+  - Appended 4 authenticated Minimal API routes to `Program.cs` (`POST /api/fabrication/lots/{lotId}/adverse-events`, `GET /api/fabrication/lots/{lotId}/adverse-events`, `POST /api/fabrication/lots/{lotId}/immunogenicity`, `GET /api/fabrication/lots/{lotId}/pharmacovigilance`) reusing `AuthorizeColdChainLotAccessAsync` and gating `POST /api/fabrication/certificates/verify`.
+  - Extended `INanoWeaverNodeClient`, `NanoWeaverNodeClient`, `WeaverNodeApiClient`, `DepotAndLotWorkspaceViewModel` (`LatestPharmacovigilanceReport`, `ActiveLotAdverseEvents`, `CriticalPharmacovigilanceLotCount`), and `DesktopTrayIconController` (`TrayHealthBadge.Critical` / `Gui.DepotWorkspace.TrayPharmacovigilanceAlert`).
+* **Phase 4: Sovereign `DepotStudio` Pharmacovigilance Panel, 18-Language Localization & bUnit Suite (Forgejo #249 / P218)**:
+  - Added `#pharmacovigilance-surveillance-panel` to `DepotStudio.razor` (CTCAE v5.0 event logger, 8-biomarker CARPA/TLR9 assay panel, live quarantine banner, posture badge, and `#peer-verify-pv-badge` on pasted CoA verification).
+  - Added 18 localized `Pharmacovigilance.*` and `Gui.DepotWorkspace.TrayPharmacovigilanceAlert` keys across all 18 community languages (`184` keys per catalog) with full bUnit and localization parity coverage.
+* **Phase 5: CalVer `v2026.11.23.1` Release, 8-Gate Verification & Audited Pull Request (Forgejo #250 / P219)**:
+  - Updated `<DefaultCalVerVersion>2026.11.23.1</DefaultCalVerVersion>` in `Directory.Build.props`, updated API/compliance/GUI documentation, closed legacy completed milestones (`v2026.11.09.1`–`v2026.11.09.6`), and passed all 8 verification gates (`./scripts/verify-all.sh`) at 100.00% line and branch coverage.
+
+---
+
 ## v2026.11.19.7 — Cold-Chain Thermal Stability, Arrhenius Shelf-Life & Chain-of-Custody Ledger (Milestone 40 / Forgejo Issues #239–#243) (2026-11-19)
 
 Completes **Milestone 40 (`P210`–`P214` / Forgejo Issues `#239`–`#243`)**, extending FDA 21 CFR Part 11 traceability from physical ML-DSA-65 wet-lab lot release through cryogenic/refrigerated transit and clinic administration with deterministic Arrhenius potency modeling and tamper-evident SHA-256 custody provenance:

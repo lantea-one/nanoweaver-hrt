@@ -76,6 +76,11 @@ public sealed class DepotStudioComponentTests : BunitContext
     private readonly Mock<IColdChainStabilityService> _coldChainMock = new();
 
     /// <summary>
+    /// Mocked post-implantation pharmacovigilance and CARPA/TLR9 surveillance service for Milestone 41 UI tests.
+    /// </summary>
+    private readonly Mock<IClinicalPharmacovigilanceService> _pvMock = new();
+
+    /// <summary>
     /// In-memory list of peer subscriptions managed by <see cref="_peerSyncMock"/>.
     /// </summary>
     private readonly List<FederatedPeerSyncEndpointRecord> _peerSyncEndpoints = [];
@@ -84,6 +89,28 @@ public sealed class DepotStudioComponentTests : BunitContext
     /// In-memory list of cold-chain custody handoffs managed by <see cref="_coldChainMock"/>.
     /// </summary>
     private readonly List<CustodyHandoffRecord> _coldChainHandoffs = [];
+
+    /// <summary>
+    /// In-memory list of adverse events managed by <see cref="_pvMock"/>.
+    /// </summary>
+    private readonly List<LotAdverseEventSummary> _pvEvents = [];
+
+    /// <summary>
+    /// In-memory list of immunogenicity assay panels managed by <see cref="_pvMock"/>.
+    /// </summary>
+    private readonly List<LotImmunogenicityAssayRecord> _pvAssays = [];
+
+    /// <summary>
+    /// In-memory active pharmacovigilance report returned by <see cref="_pvMock"/>.
+    /// </summary>
+    private LotPharmacovigilanceReport _pvReport = new()
+    {
+        LotId = "lot_studio_test_1",
+        PatientId = "depot-studio-session",
+        LotStatus = FabricationLotStatus.Draft,
+        Posture = PharmacovigilancePosture.Nominal,
+        Summary = "Nominal post-implantation pharmacovigilance: 0 adverse event(s), 0 assay(s), no CARPA or TLR9 signals detected."
+    };
 
     /// <summary>
     /// In-memory active cold-chain stability report returned by <see cref="_coldChainMock"/>.
@@ -192,6 +219,26 @@ public sealed class DepotStudioComponentTests : BunitContext
                 IsSafeForImplantation = _coldChainStability.IsSafeForImplantation
             });
 
+        _pvMock
+            .Setup(p => p.EvaluateLotPharmacovigilanceAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string lotId, CancellationToken _) => _pvReport with
+            {
+                LotId = lotId,
+                AdverseEventCount = _pvEvents.Count,
+                ImmunogenicityAssayCount = _pvAssays.Count,
+                AdverseEvents = _pvEvents.ToList(),
+                ImmunogenicityAssays = _pvAssays.ToList()
+            });
+
+        _pvMock
+            .Setup(p => p.ApplyPharmacovigilanceGateAsync(It.IsAny<FabricationCertificateVerificationReport>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((FabricationCertificateVerificationReport r, CancellationToken _) => r with
+            {
+                IsTrusted = r.IsTrusted && !_pvReport.IsQuarantineTriggered,
+                PharmacovigilancePosture = _pvReport.Posture,
+                IsPharmacovigilanceFlagged = _pvReport.IsQuarantineTriggered
+            });
+
         Services.AddSingleton<IWeaverLocalizer>(_localizer);
         Services.AddSingleton<ITimeReleaseDepotService>(_depotService);
         Services.AddSingleton<IDepotCalibrationService>(_calibrationService);
@@ -202,6 +249,7 @@ public sealed class DepotStudioComponentTests : BunitContext
         Services.AddSingleton(_peerRegistryMock.Object);
         Services.AddSingleton(_peerSyncMock.Object);
         Services.AddSingleton(_coldChainMock.Object);
+        Services.AddSingleton(_pvMock.Object);
     }
 
     /// <inheritdoc/>
@@ -641,5 +689,155 @@ public sealed class DepotStudioComponentTests : BunitContext
         cut.Find("#btn-cc-record-handoff").Click();
 
         Assert.Contains("Patient administration blocked fail-closed", cut.Find("#cc-error").TextContent);
+    }
+
+    /// <summary>
+    /// Verifies Milestone 41 (P218) Post-Implantation Pharmacovigilance, CARPA/TLR9 Surveillance Panel,
+    /// fail-closed quarantine escalation banner, validation error feedback, and CoA verification badge inside <see cref="DepotStudio"/>.
+    /// </summary>
+    [Fact]
+    public void DepotStudio_PharmacovigilancePanel_LogsAdverseEventsAssaysTriggersQuarantineAndShowsValidationErrors()
+    {
+        // WHAT: Exercises the Milestone 41 #pharmacovigilance-surveillance-panel inside DepotStudio using fresh cut.Find queries.
+        // WHY:  Verifies CTCAE Grade 1->Monitor, validation error rendering, CARPA assay->Quarantine banner, and #peer-verify-pv-badge.
+        // HOW:  Mints and releases a lot, tests validation failure, logs Grade 1 AE, logs CARPA assay, and verifies pasted CoA badge.
+        _pvMock
+            .Setup(p => p.RecordAdverseEventAsync(It.IsAny<string>(), It.Is<RecordAdverseEventRequest>(r => string.IsNullOrWhiteSpace(r.SymptomCategory)), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new ArgumentException("SymptomCategory must be between 1 and 128 characters."));
+
+        _pvMock
+            .Setup(p => p.RecordAdverseEventAsync(It.IsAny<string>(), It.Is<RecordAdverseEventRequest>(r => !string.IsNullOrWhiteSpace(r.SymptomCategory)), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string lotId, RecordAdverseEventRequest req, string op, CancellationToken _) =>
+            {
+                var summary = new LotAdverseEventSummary
+                {
+                    EventId = "aevt_bunit_01",
+                    LotId = lotId,
+                    PatientId = "depot-studio-session",
+                    SeverityGrade = req.SeverityGrade,
+                    SymptomCategory = req.SymptomCategory,
+                    OnsetHoursPostImplant = req.OnsetHoursPostImplant,
+                    ClinicalNotes = req.ClinicalNotes,
+                    ReportedBy = op,
+                    RecordedAtUtc = DateTimeOffset.UtcNow
+                };
+                _pvEvents.Add(summary);
+
+                bool isCritical = req.SeverityGrade >= AdverseEventSeverityGrade.Grade3Severe;
+                _pvReport = _pvReport with
+                {
+                    LotId = lotId,
+                    Posture = isCritical ? PharmacovigilancePosture.CarpaQuarantine : PharmacovigilancePosture.Monitor,
+                    HighestSeverityGrade = req.SeverityGrade,
+                    IsQuarantineTriggered = isCritical,
+                    EmergencyRecallRecommended = isCritical,
+                    LotStatus = isCritical ? FabricationLotStatus.Quarantined : FabricationLotStatus.Released,
+                    AdverseEventCount = _pvEvents.Count,
+                    AdverseEvents = _pvEvents.ToList(),
+                    Summary = isCritical ? "CARPA / SEVERE TOXICITY QUARANTINE" : "Pharmacovigilance monitoring advised"
+                };
+                return new AdverseEventResponse { Event = summary, ReportAfterEvent = _pvReport };
+            });
+
+        _pvMock
+            .Setup(p => p.RecordImmunogenicityAssayAsync(It.IsAny<string>(), It.IsAny<RecordImmunogenicityAssayRequest>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string lotId, RecordImmunogenicityAssayRequest req, string _, CancellationToken _) =>
+            {
+                var assay = new LotImmunogenicityAssayRecord
+                {
+                    AssayId = "immu_bunit_01",
+                    LotId = lotId,
+                    PatientId = "depot-studio-session",
+                    Ch50Percent = req.Ch50Percent,
+                    C3aNgMl = req.C3aNgMl,
+                    C5aNgMl = req.C5aNgMl,
+                    Il6PgMl = req.Il6PgMl,
+                    TnfaPgMl = req.TnfaPgMl,
+                    AntiPegIgmTiter = req.AntiPegIgmTiter,
+                    AntiDsDnaIgGIuMl = req.AntiDsDnaIgGIuMl,
+                    Tlr9ActivationIndex = req.Tlr9ActivationIndex,
+                    RecordedAtUtc = DateTimeOffset.UtcNow
+                };
+                _pvAssays.Add(assay);
+
+                bool isCarpa = req.Ch50Percent <= 40.0 || req.C3aNgMl >= 500.0;
+                _pvReport = _pvReport with
+                {
+                    LotId = lotId,
+                    Posture = isCarpa ? PharmacovigilancePosture.CarpaQuarantine : PharmacovigilancePosture.Monitor,
+                    IsQuarantineTriggered = isCarpa,
+                    EmergencyRecallRecommended = isCarpa,
+                    CarpaSignalDetected = isCarpa,
+                    LotStatus = isCarpa ? FabricationLotStatus.Quarantined : FabricationLotStatus.Released,
+                    ImmunogenicityAssayCount = _pvAssays.Count,
+                    ImmunogenicityAssays = _pvAssays.ToList(),
+                    Summary = isCarpa
+                        ? "CARPA / SEVERE TOXICITY QUARANTINE: critical complement depletion detected."
+                        : "Pharmacovigilance monitoring advised."
+                };
+                return new ImmunogenicityAssayResponse { Assay = assay, ReportAfterAssay = _pvReport };
+            });
+
+        IRenderedComponent<DepotStudio> cut = Render<DepotStudio>();
+        cut.Find("#btn-mint-fabrication-lot").Click();
+
+        // Pass all 5 QC gates and release lot first so CoA verification can also run
+        cut.Find("#select-qc-gate").Change(FabricationQcGateType.GelFoldingYield.ToString());
+        cut.Find("#input-qc-measured").Change("92.4");
+        cut.Find("#btn-record-qc-gate").Click();
+        cut.Find("#select-qc-gate").Change(FabricationQcGateType.EndotoxinSterility.ToString());
+        cut.Find("#input-qc-measured").Change("0.10");
+        cut.Find("#btn-record-qc-gate").Click();
+        cut.Find("#select-qc-gate").Change(FabricationQcGateType.HydrodynamicSizePdi.ToString());
+        cut.Find("#input-qc-measured").Change("60.0");
+        cut.Find("#input-qc-secondary").Change("0.10");
+        cut.Find("#btn-record-qc-gate").Click();
+        cut.Find("#select-qc-gate").Change(FabricationQcGateType.PayloadEncapsulation.ToString());
+        cut.Find("#input-qc-measured").Change("89.0");
+        cut.Find("#input-qc-secondary").Change("1.0");
+        cut.Find("#btn-record-qc-gate").Click();
+        cut.Find("#select-qc-gate").Change(FabricationQcGateType.CpGMethylation.ToString());
+        cut.Find("#input-qc-measured").Change("98.0");
+        cut.Find("#btn-record-qc-gate").Click();
+        cut.Find("#btn-release-lot").Click();
+
+        Assert.NotNull(cut.Find("#pharmacovigilance-surveillance-panel"));
+        Assert.NotNull(cut.Find("#pv-events-empty"));
+        Assert.NotNull(cut.Find("#pv-assays-empty"));
+        Assert.Contains("NOMINAL", cut.Find("#pv-posture-badge").TextContent);
+
+        // 1. Blank symptom category surfaces validation alert
+        cut.Find("#input-pv-symptom").Change(" ");
+        cut.Find("#btn-pv-record-event").Click();
+        Assert.Contains("SymptomCategory must be between 1 and 128 characters.", cut.Find("#pv-error").TextContent);
+
+        // 2. Grade 1 adverse event -> Monitor posture and events table populated
+        cut.Find("#select-pv-grade").Change(AdverseEventSeverityGrade.Grade1Mild.ToString());
+        cut.Find("#input-pv-symptom").Change("InjectionSiteErythema");
+        cut.Find("#input-pv-onset").Change("3.5");
+        cut.Find("#input-pv-notes").Change("Mild transient erythema");
+        cut.Find("#btn-pv-record-event").Click();
+
+        Assert.Contains("MONITOR", cut.Find("#pv-posture-badge").TextContent);
+        Assert.Equal("1", cut.Find("#pv-adverse-count").TextContent);
+        Assert.Contains("InjectionSiteErythema", cut.Find("#pv-events-table").TextContent);
+        Assert.Contains("Monitor", cut.Find("#pv-status").TextContent);
+
+        // 3. Critical CARPA assay -> CARPA QUARANTINE badge, quarantine banner, lot status Quarantined
+        cut.Find("#input-pv-ch50").Change("32.0");
+        cut.Find("#input-pv-c3a").Change("650.0");
+        cut.Find("#btn-pv-record-assay").Click();
+
+        Assert.Contains("CARPA QUARANTINE", cut.Find("#pv-posture-badge").TextContent);
+        Assert.NotNull(cut.Find("#pv-quarantine-banner"));
+        Assert.Contains("EMERGENCY CLINICAL RECALL RECOMMENDED", cut.Find("#pv-quarantine-banner").TextContent);
+        Assert.Contains("650.0", cut.Find("#pv-assays-table").TextContent);
+        Assert.Contains("Quarantined", cut.Find("#lot-status-badge").TextContent);
+
+        // 4. Verifying CoA shows fail-closed pharmacovigilance badge and blocks clinical trust
+        cut.Find("#btn-load-active-coa").Click();
+        cut.Find("#btn-verify-peer-certificate").Click();
+        Assert.Contains("CARPA QUARANTINE", cut.Find("#peer-verify-pv-badge").TextContent);
+        Assert.DoesNotContain("TRUSTED FOR CLINICAL USE", cut.Find("#peer-verify-trust-badge").TextContent);
     }
 }

@@ -4416,6 +4416,58 @@ public sealed class NanoWeaverNodeClientTests : IDisposable
         await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetCustodyHandoffsAsync(null!, "valid_token", "lot_1"));
         await Assert.ThrowsAsync<ArgumentException>(() => _client.GetCustodyHandoffsAsync(_localProfile, "", "lot_1"));
         await Assert.ThrowsAsync<ArgumentException>(() => _client.GetCustodyHandoffsAsync(_localProfile, "valid_token", ""));
+
+        // 21. RecordLotAdverseEventAsync (Milestone 41)
+        RecordAdverseEventRequest aeReq = new RecordAdverseEventRequest().GetExamples();
+        AdverseEventResponse aeResp = new AdverseEventResponse().GetExamples();
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_1/adverse-events", HttpStatusCode.Created, JsonSerializer.Serialize(aeResp, webOpts));
+        Assert.Equal("aevt_20261123_001", (await _client.RecordLotAdverseEventAsync(_localProfile, "valid_token", "lot_1", aeReq)).Event.EventId);
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_1/adverse-events", HttpStatusCode.Created, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.RecordLotAdverseEventAsync(_localProfile, "valid_token", "lot_1", aeReq));
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_1/adverse-events", HttpStatusCode.BadRequest, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.RecordLotAdverseEventAsync(_localProfile, "valid_token", "lot_1", aeReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.RecordLotAdverseEventAsync(null!, "valid_token", "lot_1", aeReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.RecordLotAdverseEventAsync(_localProfile, "", "lot_1", aeReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.RecordLotAdverseEventAsync(_localProfile, "valid_token", "", aeReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.RecordLotAdverseEventAsync(_localProfile, "valid_token", "lot_1", null!));
+
+        // 22. GetLotAdverseEventsAsync (Milestone 41)
+        LotAdverseEventSummary aeSummary = new LotAdverseEventSummary().GetExamples();
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_1/adverse-events", HttpStatusCode.OK, JsonSerializer.Serialize(new[] { aeSummary }, webOpts));
+        Assert.Single(await _client.GetLotAdverseEventsAsync(_localProfile, "valid_token", "lot_1"));
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_1/adverse-events", HttpStatusCode.OK, "null");
+        Assert.Empty(await _client.GetLotAdverseEventsAsync(_localProfile, "valid_token", "lot_1"));
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_1/adverse-events", HttpStatusCode.Forbidden, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetLotAdverseEventsAsync(_localProfile, "valid_token", "lot_1"));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetLotAdverseEventsAsync(null!, "valid_token", "lot_1"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetLotAdverseEventsAsync(_localProfile, "", "lot_1"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetLotAdverseEventsAsync(_localProfile, "valid_token", ""));
+
+        // 23. RecordLotImmunogenicityAssayAsync (Milestone 41)
+        RecordImmunogenicityAssayRequest immReq = new RecordImmunogenicityAssayRequest().GetExamples();
+        ImmunogenicityAssayResponse immResp = new ImmunogenicityAssayResponse().GetExamples();
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_1/immunogenicity", HttpStatusCode.Created, JsonSerializer.Serialize(immResp, webOpts));
+        Assert.Equal("immu_20261123_001", (await _client.RecordLotImmunogenicityAssayAsync(_localProfile, "valid_token", "lot_1", immReq)).Assay.AssayId);
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_1/immunogenicity", HttpStatusCode.Created, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.RecordLotImmunogenicityAssayAsync(_localProfile, "valid_token", "lot_1", immReq));
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_1/immunogenicity", HttpStatusCode.BadRequest, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.RecordLotImmunogenicityAssayAsync(_localProfile, "valid_token", "lot_1", immReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.RecordLotImmunogenicityAssayAsync(null!, "valid_token", "lot_1", immReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.RecordLotImmunogenicityAssayAsync(_localProfile, "", "lot_1", immReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.RecordLotImmunogenicityAssayAsync(_localProfile, "valid_token", "", immReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.RecordLotImmunogenicityAssayAsync(_localProfile, "valid_token", "lot_1", null!));
+
+        // 24. GetLotPharmacovigilanceAsync (Milestone 41)
+        LotPharmacovigilanceReport pvSample = new LotPharmacovigilanceReport().GetExamples();
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_1/pharmacovigilance", HttpStatusCode.OK, JsonSerializer.Serialize(pvSample, webOpts));
+        Assert.Equal(PharmacovigilancePosture.Nominal, (await _client.GetLotPharmacovigilanceAsync(_localProfile, "valid_token", "lot_1")).Posture);
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_1/pharmacovigilance", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.GetLotPharmacovigilanceAsync(_localProfile, "valid_token", "lot_1"));
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_1/pharmacovigilance", HttpStatusCode.NotFound, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetLotPharmacovigilanceAsync(_localProfile, "valid_token", "lot_1"));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetLotPharmacovigilanceAsync(null!, "valid_token", "lot_1"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetLotPharmacovigilanceAsync(_localProfile, "", "lot_1"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetLotPharmacovigilanceAsync(_localProfile, "valid_token", ""));
     }
 
     /// <summary>

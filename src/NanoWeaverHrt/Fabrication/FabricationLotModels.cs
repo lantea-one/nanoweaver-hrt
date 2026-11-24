@@ -608,6 +608,21 @@ public sealed record FabricationCertificateVerificationReport : IExamplesProvide
     public bool? IsSafeForImplantation { get; init; }
 
     /// <summary>
+    /// Gets or initializes the evaluated local pharmacovigilance posture when a local lot record exists; otherwise null.
+    /// </summary>
+    [Description("Evaluated local pharmacovigilance safety posture when a local lot exists; null for external foreign CoAs.")]
+    [JsonPropertyName("pharmacovigilancePosture")]
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public PharmacovigilancePosture? PharmacovigilancePosture { get; init; }
+
+    /// <summary>
+    /// Gets or initializes whether the local lot was flagged for fail-closed quarantine by post-implantation pharmacovigilance; otherwise null.
+    /// </summary>
+    [Description("True when local pharmacovigilance flagged the lot for quarantine; null for external foreign CoAs.")]
+    [JsonPropertyName("isPharmacovigilanceFlagged")]
+    public bool? IsPharmacovigilanceFlagged { get; init; }
+
+    /// <summary>
     /// Generates a representative example instance of <see cref="FabricationCertificateVerificationReport"/> for OpenAPI documentation.
     /// </summary>
     /// <returns>A sample trusted peer verification report.</returns>

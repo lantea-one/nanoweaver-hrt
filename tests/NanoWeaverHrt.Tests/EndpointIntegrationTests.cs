@@ -3091,4 +3091,196 @@ public sealed class EndpointIntegrationTests : IClassFixture<WebApplicationFacto
             Assert.Contains(entries, e => e.Action == "FABRICATION_CUSTODY_HANDOFF_RECORD");
         }
     }
+
+    /// <summary>
+    /// End-to-end integration test for Milestone 41 (P217): verifies all 4 pharmacovigilance &amp; immunogenicity
+    /// Minimal API routes, RBAC/subject-access gating, Grade >= 3 &amp; CARPA automatic quarantine escalation,
+    /// fail-closed <c>POST /api/fabrication/certificates/verify</c> pharmacovigilance blocking,
+    /// fail-closed <c>PatientAdministration</c> blocking (HTTP 422), and 21 CFR Part 11 audit trails.
+    /// </summary>
+    [Fact]
+    public async Task PharmacovigilanceEndpoints_FullLifecycleRbacAutoQuarantineAndCoAGate_WorkEndToEnd()
+    {
+        string patSelf = "m41_patient_self";
+        string patOther = "m41_patient_other";
+        string researcher = "m41_researcher";
+
+        string tokSelf = await ProvisionUserAndGetTokenAsync(patSelf, UserRole.Patient);
+        string tokOther = await ProvisionUserAndGetTokenAsync(patOther, UserRole.Patient);
+        string tokRes = await ProvisionUserAndGetTokenAsync(researcher, UserRole.Researcher);
+
+        using HttpClient clientAnon = _factory.CreateClient();
+        using HttpClient clientSelf = CreateClientWithBearer(tokSelf);
+        using HttpClient clientOther = CreateClientWithBearer(tokOther);
+        using HttpClient clientRes = CreateClientWithBearer(tokRes);
+
+        // 1. Seed depot formulation, mint lot, pass all 5 QC gates, and release with ML-DSA-65 CoA
+        HttpResponseMessage depResp = await _client.PostAsJsonAsync("/api/depots/formulations", new CreateDepotFormulationRequest
+        {
+            PatientId = patSelf,
+            Regimen = TherapeuticRegimen.MaleToFemale,
+            PolymerMatrixType = "PLGA-PEG-PLGA",
+            InitialNanocarrierMassMg = 16.0,
+            DailyErosionRatePercent = 0.55,
+            ReleaseKineticsModel = "Korsmeyer-Peppas",
+            TargetHorizonDays = 180
+        });
+        Assert.Equal(HttpStatusCode.Created, depResp.StatusCode);
+        DepotFormulationResponse? dep = await depResp.Content.ReadFromJsonAsync<DepotFormulationResponse>();
+        Assert.NotNull(dep);
+
+        HttpResponseMessage lotResp = await _client.PostAsJsonAsync("/api/fabrication/lots", new CreateFabricationLotRequest
+        {
+            DepotId = dep.Formulation.DepotId,
+            UseLatestCalibration = false,
+            CpGMethylationRequired = true,
+            OpentronsProtocolSha256 = new string('8', 64)
+        });
+        Assert.Equal(HttpStatusCode.Created, lotResp.StatusCode);
+        FabricationLotResponse? lot = await lotResp.Content.ReadFromJsonAsync<FabricationLotResponse>();
+        Assert.NotNull(lot);
+        string lotId = lot.LotId;
+
+        await _client.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/qc", new RecordFabricationQcRequest { GateType = FabricationQcGateType.GelFoldingYield, MeasuredValue = 93.0 });
+        await _client.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/qc", new RecordFabricationQcRequest { GateType = FabricationQcGateType.EndotoxinSterility, MeasuredValue = 0.10 });
+        await _client.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/qc", new RecordFabricationQcRequest { GateType = FabricationQcGateType.HydrodynamicSizePdi, MeasuredValue = 60.0, SecondaryValue = 0.12 });
+        await _client.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/qc", new RecordFabricationQcRequest { GateType = FabricationQcGateType.PayloadEncapsulation, MeasuredValue = 89.0, SecondaryValue = 1.0 });
+        await _client.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/qc", new RecordFabricationQcRequest { GateType = FabricationQcGateType.CpGMethylation, MeasuredValue = 98.0 });
+        HttpResponseMessage relResp = await _client.PostAsync($"/api/fabrication/lots/{lotId}/release", null);
+        Assert.Equal(HttpStatusCode.OK, relResp.StatusCode);
+
+        HttpResponseMessage certResp = await _client.GetAsync($"/api/fabrication/lots/{lotId}/certificate");
+        Assert.Equal(HttpStatusCode.OK, certResp.StatusCode);
+        FabricationLotCertificateResponse? certDto = await certResp.Content.ReadFromJsonAsync<FabricationLotCertificateResponse>();
+        Assert.NotNull(certDto?.Certificate);
+
+        // 2. Auth, 400, 403, and 404 checks across all 4 endpoints
+        RecordAdverseEventRequest validAe = new()
+        {
+            SeverityGrade = AdverseEventSeverityGrade.Grade1Mild,
+            SymptomCategory = "InjectionSiteErythema",
+            OnsetHoursPostImplant = 3.0,
+            ClinicalNotes = "Mild localized redness"
+        };
+        RecordImmunogenicityAssayRequest validAssay = new()
+        {
+            Ch50Percent = 96.0,
+            C3aNgMl = 110.0,
+            C5aNgMl = 5.0,
+            Il6PgMl = 3.0,
+            TnfaPgMl = 4.0,
+            AntiPegIgmTiter = 20.0,
+            AntiDsDnaIgGIuMl = 8.0,
+            Tlr9ActivationIndex = 1.1
+        };
+
+        Assert.Equal(HttpStatusCode.Unauthorized, (await clientAnon.GetAsync($"/api/fabrication/lots/{lotId}/pharmacovigilance")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.GetAsync("/api/fabrication/lots/%20/adverse-events")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.GetAsync("/api/fabrication/lots/%20/pharmacovigilance")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/fabrication/lots/%20/adverse-events", validAe)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/fabrication/lots/%20/immunogenicity", validAssay)).StatusCode);
+        using (StringContent nullBody = new("null", Encoding.UTF8, "application/json"))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsync($"/api/fabrication/lots/{lotId}/adverse-events", nullBody)).StatusCode);
+            Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsync($"/api/fabrication/lots/{lotId}/immunogenicity", nullBody)).StatusCode);
+        }
+
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/fabrication/lots/missing_lot_404/adverse-events")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/fabrication/lots/missing_lot_404/pharmacovigilance")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsJsonAsync("/api/fabrication/lots/missing_lot_404/adverse-events", validAe)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsJsonAsync("/api/fabrication/lots/missing_lot_404/immunogenicity", validAssay)).StatusCode);
+
+        // Patient self blocked on mutations, allowed on reads; other patient & ungranted researcher blocked on all
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientSelf.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/adverse-events", validAe)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientSelf.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/immunogenicity", validAssay)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientOther.GetAsync($"/api/fabrication/lots/{lotId}/adverse-events")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientOther.GetAsync($"/api/fabrication/lots/{lotId}/pharmacovigilance")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientRes.GetAsync($"/api/fabrication/lots/{lotId}/pharmacovigilance")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientRes.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/adverse-events", validAe)).StatusCode);
+
+        // Validation ArgumentException -> 400 Bad Request
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/adverse-events", validAe with { SymptomCategory = " " })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/immunogenicity", validAssay with { Ch50Percent = -5.0 })).StatusCode);
+
+        // Grant Researcher access to patSelf
+        using (IServiceScope grantScope = _factory.Services.CreateScope())
+        {
+            ISubjectAccessService accessSvc = grantScope.ServiceProvider.GetRequiredService<ISubjectAccessService>();
+            await accessSvc.GrantSubjectAccessAsync("admin", researcher, patSelf, SubjectAccessLevel.FullReadAccess, "M41 clinical monitoring");
+        }
+
+        // 3. Researcher logs Grade 1 adverse event (201) + nominal assay (201); Patient self reads events & report (200)
+        HttpResponseMessage aeResp = await clientRes.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/adverse-events", validAe);
+        Assert.Equal(HttpStatusCode.Created, aeResp.StatusCode);
+        AdverseEventResponse? aeDto = await aeResp.Content.ReadFromJsonAsync<AdverseEventResponse>();
+        Assert.NotNull(aeDto);
+        Assert.Equal(PharmacovigilancePosture.Monitor, aeDto.ReportAfterEvent.Posture);
+        Assert.Equal("Mild localized redness", aeDto.Event.ClinicalNotes);
+
+        HttpResponseMessage assResp = await clientRes.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/immunogenicity", validAssay);
+        Assert.Equal(HttpStatusCode.Created, assResp.StatusCode);
+        ImmunogenicityAssayResponse? assDto = await assResp.Content.ReadFromJsonAsync<ImmunogenicityAssayResponse>();
+        Assert.NotNull(assDto);
+        Assert.False(assDto.ReportAfterAssay.IsQuarantineTriggered);
+
+        HttpResponseMessage selfEventsResp = await clientSelf.GetAsync($"/api/fabrication/lots/{lotId}/adverse-events");
+        Assert.Equal(HttpStatusCode.OK, selfEventsResp.StatusCode);
+        List<LotAdverseEventSummary>? selfEvents = await selfEventsResp.Content.ReadFromJsonAsync<List<LotAdverseEventSummary>>();
+        Assert.NotNull(selfEvents);
+        Assert.Single(selfEvents);
+
+        HttpResponseMessage selfPvResp = await clientSelf.GetAsync($"/api/fabrication/lots/{lotId}/pharmacovigilance");
+        Assert.Equal(HttpStatusCode.OK, selfPvResp.StatusCode);
+        LotPharmacovigilanceReport? selfPv = await selfPvResp.Content.ReadFromJsonAsync<LotPharmacovigilanceReport>();
+        Assert.NotNull(selfPv);
+        Assert.Equal(PharmacovigilancePosture.Monitor, selfPv.Posture);
+
+        // Verify CoA still trusted before severe toxicity
+        HttpResponseMessage verifyBeforeResp = await _client.PostAsJsonAsync("/api/fabrication/certificates/verify", certDto.Certificate);
+        Assert.Equal(HttpStatusCode.OK, verifyBeforeResp.StatusCode);
+        FabricationCertificateVerificationReport? verifyBefore = await verifyBeforeResp.Content.ReadFromJsonAsync<FabricationCertificateVerificationReport>();
+        Assert.True(verifyBefore!.IsTrusted);
+        Assert.False(verifyBefore.IsPharmacovigilanceFlagged);
+
+        // 4. Critical CARPA excursion auto-quarantines lot -> CoA verify flips fail-closed IsTrusted = false & PatientAdministration returns 422
+        HttpResponseMessage carpaResp = await clientRes.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/immunogenicity", validAssay with
+        {
+            Ch50Percent = 28.0,
+            C3aNgMl = 680.0,
+            C5aNgMl = 54.0,
+            AntiPegIgmTiter = 640.0
+        });
+        Assert.Equal(HttpStatusCode.Created, carpaResp.StatusCode);
+        ImmunogenicityAssayResponse? carpaDto = await carpaResp.Content.ReadFromJsonAsync<ImmunogenicityAssayResponse>();
+        Assert.NotNull(carpaDto);
+        Assert.Equal(PharmacovigilancePosture.CarpaQuarantine, carpaDto.ReportAfterAssay.Posture);
+        Assert.Equal(FabricationLotStatus.Quarantined, carpaDto.ReportAfterAssay.LotStatus);
+
+        HttpResponseMessage verifyQuarantinedResp = await _client.PostAsJsonAsync("/api/fabrication/certificates/verify", certDto.Certificate);
+        Assert.Equal(HttpStatusCode.OK, verifyQuarantinedResp.StatusCode);
+        FabricationCertificateVerificationReport? verifyQuarantined = await verifyQuarantinedResp.Content.ReadFromJsonAsync<FabricationCertificateVerificationReport>();
+        Assert.True(verifyQuarantined!.SignatureValid);
+        Assert.False(verifyQuarantined.IsTrusted);
+        Assert.Equal(PharmacovigilancePosture.CarpaQuarantine, verifyQuarantined.PharmacovigilancePosture);
+        Assert.True(verifyQuarantined.IsPharmacovigilanceFlagged);
+
+        HttpResponseMessage blockedAdminResp = await clientRes.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/custody-handoffs", new RecordCustodyHandoffRequest
+        {
+            Stage = CustodyStage.PatientAdministration,
+            FromActor = "clinic_rn",
+            ToActor = patSelf,
+            FacilityCode = "ZRH-CLINIC-01",
+            TemperatureCelsius = 4.0
+        });
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, blockedAdminResp.StatusCode);
+
+        using (IServiceScope auditScope = _factory.Services.CreateScope())
+        {
+            IComplianceAuditService audit = auditScope.ServiceProvider.GetRequiredService<IComplianceAuditService>();
+            IReadOnlyList<AuditRecord> entries = audit.GetAuditRecords(500);
+            Assert.Contains(entries, e => e.Action == "FABRICATION_ADVERSE_EVENT_RECORD");
+            Assert.Contains(entries, e => e.Action == "FABRICATION_IMMUNOGENICITY_RECORD");
+            Assert.Contains(entries, e => e.Action == "FABRICATION_PHARMACOVIGILANCE_QUARANTINE");
+        }
+    }
 }
