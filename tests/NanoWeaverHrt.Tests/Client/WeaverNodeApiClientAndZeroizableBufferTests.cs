@@ -1851,6 +1851,12 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         RecordCustodyHandoffRequest hndReq = new RecordCustodyHandoffRequest().GetExamples();
         CustodyHandoffRecord hndRec = new CustodyHandoffRecord().GetExamples();
         CustodyHandoffLedgerResponse ledgerResp = new CustodyHandoffLedgerResponse().GetExamples();
+        RecordAdverseEventRequest aeReq = new RecordAdverseEventRequest().GetExamples();
+        AdverseEventResponse aeResp = new AdverseEventResponse().GetExamples();
+        LotAdverseEventSummary aeSummary = new LotAdverseEventSummary().GetExamples();
+        RecordImmunogenicityAssayRequest immReq = new RecordImmunogenicityAssayRequest().GetExamples();
+        ImmunogenicityAssayResponse immResp = new ImmunogenicityAssayResponse().GetExamples();
+        LotPharmacovigilanceReport pvReport = new LotPharmacovigilanceReport().GetExamples();
 
         innerMock.Setup(i => i.CreateFabricationLotAsync(profile, "tok", createReq, It.IsAny<CancellationToken>())).ReturnsAsync(lot);
         innerMock.Setup(i => i.GetFabricationLotsAsync(profile, "tok", "patient_alice", It.IsAny<CancellationToken>())).ReturnsAsync([lot]);
@@ -1872,6 +1878,10 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         innerMock.Setup(i => i.GetLotStabilityAsync(profile, "tok", "lot-1", It.IsAny<CancellationToken>())).ReturnsAsync(stabReport);
         innerMock.Setup(i => i.RecordCustodyHandoffAsync(profile, "tok", "lot-1", hndReq, It.IsAny<CancellationToken>())).ReturnsAsync(hndRec);
         innerMock.Setup(i => i.GetCustodyHandoffsAsync(profile, "tok", "lot-1", It.IsAny<CancellationToken>())).ReturnsAsync(ledgerResp);
+        innerMock.Setup(i => i.RecordLotAdverseEventAsync(profile, "tok", "lot-1", aeReq, It.IsAny<CancellationToken>())).ReturnsAsync(aeResp);
+        innerMock.Setup(i => i.GetLotAdverseEventsAsync(profile, "tok", "lot-1", It.IsAny<CancellationToken>())).ReturnsAsync([aeSummary]);
+        innerMock.Setup(i => i.RecordLotImmunogenicityAssayAsync(profile, "tok", "lot-1", immReq, It.IsAny<CancellationToken>())).ReturnsAsync(immResp);
+        innerMock.Setup(i => i.GetLotPharmacovigilanceAsync(profile, "tok", "lot-1", It.IsAny<CancellationToken>())).ReturnsAsync(pvReport);
 
         WeaverNodeApiClient client = new(innerMock.Object);
         Assert.Equal(lot.LotId, (await client.CreateFabricationLotAsync(profile, "tok", createReq)).LotId);
@@ -1894,6 +1904,10 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         Assert.True((await client.GetLotStabilityAsync(profile, "tok", "lot-1")).IsSafeForImplantation);
         Assert.Equal("chnd_20261119_001", (await client.RecordCustodyHandoffAsync(profile, "tok", "lot-1", hndReq)).HandoffId);
         Assert.True((await client.GetCustodyHandoffsAsync(profile, "tok", "lot-1")).CustodyChainValid);
+        Assert.Equal("aevt_20261123_001", (await client.RecordLotAdverseEventAsync(profile, "tok", "lot-1", aeReq)).Event.EventId);
+        Assert.Single(await client.GetLotAdverseEventsAsync(profile, "tok", "lot-1"));
+        Assert.Equal("immu_20261123_001", (await client.RecordLotImmunogenicityAssayAsync(profile, "tok", "lot-1", immReq)).Assay.AssayId);
+        Assert.Equal(PharmacovigilancePosture.Nominal, (await client.GetLotPharmacovigilanceAsync(profile, "tok", "lot-1")).Posture);
 
         client.Dispose();
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.CreateFabricationLotAsync(profile, "tok", createReq));
@@ -1916,5 +1930,9 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetLotStabilityAsync(profile, "tok", "lot-1"));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.RecordCustodyHandoffAsync(profile, "tok", "lot-1", hndReq));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetCustodyHandoffsAsync(profile, "tok", "lot-1"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.RecordLotAdverseEventAsync(profile, "tok", "lot-1", aeReq));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetLotAdverseEventsAsync(profile, "tok", "lot-1"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.RecordLotImmunogenicityAssayAsync(profile, "tok", "lot-1", immReq));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetLotPharmacovigilanceAsync(profile, "tok", "lot-1"));
     }
 }

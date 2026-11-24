@@ -17,6 +17,7 @@
 @inject IPeerKeyRegistry PeerKeyRegistry
 @inject IFederatedPeerSyncService PeerSyncService
 @inject IColdChainStabilityService ColdChainService
+@inject IClinicalPharmacovigilanceService PharmacovigilanceService
 @inject IWeaverLocalizer Localizer
 @inject IJSRuntime JS
 
@@ -872,6 +873,202 @@
                     }
                 </div>
             </div>
+
+            <!-- Post-Implantation Pharmacovigilance, CARPA & TLR9 Surveillance Panel (Milestone 41) -->
+            <div id="pharmacovigilance-surveillance-panel" class="card stat-card mt-4" role="region" aria-label="@T("Pharmacovigilance.SectionTitle")">
+                <div class="panel-header">
+                    <div>
+                        <h4>@T("Pharmacovigilance.SectionTitle")</h4>
+                        <p class="subtext">@T("Pharmacovigilance.SectionSubtitle")</p>
+                    </div>
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <span id="pv-posture-badge" class="badge @GetPharmacovigilanceBadgeClass(_activeLotPharmacovigilance?.Posture ?? PharmacovigilancePosture.Nominal) font-mono">
+                            @GetPharmacovigilancePostureLabel(_activeLotPharmacovigilance?.Posture ?? PharmacovigilancePosture.Nominal)
+                        </span>
+                    </div>
+                </div>
+
+                @if (_activeLotPharmacovigilance?.IsQuarantineTriggered == true)
+                {
+                    <div id="pv-quarantine-banner" class="alert alert-danger mt-3" role="alert">
+                        <strong>@T("Pharmacovigilance.QuarantineBannerTitle")</strong>
+                        <p class="mt-1">@T("Pharmacovigilance.QuarantineBannerDesc")</p>
+                        @if (_activeLotPharmacovigilance.EmergencyRecallRecommended)
+                        {
+                            <p class="font-mono mt-1">@T("Pharmacovigilance.EmergencyRecallRecommended")</p>
+                        }
+                        <p class="subtext mt-1">@_activeLotPharmacovigilance.Summary</p>
+                    </div>
+                }
+
+                <div class="telemetry-grid mt-3">
+                    <div>
+                        <div class="stat-label">@T("Pharmacovigilance.AdverseEventsCountLabel")</div>
+                        <div id="pv-adverse-count" class="stat-value font-mono">@(_activeLotPharmacovigilance?.AdverseEventCount ?? 0)</div>
+                    </div>
+                    <div>
+                        <div class="stat-label">@T("Pharmacovigilance.ImmunogenicityAssaysCountLabel")</div>
+                        <div id="pv-assay-count" class="stat-value font-mono">@(_activeLotPharmacovigilance?.ImmunogenicityAssayCount ?? 0)</div>
+                    </div>
+                    <div>
+                        <div class="stat-label">@T("Pharmacovigilance.HighestGradeLabel")</div>
+                        <div id="pv-highest-grade" class="stat-value-compact font-mono">
+                            @(_activeLotPharmacovigilance?.HighestSeverityGrade?.ToString() ?? "None")
+                        </div>
+                    </div>
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(_pvErrorMessage))
+                {
+                    <div id="pv-error" class="alert alert-danger mt-3" role="alert">@_pvErrorMessage</div>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(_pvStatusMessage))
+                {
+                    <div id="pv-status" class="alert alert-success mt-3" role="status">@_pvStatusMessage</div>
+                }
+
+                <div class="mt-4 pt-3 border-top">
+                    <h5>@T("Pharmacovigilance.LogAdverseEventTitle")</h5>
+                    <div class="telemetry-grid mt-2">
+                        <div class="form-group">
+                            <label class="form-label" for="select-pv-grade">CTCAE v5.0 Grade</label>
+                            <select id="select-pv-grade" class="form-control" @bind="_pvSeverityGrade">
+                                <option value="@AdverseEventSeverityGrade.Grade1Mild">Grade 1 — Mild</option>
+                                <option value="@AdverseEventSeverityGrade.Grade2Moderate">Grade 2 — Moderate</option>
+                                <option value="@AdverseEventSeverityGrade.Grade3Severe">Grade 3 — Severe (Auto-Quarantine)</option>
+                                <option value="@AdverseEventSeverityGrade.Grade4LifeThreatening">Grade 4 — Life-Threatening (Auto-Quarantine)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="input-pv-symptom">Symptom Category</label>
+                            <input id="input-pv-symptom" type="text" class="form-control" @bind="_pvSymptomCategory" placeholder="InjectionSiteErythema" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="input-pv-onset">Onset Post-Implant (Hours)</label>
+                            <input id="input-pv-onset" type="number" class="form-control font-mono" @bind="_pvOnsetHours" step="0.5" min="0.0" max="87600.0" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="input-pv-notes">Clinical Notes (AES-256-GCM)</label>
+                            <input id="input-pv-notes" type="text" class="form-control" @bind="_pvClinicalNotes" placeholder="Optional clinician assessment" />
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-center gap-2 mt-2">
+                        <button id="btn-pv-record-event" class="btn btn-outline" @onclick="RecordPharmacovigilanceEventAsync" disabled="@_isLotBusy">
+                            @T("Pharmacovigilance.LogAdverseEventSubmit")
+                        </button>
+                    </div>
+
+                    @if (_activeLotPharmacovigilance != null && _activeLotPharmacovigilance.AdverseEvents.Count > 0)
+                    {
+                        <div class="table-container mt-3">
+                            <table id="pv-events-table" class="data-table">
+                                <caption class="sr-only">Recorded CTCAE v5.0 Adverse Events</caption>
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Grade</th>
+                                        <th scope="col">Symptom</th>
+                                        <th scope="col">Onset (h)</th>
+                                        <th scope="col">Reporter</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (LotAdverseEventSummary ev in _activeLotPharmacovigilance.AdverseEvents)
+                                    {
+                                        <tr>
+                                            <td class="font-mono">@ev.SeverityGrade</td>
+                                            <td>@ev.SymptomCategory</td>
+                                            <td class="font-mono">@ev.OnsetHoursPostImplant.ToString("F2", CultureInfo.InvariantCulture)</td>
+                                            <td class="font-mono">@ev.ReportedBy</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <p id="pv-events-empty" class="subtext mt-2">@T("Pharmacovigilance.AdverseEventsEmpty")</p>
+                    }
+                </div>
+
+                <div class="mt-4 pt-3 border-top">
+                    <h5>@T("Pharmacovigilance.LogImmunogenicityTitle")</h5>
+                    <div class="telemetry-grid mt-2">
+                        <div class="form-group">
+                            <label class="form-label" for="input-pv-ch50">CH50 (%)</label>
+                            <input id="input-pv-ch50" type="number" class="form-control font-mono" @bind="_pvCh50Percent" step="1.0" min="0.0" max="200.0" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="input-pv-c3a">C3a (ng/mL)</label>
+                            <input id="input-pv-c3a" type="number" class="form-control font-mono" @bind="_pvC3aNgMl" step="5.0" min="0.0" max="50000.0" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="input-pv-c5a">C5a (ng/mL)</label>
+                            <input id="input-pv-c5a" type="number" class="form-control font-mono" @bind="_pvC5aNgMl" step="1.0" min="0.0" max="10000.0" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="input-pv-il6">IL-6 (pg/mL)</label>
+                            <input id="input-pv-il6" type="number" class="form-control font-mono" @bind="_pvIl6PgMl" step="1.0" min="0.0" max="100000.0" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="input-pv-tnfa">TNF-&alpha; (pg/mL)</label>
+                            <input id="input-pv-tnfa" type="number" class="form-control font-mono" @bind="_pvTnfaPgMl" step="1.0" min="0.0" max="50000.0" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="input-pv-antipeg">Anti-PEG IgM Titer</label>
+                            <input id="input-pv-antipeg" type="number" class="form-control font-mono" @bind="_pvAntiPegIgmTiter" step="5.0" min="0.0" max="100000.0" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="input-pv-antidsdna">Anti-dsDNA IgG (IU/mL)</label>
+                            <input id="input-pv-antidsdna" type="number" class="form-control font-mono" @bind="_pvAntiDsDnaIgGIuMl" step="1.0" min="0.0" max="10000.0" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="input-pv-tlr9">TLR9 Activation Index</label>
+                            <input id="input-pv-tlr9" type="number" class="form-control font-mono" @bind="_pvTlr9Index" step="0.1" min="0.0" max="100.0" />
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-center gap-2 mt-2">
+                        <button id="btn-pv-record-assay" class="btn btn-primary" @onclick="RecordPharmacovigilanceAssayAsync" disabled="@_isLotBusy">
+                            @T("Pharmacovigilance.LogImmunogenicitySubmit")
+                        </button>
+                    </div>
+
+                    @if (_activeLotPharmacovigilance != null && _activeLotPharmacovigilance.ImmunogenicityAssays.Count > 0)
+                    {
+                        <div class="table-container mt-3">
+                            <table id="pv-assays-table" class="data-table">
+                                <caption class="sr-only">Recorded CARPA &amp; TLR9 Immunogenicity Assays</caption>
+                                <thead>
+                                    <tr>
+                                        <th scope="col">CH50 (%)</th>
+                                        <th scope="col">C3a / C5a (ng/mL)</th>
+                                        <th scope="col">IL-6 / TNF-&alpha; (pg/mL)</th>
+                                        <th scope="col">Anti-PEG / dsDNA</th>
+                                        <th scope="col">TLR9 Index</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (LotImmunogenicityAssayRecord ass in _activeLotPharmacovigilance.ImmunogenicityAssays)
+                                    {
+                                        <tr>
+                                            <td class="font-mono">@ass.Ch50Percent.ToString("F1", CultureInfo.InvariantCulture)%</td>
+                                            <td class="font-mono">@ass.C3aNgMl.ToString("F1", CultureInfo.InvariantCulture) / @ass.C5aNgMl.ToString("F1", CultureInfo.InvariantCulture)</td>
+                                            <td class="font-mono">@ass.Il6PgMl.ToString("F1", CultureInfo.InvariantCulture) / @ass.TnfaPgMl.ToString("F1", CultureInfo.InvariantCulture)</td>
+                                            <td class="font-mono">@ass.AntiPegIgmTiter.ToString("F0", CultureInfo.InvariantCulture) / @ass.AntiDsDnaIgGIuMl.ToString("F1", CultureInfo.InvariantCulture)</td>
+                                            <td class="font-mono">@ass.Tlr9ActivationIndex.ToString("F2", CultureInfo.InvariantCulture)x</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <p id="pv-assays-empty" class="subtext mt-2">@T("Pharmacovigilance.ImmunogenicityAssaysEmpty")</p>
+                    }
+                </div>
+            </div>
         }
     </section>
 
@@ -912,6 +1109,12 @@
                     {
                         <span id="peer-verify-coldchain-badge" class="badge @((_peerVerificationReport.IsSafeForImplantation ?? false) ? "badge-success" : "badge-danger") font-mono">
                             @_peerVerificationReport.ColdChainStatus (@((_peerVerificationReport.RemainingPotencyPercent ?? 0.0).ToString("F2", CultureInfo.InvariantCulture))%)
+                        </span>
+                    }
+                    @if (_peerVerificationReport.PharmacovigilancePosture.HasValue)
+                    {
+                        <span id="peer-verify-pv-badge" class="badge @GetPharmacovigilanceBadgeClass(_peerVerificationReport.PharmacovigilancePosture.Value) font-mono">
+                            @GetPharmacovigilancePostureLabel(_peerVerificationReport.PharmacovigilancePosture.Value)
                         </span>
                     }
                 </div>
@@ -1812,7 +2015,10 @@
             _activeLotExcursions.Clear();
             _coldChainErrorMessage = null;
             _coldChainStatusMessage = null;
+            _pvErrorMessage = null;
+            _pvStatusMessage = null;
             await RefreshColdChainStateAsync();
+            await RefreshPharmacovigilanceStateAsync();
         }
         finally
         {
@@ -1906,6 +2112,7 @@
             _lotReleaseEvaluation = eval;
             _lotCertificateVerified = eval.Certificate is not null && LotService.VerifyLotCertificate(eval.Certificate);
             await RefreshColdChainStateAsync();
+            await RefreshPharmacovigilanceStateAsync();
         }
         finally
         {
@@ -1980,6 +2187,7 @@
                 RevokedAtUtc = DateTimeOffset.UtcNow
             });
             await RefreshColdChainStateAsync();
+            await RefreshPharmacovigilanceStateAsync();
         }
         finally
         {
@@ -2041,7 +2249,8 @@
             }
 
             FabricationCertificateVerificationReport baseReport = LotService.VerifyCertificateAgainstTrustAnchor(certificate, matchedPeer, revocation);
-            _peerVerificationReport = await ColdChainService.ApplyColdChainStabilityGateAsync(baseReport);
+            FabricationCertificateVerificationReport coldGated = await ColdChainService.ApplyColdChainStabilityGateAsync(baseReport);
+            _peerVerificationReport = await PharmacovigilanceService.ApplyPharmacovigilanceGateAsync(coldGated);
         }
         catch (JsonException)
         {
@@ -2600,5 +2809,222 @@
         ThermalStabilityStatus.Optimal => "badge-success",
         ThermalStabilityStatus.AdvisoryExcursion => "badge-warning",
         _ => "badge-danger"
+    };
+
+    /// <summary>
+    /// Cached post-implantation pharmacovigilance and CARPA/TLR9 report for <see cref="_activeLot"/>.
+    /// </summary>
+    private LotPharmacovigilanceReport? _activeLotPharmacovigilance;
+
+    /// <summary>
+    /// Selected CTCAE v5.0 severity grade for a new clinical adverse event entry.
+    /// </summary>
+    private AdverseEventSeverityGrade _pvSeverityGrade = AdverseEventSeverityGrade.Grade1Mild;
+
+    /// <summary>
+    /// Standardized symptom category descriptor for a new clinical adverse event entry.
+    /// </summary>
+    private string _pvSymptomCategory = "InjectionSiteErythema";
+
+    /// <summary>
+    /// Elapsed hours post-implantation when symptoms emerged.
+    /// </summary>
+    private double _pvOnsetHours = 4.0;
+
+    /// <summary>
+    /// Optional clinician assessment notes encrypted via AES-256-GCM when recording an adverse event.
+    /// </summary>
+    private string _pvClinicalNotes = string.Empty;
+
+    /// <summary>
+    /// Measured CH50 hemolytic complement activity percentage for a new immunogenicity panel.
+    /// </summary>
+    private double _pvCh50Percent = 96.0;
+
+    /// <summary>
+    /// Measured complement C3a concentration (ng/mL) for a new immunogenicity panel.
+    /// </summary>
+    private double _pvC3aNgMl = 110.0;
+
+    /// <summary>
+    /// Measured complement C5a concentration (ng/mL) for a new immunogenicity panel.
+    /// </summary>
+    private double _pvC5aNgMl = 5.0;
+
+    /// <summary>
+    /// Measured serum IL-6 concentration (pg/mL) for a new immunogenicity panel.
+    /// </summary>
+    private double _pvIl6PgMl = 3.2;
+
+    /// <summary>
+    /// Measured serum TNF-alpha concentration (pg/mL) for a new immunogenicity panel.
+    /// </summary>
+    private double _pvTnfaPgMl = 4.0;
+
+    /// <summary>
+    /// Measured anti-PEG IgM reciprocal antibody titer for a new immunogenicity panel.
+    /// </summary>
+    private double _pvAntiPegIgmTiter = 20.0;
+
+    /// <summary>
+    /// Measured anti-dsDNA IgG concentration (IU/mL) for a new immunogenicity panel.
+    /// </summary>
+    private double _pvAntiDsDnaIgGIuMl = 8.0;
+
+    /// <summary>
+    /// Measured TLR9 innate activation fold-change index for a new immunogenicity panel.
+    /// </summary>
+    private double _pvTlr9Index = 1.1;
+
+    /// <summary>
+    /// Error alert message displayed inside the pharmacovigilance surveillance panel.
+    /// </summary>
+    private string? _pvErrorMessage;
+
+    /// <summary>
+    /// Confirmation status message displayed inside the pharmacovigilance surveillance panel.
+    /// </summary>
+    private string? _pvStatusMessage;
+
+    /// <summary>
+    /// Refreshes the live post-implantation pharmacovigilance report for <see cref="_activeLot"/>.
+    /// </summary>
+    /// <returns>A task representing the asynchronous refresh operation.</returns>
+    private async Task RefreshPharmacovigilanceStateAsync()
+    {
+        // WHAT: Queries IClinicalPharmacovigilanceService for the active lot's CTCAE and CARPA/TLR9 posture.
+        // WHY:  Milestone 41 (P218): Synchronizes quarantine banners, event timelines, and biomarker tables across lot actions.
+        // HOW:  Clears cached report when _activeLot is null; otherwise calls EvaluateLotPharmacovigilanceAsync.
+        if (_activeLot is null)
+        {
+            _activeLotPharmacovigilance = null;
+            return;
+        }
+
+        _activeLotPharmacovigilance = await PharmacovigilanceService.EvaluateLotPharmacovigilanceAsync(_activeLot.LotId);
+    }
+
+    /// <summary>
+    /// Records a CTCAE v5.0 adverse event for <see cref="_activeLot"/> and updates quarantine posture immediately.
+    /// </summary>
+    /// <returns>A task representing the asynchronous adverse event logging operation.</returns>
+    private async Task RecordPharmacovigilanceEventAsync()
+    {
+        // WHAT: Submits a CTCAE v5.0 adverse event to IClinicalPharmacovigilanceService and updates lot/posture UI.
+        // WHY:  Milestone 41 (P218): Captures post-implantation clinical events and surfaces Grade >= 3 auto-quarantines live.
+        // HOW:  Guards on _activeLot, calls RecordAdverseEventAsync, updates report & lot status, and maps ArgumentException to #pv-error.
+        _pvErrorMessage = null;
+        _pvStatusMessage = null;
+        if (_activeLot is null)
+        {
+            _pvErrorMessage = "Mint a fabrication lot before recording adverse events.";
+            return;
+        }
+
+        _isLotBusy = true;
+        try
+        {
+            AdverseEventResponse? recorded = await PharmacovigilanceService.RecordAdverseEventAsync(
+                _activeLot.LotId,
+                new RecordAdverseEventRequest
+                {
+                    SeverityGrade = _pvSeverityGrade,
+                    SymptomCategory = _pvSymptomCategory,
+                    OnsetHoursPostImplant = _pvOnsetHours,
+                    ClinicalNotes = string.IsNullOrWhiteSpace(_pvClinicalNotes) ? null : _pvClinicalNotes
+                },
+                "depot-studio-operator");
+
+            if (recorded is not null)
+            {
+                _activeLotPharmacovigilance = recorded.ReportAfterEvent;
+                _activeLot = _activeLot with { LotStatus = recorded.ReportAfterEvent.LotStatus };
+                _pvStatusMessage = $"Recorded {recorded.Event.SeverityGrade} ({recorded.Event.SymptomCategory}): posture is {recorded.ReportAfterEvent.Posture}.";
+            }
+        }
+        catch (ArgumentException ex)
+        {
+            _pvErrorMessage = ex.Message;
+        }
+        finally
+        {
+            _isLotBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Records a CARPA/TLR9 immunogenicity biomarker panel for <see cref="_activeLot"/> and updates quarantine posture immediately.
+    /// </summary>
+    /// <returns>A task representing the asynchronous immunogenicity logging operation.</returns>
+    private async Task RecordPharmacovigilanceAssayAsync()
+    {
+        // WHAT: Submits complement, cytokine, and anti-DNA assay metrics to IClinicalPharmacovigilanceService.
+        // WHY:  Milestone 41 (P218): Triggers immediate CARPA/TLR9 auto-quarantine notifications in Depot Studio.
+        // HOW:  Guards on _activeLot, calls RecordImmunogenicityAssayAsync, updates report & lot status, and maps validation errors.
+        _pvErrorMessage = null;
+        _pvStatusMessage = null;
+        if (_activeLot is null)
+        {
+            _pvErrorMessage = "Mint a fabrication lot before recording immunogenicity assays.";
+            return;
+        }
+
+        _isLotBusy = true;
+        try
+        {
+            ImmunogenicityAssayResponse? recorded = await PharmacovigilanceService.RecordImmunogenicityAssayAsync(
+                _activeLot.LotId,
+                new RecordImmunogenicityAssayRequest
+                {
+                    Ch50Percent = _pvCh50Percent,
+                    C3aNgMl = _pvC3aNgMl,
+                    C5aNgMl = _pvC5aNgMl,
+                    Il6PgMl = _pvIl6PgMl,
+                    TnfaPgMl = _pvTnfaPgMl,
+                    AntiPegIgmTiter = _pvAntiPegIgmTiter,
+                    AntiDsDnaIgGIuMl = _pvAntiDsDnaIgGIuMl,
+                    Tlr9ActivationIndex = _pvTlr9Index
+                },
+                "depot-studio-operator");
+
+            if (recorded is not null)
+            {
+                _activeLotPharmacovigilance = recorded.ReportAfterAssay;
+                _activeLot = _activeLot with { LotStatus = recorded.ReportAfterAssay.LotStatus };
+                _pvStatusMessage = $"Recorded immunogenicity panel (CH50 {recorded.Assay.Ch50Percent:F1}%): posture is {recorded.ReportAfterAssay.Posture}.";
+            }
+        }
+        catch (ArgumentException ex)
+        {
+            _pvErrorMessage = ex.Message;
+        }
+        finally
+        {
+            _isLotBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Resolves the sovereign dark-mode CSS badge class for a <see cref="PharmacovigilancePosture"/> value.
+    /// </summary>
+    /// <param name="posture">Evaluated post-implantation pharmacovigilance posture.</param>
+    /// <returns>A CSS badge utility class name.</returns>
+    private static string GetPharmacovigilanceBadgeClass(PharmacovigilancePosture posture) => posture switch
+    {
+        PharmacovigilancePosture.Nominal => "badge-success",
+        PharmacovigilancePosture.Monitor => "badge-warning",
+        _ => "badge-danger"
+    };
+
+    /// <summary>
+    /// Resolves the localized display label for a <see cref="PharmacovigilancePosture"/> value.
+    /// </summary>
+    /// <param name="posture">Evaluated post-implantation pharmacovigilance posture.</param>
+    /// <returns>Localized posture badge label.</returns>
+    private string GetPharmacovigilancePostureLabel(PharmacovigilancePosture posture) => posture switch
+    {
+        PharmacovigilancePosture.Monitor => T("Pharmacovigilance.PostureMonitor"),
+        PharmacovigilancePosture.CarpaQuarantine => T("Pharmacovigilance.PostureCarpaQuarantine"),
+        _ => T("Pharmacovigilance.PostureNominal")
     };
 }

@@ -191,5 +191,14 @@ public sealed class DesktopClinicalIntegrationTests
         };
         tray.ApplyClinicalSafetyState(compromisedColdChain, false, false, ["Zurich Lab"]);
         Assert.Equal(TrayHealthBadge.Critical, tray.CurrentState.Badge);
+
+        // Milestone 41: Critical CTCAE / CARPA pharmacovigilance lot escalates tray to Critical
+        DepotWorkspaceSummary criticalPvSummary = compromisedColdChain with
+        {
+            CompromisedColdChainLotCount = 0,
+            CriticalPharmacovigilanceLotCount = 1
+        };
+        tray.ApplyClinicalSafetyState(criticalPvSummary, false, false, ["Zurich Lab"]);
+        Assert.Equal(TrayHealthBadge.Critical, tray.CurrentState.Badge);
     }
 }

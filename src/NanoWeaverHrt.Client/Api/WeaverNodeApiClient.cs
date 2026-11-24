@@ -2319,4 +2319,66 @@ public sealed class WeaverNodeApiClient : INanoWeaverNodeClient, IDisposable
         string effectiveToken = ResolveBearerToken(bearerToken);
         return _innerClient.GetCustodyHandoffsAsync(profile, effectiveToken, lotId, ct);
     }
+
+    /// <inheritdoc/>
+    public Task<AdverseEventResponse> RecordLotAdverseEventAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        RecordAdverseEventRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/fabrication/lots/{lotId}/adverse-events using provided or cached session token.
+        // WHY:  Milestone 41 (P217): Records CTCAE v5.0 adverse events from managed desktop/mobile clients.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.RecordLotAdverseEventAsync(profile, effectiveToken, lotId, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<LotAdverseEventSummary>> GetLotAdverseEventsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/fabrication/lots/{lotId}/adverse-events using provided or cached session token.
+        // WHY:  Milestone 41 (P217): Loads decrypted post-implantation adverse event timelines.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GetLotAdverseEventsAsync(profile, effectiveToken, lotId, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<ImmunogenicityAssayResponse> RecordLotImmunogenicityAssayAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        RecordImmunogenicityAssayRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/fabrication/lots/{lotId}/immunogenicity using provided or cached session token.
+        // WHY:  Milestone 41 (P217): Records CARPA/TLR9 immunogenicity assay panels from managed clients.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.RecordLotImmunogenicityAssayAsync(profile, effectiveToken, lotId, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<LotPharmacovigilanceReport> GetLotPharmacovigilanceAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/fabrication/lots/{lotId}/pharmacovigilance using provided or cached session token.
+        // WHY:  Milestone 41 (P217): Evaluates post-implantation CARPA/TLR9 posture and quarantine alerts.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GetLotPharmacovigilanceAsync(profile, effectiveToken, lotId, ct);
+    }
 }
