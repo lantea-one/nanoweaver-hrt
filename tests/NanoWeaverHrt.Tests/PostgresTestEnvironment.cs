@@ -51,14 +51,14 @@ public sealed class PostgresTestEnvironment : IAsyncLifetime
     public bool IsAvailable { get; private set; }
 
     /// <inheritdoc/>
-    public Task InitializeAsync()
+    public ValueTask InitializeAsync()
     {
         // WHAT: Reads the optional PostgreSQL connection string from the environment.
         // WHY:  Directive 6 forbids depending on ambient network state; nothing is contacted here.
         // HOW:  Only records whether the variable holds a value.
         _maintenanceConnectionString = Environment.GetEnvironmentVariable(VariableName) ?? string.Empty;
         IsAvailable = !string.IsNullOrWhiteSpace(_maintenanceConnectionString);
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     /// <summary>
@@ -129,8 +129,8 @@ public sealed class PostgresTestEnvironment : IAsyncLifetime
     /// <summary>
     /// Drops every database this environment created.
     /// </summary>
-    /// <returns>A task that completes when all databases are dropped.</returns>
-    public async Task DisposeAsync()
+    /// <returns>A value task that completes when all databases are dropped.</returns>
+    public async ValueTask DisposeAsync()
     {
         // WHAT: Removes the per-test databases.
         // WHY:  A leftover database must not be able to make a later run pass for the wrong reason.

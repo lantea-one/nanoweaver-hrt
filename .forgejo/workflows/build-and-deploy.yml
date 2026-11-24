@@ -278,11 +278,12 @@ jobs:
   build-and-publish-gui-artifacts:
     # WHAT: Builds, signs, and attaches standalone desktop and mobile application packages.
     # WHY:  Enforces P34 multi-platform packaging pipeline across Linux, macOS, Windows, and Mobile
-    #       on the containerized amd64 heimdall-ci runner.
+    #       on the containerized amd64 heimdall-ci runner for PR validation and versioned releases.
     # HOW:  Provisions .NET 10 and Node.js 24 SDKs via public GitHub Actions, runs
     #       scripts/packaging/build-all-packages.sh, uploads discrete artifact bundles,
-    #       and attaches direct binary downloads to Forgejo continuous and tagged releases.
+    #       and attaches direct binary downloads exclusively on tagged/release-branch releases.
     runs-on: heimdall-ci
+    if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/tags/v')
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v7
@@ -310,6 +311,7 @@ jobs:
         run: ./scripts/packaging/build-all-packages.sh --allow-stub-packaging
 
       - name: Upload Linux Packages & AUR Definitions
+        if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/tags/v'))
         uses: actions/upload-artifact@v3
         with:
           name: nanoweaver-hrt-linux-packages
@@ -319,6 +321,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload macOS Packages
+        if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/tags/v'))
         uses: actions/upload-artifact@v3
         with:
           name: nanoweaver-hrt-macos-packages
@@ -326,6 +329,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload Windows Packages
+        if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/tags/v'))
         uses: actions/upload-artifact@v3
         with:
           name: nanoweaver-hrt-windows-packages
@@ -333,6 +337,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload Mobile Packages
+        if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/tags/v'))
         uses: actions/upload-artifact@v3
         with:
           name: nanoweaver-hrt-mobile-packages
@@ -340,6 +345,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload Cryptographic Manifest & Trust Anchors
+        if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/tags/v'))
         uses: actions/upload-artifact@v3
         with:
           name: nanoweaver-hrt-codesign-manifest
@@ -350,9 +356,9 @@ jobs:
 
       - name: Publish Direct Binary Release Assets
         # WHAT: Publishes standalone executables and release packages directly to Forgejo Releases.
-        # WHY:  Enables 1-click direct file downloads of Windows .exe, macOS .dmg, Linux and mobile packages without zip wrappers.
-        # HOW:  Executes publish-forgejo-release.sh communicating with Forgejo REST API.
-        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/tags/v'))
+        # WHY:  Enables 1-click direct file downloads of Windows .exe, macOS .dmg, Linux and mobile packages without zip wrappers on versioned releases.
+        # HOW:  Executes publish-forgejo-release.sh communicating with Forgejo REST API only on release branches or version tags.
+        if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/tags/v'))
         env:
           FORGEJO_TOKEN: ${{ secrets.PACKAGE_TOKEN || secrets.GITHUB_TOKEN }}
         run: ./scripts/packaging/publish-forgejo-release.sh

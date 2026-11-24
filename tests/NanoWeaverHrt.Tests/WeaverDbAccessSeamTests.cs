@@ -12,7 +12,6 @@ using NanoWeaverHrt.Security.Authentication;
 using NanoWeaverHrt.Security.ExceptionHandling;
 using NanoWeaverHrt.Security.Secrets;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace NanoWeaverHrt.Tests;
 

@@ -7,7 +7,7 @@
 # WHY:  Delivers 1-click direct file downloads of .exe, .dmg, .deb, and mobile
 #       assets to users and researchers without requiring archive extraction.
 # HOW:  Interacts with Forgejo REST API v1 (/api/v1/repos/{owner}/{repo}/releases)
-#       to mint/update rolling 'nightly' releases or permanent SemVer releases
+#       to mint permanent CalVer/SemVer releases for version tags and release branches
 #       and uploads discrete binary release artifacts and cryptographic manifests.
 # ==============================================================================
 
@@ -44,8 +44,8 @@ API_BASE="https://${REGISTRY}/api/v1/repos/${GITHUB_REPOSITORY}"
 AUTH_HEADER="Authorization: token ${FORGEJO_TOKEN}"
 
 # WHAT: Determine target release tag, title, and pre-release status.
-# WHY:  Main branch pushes update a rolling 'nightly' release; version tags and release branches mint immutable releases.
-# HOW:  Inspect GITHUB_REF pattern for tags (refs/tags/v*) or release branches (refs/heads/release/*).
+# WHY:  Version tags and release branches mint immutable releases; continuous nightly builds on main are disabled.
+# HOW:  Inspect GITHUB_REF pattern for tags (refs/tags/v*) or release branches (refs/heads/release/*), exiting cleanly otherwise.
 if [[ "${GITHUB_REF}" =~ ^refs/tags/v ]]; then
     TAG_NAME="${GITHUB_REF#refs/tags/}"
     RELEASE_TITLE="NanoWeaver HRT ${TAG_NAME}"
@@ -56,9 +56,8 @@ elif [[ "${GITHUB_REF}" =~ refs/heads/release/v?([0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+
     RELEASE_TITLE="NanoWeaver HRT ${TAG_NAME}"
     IS_PRERELEASE="false"
 else
-    TAG_NAME="nightly"
-    RELEASE_TITLE="NanoWeaver HRT Continuous Rolling Release (Nightly)"
-    IS_PRERELEASE="true"
+    echo "Nightly rolling releases are disabled; skipping Forgejo release publication for ref '${GITHUB_REF}'."
+    exit 0
 fi
 
 echo ">> Target Tag:       ${TAG_NAME}"
@@ -75,7 +74,7 @@ RELEASE_NOTES="$(python3 "${ROOT_DIR}/scripts/packaging/extract-release-notes.py
     --notes-file "${ROOT_DIR}/docs/release-notes.md")"
 
 # WHAT: Query if a release matching TAG_NAME already exists on Forgejo.
-# WHY:  If tag 'nightly' already exists, we must recreate or replace it to attach fresh build assets.
+# WHY:  Ensure existing versioned releases synchronize their release notes cleanly before uploading assets.
 # HOW:  Execute GET /releases/tags/{tag} and inspect HTTP status code and response JSON.
 echo ">> Checking for existing release with tag '${TAG_NAME}'..."
 EXISTING_RESP="$(curl -s -w "\n%{http_code}" -H "${AUTH_HEADER}" "${API_BASE}/releases/tags/${TAG_NAME}" || true)"
@@ -87,12 +86,7 @@ if [[ "${HTTP_CODE}" == "200" ]]; then
     RELEASE_ID="$(python3 -c "import json, sys; data = json.loads(sys.argv[1]); print(data.get('id', ''))" "${EXISTING_BODY}" 2>/dev/null || true)"
     echo "Found existing release (ID: ${RELEASE_ID}) for tag '${TAG_NAME}'."
 
-    # If this is the continuous rolling nightly release, delete existing assets or the release so fresh binaries attach cleanly
-    if [[ "${TAG_NAME}" == "nightly" && -n "${RELEASE_ID}" ]]; then
-        echo "Recreating rolling nightly release on Forgejo..."
-        curl -s -X DELETE -H "${AUTH_HEADER}" "${API_BASE}/releases/${RELEASE_ID}" >/dev/null 2>&1 || true
-        RELEASE_ID=""
-    elif [[ -n "${RELEASE_ID}" ]]; then
+    if [[ -n "${RELEASE_ID}" ]]; then
         echo "Synchronizing detailed release notes onto existing release (ID: ${RELEASE_ID})..."
         PATCH_PAYLOAD="$(python3 -c "import json, sys; print(json.dumps({'name': sys.argv[1], 'body': sys.argv[2]}))" "${RELEASE_TITLE}" "${RELEASE_NOTES}")"
         curl -s -X PATCH \
