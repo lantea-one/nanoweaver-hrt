@@ -198,5 +198,22 @@
   "EpigeneticCircuit.GuideTableTitle": "Steroidojenik Tek Kılavuz RNA (sgRNA) Paneli",
   "EpigeneticCircuit.ColTargetGene": "Hedef Gen",
   "EpigeneticCircuit.ColSpecificity": "CFD Özgüllüğü %",
-  "EpigeneticCircuit.ColFoldChange": "Öngörülen Kat Değişimi"
+  "EpigeneticCircuit.ColFoldChange": "Öngörülen Kat Değişimi",
+  "Gui.DepotWorkspace.TrayMitoticDriftAdvisory": "Mitotik Kayma Uyarısı",
+  "MultiYear.SectionTitle": "10 Yıllık Kalıcı Endokrin Homeostaz ve Mitotik Dayanıklılık Simülatörü",
+  "MultiYear.SectionSubtitle": "0–180. Gün Hidrojel-Epigenetik Devir • DNMT1 Kromatin Kalıtımı • Öncü Hücre Kararlılığı",
+  "MultiYear.HorizonLabel": "Simülasyon Ufku (Yıl)",
+  "MultiYear.FidelityLabel": "Mitotik Sadakat Oranı (0.90–0.9999)",
+  "MultiYear.ProgenitorLabel": "Transdükte Öncü Hücre Fraksiyonu (0.10–1.0)",
+  "MultiYear.CircuitIdLabel": "Bağlı Epigenetik Devre Kimliği (İsteğe Bağlı)",
+  "MultiYear.RunButton": "Çok Yıllı Dayanıklılığı Simüle Et",
+  "MultiYear.BadgeVerified": "KALICI HOMEOSTAZ DOĞRULANDI",
+  "MultiYear.BadgeAdvisory": "MİTOTİK KAYMA UYARISI",
+  "MultiYear.TenYearTtrLabel": "Öngörülen Çok Yıllı TTR (%)",
+  "MultiYear.HandoffTtrLabel": "90–180. Gün Devir TTR (%)",
+  "MultiYear.FinalMemoryLabel": "Son Metillenmiş Öncüler (%)",
+  "MultiYear.ChartTitle": "Çift Kaynaklı Yörünge: Ekzojen Hidrojel -> Endojen Epigenetik",
+  "MultiYear.TableCaption": "Yıllık Endokrin Homeostaz ve Kromatin Belleği Kontrol Noktaları",
+  "MultiYear.BoosterAdvised": "PEKİŞTİRME DOZU ÖNERİLİR",
+  "MultiYear.LifetimeConserved": "PEKİŞTİRME OLMADAN KORUNDU"
 }

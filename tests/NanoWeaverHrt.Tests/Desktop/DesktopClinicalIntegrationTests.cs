@@ -200,5 +200,29 @@ public sealed class DesktopClinicalIntegrationTests
         };
         tray.ApplyClinicalSafetyState(criticalPvSummary, false, false, ["Zurich Lab"]);
         Assert.Equal(TrayHealthBadge.Critical, tray.CurrentState.Badge);
+
+        // Milestone 43: Mitotic drift advisory escalates tray to Warning with fallback precedence when combined
+        DepotWorkspaceSummary driftSummary = fedRecallSummary with
+        {
+            NewFederatedRecallCount = 0,
+            CompromisedColdChainLotCount = 0,
+            CriticalPharmacovigilanceLotCount = 0,
+            QuarantinedLotCount = 0,
+            ActiveSafetyAlertCount = 0,
+            FailedPeerSyncCount = 0,
+            Severity = ClinicalWorkspaceSeverity.Warning,
+            MitoticDriftAlert = true,
+            ProjectedTenYearTtrPercent = 78.4
+        };
+        tray.ApplyClinicalSafetyState(driftSummary, false, false, ["Zurich Lab"]);
+        Assert.Equal(TrayHealthBadge.Warning, tray.CurrentState.Badge);
+
+        DepotWorkspaceSummary driftWithQuarantine = driftSummary with { QuarantinedLotCount = 1 };
+        tray.ApplyClinicalSafetyState(driftWithQuarantine, true, false, ["Zurich Lab"]);
+        Assert.Equal(TrayHealthBadge.Warning, tray.CurrentState.Badge);
+
+        DepotWorkspaceSummary driftWithSafetyAlert = driftSummary with { ActiveSafetyAlertCount = 1 };
+        tray.ApplyClinicalSafetyState(driftWithSafetyAlert, true, false, ["Zurich Lab"]);
+        Assert.Equal(TrayHealthBadge.Warning, tray.CurrentState.Badge);
     }
 }

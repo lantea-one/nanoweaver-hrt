@@ -192,6 +192,27 @@ Every calibration automatically evaluates patient safety thresholds across all r
 
 ---
 
+## 6. Multi-Year Permanent Homeostasis & Mitotic Cell-Turnover Durability (Milestone 43)
+
+Once an initial semi-annual polymer depot (Days 0–180) has stabilized systemic sex steroids while aptamer-targeted epigenetic reprogrammers install endogenous steroidogenic promoter control, clinical durability over **1 to 10 years (365 to 3,650 days)** depends on whether proliferating and quiescent stem/progenitor compartments retain the reprogrammed state across mitotic cell divisions without epigenetic washout or a gap during the Day 90–180 exogenous taper.
+
+`MultiYearHomeostasisService` (`IMultiYearHomeostasisService`) integrates a deterministic, zero-LINQ 4th-order Runge-Kutta (RK4) coupled ODE system at daily resolution:
+
+1. **Two-Compartment Progenitor Epigenetic Memory (Quiescent vs. Proliferating)**:
+   - Target transduced tissue splits into a slow-cycling quiescent stem pool (`quiescentStemCellFraction`, division rate `lambdaQ = 0.35 / tissueDivisionIntervalDays`) and an active dividing progenitor pool (`1 - quiescentStemCellFraction`, division rate `lambdaP = 1.0 / tissueDivisionIntervalDays`).
+   - Across each division, unfaithful DNMT1 copying (`1 - mitoticFidelityRate`) dilutes methylated progenitor retention, counteracted by cooperative reader-writer Hill self-reinforcement (`promoterReinforcementStrength`, cubic Hill constant `K = 0.62`, saturation ceiling `cap = min(0.95, initialFraction + 0.02)`).
+   - Optional linkage to an evaluated or approved patient-owned epigenetic toggle circuit (`circuitId`) scales chromatin reinforcement and endogenous drive competence based on the circuit's modeled fold-change stability.
+
+2. **Coupled Exogenous-to-Endogenous Handoff (Days 90–180)**:
+   - Days 0–180 exogenous release profiles from `ITimeReleaseDepotService` supply the transient hydrogel contribution fraction, tapering toward zero across Months 3–6 as PLGA erosion finishes.
+   - Endogenous reprogrammed steroidogenesis ramps up across Day 90–180 proportionally to `min(1.0, weightedMethylation / 0.80)`, compensating for depot depletion so systemic MtF `17β-estradiol` and FtM `testosterone` remain inside target bounds without requiring repeat hormone injections.
+
+3. **Clinical Durability Guardrails & Early Washout Detection**:
+   - **Permanent Homeostasis Benchmark**: Overall projected Time in Target Range `>= 95.0%`, absence of a sub-therapeutic trough drop inside the Day 90–180 handoff window (`handoffTroughDropDetected = false`), and final retained methylated progenitor fraction `>= 0.55` earn `PermanentHomeostasisVerified`.
+   - **Mitotic Drift Advisory**: Any TTR regression below `95.0%`, Day 90–180 handoff gap, or epigenetic washout below `0.55` flags `MitoticDriftAdvisory`, records the exact `washoutOnsetYear`, sets `mitoticDriftAlert = true` and `requiresBoosterDose = true`, and surfaces a booster epigenetic LNP / promoter reinforcement advisory across both the Web UI (`/depot-studio`) and Desktop Tray notifications.
+
+---
+
 ## Next Steps
 * Run simulations interactively in the web dashboard at **`/simulations`**.
 * Connect to physical oligo ordering in the [**Guided DNA Workflow Wizard**](workflow-wizard.md).

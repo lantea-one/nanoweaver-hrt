@@ -198,5 +198,22 @@
   "EpigeneticCircuit.GuideTableTitle": "Steroïdogeen Single-Guide RNA (sgRNA)-paneel",
   "EpigeneticCircuit.ColTargetGene": "Doelgen",
   "EpigeneticCircuit.ColSpecificity": "CFD-specificiteit %",
-  "EpigeneticCircuit.ColFoldChange": "Voorspelde fold-change"
+  "EpigeneticCircuit.ColFoldChange": "Voorspelde fold-change",
+  "Gui.DepotWorkspace.TrayMitoticDriftAdvisory": "Advies voor Mitotische Drift",
+  "MultiYear.SectionTitle": "10-Jaars Simulator voor Permanente Endocriene Homeostase & Mitotische Duurzaamheid",
+  "MultiYear.SectionSubtitle": "Dag 0–180 Hydrogel-naar-Epigenetica Overdracht • DNMT1-Chromatine-Overerving • Voorlopercelstabiliteit",
+  "MultiYear.HorizonLabel": "Simulatiehorizon (Jaren)",
+  "MultiYear.FidelityLabel": "Mitotische Getrouwheid (0,90–0,9999)",
+  "MultiYear.ProgenitorLabel": "Getransduceerde Voorloperfractie (0,10–1,0)",
+  "MultiYear.CircuitIdLabel": "Gekoppeld Epigenetisch Circuit-ID (Optioneel)",
+  "MultiYear.RunButton": "Simuleer Meerjarige Duurzaamheid",
+  "MultiYear.BadgeVerified": "PERMANENTE HOMEOSTASE GEVERIFIEERD",
+  "MultiYear.BadgeAdvisory": "MITOTISCH DRIFTADVIES",
+  "MultiYear.TenYearTtrLabel": "Verwachte Meerjarige TTR (%)",
+  "MultiYear.HandoffTtrLabel": "Dag 90–180 Overdrachts-TTR (%)",
+  "MultiYear.FinalMemoryLabel": "Uiteindelijke Gemethyleerde Voorlopers (%)",
+  "MultiYear.ChartTitle": "Tweebronnen-Traject: Exogene Hydrogel -> Endogene Epigenetica",
+  "MultiYear.TableCaption": "Jaarlijkse Endocriene Homeostase- en Chromatinegeheugen-Controlepunten",
+  "MultiYear.BoosterAdvised": "BOOSTER / VERSTERKING GEADVISEERD",
+  "MultiYear.LifetimeConserved": "BEHOUDEN ZONDER BOOSTER"
 }

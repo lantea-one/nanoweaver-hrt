@@ -4,6 +4,26 @@
 
 ---
 
+## v2026.11.24.1 — Multi-Year Permanent Endocrine Homeostasis & Mitotic Cell-Turnover Durability Simulator (Milestone 43 / Forgejo Issues #256–#260) (2026-11-24)
+
+Completes **Milestone 43 (`P225`–`P229` / Forgejo Issues `#256`–`#260`)**, coupling Day 0–180 polymer depot release kinetics with 1-to-10-year mitotic epigenetic inheritance, Day 90–180 exogenous-to-endogenous handoff surveillance, early mitotic washout detection, and cross-platform tray drift notifications:
+* **Phase 1: Multi-Year Permanent Homeostasis Forecast Persistence (`Migration022_MultiYearHomeostasisForecasts` / Forgejo #256 / P225)**:
+  - Added `Migration022_MultiYearHomeostasisForecasts` (`Version = 22`) across SQLite, PostgreSQL, DuckDB (omitting unsupported `ON DELETE CASCADE`), and MySQL/MariaDB creating `weaver_multiyear_homeostasis_runs` and `weaver_multiyear_homeostasis_checkpoints` with 4 indexed query paths.
+  - Implemented `MultiYearDurabilityStatus`, `MultiYearHomeostasisRunRecord`, `MultiYearHomeostasisCheckpointRecord`, `IMultiYearHomeostasisRepository`, and `MultiYearHomeostasisRepository` supporting atomic save, run/latest queries, and GDPR Article 17 patient erasure cascades in `DeleteByPatientIdAsync`.
+* **Phase 2: 10-Year Coupled Hydrogel-to-Epigenetic Handoff & Mitotic Durability Engine (Forgejo #257 / P226)**:
+  - Implemented `SimulateMultiYearHomeostasisRequest`, `MultiYearHomeostasisThresholds`, `MultiYearTrajectoryPoint`, `MultiYearHomeostasisForecastReport`, `IMultiYearHomeostasisService`, and `MultiYearHomeostasisService` executing a deterministic, zero-LINQ 4-stage RK4 daily integration across 365 to 3,650 days.
+  - Modeled two-compartment quiescent vs. proliferating progenitor DNMT1 maintenance fidelity (`0.90–0.9999`), cooperative cubic Hill chromatin self-reinforcement, Day 90–180 hydrogel handoff continuity, `>= 95.0%` Time in Target Range benchmarking, washout onset detection (`PermanentHomeostasisVerified` vs. `MitoticDriftAdvisory`), linked epigenetic circuit validation (`circuitId`), and 21 CFR Part 11 audit events (`DEPOT_MULTIYEAR_SIMULATION_RUN`).
+* **Phase 3: Multi-Year Homeostasis Minimal API Endpoints, Client SDK, ViewModel & Tray Parity (Forgejo #258 / P227)**:
+  - Appended 3 authenticated Minimal API routes to `Program.cs` (`POST /api/depots/{depotId}/simulate-multiyear`, `GET /api/depots/{depotId}/multiyear-forecasts`, and `GET /api/depots/{depotId}/multiyear-forecasts/latest`) with granular `Administrator`, granted-`Researcher`, and `Patient`-self authorization helpers.
+  - Extended `INanoWeaverNodeClient`, `NanoWeaverNodeClient`, `WeaverNodeApiClient`, `DepotWorkspaceSummary`, `DepotAndLotWorkspaceViewModel`, and `DesktopTrayIconController` (`TrayHealthBadge.Warning` with `Gui.DepotWorkspace.TrayMitoticDriftAdvisory` on mitotic drift).
+* **Phase 4: Sovereign 10-Year Homeostasis Trajectory UI, 18-Language Localization & bUnit Suite (Forgejo #259 / P228)**:
+  - Added `#multiyear-homeostasis-panel`, `#multiyear-trajectory-svg` (dark-mode SVG coupled exogenous hydrogel vs. endogenous epigenetic curves highlighting the Day 90–180 handoff band), `#multiyear-checkpoints-table`, and `#multiyear-durability-badge` (`PERMANENT HOMEOSTASIS VERIFIED` / `MITOTIC DRIFT ADVISORY`) inside `DepotStudio.razor`.
+  - Added `17` localized `MultiYear.*` and `Gui.DepotWorkspace.TrayMitoticDriftAdvisory` keys across all 18 community language catalogs (`217` keys per catalog) with full bUnit and localization parity coverage.
+* **Phase 5: CalVer `v2026.11.24.1` Release, 8-Gate Verification & Audited Pull Request (Forgejo #260 / P229)**:
+  - Updated `<DefaultCalVerVersion>2026.11.24.1</DefaultCalVerVersion>` in `Directory.Build.props`, updated simulation/API/compliance/GUI documentation, and passed all 8 verification gates (`./scripts/verify-all.sh`) at 100.00% line and branch coverage.
+
+---
+
 ## v2026.11.23.2 — Epigenetic Steroidogenic Enzyme Reprogramming & Permanent Bistable Circuit Design Studio (Milestone 42 / Forgejo Issues #251–#255) (2026-11-23)
 
 Completes **Milestone 42 (`P220`–`P224` / Forgejo Issues `#251`–`#255`)**, introducing non-nuclease epigenetic reprogramming models (`dCas9-DNMT3A/TET1`, `CRISPRoff/on`, `dCas9-KRAB/VP64`), mutual-repression Hill phase-plane stability analysis, genome-wide CFD off-target gating, and fail-closed NIST FIPS 204 ML-DSA-65 circuit synthesis approval:

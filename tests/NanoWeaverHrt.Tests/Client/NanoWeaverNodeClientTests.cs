@@ -4543,6 +4543,63 @@ public sealed class NanoWeaverNodeClientTests : IDisposable
     }
 
     /// <summary>
+    /// Verifies Milestone 43 (P227) multi-year homeostasis SDK methods across nominal round-trips,
+    /// HTTP 404 latest handling, null payloads, server errors, and argument validation guards.
+    /// </summary>
+    [Fact]
+    public async Task MultiYearHomeostasisClientMethods_NominalErrorsAndGuards_BehaveExpectedly()
+    {
+        // WHAT: Tests SimulateMultiYearHomeostasisAsync, GetMultiYearHomeostasisForecastsAsync, and GetLatestMultiYearHomeostasisForecastAsync.
+        // WHY:  Milestone 43 (P227): Guarantees 100% SDK line and branch coverage for multi-year durability endpoints.
+        // HOW:  Stubs /api/depots/{depotId}/simulate-multiyear and multiyear-forecasts routes verifying 201/200/404/500 and guards.
+        MultiYearHomeostasisForecastReport sample = new MultiYearHomeostasisForecastReport().GetExamples();
+        string sampleJson = JsonSerializer.Serialize(sample);
+        SimulateMultiYearHomeostasisRequest req = new SimulateMultiYearHomeostasisRequest().GetExamples();
+
+        // 1. SimulateMultiYearHomeostasisAsync
+        _httpHandler.SetResponse("/api/depots/depot_sample_001/simulate-multiyear", HttpStatusCode.Created, sampleJson);
+        MultiYearHomeostasisForecastReport simulated = await _client.SimulateMultiYearHomeostasisAsync(_localProfile, "valid_token", "depot_sample_001", req);
+        Assert.Equal(sample.RunId, simulated.RunId);
+
+        _httpHandler.SetResponse("/api/depots/depot_sample_001/simulate-multiyear", HttpStatusCode.BadRequest, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.SimulateMultiYearHomeostasisAsync(_localProfile, "valid_token", "depot_sample_001", req));
+        _httpHandler.SetResponse("/api/depots/depot_sample_001/simulate-multiyear", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.SimulateMultiYearHomeostasisAsync(_localProfile, "valid_token", "depot_sample_001", req));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.SimulateMultiYearHomeostasisAsync(null!, "valid_token", "depot_sample_001", req));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.SimulateMultiYearHomeostasisAsync(_localProfile, "", "depot_sample_001", req));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.SimulateMultiYearHomeostasisAsync(_localProfile, "valid_token", "", req));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.SimulateMultiYearHomeostasisAsync(_localProfile, "valid_token", "depot_sample_001", null!));
+
+        // 2. GetMultiYearHomeostasisForecastsAsync
+        _httpHandler.SetResponse("/api/depots/depot_sample_001/multiyear-forecasts", HttpStatusCode.OK, JsonSerializer.Serialize(new[] { sample }));
+        IReadOnlyList<MultiYearHomeostasisForecastReport> list = await _client.GetMultiYearHomeostasisForecastsAsync(_localProfile, "valid_token", "depot_sample_001");
+        Assert.Single(list);
+
+        _httpHandler.SetResponse("/api/depots/depot_sample_001/multiyear-forecasts", HttpStatusCode.OK, "null");
+        Assert.Empty(await _client.GetMultiYearHomeostasisForecastsAsync(_localProfile, "valid_token", "depot_sample_001"));
+        _httpHandler.SetResponse("/api/depots/depot_sample_001/multiyear-forecasts", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetMultiYearHomeostasisForecastsAsync(_localProfile, "valid_token", "depot_sample_001"));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetMultiYearHomeostasisForecastsAsync(null!, "valid_token", "depot_sample_001"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetMultiYearHomeostasisForecastsAsync(_localProfile, "", "depot_sample_001"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetMultiYearHomeostasisForecastsAsync(_localProfile, "valid_token", ""));
+
+        // 3. GetLatestMultiYearHomeostasisForecastAsync (200 OK, 404 null, error, and guards)
+        _httpHandler.SetResponse("/api/depots/depot_sample_001/multiyear-forecasts/latest", HttpStatusCode.OK, sampleJson);
+        MultiYearHomeostasisForecastReport? latest = await _client.GetLatestMultiYearHomeostasisForecastAsync(_localProfile, "valid_token", "depot_sample_001");
+        Assert.NotNull(latest);
+        Assert.Equal(sample.RunId, latest.RunId);
+
+        _httpHandler.SetResponse("/api/depots/depot_sample_001/multiyear-forecasts/latest", HttpStatusCode.NotFound, "{}");
+        Assert.Null(await _client.GetLatestMultiYearHomeostasisForecastAsync(_localProfile, "valid_token", "depot_sample_001"));
+
+        _httpHandler.SetResponse("/api/depots/depot_sample_001/multiyear-forecasts/latest", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetLatestMultiYearHomeostasisForecastAsync(_localProfile, "valid_token", "depot_sample_001"));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetLatestMultiYearHomeostasisForecastAsync(null!, "valid_token", "depot_sample_001"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetLatestMultiYearHomeostasisForecastAsync(_localProfile, "", "depot_sample_001"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetLatestMultiYearHomeostasisForecastAsync(_localProfile, "valid_token", ""));
+    }
+
+    /// <summary>
     /// In-memory HTTP message handler stub for deterministic test execution.
     /// </summary>
     private sealed class StubHttpMessageHandler : HttpMessageHandler

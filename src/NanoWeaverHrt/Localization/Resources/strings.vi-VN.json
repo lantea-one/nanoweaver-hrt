@@ -198,5 +198,22 @@
   "EpigeneticCircuit.GuideTableTitle": "Bảng ARN dẫn đường đơn (sgRNA) vùng gen steroid",
   "EpigeneticCircuit.ColTargetGene": "Gen đích",
   "EpigeneticCircuit.ColSpecificity": "Độ đặc hiệu CFD %",
-  "EpigeneticCircuit.ColFoldChange": "Mức thay đổi biểu hiện dự kiến"
+  "EpigeneticCircuit.ColFoldChange": "Mức thay đổi biểu hiện dự kiến",
+  "Gui.DepotWorkspace.TrayMitoticDriftAdvisory": "Cảnh Báo Trôi Dạt Nguyên Phân",
+  "MultiYear.SectionTitle": "Trình Mô Phỏng Cân Bằng Nội Tiết Vĩnh Viễn 10 Năm & Độ Bền Nguyên Phân",
+  "MultiYear.SectionSubtitle": "Chuyển Giao Hydrogel Sang Biểu Sinh Ngày 0–180 • Di Truyền Nhiễm Sắc Thể DNMT1 • Ổn Định Tế Bào Gốc",
+  "MultiYear.HorizonLabel": "Thời Hạn Mô Phỏng (Năm)",
+  "MultiYear.FidelityLabel": "Tỷ Lệ Trung Thực Nguyên Phân (0.90–0.9999)",
+  "MultiYear.ProgenitorLabel": "Tỷ Lệ Tế Bào Tiền Thân Đã Chuyển Gen (0.10–1.0)",
+  "MultiYear.CircuitIdLabel": "ID Mạch Biểu Sinh Liên Kết (Tùy Chọn)",
+  "MultiYear.RunButton": "Mô Phỏng Độ Bền Nhiều Năm",
+  "MultiYear.BadgeVerified": "ĐÃ XÁC MINH CÂN BẰNG VĨNH VIỄN",
+  "MultiYear.BadgeAdvisory": "CẢNH BÁO TRÔI DẠT NGUYÊN PHÂN",
+  "MultiYear.TenYearTtrLabel": "TTR Nhiều Năm Dự Kiến (%)",
+  "MultiYear.HandoffTtrLabel": "TTR Chuyển Giao Ngày 90–180 (%)",
+  "MultiYear.FinalMemoryLabel": "Tế Bào Tiền Thân Methyl Hóa Cuối Kỳ (%)",
+  "MultiYear.ChartTitle": "Quỹ Đạo Hai Nguồn: Hydrogel Ngoại Sinh -> Biểu Sinh Nội Sinh",
+  "MultiYear.TableCaption": "Điểm Kiểm Tra Cân Bằng Nội Tiết và Trí Nhớ Nhiễm Sắc Thể Từng Năm",
+  "MultiYear.BoosterAdvised": "KHUYẾN NGHỊ LIỀU TĂNG CƯỜNG",
+  "MultiYear.LifetimeConserved": "BẢO TỒN KHÔNG CẦN TĂNG CƯỜNG"
 }

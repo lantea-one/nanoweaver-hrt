@@ -916,4 +916,103 @@ public sealed class DepotAndLotWorkspaceViewModelTests
         Assert.Null(vm.LatestPharmacovigilanceReport);
         Assert.Empty(vm.ActiveLotAdverseEvents);
     }
+
+    /// <summary>
+    /// Verifies Milestone 43 (P227) multi-year homeostasis simulation, forecast loading, severity escalation,
+    /// summary KPIs, error propagation, and sensitive cache cleanup.
+    /// </summary>
+    [Fact]
+    public async Task MultiYearHomeostasisCommands_SeverityEscalationAndCacheCleanup_WorkDeterministically()
+    {
+        InstanceProfile profile = CreateProfile();
+        Mock<INanoWeaverNodeClient> clientMock = new();
+        DepotAndLotWorkspaceViewModel vm = new(clientMock.Object, () => profile, () => "token")
+        {
+            SelectedDepotId = "depot_sample_001"
+        };
+
+        SimulateMultiYearHomeostasisRequest req = new SimulateMultiYearHomeostasisRequest().GetExamples();
+        MultiYearHomeostasisForecastReport optimalReport = new MultiYearHomeostasisForecastReport().GetExamples();
+        MultiYearHomeostasisForecastReport driftReport = optimalReport with
+        {
+            RunId = "myh_drift_002",
+            ProjectedTenYearTtrPercent = 78.4,
+            DurabilityStatus = MultiYearDurabilityStatus.MitoticDriftAdvisory,
+            MitoticDriftAlert = true,
+            RequiresBoosterDose = true
+        };
+
+        // 1. SimulateMultiYearHomeostasisAsync -> Optimal
+        await Assert.ThrowsAsync<ArgumentNullException>(() => vm.SimulateMultiYearHomeostasisAsync(null!));
+        clientMock.Setup(c => c.SimulateMultiYearHomeostasisAsync(profile, "token", "depot_sample_001", req, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(optimalReport);
+        clientMock.Setup(c => c.GetMultiYearHomeostasisForecastsAsync(profile, "token", "depot_sample_001", It.IsAny<CancellationToken>()))
+            .ReturnsAsync([optimalReport]);
+
+        MultiYearHomeostasisForecastReport simulated = await vm.SimulateMultiYearHomeostasisAsync(req);
+        Assert.Equal("myh_20261124_001", simulated.RunId);
+        Assert.Equal(99.6, vm.ProjectedTenYearTtrPercent);
+        Assert.False(vm.MitoticDriftAlert);
+        Assert.Single(vm.MultiYearForecasts);
+
+        DepotWorkspaceSummary optimalSummary = vm.BuildSummary();
+        Assert.Equal(ClinicalWorkspaceSeverity.Optimal, optimalSummary.Severity);
+        Assert.Equal(99.6, optimalSummary.ProjectedTenYearTtrPercent);
+        Assert.False(optimalSummary.MitoticDriftAlert);
+
+        clientMock.Setup(c => c.SimulateMultiYearHomeostasisAsync(profile, "token", "depot_sample_001", req, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("sim error"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.SimulateMultiYearHomeostasisAsync(req));
+        Assert.Equal("sim error", vm.ErrorMessage);
+
+        // 2. LoadSelectedDepotMultiYearForecastsAsync -> MitoticDriftAlert => Warning, plus empty list => null latest
+        clientMock.Setup(c => c.GetMultiYearHomeostasisForecastsAsync(profile, "token", "depot_sample_001", It.IsAny<CancellationToken>()))
+            .ReturnsAsync([driftReport, optimalReport]);
+        IReadOnlyList<MultiYearHomeostasisForecastReport> history = await vm.LoadSelectedDepotMultiYearForecastsAsync();
+        Assert.Equal(2, history.Count);
+        Assert.True(vm.MitoticDriftAlert);
+        Assert.Equal(78.4, vm.ProjectedTenYearTtrPercent);
+
+        DepotWorkspaceSummary driftSummary = vm.BuildSummary();
+        Assert.Equal(ClinicalWorkspaceSeverity.Warning, driftSummary.Severity);
+        Assert.True(driftSummary.MitoticDriftAlert);
+        Assert.Equal(78.4, driftSummary.ProjectedTenYearTtrPercent);
+
+        clientMock.Setup(c => c.GetMultiYearHomeostasisForecastsAsync(profile, "token", "depot_sample_001", It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        Assert.Empty(await vm.LoadSelectedDepotMultiYearForecastsAsync());
+        Assert.Null(vm.LatestMultiYearForecast);
+        Assert.Null(vm.ProjectedTenYearTtrPercent);
+        Assert.False(vm.MitoticDriftAlert);
+
+        clientMock.Setup(c => c.GetMultiYearHomeostasisForecastsAsync(profile, "token", "depot_sample_001", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("list fail"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.LoadSelectedDepotMultiYearForecastsAsync());
+        Assert.Equal("list fail", vm.ErrorMessage);
+
+        // 3. LoadLatestMultiYearHomeostasisForecastAsync -> populated and 404/null paths
+        clientMock.Setup(c => c.GetLatestMultiYearHomeostasisForecastAsync(profile, "token", "depot_sample_001", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(driftReport);
+        MultiYearHomeostasisForecastReport? latest = await vm.LoadLatestMultiYearHomeostasisForecastAsync();
+        Assert.NotNull(latest);
+        Assert.Equal("myh_drift_002", latest.RunId);
+        Assert.True(vm.MitoticDriftAlert);
+
+        clientMock.Setup(c => c.GetLatestMultiYearHomeostasisForecastAsync(profile, "token", "depot_sample_001", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((MultiYearHomeostasisForecastReport?)null);
+        Assert.Null(await vm.LoadLatestMultiYearHomeostasisForecastAsync());
+        Assert.Null(vm.LatestMultiYearForecast);
+
+        clientMock.Setup(c => c.GetLatestMultiYearHomeostasisForecastAsync(profile, "token", "depot_sample_001", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("latest fail"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.LoadLatestMultiYearHomeostasisForecastAsync());
+        Assert.Equal("latest fail", vm.ErrorMessage);
+
+        // 4. Cache cleanup wipes multi-year state cleanly
+        vm.ClearSensitiveClinicalCache();
+        Assert.Null(vm.LatestMultiYearForecast);
+        Assert.Empty(vm.MultiYearForecasts);
+        Assert.Null(vm.ProjectedTenYearTtrPercent);
+        Assert.False(vm.MitoticDriftAlert);
+    }
 }

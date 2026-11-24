@@ -198,5 +198,22 @@
   "EpigeneticCircuit.GuideTableTitle": "Pannello RNA guida singolo (sgRNA) steroidogenico",
   "EpigeneticCircuit.ColTargetGene": "Gene bersaglio",
   "EpigeneticCircuit.ColSpecificity": "Specificità CFD %",
-  "EpigeneticCircuit.ColFoldChange": "Variazione di espressione prevista"
+  "EpigeneticCircuit.ColFoldChange": "Variazione di espressione prevista",
+  "Gui.DepotWorkspace.TrayMitoticDriftAdvisory": "Avviso di Deriva Mitotica",
+  "MultiYear.SectionTitle": "Simulatore di Omeostasi Endocrina Permanente a 10 Anni e Durabilità Mitotica",
+  "MultiYear.SectionSubtitle": "Passaggio Idrogel-Epigenetica Giorni 0–180 • Ereditarietà Cromatinica DNMT1 • Stabilità Progenitrice",
+  "MultiYear.HorizonLabel": "Orizzonte di Simulazione (Anni)",
+  "MultiYear.FidelityLabel": "Fedeltà Mitotica (0,90–0,9999)",
+  "MultiYear.ProgenitorLabel": "Frazione Progenitrice Trasdotta (0,10–1,0)",
+  "MultiYear.CircuitIdLabel": "ID Circuito Epigenetico Collegato (Opzionale)",
+  "MultiYear.RunButton": "Simula Durabilità Pluriennale",
+  "MultiYear.BadgeVerified": "OMEOSTASI PERMANENTE VERIFICATA",
+  "MultiYear.BadgeAdvisory": "AVVISO DI DERIVA MITOTICA",
+  "MultiYear.TenYearTtrLabel": "TTR Pluriennale Previsto (%)",
+  "MultiYear.HandoffTtrLabel": "TTR Transizione Giorni 90–180 (%)",
+  "MultiYear.FinalMemoryLabel": "Progenitori Metilati Finali (%)",
+  "MultiYear.ChartTitle": "Traiettoria Doppia Fonte: Idrogel Esogeno -> Epigenetica Endogena",
+  "MultiYear.TableCaption": "Punti di Controllo Annuali di Omeostasi Endocrina e Memoria Cromatinica",
+  "MultiYear.BoosterAdvised": "RICHIAMO / RINFORZO CONSIGLIATO",
+  "MultiYear.LifetimeConserved": "CONSERVATO SENZA RICHIAMO"
 }

@@ -198,5 +198,22 @@
   "EpigeneticCircuit.GuideTableTitle": "Panel d'ARN guide unique (sgRNA) stéroïdogène",
   "EpigeneticCircuit.ColTargetGene": "Gène cible",
   "EpigeneticCircuit.ColSpecificity": "Spécificité CFD %",
-  "EpigeneticCircuit.ColFoldChange": "Facteur de modulation prévu"
+  "EpigeneticCircuit.ColFoldChange": "Facteur de modulation prévu",
+  "Gui.DepotWorkspace.TrayMitoticDriftAdvisory": "Avis de Dérive Mitotique",
+  "MultiYear.SectionTitle": "Simulateur d'Homéostasie Endocrinienne Permanente sur 10 Ans & Durabilité Mitotique",
+  "MultiYear.SectionSubtitle": "Relais Hydrogel-Épigénétique Jours 0–180 • Héritage Chromatinien DNMT1 • Stabilité Progenitrice",
+  "MultiYear.HorizonLabel": "Horizon de Simulation (Années)",
+  "MultiYear.FidelityLabel": "Fidélité Mitotique (0,90–0,9999)",
+  "MultiYear.ProgenitorLabel": "Fraction de Progéniteurs Transduits (0,10–1,0)",
+  "MultiYear.CircuitIdLabel": "ID de Circuit Épigénétique Lié (Optionnel)",
+  "MultiYear.RunButton": "Simuler la Durabilité Pluriannuelle",
+  "MultiYear.BadgeVerified": "HOMÉOSTASIE PERMANENTE VÉRIFIÉE",
+  "MultiYear.BadgeAdvisory": "AVIS DE DÉRIVE MITOTIQUE",
+  "MultiYear.TenYearTtrLabel": "TTR Pluriannuel Projeté (%)",
+  "MultiYear.HandoffTtrLabel": "TTR du Relais Jours 90–180 (%)",
+  "MultiYear.FinalMemoryLabel": "Progéniteurs Méthylés Finaux (%)",
+  "MultiYear.ChartTitle": "Trajectoire Bi-Source : Hydrogel Exogène -> Épigénétique Endogène",
+  "MultiYear.TableCaption": "Points de Contrôle Annuels d'Homéostasie et de Mémoire Chromatinienne",
+  "MultiYear.BoosterAdvised": "RAPPEL / RENFORCEMENT CONSEILLÉ",
+  "MultiYear.LifetimeConserved": "CONSERVÉ SANS RAPPEL"
 }

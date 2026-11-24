@@ -198,5 +198,22 @@
   "EpigeneticCircuit.GuideTableTitle": "Painel de RNA guia único (sgRNA) esteroidogênico",
   "EpigeneticCircuit.ColTargetGene": "Gene-alvo",
   "EpigeneticCircuit.ColSpecificity": "Especificidade CFD %",
-  "EpigeneticCircuit.ColFoldChange": "Variação prevista de expressão"
+  "EpigeneticCircuit.ColFoldChange": "Variação prevista de expressão",
+  "Gui.DepotWorkspace.TrayMitoticDriftAdvisory": "Aviso de Deriva Mitótica",
+  "MultiYear.SectionTitle": "Simulador de Homeostase Endócrina Permanente de 10 Anos e Durabilidade Mitótica",
+  "MultiYear.SectionSubtitle": "Transição Hidrogel-Epigenética Dias 0–180 • Herança de Cromatina DNMT1 • Estabilidade Celular",
+  "MultiYear.HorizonLabel": "Horizonte de Simulação (Anos)",
+  "MultiYear.FidelityLabel": "Fidelidade Mitótica (0,90–0,9999)",
+  "MultiYear.ProgenitorLabel": "Fração Progenitora Transduzida (0,10–1,0)",
+  "MultiYear.CircuitIdLabel": "ID do Circuito Epigenético Vinculado (Opcional)",
+  "MultiYear.RunButton": "Simular Durabilidade Multianual",
+  "MultiYear.BadgeVerified": "HOMEOSTASE PERMANENTE VERIFICADA",
+  "MultiYear.BadgeAdvisory": "AVISO DE DERIVA MITÓTICA",
+  "MultiYear.TenYearTtrLabel": "TTR Multianual Projetado (%)",
+  "MultiYear.HandoffTtrLabel": "TTR na Transição Dias 90–180 (%)",
+  "MultiYear.FinalMemoryLabel": "Progenitores Metilados Finais (%)",
+  "MultiYear.ChartTitle": "Trajetória Dual: Hidrogel Exógeno -> Epigenética Endógena",
+  "MultiYear.TableCaption": "Pontos de Verificação Anuais de Homeostase e Memória da Cromatina",
+  "MultiYear.BoosterAdvised": "REFORÇO RECOMENDADO",
+  "MultiYear.LifetimeConserved": "CONSERVADO SEM REFORÇO"
 }

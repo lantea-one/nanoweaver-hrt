@@ -60,6 +60,8 @@ public enum ClinicalWorkspaceSeverity
 /// <param name="NewFederatedRecallCount">Number of newly discovered federated recall tombstones imported by the most recent pull-sync operation.</param>
 /// <param name="CompromisedColdChainLotCount">Number of inspected lots flagged thermally compromised, expired, or custody-tampered (fail-closed unsafe for implantation).</param>
 /// <param name="CriticalPharmacovigilanceLotCount">Number of inspected lots flagged for fail-closed quarantine by post-implantation pharmacovigilance or CARPA/TLR9 signals.</param>
+/// <param name="ProjectedTenYearTtrPercent">Projected multi-year Time in Target Range percentage from the latest homeostasis forecast, or <see langword="null"/> when unavailable.</param>
+/// <param name="MitoticDriftAlert">True when the latest multi-year durability forecast detected mitotic epigenetic washout or handoff trough drop.</param>
 public sealed record DepotWorkspaceSummary(
     string? ActivePatientId,
     int FormulationCount,
@@ -76,7 +78,9 @@ public sealed record DepotWorkspaceSummary(
     int FailedPeerSyncCount = 0,
     int NewFederatedRecallCount = 0,
     int CompromisedColdChainLotCount = 0,
-    int CriticalPharmacovigilanceLotCount = 0);
+    int CriticalPharmacovigilanceLotCount = 0,
+    double? ProjectedTenYearTtrPercent = null,
+    bool MitoticDriftAlert = false);
 
 /// <summary>
 /// Native cross-platform MVVM ViewModel unifying Milestones 33–36 clinical workflows:
@@ -868,6 +872,8 @@ public sealed class DepotAndLotWorkspaceViewModel : INotifyPropertyChanged
 
         int compromisedColdChain = _latestLotStability != null && !_latestLotStability.IsSafeForImplantation ? 1 : 0;
         int criticalPharmacovigilance = _latestPharmacovigilanceReport != null && _latestPharmacovigilanceReport.IsQuarantineTriggered ? 1 : 0;
+        double? projectedTenYearTtr = _latestMultiYearForecast != null ? _latestMultiYearForecast.ProjectedTenYearTtrPercent : null;
+        bool mitoticDriftAlert = _latestMultiYearForecast != null && _latestMultiYearForecast.MitoticDriftAlert;
 
         ClinicalWorkspaceSeverity severity = ResolveWorkspaceSeverity(
             quarantined,
@@ -894,7 +900,9 @@ public sealed class DepotAndLotWorkspaceViewModel : INotifyPropertyChanged
             FailedPeerSyncCount: failedPeerSyncs,
             NewFederatedRecallCount: newFederatedRecalls,
             CompromisedColdChainLotCount: compromisedColdChain,
-            CriticalPharmacovigilanceLotCount: criticalPharmacovigilance);
+            CriticalPharmacovigilanceLotCount: criticalPharmacovigilance,
+            ProjectedTenYearTtrPercent: projectedTenYearTtr,
+            MitoticDriftAlert: mitoticDriftAlert);
     }
 
     /// <summary>
@@ -999,6 +1007,8 @@ public sealed class DepotAndLotWorkspaceViewModel : INotifyPropertyChanged
         LatestCustodyLedger = null;
         LatestPharmacovigilanceReport = null;
         ActiveLotAdverseEvents = [];
+        LatestMultiYearForecast = null;
+        MultiYearForecasts = [];
         ErrorMessage = null;
     }
 
@@ -1042,13 +1052,14 @@ public sealed class DepotAndLotWorkspaceViewModel : INotifyPropertyChanged
             _lastCertificateVerification.TrustSource == FabricationCertificateTrustSource.UntrustedSigner;
         bool coldChainAdvisory = _latestLotStability != null && _latestLotStability.Status == ThermalStabilityStatus.AdvisoryExcursion;
         bool pvMonitor = _latestPharmacovigilanceReport != null && _latestPharmacovigilanceReport.Posture == PharmacovigilancePosture.Monitor;
+        bool mitoticDrift = _latestMultiYearForecast != null && _latestMultiYearForecast.MitoticDriftAlert;
 
-        if (calibrationWarning || quarantinedCount > 0 || verificationWarning || failedPeerSyncCount > 0 || coldChainAdvisory || pvMonitor)
+        if (calibrationWarning || quarantinedCount > 0 || verificationWarning || failedPeerSyncCount > 0 || coldChainAdvisory || pvMonitor || mitoticDrift)
         {
             return ClinicalWorkspaceSeverity.Warning;
         }
 
-        if (_formulations.Count > 0 || _fabricationLots.Count > 0 || _latestCalibration != null)
+        if (_formulations.Count > 0 || _fabricationLots.Count > 0 || _latestCalibration != null || _latestMultiYearForecast != null)
         {
             return ClinicalWorkspaceSeverity.Optimal;
         }
@@ -1931,6 +1942,156 @@ public sealed class DepotAndLotWorkspaceViewModel : INotifyPropertyChanged
         if (!string.IsNullOrWhiteSpace(_activePatientId))
         {
             FabricationLots = await _client.GetFabricationLotsAsync(profile, token, _activePatientId, ct).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Backing field for <see cref="LatestMultiYearForecast"/>.
+    /// </summary>
+    private MultiYearHomeostasisForecastReport? _latestMultiYearForecast;
+
+    /// <summary>
+    /// Backing field for <see cref="MultiYearForecasts"/>.
+    /// </summary>
+    private IReadOnlyList<MultiYearHomeostasisForecastReport> _multiYearForecasts = [];
+
+    /// <summary>
+    /// Gets the most recent 1-to-10-year coupled hydrogel-to-epigenetic homeostasis durability forecast for <see cref="SelectedDepotId"/>.
+    /// </summary>
+    public MultiYearHomeostasisForecastReport? LatestMultiYearForecast
+    {
+        get => _latestMultiYearForecast;
+        private set
+        {
+            _latestMultiYearForecast = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(ProjectedTenYearTtrPercent));
+            OnPropertyChanged(nameof(MitoticDriftAlert));
+        }
+    }
+
+    /// <summary>
+    /// Gets the newest-first collection of multi-year homeostasis forecasts loaded for <see cref="SelectedDepotId"/>.
+    /// </summary>
+    public IReadOnlyList<MultiYearHomeostasisForecastReport> MultiYearForecasts
+    {
+        get => _multiYearForecasts;
+        private set
+        {
+            _multiYearForecasts = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Gets the projected multi-year Time in Target Range percentage from <see cref="LatestMultiYearForecast"/>, or <see langword="null"/>.
+    /// </summary>
+    public double? ProjectedTenYearTtrPercent => _latestMultiYearForecast?.ProjectedTenYearTtrPercent;
+
+    /// <summary>
+    /// Gets a value indicating whether <see cref="LatestMultiYearForecast"/> flagged mitotic drift or handoff trough drop.
+    /// </summary>
+    public bool MitoticDriftAlert => _latestMultiYearForecast != null && _latestMultiYearForecast.MitoticDriftAlert;
+
+    /// <summary>
+    /// Runs a 1-to-10-year coupled hydrogel-to-epigenetic durability simulation for <see cref="SelectedDepotId"/> via
+    /// POST /api/depots/{depotId}/simulate-multiyear and refreshes observable durability KPIs.
+    /// </summary>
+    /// <param name="request">Cellular turnover, mitotic fidelity, and linked circuit parameters.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Persisted <see cref="MultiYearHomeostasisForecastReport"/>.</returns>
+    public async Task<MultiYearHomeostasisForecastReport> SimulateMultiYearHomeostasisAsync(
+        SimulateMultiYearHomeostasisRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Submits a multi-year durability simulation for SelectedDepotId and refreshes observable state.
+        // WHY:  Milestone 43 (P227): Surfaces projected 10-year TTR and mitotic washout warnings in native shells.
+        // HOW:  Validates inputs, calls SimulateMultiYearHomeostasisAsync, and updates LatestMultiYearForecast & MultiYearForecasts.
+        ArgumentNullException.ThrowIfNull(request);
+        string depotId = RequireSelectedDepotId();
+        var (profile, token) = ResolveEffectiveSession();
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            MultiYearHomeostasisForecastReport report = await _client.SimulateMultiYearHomeostasisAsync(profile, token, depotId, request, ct).ConfigureAwait(false);
+            LatestMultiYearForecast = report;
+            MultiYearForecasts = await _client.GetMultiYearHomeostasisForecastsAsync(profile, token, depotId, ct).ConfigureAwait(false);
+            return report;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Loads all persisted multi-year homeostasis forecasts for <see cref="SelectedDepotId"/> via
+    /// GET /api/depots/{depotId}/multiyear-forecasts.
+    /// </summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Newest-first collection of <see cref="MultiYearHomeostasisForecastReport"/> entries.</returns>
+    public async Task<IReadOnlyList<MultiYearHomeostasisForecastReport>> LoadSelectedDepotMultiYearForecastsAsync(CancellationToken ct = default)
+    {
+        // WHAT: Loads multi-year durability forecast history for SelectedDepotId and sets LatestMultiYearForecast when present.
+        // WHY:  Milestone 43 (P227): Hydrates native desktop/mobile longevity charts and checkpoint tables.
+        // HOW:  Validates SelectedDepotId, fetches forecasts, updates MultiYearForecasts and LatestMultiYearForecast.
+        string depotId = RequireSelectedDepotId();
+        var (profile, token) = ResolveEffectiveSession();
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            IReadOnlyList<MultiYearHomeostasisForecastReport> list = await _client.GetMultiYearHomeostasisForecastsAsync(profile, token, depotId, ct).ConfigureAwait(false);
+            MultiYearForecasts = list;
+            LatestMultiYearForecast = list.Count > 0 ? list[0] : null;
+            return list;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Retrieves the latest multi-year homeostasis forecast for <see cref="SelectedDepotId"/> via
+    /// GET /api/depots/{depotId}/multiyear-forecasts/latest.
+    /// </summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Latest <see cref="MultiYearHomeostasisForecastReport"/>, or <see langword="null"/> if none exists.</returns>
+    public async Task<MultiYearHomeostasisForecastReport?> LoadLatestMultiYearHomeostasisForecastAsync(CancellationToken ct = default)
+    {
+        // WHAT: Fetches the single newest multi-year durability forecast for SelectedDepotId.
+        // WHY:  Milestone 43 (P227): Supplies lightweight tray polling of ProjectedTenYearTtrPercent and MitoticDriftAlert.
+        // HOW:  Validates SelectedDepotId, calls GetLatestMultiYearHomeostasisForecastAsync, and updates LatestMultiYearForecast.
+        string depotId = RequireSelectedDepotId();
+        var (profile, token) = ResolveEffectiveSession();
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            MultiYearHomeostasisForecastReport? latest = await _client.GetLatestMultiYearHomeostasisForecastAsync(profile, token, depotId, ct).ConfigureAwait(false);
+            LatestMultiYearForecast = latest;
+            return latest;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
         }
     }
 }

@@ -198,5 +198,22 @@
   "EpigeneticCircuit.GuideTableTitle": "Panel Single-Guide RNA (sgRNA) Lokus Steroidogenik",
   "EpigeneticCircuit.ColTargetGene": "Gen Target",
   "EpigeneticCircuit.ColSpecificity": "Spesifisitas CFD %",
-  "EpigeneticCircuit.ColFoldChange": "Prediksi Perubahan Lipatan"
+  "EpigeneticCircuit.ColFoldChange": "Prediksi Perubahan Lipatan",
+  "Gui.DepotWorkspace.TrayMitoticDriftAdvisory": "Saran Pergeseran Mitotik",
+  "MultiYear.SectionTitle": "Simulator Homeostasis Endokrin Permanen 10 Tahun & Ketahanan Mitotik",
+  "MultiYear.SectionSubtitle": "Transisi Hidrogel ke Epigenetik Hari 0–180 • Pewarisan Kromatin DNMT1 • Stabilitas Progenitor Jangka Panjang",
+  "MultiYear.HorizonLabel": "Horison Simulasi (Tahun)",
+  "MultiYear.FidelityLabel": "Laju Fidelitas Mitotik (0,90–0,9999)",
+  "MultiYear.ProgenitorLabel": "Fraksi Progenitor Tertransduksi (0,10–1,0)",
+  "MultiYear.CircuitIdLabel": "ID Sirkuit Epigenetik Terkait (Opsional)",
+  "MultiYear.RunButton": "Simulasikan Ketahanan Multi-Tahun",
+  "MultiYear.BadgeVerified": "HOMEOSTASIS PERMANEN TERVERIFIKASI",
+  "MultiYear.BadgeAdvisory": "SARAN PERGESERAN MITOTIK",
+  "MultiYear.TenYearTtrLabel": "Proyeksi TTR Multi-Tahun (%)",
+  "MultiYear.HandoffTtrLabel": "TTR Transisi Hari 90–180 (%)",
+  "MultiYear.FinalMemoryLabel": "Progenitor Termetilasi Akhir (%)",
+  "MultiYear.ChartTitle": "Lintasan Sumber Ganda: Hidrogel Eksogen -> Epigenetik Endogen",
+  "MultiYear.TableCaption": "Titik Pemeriksaan Tahunan Homeostasis Endokrin dan Memori Kromatin",
+  "MultiYear.BoosterAdvised": "DISARANKAN BOOSTER / PENGUATAN",
+  "MultiYear.LifetimeConserved": "TERJAGA TANPA BOOSTER"
 }

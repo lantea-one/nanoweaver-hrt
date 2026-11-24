@@ -3438,4 +3438,125 @@ public sealed class EndpointIntegrationTests : IClassFixture<WebApplicationFacto
             Assert.Contains(entries, e => e.Action == "EPIGENETIC_CIRCUIT_APPROVE");
         }
     }
+
+    /// <summary>
+    /// End-to-end integration test for Milestone 43 (P227): verifies all 3 multi-year homeostasis
+    /// Minimal API routes, RBAC/subject-access gating, Patient self-read access, 10-year conserved vs.
+    /// washout trajectories, and FDA 21 CFR Part 11 audit ledger recording.
+    /// </summary>
+    [Fact]
+    public async Task MultiYearHomeostasisEndpoints_EnforceRbacHandoffDurabilityAndAudit()
+    {
+        // WHAT: Tests POST /api/depots/{depotId}/simulate-multiyear and GET multiyear-forecasts endpoints.
+        // WHY:  Milestone 43 (P227): Verifies role gating, 400/401/403/404 RFC 7807 errors, and persistent forecasts.
+        // HOW:  Provisions Patient self/other and Researcher, creates a MtF depot, and tests all routes and audit logs.
+        string suf = Guid.NewGuid().ToString("N")[..8];
+        string patSelf = $"pat_myh_self_{suf}";
+        string patOther = $"pat_myh_other_{suf}";
+        string researcher = $"res_myh_{suf}";
+
+        string tokSelf = await ProvisionUserAndGetTokenAsync(patSelf, UserRole.Patient);
+        string tokOther = await ProvisionUserAndGetTokenAsync(patOther, UserRole.Patient);
+        string tokRes = await ProvisionUserAndGetTokenAsync(researcher, UserRole.Researcher);
+
+        using HttpClient clientAnon = _factory.CreateClient();
+        using HttpClient clientRes = CreateClientWithBearer(tokRes);
+        using HttpClient clientSelf = CreateClientWithBearer(tokSelf);
+        using HttpClient clientOther = CreateClientWithBearer(tokOther);
+
+        HttpResponseMessage depotResp = await _client.PostAsJsonAsync("/api/depots/formulations", new CreateDepotFormulationRequest
+        {
+            PatientId = patSelf,
+            Regimen = TherapeuticRegimen.MaleToFemale,
+            PolymerMatrixType = "PLGA-PEG-PLGA",
+            InitialNanocarrierMassMg = 18.0,
+            DailyErosionRatePercent = 0.55,
+            ReleaseKineticsModel = "Korsmeyer-Peppas",
+            TargetHorizonDays = 180
+        });
+        Assert.Equal(HttpStatusCode.Created, depotResp.StatusCode);
+        DepotFormulationResponse? createdDepot = await depotResp.Content.ReadFromJsonAsync<DepotFormulationResponse>();
+        Assert.NotNull(createdDepot);
+        string depotId = createdDepot.Formulation.DepotId;
+
+        // 1. Unauthorized & BadRequest whitespace guards
+        Assert.Equal(HttpStatusCode.Unauthorized, (await clientAnon.GetAsync($"/api/depots/{depotId}/multiyear-forecasts")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await clientAnon.GetAsync($"/api/depots/{depotId}/multiyear-forecasts/latest")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/depots/%20/simulate-multiyear", new SimulateMultiYearHomeostasisRequest())).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.GetAsync("/api/depots/%20/multiyear-forecasts")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.GetAsync("/api/depots/%20/multiyear-forecasts/latest")).StatusCode);
+
+        // 2. 404 NotFound for missing depot & empty latest forecast
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsJsonAsync("/api/depots/missing-depot-404/simulate-multiyear", new SimulateMultiYearHomeostasisRequest())).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/depots/missing-depot-404/multiyear-forecasts")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync($"/api/depots/{depotId}/multiyear-forecasts/latest")).StatusCode);
+
+        // 3. RBAC Forbidden checks before Researcher grant
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientSelf.PostAsJsonAsync($"/api/depots/{depotId}/simulate-multiyear", new SimulateMultiYearHomeostasisRequest())).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientOther.GetAsync($"/api/depots/{depotId}/multiyear-forecasts")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientOther.GetAsync($"/api/depots/{depotId}/multiyear-forecasts/latest")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientRes.PostAsJsonAsync($"/api/depots/{depotId}/simulate-multiyear", new SimulateMultiYearHomeostasisRequest())).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientRes.GetAsync($"/api/depots/{depotId}/multiyear-forecasts")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientRes.GetAsync($"/api/depots/{depotId}/multiyear-forecasts/latest")).StatusCode);
+
+        // Grant Researcher access to patSelf
+        using (IServiceScope grantScope = _factory.Services.CreateScope())
+        {
+            ISubjectAccessService accessSvc = grantScope.ServiceProvider.GetRequiredService<ISubjectAccessService>();
+            await accessSvc.GrantSubjectAccessAsync("admin", researcher, patSelf, SubjectAccessLevel.FullReadAccess, "M43 multi-year durability");
+        }
+
+        // 4. Service validation error maps to 400 BadRequest
+        Assert.Equal(HttpStatusCode.BadRequest, (await clientRes.PostAsJsonAsync($"/api/depots/{depotId}/simulate-multiyear", new SimulateMultiYearHomeostasisRequest { HorizonYears = 99 })).StatusCode);
+
+        // 5. Granted Researcher runs healthy 10-year simulation (201) + null body default simulation (201) + low-fidelity drift simulation (201)
+        HttpResponseMessage healthyResp = await clientRes.PostAsJsonAsync($"/api/depots/{depotId}/simulate-multiyear", new SimulateMultiYearHomeostasisRequest
+        {
+            HorizonYears = 10,
+            MitoticFidelityRate = 0.9985,
+            TransducedProgenitorFraction = 0.85
+        });
+        Assert.Equal(HttpStatusCode.Created, healthyResp.StatusCode);
+        MultiYearHomeostasisForecastReport? healthy = await healthyResp.Content.ReadFromJsonAsync<MultiYearHomeostasisForecastReport>();
+        Assert.NotNull(healthy);
+        Assert.Equal(MultiYearDurabilityStatus.PermanentHomeostasisVerified, healthy.DurabilityStatus);
+        Assert.False(healthy.MitoticDriftAlert);
+
+        using (StringContent nullSimBody = new("null", Encoding.UTF8, "application/json"))
+        {
+            Assert.Equal(HttpStatusCode.Created, (await clientRes.PostAsync($"/api/depots/{depotId}/simulate-multiyear", nullSimBody)).StatusCode);
+        }
+
+        HttpResponseMessage driftResp = await _client.PostAsJsonAsync($"/api/depots/{depotId}/simulate-multiyear", new SimulateMultiYearHomeostasisRequest
+        {
+            HorizonYears = 10,
+            MitoticFidelityRate = 0.985,
+            TransducedProgenitorFraction = 0.85
+        });
+        Assert.Equal(HttpStatusCode.Created, driftResp.StatusCode);
+        MultiYearHomeostasisForecastReport? drift = await driftResp.Content.ReadFromJsonAsync<MultiYearHomeostasisForecastReport>();
+        Assert.NotNull(drift);
+        Assert.Equal(MultiYearDurabilityStatus.MitoticDriftAdvisory, drift.DurabilityStatus);
+        Assert.True(drift.MitoticDriftAlert);
+
+        // 6. Patient self & granted Researcher list and load latest forecasts cleanly
+        HttpResponseMessage selfListResp = await clientSelf.GetAsync($"/api/depots/{depotId}/multiyear-forecasts");
+        Assert.Equal(HttpStatusCode.OK, selfListResp.StatusCode);
+        List<MultiYearHomeostasisForecastReport>? listDto = await selfListResp.Content.ReadFromJsonAsync<List<MultiYearHomeostasisForecastReport>>();
+        Assert.NotNull(listDto);
+        Assert.Equal(3, listDto.Count);
+
+        HttpResponseMessage resLatestResp = await clientRes.GetAsync($"/api/depots/{depotId}/multiyear-forecasts/latest");
+        Assert.Equal(HttpStatusCode.OK, resLatestResp.StatusCode);
+        MultiYearHomeostasisForecastReport? latestDto = await resLatestResp.Content.ReadFromJsonAsync<MultiYearHomeostasisForecastReport>();
+        Assert.NotNull(latestDto);
+        Assert.True(latestDto.MitoticDriftAlert);
+
+        using (IServiceScope auditScope = _factory.Services.CreateScope())
+        {
+            IComplianceAuditService audit = auditScope.ServiceProvider.GetRequiredService<IComplianceAuditService>();
+            IReadOnlyList<AuditRecord> entries = audit.GetAuditRecords(500);
+            Assert.Contains(entries, e => e.Action == "DEPOT_MULTIYEAR_SIMULATION_RUN");
+        }
+    }
 }

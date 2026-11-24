@@ -2048,4 +2048,49 @@ public interface INanoWeaverNodeClient
         string circuitId,
         ApproveEpigeneticCircuitRequest request,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Executes and persists a 1-to-10-year coupled hydrogel-to-epigenetic mitotic durability simulation via
+    /// POST /api/depots/{depotId}/simulate-multiyear.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="depotId">Target semi-annual depot formulation identifier.</param>
+    /// <param name="request">Cellular turnover, DNMT1 fidelity, and optional linked circuit parameters.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Persisted <see cref="MultiYearHomeostasisForecastReport"/>.</returns>
+    Task<MultiYearHomeostasisForecastReport> SimulateMultiYearHomeostasisAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string depotId,
+        SimulateMultiYearHomeostasisRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Lists persisted multi-year permanent homeostasis forecasts for a depot via GET /api/depots/{depotId}/multiyear-forecasts.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="depotId">Target semi-annual depot formulation identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Newest-first read-only list of <see cref="MultiYearHomeostasisForecastReport"/> items.</returns>
+    Task<IReadOnlyList<MultiYearHomeostasisForecastReport>> GetMultiYearHomeostasisForecastsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string depotId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Retrieves the latest multi-year homeostasis forecast for a depot via GET /api/depots/{depotId}/multiyear-forecasts/latest.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="depotId">Target semi-annual depot formulation identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The latest <see cref="MultiYearHomeostasisForecastReport"/>, or <see langword="null"/> when HTTP 404 is returned.</returns>
+    Task<MultiYearHomeostasisForecastReport?> GetLatestMultiYearHomeostasisForecastAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string depotId,
+        CancellationToken ct = default);
 }
