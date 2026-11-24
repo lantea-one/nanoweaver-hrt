@@ -233,5 +233,21 @@
   "Antidote.KineticsChartTitle": "24-Hour Depot Disassembly & Systemic Hormone Decay",
   "Antidote.EmergencyTitle": "Irreversible Emergency Clinical Neutralization",
   "Antidote.EmergencyWarning": "Emergency administration permanently disassembles this depot, transitions the antidote to Neutralized, and writes a permanent lot recall tombstone.",
-  "Antidote.EventsEmpty": "No emergency neutralization administrations have been executed against this lot."
+  "Antidote.EventsEmpty": "No emergency neutralization administrations have been executed against this lot.",
+  "Dossier.SectionTitle": "Regulatory IND / IMPD Dossier Compiler",
+  "Dossier.SectionSubtitle": "Compile HIPAA-pseudonymized, ML-DSA-65 signed FDA IND (21 CFR 312) and EMA IMPD submission bundles with 10-gate fail-closed readiness enforcement and cross-node PQC signature verification.",
+  "Dossier.PatientIdLabel": "Subject Identifier",
+  "Dossier.FrameworkLabel": "Regulatory Framework",
+  "Dossier.LotIdLabel": "Vector Lot ID (Optional)",
+  "Dossier.SponsorLabel": "Sponsor Organization",
+  "Dossier.SiteCodeLabel": "Clinical Site Code",
+  "Dossier.CompileButton": "Compile Regulatory Dossier",
+  "Dossier.DownloadButton": "Download Signed Bundle (.json)",
+  "Dossier.VerifyButton": "Verify Signed Dossier",
+  "Dossier.BadgeSubmissionReady": "SUBMISSION READY",
+  "Dossier.BadgeBlockedIncomplete": "BLOCKED / INCOMPLETE",
+  "Dossier.BadgeSignatureTrusted": "SIGNATURE TRUSTED",
+  "Dossier.BadgeSignatureUntrusted": "SIGNATURE UNTRUSTED",
+  "Dossier.ChecklistTitle": "10-Gate Readiness Checklist",
+  "Dossier.VerifierInputLabel": "Signed Regulatory Dossier Bundle JSON"
 }

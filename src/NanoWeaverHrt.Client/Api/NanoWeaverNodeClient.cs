@@ -5107,4 +5107,136 @@ public sealed class NanoWeaverNodeClient : INanoWeaverNodeClient
         AntidoteAdministrationResponse? result = await resp.Content.ReadFromJsonAsync<AntidoteAdministrationResponse>(JsonOptions, ct);
         return result ?? throw new InvalidOperationException("Endpoint returned empty or null antidote administration payload.");
     }
+
+    /// <inheritdoc/>
+    public async Task<SignedRegulatoryDossierBundle> CompileRegulatoryDossierAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string patientId,
+        CompileRegulatoryDossierRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/compliance/dossiers/{patientId}/compile to assemble and seal an IND/IMPD bundle.
+        // WHY:  Milestone 45 (P237): Allows administrators and desktop tools to trigger regulatory dossier generation.
+        // HOW:  Validates inputs, sends authenticated JSON POST, throws on non-success, deserializes SignedRegulatoryDossierBundle.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(patientId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/compliance/dossiers/{Uri.EscapeDataString(patientId)}/compile");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        SignedRegulatoryDossierBundle? bundle = await resp.Content.ReadFromJsonAsync<SignedRegulatoryDossierBundle>(JsonOptions, ct);
+        return bundle ?? throw new InvalidOperationException("Endpoint returned empty or null compiled regulatory dossier payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<RegulatoryDossierSummary>> ListRegulatoryDossiersAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string patientId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/compliance/dossiers/{patientId} to list compiled regulatory dossier summaries.
+        // WHY:  Milestone 45 (P237): Retrieves newest-first trial archive metadata cleanly in desktop/mobile clients.
+        // HOW:  Validates inputs, sends authenticated GET request, throws on error, and deserializes summary list.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(patientId);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/compliance/dossiers/{Uri.EscapeDataString(patientId)}");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        List<RegulatoryDossierSummary>? list = await resp.Content.ReadFromJsonAsync<List<RegulatoryDossierSummary>>(JsonOptions, ct);
+        return list ?? (IReadOnlyList<RegulatoryDossierSummary>)Array.Empty<RegulatoryDossierSummary>();
+    }
+
+    /// <inheritdoc/>
+    public async Task<byte[]?> DownloadRegulatoryDossierAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string dossierId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/compliance/dossiers/{dossierId}/download to fetch portable dossier JSON bytes.
+        // WHY:  Milestone 45 (P237): Supports air-gapped IND/IMPD submission bundle download to desktop storage.
+        // HOW:  Returns null cleanly on HTTP 404, throws NodeApiException on other errors, or reads raw UTF-8 bytes.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(dossierId);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/compliance/dossiers/{Uri.EscapeDataString(dossierId)}/download");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (resp.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        return await resp.Content.ReadAsByteArrayAsync(ct);
+    }
+
+    /// <inheritdoc/>
+    public async Task<RegulatoryDossierVerificationReport> VerifyRegulatoryDossierAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        VerifyRegulatoryDossierRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/compliance/dossiers/verify to validate a signed IND/IMPD dossier bundle.
+        // WHY:  Milestone 45 (P237): Enables multi-center auditors and researchers to verify imported submission packages.
+        // HOW:  Validates inputs, sends authenticated JSON POST, throws on non-success, deserializes verification report.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/compliance/dossiers/verify");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        RegulatoryDossierVerificationReport? report = await resp.Content.ReadFromJsonAsync<RegulatoryDossierVerificationReport>(JsonOptions, ct);
+        return report ?? throw new InvalidOperationException("Endpoint returned empty or null dossier verification report payload.");
+    }
 }

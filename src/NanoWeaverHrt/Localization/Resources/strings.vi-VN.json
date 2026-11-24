@@ -233,5 +233,21 @@
   "Antidote.KineticsChartTitle": "Phân Rã Depot 24 Giờ & Suy Giảm Hormone Toàn Thân",
   "Antidote.EmergencyTitle": "Trung Hòa Lâm Sàng Khẩn Cấp Không Thể Đảo Ngược",
   "Antidote.EmergencyWarning": "Tiêm khẩn cấp sẽ tháo dỡ vĩnh viễn depot này, chuyển thuốc giải độc sang Đã Trung Hòa và ghi nhận thu hồi lô vĩnh viễn.",
-  "Antidote.EventsEmpty": "Chưa có lần tiêm trung hòa khẩn cấp nào được thực hiện cho lô này."
+  "Antidote.EventsEmpty": "Chưa có lần tiêm trung hòa khẩn cấp nào được thực hiện cho lô này.",
+  "Dossier.SectionTitle": "Trình Biên Dịch Hồ Sơ Pháp Lý IND / IMPD",
+  "Dossier.SectionSubtitle": "Biên dịch các gói nộp hồ sơ FDA IND (21 CFR 312) và EMA IMPD được ẩn danh theo HIPAA và ký bằng ML-DSA-65 với cơ chế kiểm tra nghiêm ngặt 10 cổng và xác minh chữ ký PQC liên nút.",
+  "Dossier.PatientIdLabel": "Mã Định Danh Đối Tượng",
+  "Dossier.FrameworkLabel": "Khung Pháp Lý",
+  "Dossier.LotIdLabel": "Mã Lô Vector (Tùy Chọn)",
+  "Dossier.SponsorLabel": "Tổ Chức Tài Trợ",
+  "Dossier.SiteCodeLabel": "Mã Cơ Sở Lâm Sàng",
+  "Dossier.CompileButton": "Biên Dịch Hồ Sơ Pháp Lý",
+  "Dossier.DownloadButton": "Tải Xuống Gói Đã Ký (.json)",
+  "Dossier.VerifyButton": "Xác Minh Hồ Sơ Đã Ký",
+  "Dossier.BadgeSubmissionReady": "SẴN SÀNG NỘP HỒ SƠ",
+  "Dossier.BadgeBlockedIncomplete": "BỊ CHẶN / CHƯA ĐẦY ĐỦ",
+  "Dossier.BadgeSignatureTrusted": "CHỮ KÝ ĐÁNG TIN CẬY",
+  "Dossier.BadgeSignatureUntrusted": "CHỮ KÝ KHÔNG ĐÁNG TIN CẬY",
+  "Dossier.ChecklistTitle": "Danh Sách Kiểm Tra Sẵn Sàng 10 Cổng",
+  "Dossier.VerifierInputLabel": "JSON Gói Hồ Sơ Pháp Lý Đã Ký"
 }

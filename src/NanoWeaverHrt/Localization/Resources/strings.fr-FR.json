@@ -233,5 +233,21 @@
   "Antidote.KineticsChartTitle": "Désassemblage du Dépôt et Décroissance Hormonale sur 24 Heures",
   "Antidote.EmergencyTitle": "Neutralisation Clinique d'Urgence Irréversible",
   "Antidote.EmergencyWarning": "L'administration d'urgence désassemble définitivement ce dépôt, passe l'antidote à Neutralisé et inscrit un rappel permanent du lot.",
-  "Antidote.EventsEmpty": "Aucune neutralisation d'urgence n'a encore été administrée pour ce lot."
+  "Antidote.EventsEmpty": "Aucune neutralisation d'urgence n'a encore été administrée pour ce lot.",
+  "Dossier.SectionTitle": "Compilateur de Dossier Réglementaire IND / IMPD",
+  "Dossier.SectionSubtitle": "Compilez des dossiers de soumission FDA IND (21 CFR 312) et EMA IMPD pseudonymisés HIPAA et signés ML-DSA-65 avec contrôle strict à 10 barrières et vérification PQC inter-nœuds.",
+  "Dossier.PatientIdLabel": "Identifiant du Sujet",
+  "Dossier.FrameworkLabel": "Cadre Réglementaire",
+  "Dossier.LotIdLabel": "ID du Lot de Vecteur (Optionnel)",
+  "Dossier.SponsorLabel": "Organisation Promoteur",
+  "Dossier.SiteCodeLabel": "Code du Site Clinique",
+  "Dossier.CompileButton": "Compiler le Dossier Réglementaire",
+  "Dossier.DownloadButton": "Télécharger le Paquet Signé (.json)",
+  "Dossier.VerifyButton": "Vérifier le Dossier Signé",
+  "Dossier.BadgeSubmissionReady": "PRÊT POUR SOUMISSION",
+  "Dossier.BadgeBlockedIncomplete": "BLOQUÉ / INCOMPLET",
+  "Dossier.BadgeSignatureTrusted": "SIGNATURE FIABLE",
+  "Dossier.BadgeSignatureUntrusted": "SIGNATURE NON FIABLE",
+  "Dossier.ChecklistTitle": "Liste de Contrôle des 10 Barrières",
+  "Dossier.VerifierInputLabel": "JSON du Paquet de Dossier Réglementaire Signé"
 }

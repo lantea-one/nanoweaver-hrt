@@ -233,5 +233,21 @@
   "Antidote.KineticsChartTitle": "Disassemblaggio Deposito e Decadimento Ormonale in 24 Ore",
   "Antidote.EmergencyTitle": "Neutralizzazione Clinica d'Emergenza Irreversibile",
   "Antidote.EmergencyWarning": "La somministrazione d'emergenza disassembla permanentemente questo deposito, imposta l'antidoto su Neutralizzato e registra un richiamo permanente del lotto.",
-  "Antidote.EventsEmpty": "Nessuna neutralizzazione d'emergenza è stata ancora eseguita per questo lotto."
+  "Antidote.EventsEmpty": "Nessuna neutralizzazione d'emergenza è stata ancora eseguita per questo lotto.",
+  "Dossier.SectionTitle": "Compilatore Dossier Regolatorio IND / IMPD",
+  "Dossier.SectionSubtitle": "Compila pacchetti di presentazione FDA IND (21 CFR 312) ed EMA IMPD pseudonimizzati HIPAA e firmati ML-DSA-65 con controllo rigoroso a 10 barriere e verifica PQC tra nodi.",
+  "Dossier.PatientIdLabel": "Identificativo Soggetto",
+  "Dossier.FrameworkLabel": "Quadro Regolatorio",
+  "Dossier.LotIdLabel": "ID Lotto Vettore (Opzionale)",
+  "Dossier.SponsorLabel": "Organizzazione Sponsor",
+  "Dossier.SiteCodeLabel": "Codice Sito Clinico",
+  "Dossier.CompileButton": "Compila Dossier Regolatorio",
+  "Dossier.DownloadButton": "Scarica Pacchetto Firmato (.json)",
+  "Dossier.VerifyButton": "Verifica Dossier Firmato",
+  "Dossier.BadgeSubmissionReady": "PRONTO PER INVIO",
+  "Dossier.BadgeBlockedIncomplete": "BLOCCATO / INCOMPLETO",
+  "Dossier.BadgeSignatureTrusted": "FIRMA AFFIDABILE",
+  "Dossier.BadgeSignatureUntrusted": "FIRMA NON AFFIDABILE",
+  "Dossier.ChecklistTitle": "Checklist di Idoneità a 10 Barriere",
+  "Dossier.VerifierInputLabel": "JSON Pacchetto Dossier Regolatorio Firmato"
 }

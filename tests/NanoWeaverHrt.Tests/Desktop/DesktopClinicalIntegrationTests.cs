@@ -109,6 +109,33 @@ public sealed class DesktopClinicalIntegrationTests
             string hugeFile = Path.Combine(tempDir, "huge.coa.json");
             await File.WriteAllBytesAsync(hugeFile, new byte[DesktopCertificateFileStore.MaxBundleBytes + 1]);
             await Assert.ThrowsAsync<InvalidOperationException>(() => store.ImportCertificateJsonAsync("huge.coa.json"));
+
+            // Milestone 45: Regulatory IND / IMPD portable dossier bundle export & import (up to 2 MiB ceiling)
+            byte[] dossierPayload = Encoding.UTF8.GetBytes("{\"bundleVersion\":\"nanoweaver-ind-dossier-v1\"}");
+            string dossierPath = await store.ExportRegulatoryDossierBundleAsync("ind_2026-11-24_01", dossierPayload);
+            Assert.True(File.Exists(dossierPath));
+            Assert.EndsWith("ind_dossier_ind_2026-11-24_01.json", dossierPath, StringComparison.Ordinal);
+
+            string importedDossier = await storeWithSlash.ImportRegulatoryDossierJsonAsync("ind_dossier_ind_2026-11-24_01.json");
+            Assert.Contains("nanoweaver-ind-dossier-v1", importedDossier, StringComparison.Ordinal);
+
+            await Assert.ThrowsAsync<ArgumentNullException>(() => store.ExportRegulatoryDossierBundleAsync("ind_1", null!));
+            await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => store.ExportRegulatoryDossierBundleAsync("ind_1", []));
+            await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => store.ExportRegulatoryDossierBundleAsync("ind_1", new byte[DesktopCertificateFileStore.MaxDossierBundleBytes + 1]));
+            await Assert.ThrowsAsync<ArgumentException>(() => store.ExportRegulatoryDossierBundleAsync(" ", dossierPayload));
+            await Assert.ThrowsAsync<ArgumentException>(() => store.ExportRegulatoryDossierBundleAsync("bad/id", dossierPayload));
+
+            await Assert.ThrowsAsync<ArgumentException>(() => store.ImportRegulatoryDossierJsonAsync(" "));
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() => store.ImportRegulatoryDossierJsonAsync("../escape.json"));
+            await Assert.ThrowsAsync<FileNotFoundException>(() => store.ImportRegulatoryDossierJsonAsync("missing_dossier.json"));
+
+            string emptyDossierFile = Path.Combine(tempDir, "empty_dossier.json");
+            await File.WriteAllBytesAsync(emptyDossierFile, []);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => store.ImportRegulatoryDossierJsonAsync("empty_dossier.json"));
+
+            string hugeDossierFile = Path.Combine(tempDir, "huge_dossier.json");
+            await File.WriteAllBytesAsync(hugeDossierFile, new byte[DesktopCertificateFileStore.MaxDossierBundleBytes + 1]);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => store.ImportRegulatoryDossierJsonAsync("huge_dossier.json"));
         }
         finally
         {

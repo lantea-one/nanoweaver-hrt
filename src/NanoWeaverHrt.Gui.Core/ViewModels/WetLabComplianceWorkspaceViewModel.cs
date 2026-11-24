@@ -7,6 +7,7 @@ using NanoWeaverHrt.Endocrine;
 using NanoWeaverHrt.Fabrication.Gel;
 using NanoWeaverHrt.Fabrication.Opentrons;
 using NanoWeaverHrt.Federation;
+using NanoWeaverHrt.Models;
 
 namespace NanoWeaverHrt.Gui.Core.ViewModels;
 
@@ -112,6 +113,26 @@ public sealed class WetLabComplianceWorkspaceViewModel : INotifyPropertyChanged
     private TrajectoryFederationManifest? _lastFederationManifest;
 
     /// <summary>
+    /// Most recently compiled and ML-DSA-65 signed FDA IND or EMA IMPD regulatory dossier bundle.
+    /// </summary>
+    private SignedRegulatoryDossierBundle? _lastCompiledDossier;
+
+    /// <summary>
+    /// Ordered collection of archived regulatory dossier summaries loaded for the target patient.
+    /// </summary>
+    private IReadOnlyList<RegulatoryDossierSummary> _patientRegulatoryDossiers = Array.Empty<RegulatoryDossierSummary>();
+
+    /// <summary>
+    /// Result of the most recent cross-node regulatory dossier cryptographic verification run.
+    /// </summary>
+    private RegulatoryDossierVerificationReport? _lastDossierVerification;
+
+    /// <summary>
+    /// Raw UTF-8 JSON bytes of the most recently downloaded regulatory dossier bundle.
+    /// </summary>
+    private byte[]? _lastDownloadedDossierBytes;
+
+    /// <summary>
     /// Occurs when a property value changes.
     /// </summary>
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -205,6 +226,42 @@ public sealed class WetLabComplianceWorkspaceViewModel : INotifyPropertyChanged
     {
         get => _lastFederationManifest;
         private set => SetField(ref _lastFederationManifest, value);
+    }
+
+    /// <summary>
+    /// Gets the most recently compiled and signed FDA IND / EMA IMPD dossier bundle.
+    /// </summary>
+    public SignedRegulatoryDossierBundle? LastCompiledDossier
+    {
+        get => _lastCompiledDossier;
+        private set => SetField(ref _lastCompiledDossier, value);
+    }
+
+    /// <summary>
+    /// Gets the archived regulatory dossier summaries loaded for the active patient.
+    /// </summary>
+    public IReadOnlyList<RegulatoryDossierSummary> PatientRegulatoryDossiers
+    {
+        get => _patientRegulatoryDossiers;
+        private set => SetField(ref _patientRegulatoryDossiers, value);
+    }
+
+    /// <summary>
+    /// Gets the result of the most recent regulatory dossier cross-node verification check.
+    /// </summary>
+    public RegulatoryDossierVerificationReport? LastDossierVerification
+    {
+        get => _lastDossierVerification;
+        private set => SetField(ref _lastDossierVerification, value);
+    }
+
+    /// <summary>
+    /// Gets the raw UTF-8 JSON bytes of the most recently downloaded portable regulatory dossier bundle.
+    /// </summary>
+    public byte[]? LastDownloadedDossierBytes
+    {
+        get => _lastDownloadedDossierBytes;
+        private set => SetField(ref _lastDownloadedDossierBytes, value);
     }
 
     /// <summary>
@@ -436,5 +493,152 @@ public sealed class WetLabComplianceWorkspaceViewModel : INotifyPropertyChanged
         // WHY:  Signals Avalonia UI binding engine to update presentation elements.
         // HOW:  Invokes PropertyChanged handler with PropertyChangedEventArgs.
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
+    /// <summary>
+    /// Compiles and ML-DSA-65 signs an FDA IND or EMA IMPD regulatory dossier bundle for <paramref name="patientId"/>.
+    /// </summary>
+    /// <param name="patientId">Target patient identifier.</param>
+    /// <param name="request">Compilation parameters specifying framework and optional bindings.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Compiled and signed <see cref="SignedRegulatoryDossierBundle"/>.</returns>
+    public async Task<SignedRegulatoryDossierBundle> CompileRegulatoryDossierAsync(
+        string patientId,
+        CompileRegulatoryDossierRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches IND/IMPD dossier compilation and captures observable state on the ViewModel.
+        // WHY:  Milestone 45 (P237): Gives desktop clinicians single-action regulatory trial bundle generation.
+        // HOW:  Validates arguments, resolves credentials, toggles IsBusy, invokes client, and updates LastCompiledDossier.
+        ArgumentException.ThrowIfNullOrWhiteSpace(patientId);
+        ArgumentNullException.ThrowIfNull(request);
+        var (profile, token) = ResolveEffectiveSession();
+
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            var result = await _client.CompileRegulatoryDossierAsync(profile, token, patientId.Trim(), request, ct).ConfigureAwait(false);
+            LastCompiledDossier = result;
+            return result;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Loads archived FDA IND / EMA IMPD dossier summaries belonging to <paramref name="patientId"/>.
+    /// </summary>
+    /// <param name="patientId">Target patient identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Newest-first read-only list of <see cref="RegulatoryDossierSummary"/> items.</returns>
+    public async Task<IReadOnlyList<RegulatoryDossierSummary>> LoadPatientRegulatoryDossiersAsync(
+        string patientId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Queries compiled regulatory dossier archive summaries for patientId.
+        // WHY:  Milestone 45 (P237): Displays historical submission readiness scores in desktop oversight panels.
+        // HOW:  Validates patientId, resolves credentials, invokes client, and assigns PatientRegulatoryDossiers.
+        ArgumentException.ThrowIfNullOrWhiteSpace(patientId);
+        var (profile, token) = ResolveEffectiveSession();
+
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            var list = await _client.ListRegulatoryDossiersAsync(profile, token, patientId.Trim(), ct).ConfigureAwait(false);
+            PatientRegulatoryDossiers = list;
+            return list;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Downloads raw portable UTF-8 JSON bytes for a compiled regulatory dossier bundle.
+    /// </summary>
+    /// <param name="dossierId">Unique regulatory dossier snapshot identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>UTF-8 JSON byte payload when found; otherwise <see langword="null"/> on HTTP 404.</returns>
+    public async Task<byte[]?> DownloadRegulatoryDossierAsync(
+        string dossierId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Fetches portable signed IND/IMPD dossier bundle bytes for disk export.
+        // WHY:  Milestone 45 (P237): Pairs with DesktopCertificateFileStore for offline submission transfer.
+        // HOW:  Validates dossierId, resolves credentials, awaits DownloadRegulatoryDossierAsync, and stores bytes.
+        ArgumentException.ThrowIfNullOrWhiteSpace(dossierId);
+        var (profile, token) = ResolveEffectiveSession();
+
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            byte[]? bytes = await _client.DownloadRegulatoryDossierAsync(profile, token, dossierId.Trim(), ct).ConfigureAwait(false);
+            LastDownloadedDossierBytes = bytes;
+            return bytes;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Cryptographically verifies a signed portable FDA IND / EMA IMPD dossier bundle via the connected node.
+    /// </summary>
+    /// <param name="bundle">Signed regulatory dossier bundle to verify.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Verification verdict detailing hash, ML-DSA-65 signature, and peer trust state.</returns>
+    public async Task<RegulatoryDossierVerificationReport> VerifyRegulatoryDossierAsync(
+        SignedRegulatoryDossierBundle bundle,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches a signed dossier bundle to POST /api/compliance/dossiers/verify and stores verification verdict.
+        // WHY:  Milestone 45 (P237): Enables multi-center auditors to validate imported IND/IMPD trial packages in desktop UI.
+        // HOW:  Validates bundle, resolves credentials, awaits VerifyRegulatoryDossierAsync, and sets LastDossierVerification.
+        ArgumentNullException.ThrowIfNull(bundle);
+        var (profile, token) = ResolveEffectiveSession();
+
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            var report = await _client.VerifyRegulatoryDossierAsync(
+                profile,
+                token,
+                new VerifyRegulatoryDossierRequest { Bundle = bundle },
+                ct).ConfigureAwait(false);
+            LastDossierVerification = report;
+            return report;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 }

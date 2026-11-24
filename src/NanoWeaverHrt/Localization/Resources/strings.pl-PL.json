@@ -233,5 +233,21 @@
   "Antidote.KineticsChartTitle": "24-Godzinny Rozpad Depotu i Spadek Poziomu Hormonów",
   "Antidote.EmergencyTitle": "Nieodwracalna Awaryjna Neutralizacja Kliniczna",
   "Antidote.EmergencyWarning": "Podanie ratunkowe trwale rozkłada depot, zmienia status antidotum na Zneutralizowany i zapisuje trwałe wycofanie serii.",
-  "Antidote.EventsEmpty": "Dla tej serii nie przeprowadzono jeszcze żadnych podań ratunkowych."
+  "Antidote.EventsEmpty": "Dla tej serii nie przeprowadzono jeszcze żadnych podań ratunkowych.",
+  "Dossier.SectionTitle": "Kompilator Dokumentacji Regulacyjnej IND / IMPD",
+  "Dossier.SectionSubtitle": "Kompiluj spseudonimizowane zgodnie z HIPAA i podpisane ML-DSA-65 pakiety zgłoszeniowe FDA IND (21 CFR 312) oraz EMA IMPD z rygorystyczną kontrolą 10 bramek i weryfikacją podpisu PQC między węzłami.",
+  "Dossier.PatientIdLabel": "Identyfikator Uczestnika",
+  "Dossier.FrameworkLabel": "Ramy Regulacyjne",
+  "Dossier.LotIdLabel": "ID Partii Wektora (Opcjonalne)",
+  "Dossier.SponsorLabel": "Organizacja Sponsora",
+  "Dossier.SiteCodeLabel": "Kod Ośrodka Klinicznego",
+  "Dossier.CompileButton": "Kompiluj Dokumentację Regulacyjną",
+  "Dossier.DownloadButton": "Pobierz Podpisany Pakiet (.json)",
+  "Dossier.VerifyButton": "Zweryfikuj Podpisaną Dokumentację",
+  "Dossier.BadgeSubmissionReady": "GOTOWE DO ZGŁOSZENIA",
+  "Dossier.BadgeBlockedIncomplete": "ZABLOKOWANE / NIEKOMPLETNE",
+  "Dossier.BadgeSignatureTrusted": "PODPIS ZAUFANY",
+  "Dossier.BadgeSignatureUntrusted": "PODPIS NIEZAUFANY",
+  "Dossier.ChecklistTitle": "Lista Kontrolna Gotowości 10 Bramek",
+  "Dossier.VerifierInputLabel": "JSON Podpisanego Pakietu Dokumentacji Regulacyjnej"
 }

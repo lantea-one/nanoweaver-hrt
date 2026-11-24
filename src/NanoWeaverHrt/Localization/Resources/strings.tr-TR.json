@@ -233,5 +233,21 @@
   "Antidote.KineticsChartTitle": "24 Saatlik Depo Parçalanması ve Sistemik Hormon Düşüşü",
   "Antidote.EmergencyTitle": "Geri Dönüşümsüz Acil Klinik Nötralizasyon",
   "Antidote.EmergencyWarning": "Acil uygulama bu depoyu kalıcı olarak parçalar, antidotu Nötralize durumuna geçirir ve kalıcı parti geri çağırma kaydı yazar.",
-  "Antidote.EventsEmpty": "Bu parti için henüz acil nötralizasyon uygulaması gerçekleştirilmedi."
+  "Antidote.EventsEmpty": "Bu parti için henüz acil nötralizasyon uygulaması gerçekleştirilmedi.",
+  "Dossier.SectionTitle": "Düzenleyici IND / IMPD Dosya Derleyicisi",
+  "Dossier.SectionSubtitle": "10 kapılı katı hazırlık kontrolü ve düğümler arası PQC imza doğrulaması ile HIPAA takma adlı, ML-DSA-65 imzalı FDA IND (21 CFR 312) ve EMA IMPD başvuru paketleri derleyin.",
+  "Dossier.PatientIdLabel": "Denek Tanımlayıcısı",
+  "Dossier.FrameworkLabel": "Düzenleyici Çerçeve",
+  "Dossier.LotIdLabel": "Vektör Seri Kimliği (İsteğe Bağlı)",
+  "Dossier.SponsorLabel": "Destekleyici Kuruluş",
+  "Dossier.SiteCodeLabel": "Klinik Merkez Kodu",
+  "Dossier.CompileButton": "Düzenleyici Dosyayı Derle",
+  "Dossier.DownloadButton": "İmzalı Paketi İndir (.json)",
+  "Dossier.VerifyButton": "İmzalı Dosyayı Doğrula",
+  "Dossier.BadgeSubmissionReady": "BAŞVURUYA HAZIR",
+  "Dossier.BadgeBlockedIncomplete": "ENGELLENDİ / EKSİK",
+  "Dossier.BadgeSignatureTrusted": "İMZA GÜVENİLİR",
+  "Dossier.BadgeSignatureUntrusted": "İMZA GÜVENİLMEZ",
+  "Dossier.ChecklistTitle": "10 Kapılı Hazırlık Kontrol Listesi",
+  "Dossier.VerifierInputLabel": "İmzalı Düzenleyici Dosya Paketi JSON"
 }

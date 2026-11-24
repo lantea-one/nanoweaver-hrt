@@ -233,5 +233,21 @@
   "Antidote.KineticsChartTitle": "Pembongkaran Depot 24 Jam & Penurunan Hormon Sistemik",
   "Antidote.EmergencyTitle": "Netralisasi Klinis Darurat Permanen",
   "Antidote.EmergencyWarning": "Pemberian darurat membongkar depot ini secara permanen, mengubah antidot menjadi Dinetralkan, dan mencatat penarikan lot permanen.",
-  "Antidote.EventsEmpty": "Belum ada pemberian netralisasi darurat yang dilakukan untuk lot ini."
+  "Antidote.EventsEmpty": "Belum ada pemberian netralisasi darurat yang dilakukan untuk lot ini.",
+  "Dossier.SectionTitle": "Kompilator Berkas Regulasi IND / IMPD",
+  "Dossier.SectionSubtitle": "Kompilasi bundel pengajuan FDA IND (21 CFR 312) dan EMA IMPD yang dipseudonimisasi HIPAA dan ditandatangani ML-DSA-65 dengan penegakan kesiapan 10-gerbang ketat dan verifikasi PQC lintas-node.",
+  "Dossier.PatientIdLabel": "Pengidentifikasi Subjek",
+  "Dossier.FrameworkLabel": "Kerangka Regulasi",
+  "Dossier.LotIdLabel": "ID Lot Vektor (Opsional)",
+  "Dossier.SponsorLabel": "Organisasi Sponsor",
+  "Dossier.SiteCodeLabel": "Kode Situs Klinis",
+  "Dossier.CompileButton": "Kompilasi Berkas Regulasi",
+  "Dossier.DownloadButton": "Unduh Bundel Tertandatangani (.json)",
+  "Dossier.VerifyButton": "Verifikasi Berkas Tertandatangani",
+  "Dossier.BadgeSubmissionReady": "SIAP PENGAJUAN",
+  "Dossier.BadgeBlockedIncomplete": "TERBLOKIR / TIDAK LENGKAP",
+  "Dossier.BadgeSignatureTrusted": "TANDA TANGAN TERPERCAYA",
+  "Dossier.BadgeSignatureUntrusted": "TANDA TANGAN TIDAK TERPERCAYA",
+  "Dossier.ChecklistTitle": "Daftar Periksa Kesiapan 10-Gerbang",
+  "Dossier.VerifierInputLabel": "JSON Bundel Berkas Regulasi Tertandatangani"
 }

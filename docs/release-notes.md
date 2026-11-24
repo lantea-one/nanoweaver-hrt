@@ -4,6 +4,26 @@
 
 ---
 
+## v2026.11.24.3 — Regulatory IND / IMPD Dossier Compiler & Reproducible Multi-Center Clinical Trial Audit Bundle (Milestone 45 / Forgejo Issues #266–#270) (2026-11-24)
+
+Completes **Milestone 45 (`P235`–`P239` / Forgejo Issues `#266`–`#270`)**, introducing a 10-gate fail-closed FDA IND (`21 CFR 312`) and EMA IMPD regulatory submission compiler, HIPAA Safe Harbor pseudonymized manifests, AES-256-GCM archival encryption, cross-node NIST FIPS 204 **ML-DSA-65** trust verification, REST/SDK/Desktop workflows, and 18-language Sovereign Web UI support:
+* **Phase 1: Regulatory Dossier Snapshot Persistence (`Migration024_RegulatoryDossierArchives` / Forgejo #266 / P235)**:
+  - Added `Migration024_RegulatoryDossierArchives` (`Version = 24`) across SQLite, PostgreSQL, DuckDB, and MySQL/MariaDB creating `weaver_regulatory_dossiers` (with nullable `lot_id`, dialect-native boolean/text types, and 3 indexed lookup paths) and registered it in `DatabaseMigrationRunner`.
+  - Implemented `RegulatorySubmissionFramework` (`FdaInd`, `EmaImpd`), `RegulatoryDossierRecord`, `IRegulatoryDossierRepository`, and `RegulatoryDossierRepository` supporting multi-engine save, lookup, patient history queries, and GDPR Article 17 patient erasure (`DeleteByPatientIdAsync`).
+* **Phase 2: 10-Gate Fail-Closed Compiler Engine & Cross-Node PQC Verification (Forgejo #267 / P236)**:
+  - Implemented `RegulatoryDossierModels`, `RegulatoryDossierApiModels`, `IRegulatoryDossierService`, and `RegulatoryDossierService` enforcing 10 fail-closed clinical readiness gates (`CMC_DNA_BLUEPRINT`, `CMC_LOT_COA`, `CMC_REVERSAL_ANTIDOTE`, `CMC_COLD_CHAIN_CUSTODY`, `QSP_PHARMACOGENOMICS`, `QSP_DEPOT_180D`, `QSP_EPIGENETIC_CIRCUIT`, `QSP_MULTIYEAR_HOMEOSTASIS`, `COMP_PHARMACOVIGILANCE`, `COMP_AUDIT_LEDGER`).
+  - Sealed canonical JSON manifests with SHA-256 + NIST FIPS 204 **ML-DSA-65**, isolated raw patient usernames behind salted HIPAA Safe Harbor pseudonyms (`PseudonymizedPatientId`), encrypted stored bundles with AES-256-GCM (`ProfileDataProtector`), enforced patient metadata redaction (`[REDACTED]`), verified external bundles against `IPeerKeyRegistry` (`LocalNode`, `TrustedPeer`, `RevokedSigner`, `UntrustedSigner`, `InvalidSignature`), and recorded `COMPLIANCE_IND_DOSSIER_COMPILE` and `COMPLIANCE_IND_DOSSIER_VERIFY` 21 CFR Part 11 audit events.
+* **Phase 3: Minimal API Endpoints, Client SDK, ViewModel & Desktop Store (Forgejo #268 / P237)**:
+  - Appended 4 authenticated Minimal API routes to `Program.cs` (`POST /api/compliance/dossiers/{patientId}/compile`, `GET /api/compliance/dossiers/{patientId}`, `GET /api/compliance/dossiers/{dossierId}/download`, and `POST /api/compliance/dossiers/verify`).
+  - Extended `INanoWeaverNodeClient`, `NanoWeaverNodeClient`, `WeaverNodeApiClient`, `WetLabComplianceWorkspaceViewModel` (`CompileRegulatoryDossierAsync`, `LoadPatientRegulatoryDossiersAsync`, `DownloadRegulatoryDossierAsync`, `VerifyRegulatoryDossierAsync`), and `DesktopCertificateFileStore` (`MaxDossierBundleBytes` = 2 MiB JSON export/import with strict path-traversal containment).
+* **Phase 4: Sovereign `/compliance` Dossier UI, 18-Language Localization & bUnit Suite (Forgejo #269 / P238)**:
+  - Added `#ind-dossier-compiler-panel`, readiness badges (`.dossier-badge-ready`, `.dossier-badge-blocked`, `.dossier-badge-trusted`, `.dossier-badge-untrusted` in `app.css`), 10-gate readiness checklist table, blocking reasons list, JSON blob download, and cross-node verifier panel in `ComplianceSecurity.razor`.
+  - Added `16` localized `Dossier.*` strings across all 18 community translation catalogs (`251` keys per catalog) with full bUnit and localization parity verification.
+* **Phase 5: CalVer `v2026.11.24.3` Release, 8-Gate Verification & Audited Pull Request (Forgejo #270 / P239)**:
+  - Updated `<DefaultCalVerVersion>2026.11.24.3</DefaultCalVerVersion>` in `Directory.Build.props`, consolidated `README.md`, `docs/index.md`, `docs/abstract.md`, `docs/api-reference.md`, `docs/compliance-and-security.md`, `docs/desktop-and-mobile-gui.md`, and `docs/release-notes.md`, and verified all 8 gates of `./scripts/verify-all.sh`.
+
+---
+
 ## v2026.11.24.2 — Antidote Reversal Switch & Emergency Clinical Neutralization Protocol Engine (Milestone 44 / Forgejo Issues #261–#265) (2026-11-24)
 
 Completes **Milestone 44 (`P230`–`P234` / Forgejo Issues `#261`–`#265`)**, introducing sequence-specific Watson-Crick toehold strand-displacement reversal antidotes, NIST FIPS 204 ML-DSA-65 lot-pairing attestations, 24-hour hormone cessation decay kinetics, fail-closed pre-implantation standby enforcement, and emergency lot neutralization workflows:

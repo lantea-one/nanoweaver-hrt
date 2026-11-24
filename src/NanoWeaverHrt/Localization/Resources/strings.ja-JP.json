@@ -233,5 +233,21 @@
   "Antidote.KineticsChartTitle": "24時間デポ分解および全身ホルモン減衰曲線",
   "Antidote.EmergencyTitle": "不可逆的・緊急臨床中和プロトコル",
   "Antidote.EmergencyWarning": "緊急投与はこのデポを永久に分解し、解毒剤を中和済みに遷移させ、恒久的なロット回収記録を発行します。",
-  "Antidote.EventsEmpty": "このロットに対する緊急中和投与はまだ実行されていません。"
+  "Antidote.EventsEmpty": "このロットに対する緊急中和投与はまだ実行されていません。",
+  "Dossier.SectionTitle": "薬事規制 IND / IMPD 申請資料コンパイラ",
+  "Dossier.SectionSubtitle": "10段階フェイルクローズド適合性チェックとノード間 PQC 署名検証を備えた、HIPAA 仮名化・ML-DSA-65 署名済み FDA IND (21 CFR 312) および EMA IMPD 申請バンドルを作成します。",
+  "Dossier.PatientIdLabel": "被験者識別子",
+  "Dossier.FrameworkLabel": "規制フレームワーク",
+  "Dossier.LotIdLabel": "ベクターロット ID (任意)",
+  "Dossier.SponsorLabel": "治験依頼者組織",
+  "Dossier.SiteCodeLabel": "治験実施施設コード",
+  "Dossier.CompileButton": "薬事規制ドシエを作成",
+  "Dossier.DownloadButton": "署名済みバンドルをダウンロード (.json)",
+  "Dossier.VerifyButton": "署名済みドシエを検証",
+  "Dossier.BadgeSubmissionReady": "申請準備完了",
+  "Dossier.BadgeBlockedIncomplete": "保留中 / 未完了",
+  "Dossier.BadgeSignatureTrusted": "署名信頼済み",
+  "Dossier.BadgeSignatureUntrusted": "署名未検証・非信頼",
+  "Dossier.ChecklistTitle": "10ゲート適格性チェックリスト",
+  "Dossier.VerifierInputLabel": "署名済み薬事規制ドシエバンドル JSON"
 }

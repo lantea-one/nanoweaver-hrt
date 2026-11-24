@@ -166,6 +166,8 @@ public class Program
         builder.Services.AddSingleton<IEpigeneticCircuitService, EpigeneticCircuitService>();
         builder.Services.AddSingleton<IMultiYearHomeostasisRepository, MultiYearHomeostasisRepository>();
         builder.Services.AddSingleton<IMultiYearHomeostasisService, MultiYearHomeostasisService>();
+        builder.Services.AddSingleton<IRegulatoryDossierRepository, RegulatoryDossierRepository>();
+        builder.Services.AddSingleton<IRegulatoryDossierService, RegulatoryDossierService>();
         builder.Services.AddSingleton<IFederatedPeerSyncRepository, FederatedPeerSyncRepository>();
         builder.Services.AddSingleton<IFederatedDnsResolver, SystemFederatedDnsResolver>();
         builder.Services.AddHttpClient(FederatedPeerSyncService.HttpClientName, client =>
@@ -6666,6 +6668,168 @@ public class Program
         .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden)
         .Produces<SecureProblemDetails>(StatusCodes.Status404NotFound)
         .Produces<SecureProblemDetails>(StatusCodes.Status422UnprocessableEntity);
+
+        // ---------------------------------------------------------------------
+        // REST API: Regulatory IND / IMPD Dossier Compiler & Cross-Node Audit (Milestone 45)
+        // ---------------------------------------------------------------------
+        app.MapPost("/api/compliance/dossiers/{patientId}/compile", async (
+            string patientId,
+            CompileRegulatoryDossierRequest? request,
+            IRegulatoryDossierService dossierService,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Compiles, evaluates 10 fail-closed readiness gates, ML-DSA-65 signs, and encrypts an IND/IMPD dossier bundle.
+            // WHY:  Milestone 45 (P237): Generates reproducible, HIPAA-pseudonymized regulatory submissions across all subsystems.
+            // HOW:  Enforces non-empty patientId and Administrator role, invokes CompileDossierAsync, and returns 201 Created.
+            if (string.IsNullOrWhiteSpace(patientId))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Valid patientId is required.");
+            }
+
+            // WHY `!`: Authentication middleware guarantees CurrentUser is populated before reaching this endpoint.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            if (caller.Role != UserRole.Administrator)
+            {
+                return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: Administrator role is required to compile regulatory dossiers.");
+            }
+
+            SignedRegulatoryDossierBundle bundle = await dossierService.CompileDossierAsync(
+                patientId.Trim(),
+                request,
+                caller.Username,
+                ct);
+            return Results.Created($"/api/compliance/dossiers/{bundle.Manifest.DossierId}/download", bundle);
+        })
+        .WithName("CompileRegulatoryDossier")
+        .WithTags("Compliance & PQC Cryptography")
+        .WithSummary("Compiles and ML-DSA-65 seals a de-identified FDA IND or EMA IMPD regulatory dossier.")
+        .WithDescription("Aggregates CMC, QSP, cold-chain, antidote, pharmacovigilance, and 21 CFR Part 11 evidence, evaluates 10 fail-closed gates, signs canonically with ML-DSA-65, and archives encrypted at rest.")
+        .Accepts<CompileRegulatoryDossierRequest>("application/json")
+        .Produces<SignedRegulatoryDossierBundle>(StatusCodes.Status201Created)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden);
+
+        app.MapGet("/api/compliance/dossiers/{patientId}", async (
+            string patientId,
+            IRegulatoryDossierService dossierService,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Lists compiled FDA IND / EMA IMPD dossier archive summaries for patientId newest first.
+            // WHY:  Milestone 45 (P237): Grants full oversight to Administrators and redacted self-views to Patients.
+            // HOW:  Enforces Administrator or matching Patient self role and redacts operator/key metadata for patients.
+            if (string.IsNullOrWhiteSpace(patientId))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Valid patientId is required.");
+            }
+
+            string cleanPatientId = patientId.Trim();
+            // WHY `!`: Authentication middleware guarantees CurrentUser is populated before reaching this endpoint.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            bool isAdmin = caller.Role == UserRole.Administrator;
+            bool isPatientSelf = caller.Role == UserRole.Patient
+                && string.Equals(caller.Username, cleanPatientId, StringComparison.OrdinalIgnoreCase);
+
+            if (!isAdmin && !isPatientSelf)
+            {
+                return SecureProblemResult(context, StatusCodes.Status403Forbidden, $"Forbidden: Caller is not authorized to list regulatory dossiers for patient '{cleanPatientId}'.");
+            }
+
+            IReadOnlyList<RegulatoryDossierSummary> list = await dossierService.ListDossiersForPatientAsync(
+                cleanPatientId,
+                redactForPatient: !isAdmin,
+                ct);
+            return Results.Ok(list);
+        })
+        .WithName("ListPatientRegulatoryDossiers")
+        .WithTags("Compliance & PQC Cryptography")
+        .WithSummary("Lists compiled FDA IND / EMA IMPD dossier summaries for a patient.")
+        .WithDescription("Returns newest-first regulatory dossier metadata to Administrators, or redacted operator/key views to matching Patient callers.")
+        .Produces<IReadOnlyList<RegulatoryDossierSummary>>(StatusCodes.Status200OK)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden);
+
+        app.MapGet("/api/compliance/dossiers/{dossierId}/download", async (
+            string dossierId,
+            IRegulatoryDossierService dossierService,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Decrypts and streams a portable signed ML-DSA-65 IND/IMPD dossier bundle as ind_dossier_{dossierId}.json.
+            // WHY:  Milestone 45 (P237): Supports multi-center clinical trial electronic submission transfer without DB key exposure.
+            // HOW:  Enforces Administrator role, decrypts bundle JSON from encrypted archive, and streams indented UTF-8 JSON file.
+            if (string.IsNullOrWhiteSpace(dossierId))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Valid dossierId is required.");
+            }
+
+            // WHY `!`: Authentication middleware guarantees CurrentUser is populated before reaching this endpoint.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            if (caller.Role != UserRole.Administrator)
+            {
+                return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: Administrator role is required to download regulatory dossier bundles.");
+            }
+
+            SignedRegulatoryDossierBundle? bundle = await dossierService.GetDecryptedBundleAsync(dossierId.Trim(), ct);
+            if (bundle is null)
+            {
+                return SecureProblemResult(context, StatusCodes.Status404NotFound, $"Regulatory dossier '{dossierId.Trim()}' was not found.");
+            }
+
+            byte[] payloadBytes = JsonSerializer.SerializeToUtf8Bytes(
+                bundle,
+                new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
+            return Results.File(payloadBytes, "application/json", $"ind_dossier_{bundle.Manifest.DossierId}.json");
+        })
+        .WithName("DownloadRegulatoryDossierBundle")
+        .WithTags("Compliance & PQC Cryptography")
+        .WithSummary("Downloads a portable signed ML-DSA-65 FDA IND / EMA IMPD regulatory dossier JSON bundle.")
+        .WithDescription("Streams ind_dossier_{dossierId}.json after Administrator authorization and AES-256-GCM at-rest decryption.")
+        .Produces(StatusCodes.Status200OK, contentType: "application/json")
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden)
+        .Produces<SecureProblemDetails>(StatusCodes.Status404NotFound);
+
+        app.MapPost("/api/compliance/dossiers/verify", async (
+            VerifyRegulatoryDossierRequest? request,
+            IRegulatoryDossierService dossierService,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Verifies a portable IND/IMPD dossier bundle's canonical SHA-256 digest, ML-DSA-65 signature, and peer key trust.
+            // WHY:  Milestone 45 (P237): Powers offline and multi-center cryptographic authenticity checks before regulatory review.
+            // HOW:  Validates bundle/manifest payload, enforces Administrator or Researcher role, verifies, and writes audit event.
+            if (request?.Bundle is null || request.Bundle.Manifest is null)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Valid signed dossier bundle and manifest are required.");
+            }
+
+            // WHY `!`: Authentication middleware guarantees CurrentUser is populated before reaching this endpoint.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            if (caller.Role != UserRole.Administrator && caller.Role != UserRole.Researcher)
+            {
+                return SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: Administrator or Researcher role is required to verify regulatory dossier bundles.");
+            }
+
+            RegulatoryDossierVerificationReport report = await dossierService.VerifyDossierBundleAsync(
+                request.Bundle,
+                caller.Username,
+                ct);
+            return Results.Ok(report);
+        })
+        .WithName("VerifyRegulatoryDossierBundle")
+        .WithTags("Compliance & PQC Cryptography")
+        .WithSummary("Cryptographically verifies a portable ML-DSA-65 signed FDA IND / EMA IMPD dossier bundle.")
+        .WithDescription("Recomputes canonical SHA-256 digest, verifies ML-DSA-65 signature, resolves local/peer trust anchors, and logs COMPLIANCE_IND_DOSSIER_VERIFY.")
+        .Accepts<VerifyRegulatoryDossierRequest>("application/json")
+        .Produces<RegulatoryDossierVerificationReport>(StatusCodes.Status200OK)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden);
 
         app.Run();
     }

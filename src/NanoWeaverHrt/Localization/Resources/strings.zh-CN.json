@@ -233,5 +233,21 @@
   "Antidote.KineticsChartTitle": "24 小时缓释库解离与全身激素衰减曲线",
   "Antidote.EmergencyTitle": "不可逆紧急临床中和协议",
   "Antidote.EmergencyWarning": "紧急给药将永久解离此缓释库，将解毒剂状态转为已中和，并记录永久批次召回存证。",
-  "Antidote.EventsEmpty": "该批次尚未执行任何紧急中和给药操作。"
+  "Antidote.EventsEmpty": "该批次尚未执行任何紧急中和给药操作。",
+  "Dossier.SectionTitle": "监管申报 IND / IMPD 档案编译器",
+  "Dossier.SectionSubtitle": "编译经过 HIPAA 去标识化并由 ML-DSA-65 签名的 FDA IND (21 CFR 312) 和 EMA IMPD 申报数据包，强制执行 10 项门禁就绪检查与跨节点后量子签名验证。",
+  "Dossier.PatientIdLabel": "受试者标识符",
+  "Dossier.FrameworkLabel": "监管框架",
+  "Dossier.LotIdLabel": "载体批次编号（可选）",
+  "Dossier.SponsorLabel": "申办方机构",
+  "Dossier.SiteCodeLabel": "临床中心代码",
+  "Dossier.CompileButton": "编译监管申报档案",
+  "Dossier.DownloadButton": "下载已签名数据包 (.json)",
+  "Dossier.VerifyButton": "验证已签名档案",
+  "Dossier.BadgeSubmissionReady": "已具备申报条件",
+  "Dossier.BadgeBlockedIncomplete": "已拦截 / 信息不完整",
+  "Dossier.BadgeSignatureTrusted": "签名可信",
+  "Dossier.BadgeSignatureUntrusted": "签名不可信",
+  "Dossier.ChecklistTitle": "10 项门禁就绪检查清单",
+  "Dossier.VerifierInputLabel": "已签名监管档案数据包 JSON"
 }

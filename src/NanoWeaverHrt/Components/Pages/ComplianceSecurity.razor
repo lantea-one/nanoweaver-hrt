@@ -1,8 +1,12 @@
 @page "/compliance"
+@using System.Text.Json
 @using NanoWeaverHrt.Security.Authentication
 @inject IComplianceAuditService ComplianceService
 @inject IKeyManagementService KeyManagementService
 @inject IEncryptedStorageService StorageService
+@inject IRegulatoryDossierService DossierService
+@inject IWeaverLocalizer Localizer
+@inject IJSRuntime JS
 @inject UserSessionState SessionState
 
 <section class="card">
@@ -232,6 +236,212 @@
     </div>
 </section>
 
+<!-- Regulatory IND / IMPD Dossier Compiler & PQC Audit Bundle Verifier -->
+<section id="ind-dossier-compiler-panel" class="card mt-1-5rem" role="region" aria-label="Regulatory IND and IMPD Dossier Compiler">
+    <div class="card-header">
+        <div>
+            <h3>@T("Dossier.SectionTitle")</h3>
+            <span class="subtext">@T("Dossier.SectionSubtitle")</span>
+        </div>
+        @if (_compiledDossier is not null)
+        {
+            <span id="dossier-readiness-badge"
+                  class="dossier-badge @(_compiledDossier.Manifest.IsSubmissionReady ? "dossier-badge-ready" : "dossier-badge-blocked")">
+                @(_compiledDossier.Manifest.IsSubmissionReady ? T("Dossier.BadgeSubmissionReady") : T("Dossier.BadgeBlockedIncomplete"))
+            </span>
+        }
+    </div>
+
+    <div class="telemetry-grid mt-3">
+        <div class="form-group">
+            <label class="form-label" for="input-dossier-patient-id">@T("Dossier.PatientIdLabel")</label>
+            <input id="input-dossier-patient-id"
+                   class="form-control"
+                   @bind="_dossierPatientId"
+                   placeholder="patient_001" />
+        </div>
+
+        <div class="form-group">
+            <label class="form-label" for="select-dossier-framework">@T("Dossier.FrameworkLabel")</label>
+            <select id="select-dossier-framework"
+                    class="form-control"
+                    @bind="_dossierFramework">
+                <option value="@RegulatorySubmissionFramework.FdaInd">FDA IND (21 CFR 312)</option>
+                <option value="@RegulatorySubmissionFramework.EmaImpd">EMA IMPD</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label" for="input-dossier-lot-id">@T("Dossier.LotIdLabel")</label>
+            <input id="input-dossier-lot-id"
+                   class="form-control"
+                   @bind="_dossierLotId"
+                   placeholder="lot_..." />
+        </div>
+
+        <div class="form-group">
+            <label class="form-label" for="input-dossier-sponsor">@T("Dossier.SponsorLabel")</label>
+            <input id="input-dossier-sponsor"
+                   class="form-control"
+                   @bind="_dossierSponsor"
+                   placeholder="NanoWeaver Sovereign Clinical Consortium" />
+        </div>
+
+        <div class="form-group">
+            <label class="form-label" for="input-dossier-site-code">@T("Dossier.SiteCodeLabel")</label>
+            <input id="input-dossier-site-code"
+                   class="form-control"
+                   @bind="_dossierSiteCode"
+                   placeholder="SOVEREIGN-SITE-01" />
+        </div>
+    </div>
+
+    <div class="dossier-actions-row">
+        <button id="btn-compile-dossier"
+                type="button"
+                class="btn btn-primary"
+                disabled="@_dossierBusy"
+                @onclick="CompileRegulatoryDossierAsync">
+            @T("Dossier.CompileButton")
+        </button>
+
+        @if (_compiledDossier is not null)
+        {
+            <button id="btn-download-dossier"
+                    type="button"
+                    class="btn btn-secondary"
+                    @onclick="DownloadCompiledDossierAsync">
+                @T("Dossier.DownloadButton")
+            </button>
+        }
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(_dossierError))
+    {
+        <div id="dossier-error" class="alert alert-danger mt-1rem">@_dossierError</div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(_dossierStatus))
+    {
+        <div id="dossier-status" class="alert alert-success mt-1rem">@_dossierStatus</div>
+    }
+
+    @if (_compiledDossier is not null)
+    {
+        <div id="dossier-compiled-card" class="dossier-result-card mt-1rem">
+            <div class="dossier-summary-grid">
+                <div>
+                    <small class="text-muted">Dossier ID</small>
+                    <div class="font-mono">@_compiledDossier.Manifest.DossierId</div>
+                </div>
+                <div>
+                    <small class="text-muted">Framework</small>
+                    <div>@_compiledDossier.Manifest.SubmissionFramework</div>
+                </div>
+                <div>
+                    <small class="text-muted">Completeness</small>
+                    <div class="font-mono">@($"{_compiledDossier.Manifest.CompletenessScore:F1}%")</div>
+                </div>
+                <div>
+                    <small class="text-muted">HIPAA Subject Token</small>
+                    <div class="font-mono">@_compiledDossier.Manifest.PseudonymizedPatientId</div>
+                </div>
+                <div>
+                    <small class="text-muted">Sponsor / Site</small>
+                    <div>@_compiledDossier.Manifest.SponsorName (@_compiledDossier.Manifest.ClinicalTrialSiteCode)</div>
+                </div>
+                <div>
+                    <small class="text-muted">Signer / SHA-256</small>
+                    <div class="font-mono">@_compiledDossier.SignerKeyId / @FormatShortDigest(_compiledDossier.PayloadSha256)</div>
+                </div>
+            </div>
+
+            <h4 class="mt-3">@T("Dossier.ChecklistTitle")</h4>
+            <div class="table-responsive">
+                <table id="dossier-readiness-checklist" class="table">
+                    <thead>
+                        <tr>
+                            <th>Gate Code</th>
+                            <th>Status</th>
+                            <th>Summary</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (DossierReadinessGate gate in _compiledDossier.Manifest.ReadinessGates)
+                        {
+                            <tr>
+                                <td class="font-mono">@gate.GateCode</td>
+                                <td class="@(gate.Passed ? "dossier-gate-pass" : "dossier-gate-fail")">
+                                    @(gate.Passed ? "PASS" : "BLOCKED")
+                                </td>
+                                <td>@gate.Summary</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            @if (_compiledDossier.Manifest.BlockingReasons.Count > 0)
+            {
+                <ul id="dossier-blocking-reasons" class="dossier-blocking-list">
+                    @foreach (string blocker in _compiledDossier.Manifest.BlockingReasons)
+                    {
+                        <li>@blocker</li>
+                    }
+                </ul>
+            }
+        </div>
+    }
+
+    <div class="form-group mt-3">
+        <label class="form-label" for="textarea-verify-dossier-json">@T("Dossier.VerifierInputLabel")</label>
+        <textarea id="textarea-verify-dossier-json"
+                  class="form-control dossier-textarea"
+                  @bind="_verifyDossierJson"
+                  placeholder="{ &quot;bundleVersion&quot;: &quot;nanoweaver-ind-dossier-v1&quot;, ... }"></textarea>
+    </div>
+
+    <div class="dossier-actions-row">
+        <button id="btn-verify-dossier"
+                type="button"
+                class="btn btn-accent"
+                disabled="@_dossierBusy"
+                @onclick="VerifyRegulatoryDossierAsync">
+            @T("Dossier.VerifyButton")
+        </button>
+    </div>
+
+    @if (_dossierVerificationReport is not null)
+    {
+        <div id="dossier-verify-result-card" class="dossier-result-card mt-1rem">
+            <div class="dossier-actions-row">
+                <span id="dossier-verify-trust-badge"
+                      class="dossier-badge @(_dossierVerificationReport.IsTrusted ? "dossier-badge-trusted" : "dossier-badge-untrusted")">
+                    @(_dossierVerificationReport.IsTrusted ? T("Dossier.BadgeSignatureTrusted") : T("Dossier.BadgeSignatureUntrusted"))
+                </span>
+                <span class="font-mono">@_dossierVerificationReport.TrustSource</span>
+            </div>
+            <div class="dossier-summary-grid mt-2">
+                <div>
+                    <small class="text-muted">SHA-256 Digest Valid</small>
+                    <div class="font-mono">@_dossierVerificationReport.HashValid</div>
+                </div>
+                <div>
+                    <small class="text-muted">ML-DSA-65 Signature Valid</small>
+                    <div class="font-mono">@_dossierVerificationReport.SignatureValid</div>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(_dossierVerificationReport.TrustedPeerLabel))
+                {
+                    <div>
+                        <small class="text-muted">Trusted Peer</small>
+                        <div>@_dossierVerificationReport.TrustedPeerLabel</div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</section>
+
 @code {
     /// <summary>
     /// Current compliance scorecard and posture report.
@@ -287,6 +497,76 @@
     /// Flag indicating whether the crypto-shredding operation succeeded.
     /// </summary>
     private bool _shredSuccess;
+
+    /// <summary>
+    /// Cached canonical camelCase JSON options for regulatory dossier export and verification.
+    /// </summary>
+    private static readonly JsonSerializerOptions DossierJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true,
+        WriteIndented = true
+    };
+
+    /// <summary>
+    /// Active community UI language resolved from browser preferences.
+    /// </summary>
+    private WeaverLanguage _currentLanguage = WeaverLanguage.English;
+
+    /// <summary>
+    /// Target subject identifier bound to the regulatory dossier compiler form.
+    /// </summary>
+    private string _dossierPatientId = string.Empty;
+
+    /// <summary>
+    /// Selected regulatory submission framework (FDA IND or EMA IMPD).
+    /// </summary>
+    private RegulatorySubmissionFramework _dossierFramework = RegulatorySubmissionFramework.FdaInd;
+
+    /// <summary>
+    /// Optional explicit manufacturing vector lot identifier override.
+    /// </summary>
+    private string _dossierLotId = string.Empty;
+
+    /// <summary>
+    /// Optional clinical trial sponsor organization override.
+    /// </summary>
+    private string _dossierSponsor = string.Empty;
+
+    /// <summary>
+    /// Optional clinical trial investigation site code override.
+    /// </summary>
+    private string _dossierSiteCode = string.Empty;
+
+    /// <summary>
+    /// Raw JSON bundle pasted or prefilled for cross-node ML-DSA-65 verification.
+    /// </summary>
+    private string _verifyDossierJson = string.Empty;
+
+    /// <summary>
+    /// Most recently compiled signed regulatory dossier bundle rendered in the UI.
+    /// </summary>
+    private SignedRegulatoryDossierBundle? _compiledDossier;
+
+    /// <summary>
+    /// Latest cross-node verification report evaluated for an external or exported dossier bundle.
+    /// </summary>
+    private RegulatoryDossierVerificationReport? _dossierVerificationReport;
+
+    /// <summary>
+    /// Validation or service error message displayed inside the dossier compiler panel.
+    /// </summary>
+    private string? _dossierError;
+
+    /// <summary>
+    /// Informational completion banner displayed after compilation, export, or verification.
+    /// </summary>
+    private string? _dossierStatus;
+
+    /// <summary>
+    /// Re-entrancy guard preventing concurrent regulatory compilation or verification submissions.
+    /// </summary>
+    private bool _dossierBusy;
 
     /// <summary>
     /// Lifecycle initialization loading status report and recent audit records.
@@ -386,6 +666,168 @@
                 ? Program.ShredAlreadyMessage(_targetShredSubjectId)
                 : Program.ShredUnknownMessage(_targetShredSubjectId);
             _shredSuccess = false;
+        }
+    }
+
+    /// <summary>
+    /// Synchronizes the user's persisted browser language preference after initial client render.
+    /// </summary>
+    /// <param name="firstRender"><see langword="true"/> on initial interactive render.</param>
+    /// <returns>A task representing the asynchronous JS interop language lookup.</returns>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // WHAT: Queries stored language preference from browser storage and re-renders localized strings.
+        // WHY:  Ensures all 18 community locales render dynamically in the IND/IMPD Dossier Compiler panel.
+        // HOW:  Invokes 'weaverGetLanguage' via JS interop inside a headless-safe try/catch block.
+        if (firstRender)
+        {
+            try
+            {
+                string? storedTag = await JS.InvokeAsync<string?>("weaverGetLanguage");
+                if (!string.IsNullOrWhiteSpace(storedTag))
+                {
+                    _currentLanguage = Localizer.ResolveLanguage(storedTag);
+                    StateHasChanged();
+                }
+            }
+            catch (Exception)
+            {
+                // Headless bUnit tests or server prerendering without JS persistence
+            }
+        }
+    }
+
+    /// <summary>
+    /// Resolves a localized UI string for the active community language.
+    /// </summary>
+    /// <param name="key">Dot-notated localization resource key.</param>
+    /// <returns>Translated text in the active language.</returns>
+    private string T(string key) => Localizer.GetString(key, _currentLanguage);
+
+    /// <summary>
+    /// Formats a hexadecimal digest prefix safely without throwing on shorter test values.
+    /// </summary>
+    /// <param name="value">Full hexadecimal digest string.</param>
+    /// <returns>Truncated 16-character digest prefix with ellipsis, or the full string if shorter.</returns>
+    private static string FormatShortDigest(string? value)
+    {
+        // WHAT: Truncates SHA-256 hex strings safely to 16 characters for compact card display.
+        // WHY:  Prevents ArgumentOutOfRangeException when unit tests supply abbreviated fixture hashes.
+        // HOW:  Checks string length before slicing via AsSpan without extra array allocations.
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "n/a";
+        }
+
+        return value.Length > 16 ? string.Concat(value.AsSpan(0, 16), "...") : value;
+    }
+
+    /// <summary>
+    /// Compiles a 10-gate FDA IND or EMA IMPD regulatory submission dossier for the specified patient.
+    /// </summary>
+    /// <returns>A task representing the asynchronous regulatory compilation operation.</returns>
+    private async Task CompileRegulatoryDossierAsync()
+    {
+        // WHAT: Validates subject input, builds CompileRegulatoryDossierRequest, and invokes DossierService.CompileDossierAsync.
+        // WHY:  Produces an immutable, HIPAA-pseudonymized, ML-DSA-65 signed submission bundle with 10-gate readiness reporting.
+        // HOW:  Guards blank subject IDs, tracks busy state, stores resulting SignedRegulatoryDossierBundle, and captures validation errors.
+        _dossierError = null;
+        _dossierStatus = null;
+
+        if (string.IsNullOrWhiteSpace(_dossierPatientId))
+        {
+            _dossierError = "Subject identifier is required to compile an IND/IMPD dossier.";
+            return;
+        }
+
+        _dossierBusy = true;
+        try
+        {
+            CompileRegulatoryDossierRequest request = new()
+            {
+                SubmissionFramework = _dossierFramework,
+                LotId = string.IsNullOrWhiteSpace(_dossierLotId) ? null : _dossierLotId.Trim(),
+                SponsorName = string.IsNullOrWhiteSpace(_dossierSponsor) ? null : _dossierSponsor.Trim(),
+                ClinicalTrialSiteCode = string.IsNullOrWhiteSpace(_dossierSiteCode) ? null : _dossierSiteCode.Trim()
+            };
+
+            string operatorId = SessionState.CurrentUser?.Username ?? "web_compliance_operator";
+            _compiledDossier = await DossierService.CompileDossierAsync(_dossierPatientId.Trim(), request, operatorId);
+            _dossierStatus = $"Compiled dossier {_compiledDossier.Manifest.DossierId} ({_compiledDossier.Manifest.CompletenessScore:F1}% ready).";
+        }
+        catch (Exception ex)
+        {
+            _dossierError = ex.Message;
+        }
+        finally
+        {
+            _dossierBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Serializes the active compiled dossier bundle to canonical camelCase JSON, prefills the verifier box,
+    /// and triggers a sovereign browser blob download.
+    /// </summary>
+    /// <returns>A task representing the asynchronous client file export.</returns>
+    private async Task DownloadCompiledDossierAsync()
+    {
+        // WHAT: Exports the compiled ML-DSA-65 signed dossier bundle as a standalone JSON file.
+        // WHY:  Enables regulators or partner clinical hubs to transport and independently verify the package offline.
+        // HOW:  Serializes _compiledDossier with camelCase formatting, populates _verifyDossierJson, and invokes weaverDownloadBlob.
+        if (_compiledDossier is null)
+        {
+            return;
+        }
+
+        string json = JsonSerializer.Serialize(_compiledDossier, DossierJsonOptions);
+        _verifyDossierJson = json;
+        string fileName = $"{_compiledDossier.Manifest.DossierId}.json";
+        await JS.InvokeVoidAsync("weaverDownloadBlob", fileName, json, "application/json");
+        _dossierStatus = $"Exported signed dossier bundle {fileName}.";
+    }
+
+    /// <summary>
+    /// Parses a signed regulatory dossier JSON payload and verifies its SHA-256 digest and ML-DSA-65 peer/local trust chain.
+    /// </summary>
+    /// <returns>A task representing the asynchronous cross-node cryptographic verification operation.</returns>
+    private async Task VerifyRegulatoryDossierAsync()
+    {
+        // WHAT: Deserializes _verifyDossierJson into SignedRegulatoryDossierBundle and invokes VerifyDossierBundleAsync.
+        // WHY:  Allows clinical auditors to validate external partner IND/IMPD exports directly from the Sovereign UI.
+        // HOW:  Guards blank or structurally invalid JSON before dispatching cross-node PQC trust evaluation.
+        _dossierError = null;
+        _dossierStatus = null;
+
+        if (string.IsNullOrWhiteSpace(_verifyDossierJson))
+        {
+            _dossierError = "Paste a signed dossier bundle JSON payload to verify.";
+            return;
+        }
+
+        _dossierBusy = true;
+        try
+        {
+            SignedRegulatoryDossierBundle? parsed = JsonSerializer.Deserialize<SignedRegulatoryDossierBundle>(_verifyDossierJson, DossierJsonOptions);
+            if (parsed is null || parsed.Manifest is null || string.IsNullOrWhiteSpace(parsed.Manifest.DossierId))
+            {
+                _dossierError = "Dossier JSON payload is missing a valid signed manifest.";
+                _dossierVerificationReport = null;
+                return;
+            }
+
+            string operatorId = SessionState.CurrentUser?.Username ?? "web_compliance_operator";
+            _dossierVerificationReport = await DossierService.VerifyDossierBundleAsync(parsed, operatorId);
+            _dossierStatus = $"Verification completed: {_dossierVerificationReport.TrustSource}.";
+        }
+        catch (Exception ex)
+        {
+            _dossierVerificationReport = null;
+            _dossierError = ex.Message;
+        }
+        finally
+        {
+            _dossierBusy = false;
         }
     }
 }

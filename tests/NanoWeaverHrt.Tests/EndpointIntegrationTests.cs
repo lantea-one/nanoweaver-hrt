@@ -5,6 +5,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
+using NanoWeaverHrt.Abstractions;
 using NanoWeaverHrt.Analytics;
 using NanoWeaverHrt.Compliance;
 using NanoWeaverHrt.Endocrine;
@@ -3736,6 +3737,243 @@ public sealed class EndpointIntegrationTests : IClassFixture<WebApplicationFacto
             IReadOnlyList<AuditRecord> entries = audit.GetAuditRecords(500);
             Assert.Contains(entries, e => e.Action == "FABRICATION_ANTIDOTE_PAIR");
             Assert.Contains(entries, e => e.Action == "FABRICATION_ANTIDOTE_ADMINISTER");
+        }
+    }
+
+    /// <summary>
+    /// End-to-end integration test for Milestone 45 (P237): verifies all 4 Regulatory IND / IMPD Dossier
+    /// Minimal API routes, RBAC enforcement, patient redaction, portable JSON attachment download,
+    /// cross-node signature &amp; tamper verification, and 21 CFR Part 11 audit ledger events.
+    /// </summary>
+    [Fact]
+    public async Task RegulatoryDossierEndpoints_CompileListDownloadVerifyAndRbac_WorkEndToEnd()
+    {
+        string patSelf = "m45_patient_self";
+        string patOther = "m45_patient_other";
+        string researcher = "m45_researcher";
+
+        string tokSelf = await ProvisionUserAndGetTokenAsync(patSelf, UserRole.Patient);
+        string tokOther = await ProvisionUserAndGetTokenAsync(patOther, UserRole.Patient);
+        string tokRes = await ProvisionUserAndGetTokenAsync(researcher, UserRole.Researcher);
+
+        using HttpClient clientAnon = _factory.CreateClient();
+        using HttpClient clientRes = CreateClientWithBearer(tokRes);
+        using HttpClient clientSelf = CreateClientWithBearer(tokSelf);
+        using HttpClient clientOther = CreateClientWithBearer(tokOther);
+
+        // 1. Seed complete patient evidence directly via repositories/services in scope
+        using (IServiceScope seedScope = _factory.Services.CreateScope())
+        {
+            IPatientDnaRepository dnaRepo = seedScope.ServiceProvider.GetRequiredService<IPatientDnaRepository>();
+            IDepotFormulationRepository depotRepo = seedScope.ServiceProvider.GetRequiredService<IDepotFormulationRepository>();
+            IFabricationLotRepository lotRepo = seedScope.ServiceProvider.GetRequiredService<IFabricationLotRepository>();
+            IFabricationLotService lotSvc = seedScope.ServiceProvider.GetRequiredService<IFabricationLotService>();
+            IReversalAntidoteService antiSvc = seedScope.ServiceProvider.GetRequiredService<IReversalAntidoteService>();
+            IEpigeneticCircuitRepository circRepo = seedScope.ServiceProvider.GetRequiredService<IEpigeneticCircuitRepository>();
+            IMultiYearHomeostasisRepository myhRepo = seedScope.ServiceProvider.GetRequiredService<IMultiYearHomeostasisRepository>();
+
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            string dnaId = "m45_dna_01";
+            await dnaRepo.UpsertDnaRecordAsync(new PatientDigitalDnaRecord
+            {
+                Id = dnaId,
+                Username = patSelf,
+                Title = "M45 Complete Nanocarrier",
+                Regimen = TherapeuticRegimen.MaleToFemale,
+                TargetTissue = "Gonadotrope",
+                ActiveLigand = "17beta-Estradiol",
+                NanocarrierGeometry = "6HB",
+                TargetAptamerKdNm = 3.8,
+                ScaffoldFasta = ">M45\nATGCGATCGATCGATCGATCGATC",
+                GcPercentage = 50.0,
+                ProvenanceSha256 = new string('a', 64),
+                CreatedAtUtc = now
+            });
+            await dnaRepo.UpsertResultAsync(new PatientResultRecord
+            {
+                Id = "m45_pgx_01",
+                Username = patSelf,
+                DnaRecordId = dnaId,
+                ResultType = "Pharmacogenomics",
+                Title = "M45 PGX",
+                Status = "Optimal",
+                Summary = "Clearance nominal",
+                CreatedAtUtc = now
+            });
+
+            string depotId = "m45_depot_01";
+            await depotRepo.UpsertDepotFormulationAsync(new DepotFormulationRecord
+            {
+                DepotId = depotId,
+                PatientId = patSelf,
+                Regimen = TherapeuticRegimen.MaleToFemale,
+                PolymerMatrixType = "PLGA-PEG-PLGA",
+                InitialNanocarrierMassMg = 16.0,
+                DailyErosionRatePercent = 0.55,
+                ReleaseKineticsModel = "Korsmeyer-Peppas",
+                TargetHorizonDays = 180,
+                CreatedAtUtc = now
+            });
+
+            string circId = "m45_circ_01";
+            await circRepo.SaveCircuitAsync(new EpigeneticCircuitRecord
+            {
+                CircuitId = circId,
+                PatientId = patSelf,
+                CircuitStatus = EpigeneticCircuitStatus.Approved,
+                MinOffTargetSpecificityScore = 99.2,
+                SeparatrixMargin = 0.45,
+                CreatedAtUtc = now,
+                ApprovedAtUtc = now
+            }, []);
+
+            await myhRepo.SaveForecastRunAsync(new MultiYearHomeostasisRunRecord
+            {
+                RunId = "m45_myh_01",
+                DepotId = depotId,
+                CircuitId = circId,
+                PatientId = patSelf,
+                HorizonYears = 10,
+                ProjectedTenYearTtrPercent = 98.4,
+                DurabilityStatus = MultiYearDurabilityStatus.PermanentHomeostasisVerified,
+                CreatedAtUtc = now
+            }, []);
+
+            string lotId = "m45_lot_01";
+            FabricationLotRecord draftLot = new()
+            {
+                LotId = lotId,
+                DepotId = depotId,
+                PatientId = patSelf,
+                Regimen = TherapeuticRegimen.MaleToFemale,
+                PolymerMatrixType = "PLGA-PEG-PLGA",
+                TargetMassMg = 16.0,
+                TargetErosionRatePercent = 0.55,
+                CpGMethylationRequired = true,
+                OpentronsProtocolSha256 = new string('b', 64),
+                LotStatus = FabricationLotStatus.Draft,
+                CreatedAtUtc = now
+            };
+            await lotRepo.UpsertLotAsync(draftLot);
+
+            FabricationQcCheckRecord[] checks =
+            [
+                new() { CheckId = "m45_qc0", LotId = lotId, PatientId = patSelf, GateType = FabricationQcGateType.GelFoldingYield, MeasuredValue = 92.0, ThresholdValue = 85.0, Passed = true, RecordedAtUtc = now },
+                new() { CheckId = "m45_qc1", LotId = lotId, PatientId = patSelf, GateType = FabricationQcGateType.EndotoxinSterility, MeasuredValue = 0.1, ThresholdValue = 0.5, Passed = true, RecordedAtUtc = now },
+                new() { CheckId = "m45_qc2", LotId = lotId, PatientId = patSelf, GateType = FabricationQcGateType.HydrodynamicSizePdi, MeasuredValue = 50.0, SecondaryValue = 0.1, ThresholdValue = 120.0, Passed = true, RecordedAtUtc = now },
+                new() { CheckId = "m45_qc3", LotId = lotId, PatientId = patSelf, GateType = FabricationQcGateType.PayloadEncapsulation, MeasuredValue = 90.0, SecondaryValue = 1.0, ThresholdValue = 80.0, Passed = true, RecordedAtUtc = now },
+                new() { CheckId = "m45_qc4", LotId = lotId, PatientId = patSelf, GateType = FabricationQcGateType.CpGMethylation, MeasuredValue = 98.0, ThresholdValue = 95.0, Passed = true, RecordedAtUtc = now }
+            ];
+            foreach (FabricationQcCheckRecord qc in checks)
+            {
+                await lotRepo.RecordQcCheckAsync(qc);
+            }
+
+            FabricationLotReleaseEvaluation eval = lotSvc.EvaluateAndSignLotRelease(draftLot, checks);
+            await lotRepo.UpsertLotAsync(draftLot with
+            {
+                LotStatus = FabricationLotStatus.Released,
+                CertificatePayloadSha256 = eval.Certificate!.PayloadSha256,
+                CertificateSignatureBase64 = eval.Certificate.SignatureBase64,
+                CertificateSignerKeyId = eval.Certificate.SignerKeyId,
+                ReleasedAtUtc = eval.Certificate.IssuedAtUtc
+            });
+
+            await antiSvc.PairAntidoteAsync(lotId, null, "admin");
+        }
+
+        CompileRegulatoryDossierRequest validReq = new CompileRegulatoryDossierRequest().GetExamples() with
+        {
+            LotId = null,
+            DepotId = null,
+            CircuitId = null
+        };
+
+        // 2. Unauthorized, BadRequest, NotFound & Forbidden gates
+        Assert.Equal(HttpStatusCode.Unauthorized, (await clientAnon.GetAsync($"/api/compliance/dossiers/{patSelf}")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/compliance/dossiers/%20/compile", validReq)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.GetAsync("/api/compliance/dossiers/%20")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.GetAsync("/api/compliance/dossiers/%20/download")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/compliance/dossiers/missing_dossier_404/download")).StatusCode);
+
+        using (StringContent nullVerify = new("null", Encoding.UTF8, "application/json"))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsync("/api/compliance/dossiers/verify", nullVerify)).StatusCode);
+        }
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/compliance/dossiers/verify", new VerifyRegulatoryDossierRequest { Bundle = null })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/compliance/dossiers/verify", new VerifyRegulatoryDossierRequest
+        {
+            Bundle = new SignedRegulatoryDossierBundle { Manifest = null! }
+        })).StatusCode);
+
+        // RBAC checks
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientRes.PostAsJsonAsync($"/api/compliance/dossiers/{patSelf}/compile", validReq)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientSelf.PostAsJsonAsync($"/api/compliance/dossiers/{patSelf}/compile", validReq)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientRes.GetAsync($"/api/compliance/dossiers/{patSelf}")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientOther.GetAsync($"/api/compliance/dossiers/{patSelf}")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientRes.GetAsync("/api/compliance/dossiers/any_id/download")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientSelf.GetAsync("/api/compliance/dossiers/any_id/download")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientSelf.PostAsJsonAsync("/api/compliance/dossiers/verify", new VerifyRegulatoryDossierRequest
+        {
+            Bundle = new SignedRegulatoryDossierBundle().GetExamples()
+        })).StatusCode);
+
+        // 3. Compile dossier as Administrator (explicit body AND null body) -> 201 Created
+        HttpResponseMessage compileResp = await _client.PostAsJsonAsync($"/api/compliance/dossiers/{patSelf}/compile", validReq);
+        Assert.Equal(HttpStatusCode.Created, compileResp.StatusCode);
+        SignedRegulatoryDossierBundle? compiled = await compileResp.Content.ReadFromJsonAsync<SignedRegulatoryDossierBundle>();
+        Assert.NotNull(compiled);
+        Assert.True(compiled.Manifest.IsSubmissionReady);
+        Assert.Equal(100.0, compiled.Manifest.CompletenessScore);
+
+        using (StringContent nullCompileBody = new("null", Encoding.UTF8, "application/json"))
+        {
+            Assert.Equal(HttpStatusCode.Created, (await _client.PostAsync($"/api/compliance/dossiers/{patSelf}/compile", nullCompileBody)).StatusCode);
+        }
+
+        // 4. List as Administrator (unredacted) vs Patient self (redacted)
+        HttpResponseMessage adminListResp = await _client.GetAsync($"/api/compliance/dossiers/{patSelf}");
+        Assert.Equal(HttpStatusCode.OK, adminListResp.StatusCode);
+        List<RegulatoryDossierSummary>? adminList = await adminListResp.Content.ReadFromJsonAsync<List<RegulatoryDossierSummary>>();
+        Assert.NotNull(adminList);
+        Assert.Equal(2, adminList.Count);
+        Assert.False(adminList[0].IsRedactedForPatient);
+
+        HttpResponseMessage selfListResp = await clientSelf.GetAsync($"/api/compliance/dossiers/{patSelf}");
+        Assert.Equal(HttpStatusCode.OK, selfListResp.StatusCode);
+        List<RegulatoryDossierSummary>? selfList = await selfListResp.Content.ReadFromJsonAsync<List<RegulatoryDossierSummary>>();
+        Assert.NotNull(selfList);
+        Assert.Equal(2, selfList.Count);
+        Assert.True(selfList[0].IsRedactedForPatient);
+        Assert.Equal("[REDACTED]", selfList[0].CompiledBy);
+        Assert.Equal("[REDACTED]", selfList[0].SignerKeyId);
+
+        // 5. Download portable bundle as Administrator -> application/json attachment ind_dossier_{id}.json
+        HttpResponseMessage dlResp = await _client.GetAsync($"/api/compliance/dossiers/{compiled.Manifest.DossierId}/download");
+        Assert.Equal(HttpStatusCode.OK, dlResp.StatusCode);
+        Assert.Contains("ind_dossier_" + compiled.Manifest.DossierId + ".json", dlResp.Content.Headers.ContentDisposition?.FileName ?? string.Empty, StringComparison.Ordinal);
+        SignedRegulatoryDossierBundle? downloaded = await dlResp.Content.ReadFromJsonAsync<SignedRegulatoryDossierBundle>();
+        Assert.NotNull(downloaded);
+        Assert.Equal(compiled.PayloadSha256, downloaded.PayloadSha256);
+
+        // 6. Verify downloaded bundle as Researcher & Administrator -> 200 OK IsTrusted=true
+        HttpResponseMessage resVerifyResp = await clientRes.PostAsJsonAsync("/api/compliance/dossiers/verify", new VerifyRegulatoryDossierRequest { Bundle = downloaded });
+        Assert.Equal(HttpStatusCode.OK, resVerifyResp.StatusCode);
+        RegulatoryDossierVerificationReport? resReport = await resVerifyResp.Content.ReadFromJsonAsync<RegulatoryDossierVerificationReport>();
+        Assert.NotNull(resReport);
+        Assert.True(resReport.IsTrusted);
+        Assert.Equal(RegulatoryDossierTrustSource.LocalNode, resReport.TrustSource);
+
+        HttpResponseMessage adminVerifyResp = await _client.PostAsJsonAsync("/api/compliance/dossiers/verify", new VerifyRegulatoryDossierRequest { Bundle = downloaded });
+        Assert.Equal(HttpStatusCode.OK, adminVerifyResp.StatusCode);
+
+        using (IServiceScope auditScope = _factory.Services.CreateScope())
+        {
+            IComplianceAuditService audit = auditScope.ServiceProvider.GetRequiredService<IComplianceAuditService>();
+            IReadOnlyList<AuditRecord> entries = audit.GetAuditRecords(500);
+            Assert.Contains(entries, e => e.Action == "COMPLIANCE_IND_DOSSIER_COMPILE");
+            Assert.Contains(entries, e => e.Action == "COMPLIANCE_IND_DOSSIER_VERIFY");
         }
     }
 }

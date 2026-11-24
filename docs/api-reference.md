@@ -1591,6 +1591,53 @@ Decrypts an authenticated post-quantum envelope using the subject's private ML-K
 
 ---
 
+### `POST /api/compliance/dossiers/{patientId}/compile`
+Compiles an immutable, HIPAA Safe Harbor pseudonymized FDA IND (`21 CFR 312`) or EMA IMPD submission dossier bundle (`SignedRegulatoryDossierBundle`), evaluates all 10 fail-closed readiness gates (`CMC_DNA_BLUEPRINT`, `CMC_LOT_COA`, `CMC_REVERSAL_ANTIDOTE`, `CMC_COLD_CHAIN_CUSTODY`, `QSP_PHARMACOGENOMICS`, `QSP_DEPOT_180D`, `QSP_EPIGENETIC_CIRCUIT`, `QSP_MULTIYEAR_HOMEOSTASIS`, `COMP_PHARMACOVIGILANCE`, `COMP_AUDIT_LEDGER`), signs canonical JSON with **ML-DSA-65**, encrypts the archival payload at rest via **AES-256-GCM** into `weaver_regulatory_dossiers` (`Migration024_RegulatoryDossierArchives`), and emits a `COMPLIANCE_IND_DOSSIER_COMPILE` 21 CFR Part 11 audit event.
+
+* **Method**: `POST`
+* **Role & Transport Gating**: `Administrator` or cohort-authorized `Researcher` over authenticated `Api` / `ApiWeb` transport (`Patient` accounts forbidden).
+* **Request Payload (JSON)** — `CompileRegulatoryDossierRequest`:
+  ```json
+  {
+    "submissionFramework": "FdaInd",
+    "lotId": "lot_20261124_001",
+    "depotId": "depot_20261124_001",
+    "circuitId": "circ_20261124_001",
+    "sponsorName": "NanoWeaver Sovereign Clinical Consortium",
+    "clinicalTrialSiteCode": "ZURICH-04"
+  }
+  ```
+* **Response Status**: `201 Created` (`SignedRegulatoryDossierBundle`) or `400 Bad Request` / `403 Forbidden`.
+
+---
+
+### `GET /api/compliance/dossiers/{patientId}`
+Lists compiled FDA IND / EMA IMPD dossier archive summaries (`RegulatoryDossierSummary`) for the target patient ordered newest first, enforcing cohort and self-access scoping while redacting operator attribution fields (`[REDACTED]`, `IsRedactedForPatient = true`) for `Patient` callers.
+
+* **Method**: `GET`
+* **Role & Transport Gating**: `Administrator`, cohort-authorized `Researcher`, or `Patient` self (`Api` / `ApiWeb`).
+* **Response Status**: `200 OK` (`IReadOnlyList<RegulatoryDossierSummary>`) or `403 Forbidden`.
+
+---
+
+### `GET /api/compliance/dossiers/{dossierId}/download`
+Decrypts and streams the persisted **ML-DSA-65** signed `SignedRegulatoryDossierBundle` archive (`weaver_regulatory_dossiers`) matching `dossierId` after authorizing patient/cohort ownership.
+
+* **Method**: `GET`
+* **Role & Transport Gating**: `Administrator`, cohort-authorized `Researcher`, or `Patient` self (`Api` / `ApiWeb`).
+* **Response Status**: `200 OK` (`SignedRegulatoryDossierBundle`), `403 Forbidden`, or `404 Not Found`.
+
+---
+
+### `POST /api/compliance/dossiers/verify`
+Executes fail-closed cross-node SHA-256 canonical digest reconstruction and NIST FIPS 204 **ML-DSA-65** verification (`VerifyRegulatoryDossierRequest`) against the local node key and active federated peer keys in `weaver_peer_keys` (`LocalNode`, `TrustedPeer`, `RevokedSigner`, `UntrustedSigner`, or `InvalidSignature`), recording `COMPLIANCE_IND_DOSSIER_VERIFY` in `weaver_audit_ledger`.
+
+* **Method**: `POST`
+* **Role & Transport Gating**: Authenticated `Administrator`, `Researcher`, or `Patient` over `Api` / `ApiWeb` transport.
+* **Response Status**: `200 OK` (`RegulatoryDossierVerificationReport`) or `400 Bad Request`.
+
+---
+
 ### `POST /api/datasets/export-encrypted`
 Exports an authenticated `.enc.tar.gz` trajectory bundle encrypted with ML-KEM-768 + AES-256-GCM and signed with ML-DSA-65.
 

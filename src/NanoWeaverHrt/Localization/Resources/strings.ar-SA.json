@@ -233,5 +233,21 @@
   "Antidote.KineticsChartTitle": "تفكك المستودع وتلاشي الهرمون الجهازي خلال 24 ساعة",
   "Antidote.EmergencyTitle": "تحييد سريري طارئ غير قابل للعكس",
   "Antidote.EmergencyWarning": "يؤدي الإعطاء الطارئ إلى تفكيك هذا المستودع بشكل دائم وتحويل الترياق إلى حالة محيّد وتسجيل سحب دائم للدفعة.",
-  "Antidote.EventsEmpty": "لم يتم تنفيذ أي عمليات تحييد طارئة ضد هذه الدفعة."
+  "Antidote.EventsEmpty": "لم يتم تنفيذ أي عمليات تحييد طارئة ضد هذه الدفعة.",
+  "Dossier.SectionTitle": "مُجمِّع ملفات IND / IMPD التنظيمية",
+  "Dossier.SectionSubtitle": "تجميع حزم التقديم FDA IND (21 CFR 312) وEMA IMPD المُعمّاة وفق HIPAA والموقّعة بخوارزمية ML-DSA-65 مع فرض 10 بوابات جاهزية صارمة والتحقق المتبادل للتوقيع ما بعد الكم.",
+  "Dossier.PatientIdLabel": "مُعرِّف الخاضع للدراسة",
+  "Dossier.FrameworkLabel": "الإطار التنظيمي",
+  "Dossier.LotIdLabel": "معرف دفعة الناقل (اختياري)",
+  "Dossier.SponsorLabel": "الجهة الراعية",
+  "Dossier.SiteCodeLabel": "رمز المركز السريري",
+  "Dossier.CompileButton": "تجميع الملف التنظيمي",
+  "Dossier.DownloadButton": "تنزيل الحزمة الموقّعة (.json)",
+  "Dossier.VerifyButton": "التحقق من الملف الموقّع",
+  "Dossier.BadgeSubmissionReady": "جاهز للتقديم",
+  "Dossier.BadgeBlockedIncomplete": "محظور / غير مكتمل",
+  "Dossier.BadgeSignatureTrusted": "التوقيع موثوق",
+  "Dossier.BadgeSignatureUntrusted": "التوقيع غير موثوق",
+  "Dossier.ChecklistTitle": "قائمة التحقق من الجاهزية ذات 10 بوابات",
+  "Dossier.VerifierInputLabel": "بيانات JSON لحزمة الملف التنظيمي الموقّعة"
 }

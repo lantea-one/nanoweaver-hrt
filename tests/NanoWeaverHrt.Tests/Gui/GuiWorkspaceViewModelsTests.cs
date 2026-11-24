@@ -1267,6 +1267,104 @@ public sealed class GuiWorkspaceViewModelsTests
         Assert.False(vm.IsBusy);
     }
 
+    /// <summary>
+    /// Verifies Milestone 45 regulatory dossier compilation, archive loading, portable bundle download,
+    /// and cross-node verification commands in <see cref="WetLabComplianceWorkspaceViewModel"/>.
+    /// </summary>
+    [Fact]
+    public async Task WetLabComplianceWorkspaceViewModel_RegulatoryDossierCommands_AllPaths()
+    {
+        // WHAT: Tests CompileRegulatoryDossierAsync, LoadPatientRegulatoryDossiersAsync, DownloadRegulatoryDossierAsync, and VerifyRegulatoryDossierAsync.
+        // WHY:  Milestone 45 (P237): Achieves 100.00% line and branch coverage on desktop ViewModel dossier workflows.
+        // HOW:  Asserts parameter guards, observable property change events, success bindings, and exception ErrorMessage handling.
+        var clientMock = new Mock<INanoWeaverNodeClient>();
+        var profile = CreateProfile();
+        var vm = new WetLabComplianceWorkspaceViewModel(clientMock.Object, () => profile, () => "token-dossier");
+
+        List<string> changedProps = [];
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is not null)
+            {
+                changedProps.Add(e.PropertyName);
+            }
+        };
+
+        var compileReq = new CompileRegulatoryDossierRequest().GetExamples();
+        var bundleSample = new SignedRegulatoryDossierBundle().GetExamples();
+        var summarySample = new RegulatoryDossierSummary().GetExamples();
+        var verifySample = new RegulatoryDossierVerificationReport().GetExamples();
+
+        // 1. Guards
+        await Assert.ThrowsAsync<ArgumentException>(() => vm.CompileRegulatoryDossierAsync(" ", compileReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => vm.CompileRegulatoryDossierAsync("pat_001", null!));
+        await Assert.ThrowsAsync<ArgumentException>(() => vm.LoadPatientRegulatoryDossiersAsync(" "));
+        await Assert.ThrowsAsync<ArgumentException>(() => vm.DownloadRegulatoryDossierAsync(" "));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => vm.VerifyRegulatoryDossierAsync(null!));
+
+        // 2. CompileRegulatoryDossierAsync success + fault
+        clientMock.Setup(c => c.CompileRegulatoryDossierAsync(profile, "token-dossier", "pat_001", compileReq, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(bundleSample);
+        var compiled = await vm.CompileRegulatoryDossierAsync(" pat_001 ", compileReq);
+        Assert.Same(bundleSample, compiled);
+        Assert.Same(bundleSample, vm.LastCompiledDossier);
+        Assert.Contains(nameof(WetLabComplianceWorkspaceViewModel.LastCompiledDossier), changedProps);
+
+        clientMock.Setup(c => c.CompileRegulatoryDossierAsync(profile, "token-dossier", "pat_001", compileReq, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Compile error"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.CompileRegulatoryDossierAsync("pat_001", compileReq));
+        Assert.Equal("Compile error", vm.ErrorMessage);
+        Assert.False(vm.IsBusy);
+
+        // 3. LoadPatientRegulatoryDossiersAsync success + fault
+        IReadOnlyList<RegulatoryDossierSummary> expectedList = [summarySample];
+        clientMock.Setup(c => c.ListRegulatoryDossiersAsync(profile, "token-dossier", "pat_001", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expectedList);
+        var loadedList = await vm.LoadPatientRegulatoryDossiersAsync(" pat_001 ");
+        Assert.Same(expectedList, loadedList);
+        Assert.Same(expectedList, vm.PatientRegulatoryDossiers);
+        Assert.Contains(nameof(WetLabComplianceWorkspaceViewModel.PatientRegulatoryDossiers), changedProps);
+
+        clientMock.Setup(c => c.ListRegulatoryDossiersAsync(profile, "token-dossier", "pat_001", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("List error"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.LoadPatientRegulatoryDossiersAsync("pat_001"));
+        Assert.Equal("List error", vm.ErrorMessage);
+        Assert.False(vm.IsBusy);
+
+        // 4. DownloadRegulatoryDossierAsync success + fault
+        byte[] expectedBytes = [1, 2, 3, 4];
+        clientMock.Setup(c => c.DownloadRegulatoryDossierAsync(profile, "token-dossier", "ind_001", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expectedBytes);
+        byte[]? dl = await vm.DownloadRegulatoryDossierAsync(" ind_001 ");
+        Assert.Same(expectedBytes, dl);
+        Assert.Same(expectedBytes, vm.LastDownloadedDossierBytes);
+        Assert.Contains(nameof(WetLabComplianceWorkspaceViewModel.LastDownloadedDossierBytes), changedProps);
+
+        clientMock.Setup(c => c.DownloadRegulatoryDossierAsync(profile, "token-dossier", "ind_001", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Download error"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.DownloadRegulatoryDossierAsync("ind_001"));
+        Assert.Equal("Download error", vm.ErrorMessage);
+        Assert.False(vm.IsBusy);
+
+        // 5. VerifyRegulatoryDossierAsync success + fault
+        clientMock.Setup(c => c.VerifyRegulatoryDossierAsync(
+                profile,
+                "token-dossier",
+                It.Is<VerifyRegulatoryDossierRequest>(r => ReferenceEquals(r.Bundle, bundleSample)),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(verifySample);
+        var vr = await vm.VerifyRegulatoryDossierAsync(bundleSample);
+        Assert.Same(verifySample, vr);
+        Assert.Same(verifySample, vm.LastDossierVerification);
+        Assert.Contains(nameof(WetLabComplianceWorkspaceViewModel.LastDossierVerification), changedProps);
+
+        clientMock.Setup(c => c.VerifyRegulatoryDossierAsync(profile, "token-dossier", It.IsAny<VerifyRegulatoryDossierRequest>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Verify error"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.VerifyRegulatoryDossierAsync(bundleSample));
+        Assert.Equal("Verify error", vm.ErrorMessage);
+        Assert.False(vm.IsBusy);
+    }
+
     // =========================================================================
     // MainShellViewModel Integration Tests
     // =========================================================================

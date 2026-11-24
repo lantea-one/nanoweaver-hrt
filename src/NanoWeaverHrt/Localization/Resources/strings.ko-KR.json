@@ -233,5 +233,21 @@
   "Antidote.KineticsChartTitle": "24시간 데포 분해 및 전신 호르몬 감쇠 곡선",
   "Antidote.EmergencyTitle": "비가역적 긴급 임상 중화",
   "Antidote.EmergencyWarning": "긴급 투여는 본 데포를 영구 분해하고 해독제를 중화 상태로 전환하며 영구 로트 리콜 기록을 남깁니다.",
-  "Antidote.EventsEmpty": "이 로트에 대해 실행된 긴급 중화 투여 기록이 없습니다."
+  "Antidote.EventsEmpty": "이 로트에 대해 실행된 긴급 중화 투여 기록이 없습니다.",
+  "Dossier.SectionTitle": "규제 IND / IMPD 문서 컴파일러",
+  "Dossier.SectionSubtitle": "10단계 페일 클로즈드 준비 상태 검증 및 노드 간 PQC 서명 검증을 통해 HIPAA 가명 처리되고 ML-DSA-65 서명된 FDA IND (21 CFR 312) 및 EMA IMPD 제출 번들을 컴파일합니다.",
+  "Dossier.PatientIdLabel": "대상자 식별자",
+  "Dossier.FrameworkLabel": "규제 프레임워크",
+  "Dossier.LotIdLabel": "벡터 로트 ID (선택 사항)",
+  "Dossier.SponsorLabel": "의뢰자 기관",
+  "Dossier.SiteCodeLabel": "임상시험 기관 코드",
+  "Dossier.CompileButton": "규제 문서 컴파일",
+  "Dossier.DownloadButton": "서명된 번들 다운로드 (.json)",
+  "Dossier.VerifyButton": "서명된 문서 검증",
+  "Dossier.BadgeSubmissionReady": "제출 준비 완료",
+  "Dossier.BadgeBlockedIncomplete": "차단됨 / 미완료",
+  "Dossier.BadgeSignatureTrusted": "서명 신뢰됨",
+  "Dossier.BadgeSignatureUntrusted": "서명 신뢰 불가",
+  "Dossier.ChecklistTitle": "10단계 준비 상태 체크리스트",
+  "Dossier.VerifierInputLabel": "서명된 규제 문서 번들 JSON"
 }

@@ -233,5 +233,21 @@
   "Antidote.KineticsChartTitle": "24-Stunden-Depotzerfall & Systemischer Hormonabfall",
   "Antidote.EmergencyTitle": "Irreversible Klinische Notfall-Neutralisation",
   "Antidote.EmergencyWarning": "Die Notfallverabreichung zerlegt dieses Depot dauerhaft, setzt das Antidot auf Neutralisiert und protokolliert einen permanenten Chargenrückruf.",
-  "Antidote.EventsEmpty": "Für diese Charge wurden noch keine Notfall-Neutralisationen durchgeführt."
+  "Antidote.EventsEmpty": "Für diese Charge wurden noch keine Notfall-Neutralisationen durchgeführt.",
+  "Dossier.SectionTitle": "Regulatorischer IND / IMPD Dossier-Compiler",
+  "Dossier.SectionSubtitle": "Erstellen Sie HIPAA-pseudonymisierte, ML-DSA-65-signierte FDA IND (21 CFR 312) und EMA IMPD Einreichungspakete mit strikter 10-Gate-Prüfung und knotenübergreifender PQC-Signaturverifizierung.",
+  "Dossier.PatientIdLabel": "Probanden-Kennung",
+  "Dossier.FrameworkLabel": "Regulatorischer Rahmen",
+  "Dossier.LotIdLabel": "Vektor-Chargen-ID (Optional)",
+  "Dossier.SponsorLabel": "Sponsor-Organisation",
+  "Dossier.SiteCodeLabel": "Klinischer Standortcode",
+  "Dossier.CompileButton": "Regulatorisches Dossier kompilieren",
+  "Dossier.DownloadButton": "Signiertes Paket herunterladen (.json)",
+  "Dossier.VerifyButton": "Signiertes Dossier verifizieren",
+  "Dossier.BadgeSubmissionReady": "EINREICHUNGSBEREIT",
+  "Dossier.BadgeBlockedIncomplete": "GESPERRT / UNVOLLSTÄNDIG",
+  "Dossier.BadgeSignatureTrusted": "SIGNATUR VERTRAUENSWÜRDIG",
+  "Dossier.BadgeSignatureUntrusted": "SIGNATUR NICHT VERTRAUENSWÜRDIG",
+  "Dossier.ChecklistTitle": "10-Gate-Bereitschafts-Checkliste",
+  "Dossier.VerifierInputLabel": "Signiertes regulatorisches Dossier-Bundle (JSON)"
 }

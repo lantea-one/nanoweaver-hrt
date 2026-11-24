@@ -1869,6 +1869,11 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         NeutralizationSimulationReport simNeutReport = new NeutralizationSimulationReport().GetExamples();
         AdministerAntidoteRequest adminAntiReq = new AdministerAntidoteRequest().GetExamples();
         AntidoteAdministrationResponse adminAntiResp = new AntidoteAdministrationResponse().GetExamples();
+        CompileRegulatoryDossierRequest dossierCompReq = new CompileRegulatoryDossierRequest().GetExamples();
+        SignedRegulatoryDossierBundle dossierBundle = new SignedRegulatoryDossierBundle().GetExamples();
+        RegulatoryDossierSummary dossierSummary = new RegulatoryDossierSummary().GetExamples();
+        VerifyRegulatoryDossierRequest dossierVerifyReq = new VerifyRegulatoryDossierRequest { Bundle = dossierBundle };
+        RegulatoryDossierVerificationReport dossierVerifyReport = new RegulatoryDossierVerificationReport().GetExamples();
 
         innerMock.Setup(i => i.CreateFabricationLotAsync(profile, "tok", createReq, It.IsAny<CancellationToken>())).ReturnsAsync(lot);
         innerMock.Setup(i => i.GetFabricationLotsAsync(profile, "tok", "patient_alice", It.IsAny<CancellationToken>())).ReturnsAsync([lot]);
@@ -1905,6 +1910,10 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         innerMock.Setup(i => i.GetReversalAntidoteAsync(profile, "tok", "lot-1", It.IsAny<CancellationToken>())).ReturnsAsync(pairAntiReport);
         innerMock.Setup(i => i.SimulateAntidoteNeutralizationAsync(profile, "tok", "lot-1", simNeutReq, It.IsAny<CancellationToken>())).ReturnsAsync(simNeutReport);
         innerMock.Setup(i => i.AdministerReversalAntidoteAsync(profile, "tok", "lot-1", adminAntiReq, It.IsAny<CancellationToken>())).ReturnsAsync(adminAntiResp);
+        innerMock.Setup(i => i.CompileRegulatoryDossierAsync(profile, "tok", "pat_001", dossierCompReq, It.IsAny<CancellationToken>())).ReturnsAsync(dossierBundle);
+        innerMock.Setup(i => i.ListRegulatoryDossiersAsync(profile, "tok", "pat_001", It.IsAny<CancellationToken>())).ReturnsAsync([dossierSummary]);
+        innerMock.Setup(i => i.DownloadRegulatoryDossierAsync(profile, "tok", "ind_20261124_001", It.IsAny<CancellationToken>())).ReturnsAsync(bundleBytes);
+        innerMock.Setup(i => i.VerifyRegulatoryDossierAsync(profile, "tok", dossierVerifyReq, It.IsAny<CancellationToken>())).ReturnsAsync(dossierVerifyReport);
 
         WeaverNodeApiClient client = new(innerMock.Object);
         Assert.Equal(lot.LotId, (await client.CreateFabricationLotAsync(profile, "tok", createReq)).LotId);
@@ -1942,6 +1951,10 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         Assert.Equal("anti_20261124_001", (await client.GetReversalAntidoteAsync(profile, "tok", "lot-1"))?.AntidoteId);
         Assert.Equal("anti_20261124_001", (await client.SimulateAntidoteNeutralizationAsync(profile, "tok", "lot-1", simNeutReq)).AntidoteId);
         Assert.Equal(FabricationLotStatus.Revoked, (await client.AdministerReversalAntidoteAsync(profile, "tok", "lot-1", adminAntiReq)).LotStatus);
+        Assert.Equal(dossierBundle.Manifest.DossierId, (await client.CompileRegulatoryDossierAsync(profile, "tok", "pat_001", dossierCompReq)).Manifest.DossierId);
+        Assert.Single(await client.ListRegulatoryDossiersAsync(profile, "tok", "pat_001"));
+        Assert.Equal(bundleBytes, await client.DownloadRegulatoryDossierAsync(profile, "tok", "ind_20261124_001"));
+        Assert.True((await client.VerifyRegulatoryDossierAsync(profile, "tok", dossierVerifyReq)).IsTrusted);
 
         client.Dispose();
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.CreateFabricationLotAsync(profile, "tok", createReq));
@@ -1979,5 +1992,9 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetReversalAntidoteAsync(profile, "tok", "lot-1"));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.SimulateAntidoteNeutralizationAsync(profile, "tok", "lot-1", simNeutReq));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.AdministerReversalAntidoteAsync(profile, "tok", "lot-1", adminAntiReq));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.CompileRegulatoryDossierAsync(profile, "tok", "pat_001", dossierCompReq));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ListRegulatoryDossiersAsync(profile, "tok", "pat_001"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.DownloadRegulatoryDossierAsync(profile, "tok", "ind_20261124_001"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.VerifyRegulatoryDossierAsync(profile, "tok", dossierVerifyReq));
     }
 }
