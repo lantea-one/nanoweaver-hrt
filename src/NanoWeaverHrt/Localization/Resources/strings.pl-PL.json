@@ -198,5 +198,22 @@
   "EpigeneticCircuit.GuideTableTitle": "Panel pojedynczych RNA prowadzących (sgRNA) steroidogenezy",
   "EpigeneticCircuit.ColTargetGene": "Gen docelowy",
   "EpigeneticCircuit.ColSpecificity": "Specyficzność CFD %",
-  "EpigeneticCircuit.ColFoldChange": "Przewidywana krotność zmiany"
+  "EpigeneticCircuit.ColFoldChange": "Przewidywana krotność zmiany",
+  "Gui.DepotWorkspace.TrayMitoticDriftAdvisory": "Ostrzeżenie o Dryfie Mitotycznym",
+  "MultiYear.SectionTitle": "10-Letni Symulator Trwałej Homeostazy Endokrynnej i Odporności Mitotycznej",
+  "MultiYear.SectionSubtitle": "Przekazanie Hydrożel-Epigenetyka Dni 0–180 • Dziedziczenie Chromatyny DNMT1 • Stabilność Progenitorów",
+  "MultiYear.HorizonLabel": "Horyzont Symulacji (Lata)",
+  "MultiYear.FidelityLabel": "Wierność Mitotyczna (0,90–0,9999)",
+  "MultiYear.ProgenitorLabel": "Frakcja Transdukowanych Progenitorów (0,10–1,0)",
+  "MultiYear.CircuitIdLabel": "ID Powiązanego Obwodu Epigenetycznego (Opcjonalnie)",
+  "MultiYear.RunButton": "Symuluj Wieloletnią Trwałość",
+  "MultiYear.BadgeVerified": "TRWAŁA HOMEOSTAZA ZWERYFIKOWANA",
+  "MultiYear.BadgeAdvisory": "OSTRZEŻENIE O DRYFIE MITOTYCZNYM",
+  "MultiYear.TenYearTtrLabel": "Prognozowany Wieloletni TTR (%)",
+  "MultiYear.HandoffTtrLabel": "TTR Przekazania Dni 90–180 (%)",
+  "MultiYear.FinalMemoryLabel": "Końcowe Metylowane Progenitory (%)",
+  "MultiYear.ChartTitle": "Trajektoria Dwutorowa: Hydrożel Egzogenny -> Epigenetyka Endogenna",
+  "MultiYear.TableCaption": "Roczne Punkty Kontrolne Homeostazy Endokrynnej i Pamięci Chromatyny",
+  "MultiYear.BoosterAdvised": "ZALECANA DAWKA PRZYPOMINAJĄCA",
+  "MultiYear.LifetimeConserved": "UTRZYMANE BEZ DAWKI PRZYPOMINAJĄCEJ"
 }

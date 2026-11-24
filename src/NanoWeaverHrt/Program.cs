@@ -162,6 +162,8 @@ public class Program
         builder.Services.AddSingleton<IClinicalPharmacovigilanceService, ClinicalPharmacovigilanceService>();
         builder.Services.AddSingleton<IEpigeneticCircuitRepository, EpigeneticCircuitRepository>();
         builder.Services.AddSingleton<IEpigeneticCircuitService, EpigeneticCircuitService>();
+        builder.Services.AddSingleton<IMultiYearHomeostasisRepository, MultiYearHomeostasisRepository>();
+        builder.Services.AddSingleton<IMultiYearHomeostasisService, MultiYearHomeostasisService>();
         builder.Services.AddSingleton<IFederatedPeerSyncRepository, FederatedPeerSyncRepository>();
         builder.Services.AddSingleton<IFederatedDnsResolver, SystemFederatedDnsResolver>();
         builder.Services.AddHttpClient(FederatedPeerSyncService.HttpClientName, client =>
@@ -6343,6 +6345,133 @@ public class Program
         .Produces<SecureProblemDetails>(StatusCodes.Status404NotFound)
         .Produces<SecureProblemDetails>(StatusCodes.Status422UnprocessableEntity);
 
+        app.MapPost("/api/depots/{depotId}/simulate-multiyear", async (
+            string depotId,
+            SimulateMultiYearHomeostasisRequest? request,
+            IDepotFormulationRepository depotRepository,
+            IMultiYearHomeostasisService multiYearService,
+            ISubjectAccessService subjectAccess,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Executes and persists a 1-to-10-year coupled hydrogel-to-epigenetic mitotic durability forecast.
+            // WHY:  Milestone 43 (P227): Verifies Day 90-180 handoff continuity and long-term epigenetic memory stability.
+            // HOW:  Authorizes Administrator or granted Researcher, delegates to SimulateAndPersistAsync, returns 201 Created.
+            if (string.IsNullOrWhiteSpace(depotId))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Valid depotId is required.");
+            }
+
+            (DepotFormulationRecord? depot, IResult? denial, UserAccount caller) = await AuthorizeMultiYearDepotAccessAsync(
+                depotId.Trim(), allowPatientSelf: false, depotRepository, subjectAccess, context, ct);
+            if (denial is not null)
+            {
+                return denial;
+            }
+
+            try
+            {
+                // WHY `!`: AuthorizeMultiYearDepotAccessAsync guarantees depot is non-null whenever denial is null.
+                MultiYearHomeostasisForecastReport? report = await multiYearService.SimulateAndPersistAsync(
+                    depot!.DepotId, request, caller.Username, ct);
+                // WHY `!`: SimulateAndPersistAsync returns non-null because depot existence was verified above.
+                return Results.Created($"/api/depots/{depot.DepotId}/multiyear-forecasts/{report!.RunId}", report);
+            }
+            catch (ArgumentException ex)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, ex.Message);
+            }
+        })
+        .WithName("SimulateMultiYearHomeostasis")
+        .WithTags("Time-Release Depots & Nanocarrier Formulations")
+        .WithSummary("Runs a 1-to-10-year coupled hydrogel-to-epigenetic mitotic durability simulation for a depot.")
+        .WithDescription("Couples 180-day exogenous elution with RK4 quiescent/proliferating epigenetic inheritance, persisting annual checkpoints and auditing DEPOT_MULTIYEAR_SIMULATION_RUN.")
+        .Accepts<SimulateMultiYearHomeostasisRequest>("application/json")
+        .Produces<MultiYearHomeostasisForecastReport>(StatusCodes.Status201Created)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden)
+        .Produces<SecureProblemDetails>(StatusCodes.Status404NotFound);
+
+        app.MapGet("/api/depots/{depotId}/multiyear-forecasts", async (
+            string depotId,
+            IDepotFormulationRepository depotRepository,
+            IMultiYearHomeostasisService multiYearService,
+            ISubjectAccessService subjectAccess,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Lists all persisted multi-year permanent homeostasis forecasts for a depot formulation.
+            // WHY:  Milestone 43 (P227): Enables clinicians and patients to audit longitudinal chromatin durability history.
+            // HOW:  Authorizes Administrator, granted Researcher, or Patient self and delegates to ListForecastsByDepotAsync.
+            if (string.IsNullOrWhiteSpace(depotId))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Valid depotId is required.");
+            }
+
+            (DepotFormulationRecord? depot, IResult? denial, _) = await AuthorizeMultiYearDepotAccessAsync(
+                depotId.Trim(), allowPatientSelf: true, depotRepository, subjectAccess, context, ct);
+            if (denial is not null)
+            {
+                return denial;
+            }
+
+            // WHY `!`: AuthorizeMultiYearDepotAccessAsync guarantees depot is non-null whenever denial is null.
+            IReadOnlyList<MultiYearHomeostasisForecastReport> list = await multiYearService.ListForecastsByDepotAsync(depot!.DepotId, ct);
+            return Results.Ok(list);
+        })
+        .WithName("ListMultiYearHomeostasisForecasts")
+        .WithTags("Time-Release Depots & Nanocarrier Formulations")
+        .WithSummary("Lists persisted multi-year homeostasis durability forecasts for a depot.")
+        .WithDescription("Returns newest-first forecasts with annual checkpoints and trajectory curves for Administrator, granted Researcher, or matching Patient self.")
+        .Produces<IReadOnlyList<MultiYearHomeostasisForecastReport>>(StatusCodes.Status200OK)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden)
+        .Produces<SecureProblemDetails>(StatusCodes.Status404NotFound);
+
+        app.MapGet("/api/depots/{depotId}/multiyear-forecasts/latest", async (
+            string depotId,
+            IDepotFormulationRepository depotRepository,
+            IMultiYearHomeostasisService multiYearService,
+            ISubjectAccessService subjectAccess,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Retrieves the latest persisted multi-year homeostasis forecast for a depot formulation.
+            // WHY:  Milestone 43 (P227): Powers native desktop/mobile summary cards and tray mitotic drift notifications.
+            // HOW:  Authorizes caller, fetches GetLatestForecastByDepotAsync, returns 200 OK or 404 when no forecast exists.
+            if (string.IsNullOrWhiteSpace(depotId))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Valid depotId is required.");
+            }
+
+            (DepotFormulationRecord? depot, IResult? denial, _) = await AuthorizeMultiYearDepotAccessAsync(
+                depotId.Trim(), allowPatientSelf: true, depotRepository, subjectAccess, context, ct);
+            if (denial is not null)
+            {
+                return denial;
+            }
+
+            // WHY `!`: AuthorizeMultiYearDepotAccessAsync guarantees depot is non-null whenever denial is null.
+            MultiYearHomeostasisForecastReport? latest = await multiYearService.GetLatestForecastByDepotAsync(depot!.DepotId, ct);
+            if (latest is null)
+            {
+                return SecureProblemResult(context, StatusCodes.Status404NotFound, $"No multi-year homeostasis forecast found for depot '{depot.DepotId}'.");
+            }
+
+            return Results.Ok(latest);
+        })
+        .WithName("GetLatestMultiYearHomeostasisForecast")
+        .WithTags("Time-Release Depots & Nanocarrier Formulations")
+        .WithSummary("Retrieves the latest multi-year homeostasis durability forecast for a depot.")
+        .WithDescription("Returns the newest durability forecast and mitotic drift alert state, or 404 if none exists.")
+        .Produces<MultiYearHomeostasisForecastReport>(StatusCodes.Status200OK)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden)
+        .Produces<SecureProblemDetails>(StatusCodes.Status404NotFound);
+
         app.Run();
     }
 
@@ -7607,6 +7736,60 @@ public class Program
         }
 
         return (circuit, null, caller);
+    }
+
+    /// <summary>
+    /// Loads a depot formulation and enforces Administrator, granted Researcher, or optional matching Patient-self authorization
+    /// for multi-year endocrine homeostasis endpoints.
+    /// </summary>
+    /// <param name="depotId">Target semi-annual depot formulation identifier.</param>
+    /// <param name="allowPatientSelf">True on read-only routes permitting matching Patient self-access; false on simulation mutations.</param>
+    /// <param name="depotRepository">Depot formulation persistence repository.</param>
+    /// <param name="subjectAccess">Subject-level grant service.</param>
+    /// <param name="context">Active HTTP context carrying the validated <c>CurrentUser</c>.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The loaded <see cref="DepotFormulationRecord"/> when authorized, optional RFC 7807 denial, and caller.</returns>
+    private static async Task<(DepotFormulationRecord? Depot, IResult? Denial, UserAccount Caller)> AuthorizeMultiYearDepotAccessAsync(
+        string depotId,
+        bool allowPatientSelf,
+        IDepotFormulationRepository depotRepository,
+        ISubjectAccessService subjectAccess,
+        HttpContext context,
+        CancellationToken ct)
+    {
+        // WHAT: Centralizes depot lookup and Patient/Researcher/Administrator RBAC across all 3 multi-year forecast routes.
+        // WHY:  Milestone 43 (P227): Blocks Patient mutations upfront, protects patient forecasts, and avoids branch duplication.
+        // HOW:  Rejects Patient writes early, fetches depot (404 if absent), verifies Patient ownership or Researcher grant.
+        // WHY `!`: Authentication middleware guarantees CurrentUser is populated before reaching any authenticated handler.
+        UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+        if (!allowPatientSelf && caller.Role == UserRole.Patient)
+        {
+            return (null, SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: Administrator or Researcher role required to run multi-year homeostasis simulations."), caller);
+        }
+
+        DepotFormulationRecord? depot = await depotRepository.GetDepotFormulationByIdAsync(depotId, ct);
+        if (depot is null)
+        {
+            return (null, SecureProblemResult(context, StatusCodes.Status404NotFound, $"Depot formulation '{depotId}' was not found."), caller);
+        }
+
+        if (caller.Role == UserRole.Patient)
+        {
+            if (!string.Equals(caller.Username, depot.PatientId, StringComparison.OrdinalIgnoreCase))
+            {
+                return (null, SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: Patients may only access their own multi-year homeostasis forecasts."), caller);
+            }
+        }
+        else if (caller.Role == UserRole.Researcher)
+        {
+            SubjectAccessLevel? accessLevel = await subjectAccess.GetEffectiveAccessLevelAsync(caller.Username, depot.PatientId, ct);
+            if (!accessLevel.HasValue)
+            {
+                return (null, SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: Researcher lacks active subject access grant for this patient."), caller);
+            }
+        }
+
+        return (depot, null, caller);
     }
 }
 

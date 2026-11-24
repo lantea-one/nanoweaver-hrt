@@ -3024,3 +3024,63 @@ select.form-control-sm {
     font-weight: 700;
 }
 
+/* Multi-year coupled hydrogel-to-epigenetic homeostasis SVG styling (Milestone 43) */
+.multiyear-trajectory-svg {
+    width: 100%;
+    height: auto;
+    background: #060b14;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    display: block;
+}
+
+.multiyear-handoff-band {
+    fill: rgba(56, 189, 248, 0.08);
+}
+
+.multiyear-grid {
+    stroke: rgba(148, 163, 184, 0.16);
+    stroke-width: 0.75;
+    stroke-dasharray: 3 3;
+}
+
+.multiyear-axis {
+    stroke: #64748b;
+    stroke-width: 1.25;
+}
+
+.multiyear-exo-line {
+    fill: none;
+    stroke: #38bdf8;
+    stroke-width: 2.25;
+}
+
+.multiyear-exo-area {
+    fill: rgba(56, 189, 248, 0.18);
+    stroke: none;
+}
+
+.multiyear-endo-line {
+    fill: none;
+    stroke: #10b981;
+    stroke-width: 2.5;
+}
+
+.multiyear-endo-area {
+    fill: rgba(16, 185, 129, 0.18);
+    stroke: none;
+}
+
+.multiyear-memory-line {
+    fill: none;
+    stroke: #f59e0b;
+    stroke-width: 2;
+    stroke-dasharray: 5 3;
+}
+
+.multiyear-svg-label {
+    fill: #cbd5e1;
+    font-size: 9.5px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+

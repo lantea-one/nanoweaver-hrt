@@ -4869,4 +4869,103 @@ public sealed class NanoWeaverNodeClient : INanoWeaverNodeClient
         EpigeneticCircuitEvaluationReport? report = await resp.Content.ReadFromJsonAsync<EpigeneticCircuitEvaluationReport>(JsonOptions, ct);
         return report ?? throw new InvalidOperationException("Endpoint returned empty or null epigenetic circuit approval payload.");
     }
+
+    /// <inheritdoc/>
+    public async Task<MultiYearHomeostasisForecastReport> SimulateMultiYearHomeostasisAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string depotId,
+        SimulateMultiYearHomeostasisRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/depots/{depotId}/simulate-multiyear to simulate and persist multi-year durability.
+        // WHY:  Milestone 43 (P227): Enables native desktop/mobile shells to run 10-year coupled depot forecasts.
+        // HOW:  Validates arguments, sends authenticated JSON POST, throws on non-success, returns MultiYearHomeostasisForecastReport.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(depotId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/depots/{Uri.EscapeDataString(depotId)}/simulate-multiyear");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        MultiYearHomeostasisForecastReport? report = await resp.Content.ReadFromJsonAsync<MultiYearHomeostasisForecastReport>(JsonOptions, ct);
+        return report ?? throw new InvalidOperationException("Endpoint returned empty or null multi-year homeostasis forecast payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<MultiYearHomeostasisForecastReport>> GetMultiYearHomeostasisForecastsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string depotId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/depots/{depotId}/multiyear-forecasts to list longitudinal durability forecasts.
+        // WHY:  Milestone 43 (P227): Populates native forecast history views for clinicians and patients.
+        // HOW:  Validates arguments, sends authenticated GET request, and deserializes report collection.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(depotId);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/depots/{Uri.EscapeDataString(depotId)}/multiyear-forecasts");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        List<MultiYearHomeostasisForecastReport>? list = await resp.Content.ReadFromJsonAsync<List<MultiYearHomeostasisForecastReport>>(JsonOptions, ct);
+        return (IReadOnlyList<MultiYearHomeostasisForecastReport>?)list ?? [];
+    }
+
+    /// <inheritdoc/>
+    public async Task<MultiYearHomeostasisForecastReport?> GetLatestMultiYearHomeostasisForecastAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string depotId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/depots/{depotId}/multiyear-forecasts/latest to load the newest durability report.
+        // WHY:  Milestone 43 (P227): Returns null cleanly when HTTP 404 indicates no forecast has been run yet.
+        // HOW:  Validates inputs, checks HTTP 404 before non-success error handling, and deserializes report JSON.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(depotId);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/depots/{Uri.EscapeDataString(depotId)}/multiyear-forecasts/latest");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (resp.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        return await resp.Content.ReadFromJsonAsync<MultiYearHomeostasisForecastReport>(JsonOptions, ct);
+    }
 }

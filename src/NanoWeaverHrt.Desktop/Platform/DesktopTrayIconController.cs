@@ -247,6 +247,8 @@ public sealed class DesktopTrayIconController : ITrayIconController, IDisposable
                         ClinicalWorkspaceSeverity.Critical => (TrayHealthBadge.Critical, "Gui.DepotWorkspace.TrayCritical"),
                         ClinicalWorkspaceSeverity.Warning when summary.FailedPeerSyncCount > 0 && summary.QuarantinedLotCount == 0 && summary.ActiveSafetyAlertCount == 0 =>
                             (TrayHealthBadge.Warning, "Gui.DepotWorkspace.TrayPeerSyncFailed"),
+                        ClinicalWorkspaceSeverity.Warning when summary.MitoticDriftAlert && summary.QuarantinedLotCount == 0 && summary.ActiveSafetyAlertCount == 0 =>
+                            (TrayHealthBadge.Warning, "Gui.DepotWorkspace.TrayMitoticDriftAdvisory"),
                         ClinicalWorkspaceSeverity.Warning => (TrayHealthBadge.Warning, "Gui.DepotWorkspace.TrayWarning"),
                         ClinicalWorkspaceSeverity.Optimal => (TrayHealthBadge.Healthy, "Gui.DepotWorkspace.TrayOptimal"),
                         _ => (TrayHealthBadge.Idle, "Status.Offline")

@@ -18,6 +18,7 @@
 @inject IFederatedPeerSyncService PeerSyncService
 @inject IColdChainStabilityService ColdChainService
 @inject IClinicalPharmacovigilanceService PharmacovigilanceService
+@inject IMultiYearHomeostasisService MultiYearService
 @inject IWeaverLocalizer Localizer
 @inject IJSRuntime JS
 
@@ -475,6 +476,156 @@
                                 <td class="font-mono">@obs.ObservedFshIuL.ToString("F2")</td>
                                 <td class="font-mono">@obs.ObservedShbgNmolL.ToString("F1")</td>
                                 <td class="font-mono">@obs.ObservedHematocritPct.ToString("F1")%</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+
+    <!-- Multi-Year Permanent Endocrine Homeostasis & Mitotic Cell-Turnover Panel (Milestone 43) -->
+    <section id="multiyear-homeostasis-panel" class="card panel mt-4" role="region" aria-label="@T("MultiYear.SectionTitle")">
+        <div class="panel-header">
+            <div>
+                <h3>@T("MultiYear.SectionTitle")</h3>
+                <p class="subtext">@T("MultiYear.SectionSubtitle")</p>
+            </div>
+            @if (_multiYearReport != null)
+            {
+                <span id="multiyear-durability-badge" class="badge @(_multiYearReport.DurabilityStatus == MultiYearDurabilityStatus.PermanentHomeostasisVerified ? "badge-success" : "badge-amber") font-mono">
+                    @(_multiYearReport.DurabilityStatus == MultiYearDurabilityStatus.PermanentHomeostasisVerified ? T("MultiYear.BadgeVerified") : T("MultiYear.BadgeAdvisory"))
+                </span>
+            }
+        </div>
+
+        <div class="telemetry-grid mt-3">
+            <div class="form-group">
+                <label class="form-label" for="input-multiyear-horizon">@T("MultiYear.HorizonLabel")</label>
+                <input id="input-multiyear-horizon" type="number" class="form-control font-mono" @bind="_multiYearHorizonYears" min="1" max="10" step="1" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="input-multiyear-fidelity">@T("MultiYear.FidelityLabel")</label>
+                <input id="input-multiyear-fidelity" type="number" class="form-control font-mono" @bind="_multiYearFidelityRate" min="0.90" max="0.9999" step="0.0005" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="input-multiyear-progenitor">@T("MultiYear.ProgenitorLabel")</label>
+                <input id="input-multiyear-progenitor" type="number" class="form-control font-mono" @bind="_multiYearProgenitorFraction" min="0.10" max="1.0" step="0.05" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="input-multiyear-circuit-id">@T("MultiYear.CircuitIdLabel")</label>
+                <input id="input-multiyear-circuit-id" type="text" class="form-control font-mono" @bind="_multiYearCircuitId" placeholder="epicirc_..." />
+            </div>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(_multiYearErrorMessage))
+        {
+            <div id="multiyear-validation-error" class="alert alert-danger mt-3" role="alert">@_multiYearErrorMessage</div>
+        }
+
+        <div class="d-flex align-items-center gap-2 mt-4">
+            <button id="btn-run-multiyear-simulation" class="btn btn-primary" @onclick="RunMultiYearHomeostasisSimulationAsync" disabled="@_isSimulatingMultiYear">
+                @T("MultiYear.RunButton")
+            </button>
+        </div>
+
+        @if (_multiYearReport != null)
+        {
+            <div id="multiyear-kpi-grid" class="telemetry-grid mt-4">
+                <div class="card stat-card">
+                    <div class="stat-label">@T("MultiYear.TenYearTtrLabel")</div>
+                    <div class="stat-value font-mono @(_multiYearReport.ProjectedTenYearTtrPercent >= 95.0 ? "text-success" : "text-warning")">
+                        @_multiYearReport.ProjectedTenYearTtrPercent.ToString("F1", CultureInfo.InvariantCulture)%
+                    </div>
+                    <div class="stat-sub">@_multiYearReport.HorizonYears-Year Benchmark (&ge; 95.0%)</div>
+                </div>
+                <div class="card stat-card">
+                    <div class="stat-label">@T("MultiYear.HandoffTtrLabel")</div>
+                    <div class="stat-value font-mono @(!_multiYearReport.HandoffTroughDropDetected ? "text-success" : "text-danger")">
+                        @_multiYearReport.HandoffWindowTtrPercent.ToString("F1", CultureInfo.InvariantCulture)%
+                    </div>
+                    <div class="stat-sub">Day 90–180 Exogenous &rarr; Epigenetic Handoff</div>
+                </div>
+                <div class="card stat-card">
+                    <div class="stat-label">@T("MultiYear.FinalMemoryLabel")</div>
+                    <div class="stat-value font-mono text-accent">
+                        @((_multiYearReport.FinalMethylatedProgenitorFraction * 100.0).ToString("F1", CultureInfo.InvariantCulture))%
+                    </div>
+                    <div class="stat-sub">Mitotic Fidelity: @_multiYearReport.MitoticFidelityRate.ToString("F4", CultureInfo.InvariantCulture)</div>
+                </div>
+                <div class="card stat-card">
+                    <div class="stat-label">Clinical Durability Status</div>
+                    <div class="stat-value-compact font-mono @(_multiYearReport.RequiresBoosterDose ? "text-warning" : "text-success")">
+                        @(_multiYearReport.RequiresBoosterDose ? T("MultiYear.BoosterAdvised") : T("MultiYear.LifetimeConserved"))
+                    </div>
+                    <div class="stat-sub">@_multiYearReport.RecommendedIntervention</div>
+                </div>
+            </div>
+
+            <div class="chart-container mt-4">
+                <div class="d-flex justify-between align-center flex-wrap gap-2 mb-2">
+                    <h4 class="text-main">@T("MultiYear.ChartTitle")</h4>
+                    <div class="d-flex gap-2 flex-wrap">
+                        <span class="badge badge-accent font-mono">CYAN: EXOGENOUS HYDROGEL</span>
+                        <span class="badge badge-success font-mono">EMERALD: ENDOGENOUS EPIGENETIC</span>
+                        <span class="badge badge-amber font-mono">AMBER: CHROMATIN MEMORY</span>
+                    </div>
+                </div>
+
+                <svg id="multiyear-trajectory-svg" viewBox="0 0 720 220" class="multiyear-trajectory-svg" role="img" aria-label="@T("MultiYear.ChartTitle")">
+                    <title>@T("MultiYear.ChartTitle")</title>
+                    <desc>Dual-source area and line plot tracing the Day 0-180 hydrogel elution taper into long-term endogenous steroidogenesis and methylated progenitor retention.</desc>
+
+                    <rect class="multiyear-handoff-band" x="56" y="25" width="46" height="155" />
+                    <line class="multiyear-grid" x1="50" y1="30" x2="690" y2="30" />
+                    <line class="multiyear-grid" x1="50" y1="68" x2="690" y2="68" />
+                    <line class="multiyear-grid" x1="50" y1="105" x2="690" y2="105" />
+                    <line class="multiyear-grid" x1="50" y1="143" x2="690" y2="143" />
+                    <line class="multiyear-axis" x1="50" y1="180" x2="690" y2="180" />
+                    <line class="multiyear-axis" x1="50" y1="180" x2="50" y2="25" />
+
+                    <path class="multiyear-exo-area" d="@BuildMultiYearHydrogelAreaPath(_multiYearReport)" />
+                    <path class="multiyear-endo-area" d="@BuildMultiYearEndogenousAreaPath(_multiYearReport)" />
+                    <path class="multiyear-exo-line" d="@BuildMultiYearHydrogelLinePath(_multiYearReport)" />
+                    <path class="multiyear-endo-line" d="@BuildMultiYearEndogenousLinePath(_multiYearReport)" />
+                    <path class="multiyear-memory-line" d="@BuildMultiYearMemoryLinePath(_multiYearReport)" />
+
+                    <text class="multiyear-svg-label" x="15" y="34">100%</text>
+                    <text class="multiyear-svg-label" x="20" y="109">50%</text>
+                    <text class="multiyear-svg-label" x="25" y="184">0%</text>
+                    <text class="multiyear-svg-label" x="50" y="198">Yr 0</text>
+                    <text class="multiyear-svg-label" x="72" y="210">Handoff</text>
+                    <text class="multiyear-svg-label" x="355" y="198">Yr @(_multiYearReport.HorizonYears / 2)</text>
+                    <text class="multiyear-svg-label" x="665" y="198">Yr @_multiYearReport.HorizonYears</text>
+                </svg>
+            </div>
+
+            <div class="table-container mt-4">
+                <table id="multiyear-checkpoints-table" class="data-table">
+                    <caption class="sr-only">@T("MultiYear.TableCaption")</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">Year</th>
+                            <th scope="col">17β-Estradiol (pmol/L)</th>
+                            <th scope="col">Testosterone (nmol/L)</th>
+                            <th scope="col">LH / FSH (IU/L)</th>
+                            <th scope="col">Chromatin Memory (%)</th>
+                            <th scope="col">Hydrogel Drive (%)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (MultiYearHomeostasisCheckpointRecord cp in _multiYearReport.AnnualCheckpoints)
+                        {
+                            <tr>
+                                <td class="font-mono">Year @cp.YearIndex</td>
+                                <td class="font-mono">@cp.EstradiolPmolL.ToString("F1", CultureInfo.InvariantCulture)</td>
+                                <td class="font-mono">@cp.TestosteroneNmolL.ToString("F2", CultureInfo.InvariantCulture)</td>
+                                <td class="font-mono">@cp.LhIuL.ToString("F2", CultureInfo.InvariantCulture) / @cp.FshIuL.ToString("F2", CultureInfo.InvariantCulture)</td>
+                                <td class="font-mono text-accent">@((cp.MethylatedProgenitorFraction * 100.0).ToString("F1", CultureInfo.InvariantCulture))%</td>
+                                <td class="font-mono">@((cp.HydrogelContributionFraction * 100.0).ToString("F1", CultureInfo.InvariantCulture))%</td>
                             </tr>
                         }
                     </tbody>
@@ -1753,6 +1904,8 @@
         _activeLotCustodyLedger = null;
         _coldChainErrorMessage = null;
         _coldChainStatusMessage = null;
+        _multiYearReport = null;
+        _multiYearErrorMessage = null;
     }
 
     /// <summary>
@@ -3027,4 +3180,211 @@
         PharmacovigilancePosture.CarpaQuarantine => T("Pharmacovigilance.PostureCarpaQuarantine"),
         _ => T("Pharmacovigilance.PostureNominal")
     };
+
+    /// <summary>
+    /// Form input: longitudinal multi-year durability simulation horizon in years (1 to 10).
+    /// </summary>
+    private int _multiYearHorizonYears = 10;
+
+    /// <summary>
+    /// Form input: DNMT1 maintenance methylation fidelity per mitotic cell division (0.90 to 0.9999).
+    /// </summary>
+    private double _multiYearFidelityRate = 0.9985;
+
+    /// <summary>
+    /// Form input: initial epigenetically reprogrammed progenitor fraction (0.10 to 1.0).
+    /// </summary>
+    private double _multiYearProgenitorFraction = 0.85;
+
+    /// <summary>
+    /// Form input: optional linked patient epigenetic toggle circuit identifier.
+    /// </summary>
+    private string? _multiYearCircuitId;
+
+    /// <summary>
+    /// True while a multi-year homeostasis simulation request is executing.
+    /// </summary>
+    private bool _isSimulatingMultiYear;
+
+    /// <summary>
+    /// Validation or runtime error message displayed in <c>#multiyear-validation-error</c>.
+    /// </summary>
+    private string? _multiYearErrorMessage;
+
+    /// <summary>
+    /// Latest simulated or loaded multi-year permanent homeostasis durability report.
+    /// </summary>
+    private MultiYearHomeostasisForecastReport? _multiYearReport;
+
+    /// <summary>
+    /// Executes and persists a coupled hydrogel-to-epigenetic multi-year durability simulation for the active depot.
+    /// </summary>
+    /// <returns>A task representing the asynchronous multi-year simulation run.</returns>
+    private async Task RunMultiYearHomeostasisSimulationAsync()
+    {
+        // WHAT: Ensures a persisted depot exists for this studio session and runs IMultiYearHomeostasisService.
+        // WHY:  Milestone 43 (P228): Lets clinicians forecast 1-10 year handoff continuity and mitotic drift directly in Depot Studio.
+        // HOW:  Saves baseline depot if missing, calls SimulateAndPersistAsync, and renders validation errors cleanly on ArgumentException.
+        _multiYearErrorMessage = null;
+        _isSimulatingMultiYear = true;
+        try
+        {
+            TimeReleaseDepotParameters baseline = BuildBaselineParameters();
+            string patientId = "depot-studio-session";
+            if (string.IsNullOrWhiteSpace(_activeDepotId))
+            {
+                _activeDepotId = $"depot_studio_{Guid.NewGuid():N}";
+                await DepotRepository.UpsertDepotFormulationAsync(new DepotFormulationRecord
+                {
+                    DepotId = _activeDepotId,
+                    PatientId = patientId,
+                    Regimen = baseline.Regimen,
+                    PolymerMatrixType = baseline.MatrixType.ToString(),
+                    InitialNanocarrierMassMg = baseline.InitialPayloadMassMg,
+                    DailyErosionRatePercent = baseline.DailyErosionRatePercent,
+                    ReleaseKineticsModel = baseline.KineticsModel.ToString(),
+                    TargetHorizonDays = baseline.TargetHorizonDays,
+                    CreatedAtUtc = DateTimeOffset.UtcNow
+                });
+            }
+
+            _multiYearReport = await MultiYearService.SimulateAndPersistAsync(
+                _activeDepotId,
+                new SimulateMultiYearHomeostasisRequest
+                {
+                    CircuitId = string.IsNullOrWhiteSpace(_multiYearCircuitId) ? null : _multiYearCircuitId.Trim(),
+                    HorizonYears = _multiYearHorizonYears,
+                    MitoticFidelityRate = _multiYearFidelityRate,
+                    TransducedProgenitorFraction = _multiYearProgenitorFraction
+                },
+                "depot-studio-operator");
+        }
+        catch (ArgumentException ex)
+        {
+            _multiYearErrorMessage = ex.Message;
+        }
+        finally
+        {
+            _isSimulatingMultiYear = false;
+        }
+    }
+
+    /// <summary>
+    /// Builds the SVG polyline path for exogenous hydrogel contribution fraction across the multi-year forecast.
+    /// </summary>
+    /// <param name="report">Computed multi-year forecast report.</param>
+    /// <returns>SVG path command string.</returns>
+    private static string BuildMultiYearHydrogelLinePath(MultiYearHomeostasisForecastReport report)
+    {
+        // WHAT: Projects HydrogelContributionFraction samples onto the SVG coordinate frame.
+        // WHY:  Visualizes rapid Day 0-180 polymer taper yielding control to epigenetic homeostasis.
+        // HOW:  Delegates to shared polyline helper selecting HydrogelContributionFraction.
+        return BuildMultiYearMetricPath(report, p => p.HydrogelContributionFraction, closeArea: false);
+    }
+
+    /// <summary>
+    /// Builds the filled SVG polygon path under the exogenous hydrogel contribution curve.
+    /// </summary>
+    /// <param name="report">Computed multi-year forecast report.</param>
+    /// <returns>Closed SVG area path command string.</returns>
+    private static string BuildMultiYearHydrogelAreaPath(MultiYearHomeostasisForecastReport report)
+    {
+        // WHAT: Closes the exogenous hydrogel curve down to the y = 180 baseline for translucent cyan area fill.
+        // WHY:  Highlights the finite initial 180-day exogenous polymer window relative to lifetime therapy.
+        // HOW:  Delegates to shared polyline helper with closeArea set to true.
+        return BuildMultiYearMetricPath(report, p => p.HydrogelContributionFraction, closeArea: true);
+    }
+
+    /// <summary>
+    /// Builds the SVG polyline path for endogenous epigenetically driven steroidogenesis contribution fraction.
+    /// </summary>
+    /// <param name="report">Computed multi-year forecast report.</param>
+    /// <returns>SVG path command string.</returns>
+    private static string BuildMultiYearEndogenousLinePath(MultiYearHomeostasisForecastReport report)
+    {
+        // WHAT: Projects EndogenousContributionFraction samples onto the SVG coordinate frame.
+        // WHY:  Visualizes smooth Day 90-180 activation and sustained multi-year autonomous hormone drive.
+        // HOW:  Delegates to shared polyline helper selecting EndogenousContributionFraction.
+        return BuildMultiYearMetricPath(report, p => p.EndogenousContributionFraction, closeArea: false);
+    }
+
+    /// <summary>
+    /// Builds the filled SVG polygon path under the endogenous epigenetic steroidogenesis curve.
+    /// </summary>
+    /// <param name="report">Computed multi-year forecast report.</param>
+    /// <returns>Closed SVG area path command string.</returns>
+    private static string BuildMultiYearEndogenousAreaPath(MultiYearHomeostasisForecastReport report)
+    {
+        // WHAT: Closes the endogenous contribution curve down to the y = 180 axis for translucent emerald area shading.
+        // WHY:  Clearly illustrates permanent endogenous takeover over Years 1 through HorizonYears.
+        // HOW:  Delegates to shared polyline helper with closeArea set to true.
+        return BuildMultiYearMetricPath(report, p => p.EndogenousContributionFraction, closeArea: true);
+    }
+
+    /// <summary>
+    /// Builds the dashed SVG polyline path for retained methylated progenitor cell fraction.
+    /// </summary>
+    /// <param name="report">Computed multi-year forecast report.</param>
+    /// <returns>SVG path command string.</returns>
+    private static string BuildMultiYearMemoryLinePath(MultiYearHomeostasisForecastReport report)
+    {
+        // WHAT: Projects MethylatedProgenitorFraction samples onto the SVG chart frame.
+        // WHY:  Reveals DNMT1 chromatin memory conservation versus multi-year mitotic dilution washout.
+        // HOW:  Delegates to shared polyline helper selecting MethylatedProgenitorFraction.
+        return BuildMultiYearMetricPath(report, p => p.MethylatedProgenitorFraction, closeArea: false);
+    }
+
+    /// <summary>
+    /// Maps a unit-range time-series metric across <see cref="MultiYearHomeostasisForecastReport.TrajectorySamples"/>
+    /// into SVG path coordinates (<c>x in [50..690]</c>, <c>y in [30..180]</c>).
+    /// </summary>
+    /// <param name="report">Computed multi-year forecast report.</param>
+    /// <param name="selector">Normalized [0..1] metric accessor.</param>
+    /// <param name="closeArea">True to close the path down to the x-axis for translucent area shading.</param>
+    /// <returns>Formatted SVG path data string.</returns>
+    private static string BuildMultiYearMetricPath(
+        MultiYearHomeostasisForecastReport report,
+        Func<MultiYearTrajectoryPoint, double> selector,
+        bool closeArea)
+    {
+        // WHAT: Converts multi-year trajectory samples into an SVG polyline or closed area path string.
+        // WHY:  Avoids duplicating SVG viewport projection math across exogenous, endogenous, and chromatin memory curves.
+        // HOW:  Scales Day / maxDay across [50..690] and normalized value across [180..30] without LINQ allocations.
+        if (report.TrajectorySamples.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        double maxDays = Math.Max(1.0, report.SimulatedDays);
+        StringBuilder sb = new(report.TrajectorySamples.Count * 20);
+        double firstX = 50.0;
+        double lastX = 50.0;
+
+        for (int i = 0; i < report.TrajectorySamples.Count; i++)
+        {
+            MultiYearTrajectoryPoint pt = report.TrajectorySamples[i];
+            double x = 50.0 + ((pt.Day / maxDays) * 640.0);
+            double val = Math.Clamp(selector(pt), 0.0, 1.0);
+            double y = 180.0 - (val * 150.0);
+
+            if (i == 0)
+            {
+                firstX = x;
+                sb.AppendFormat(CultureInfo.InvariantCulture, "M {0:F1} {1:F1}", x, y);
+            }
+            else
+            {
+                sb.AppendFormat(CultureInfo.InvariantCulture, " L {0:F1} {1:F1}", x, y);
+            }
+
+            lastX = x;
+        }
+
+        if (closeArea)
+        {
+            sb.AppendFormat(CultureInfo.InvariantCulture, " L {0:F1} 180.0 L {1:F1} 180.0 Z", lastX, firstX);
+        }
+
+        return sb.ToString();
+    }
 }

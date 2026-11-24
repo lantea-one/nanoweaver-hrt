@@ -2443,4 +2443,50 @@ public sealed class WeaverNodeApiClient : INanoWeaverNodeClient, IDisposable
         string effectiveToken = ResolveBearerToken(bearerToken);
         return _innerClient.ApproveEpigeneticCircuitAsync(profile, effectiveToken, circuitId, request, ct);
     }
+
+    /// <inheritdoc/>
+    public Task<MultiYearHomeostasisForecastReport> SimulateMultiYearHomeostasisAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string depotId,
+        SimulateMultiYearHomeostasisRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/depots/{depotId}/simulate-multiyear using provided or cached session token.
+        // WHY:  Milestone 43 (P227): Runs 10-year coupled depot durability forecasts from managed desktop/mobile clients.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.SimulateMultiYearHomeostasisAsync(profile, effectiveToken, depotId, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<MultiYearHomeostasisForecastReport>> GetMultiYearHomeostasisForecastsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string depotId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/depots/{depotId}/multiyear-forecasts using provided or cached session token.
+        // WHY:  Milestone 43 (P227): Loads historical multi-year durability forecasts in managed native clients.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GetMultiYearHomeostasisForecastsAsync(profile, effectiveToken, depotId, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<MultiYearHomeostasisForecastReport?> GetLatestMultiYearHomeostasisForecastAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string depotId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/depots/{depotId}/multiyear-forecasts/latest using provided or cached session token.
+        // WHY:  Milestone 43 (P227): Loads latest multi-year homeostasis posture and mitotic drift flags in native UIs.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GetLatestMultiYearHomeostasisForecastAsync(profile, effectiveToken, depotId, ct);
+    }
 }

@@ -198,5 +198,22 @@
   "EpigeneticCircuit.GuideTableTitle": "类固醇生成基因座单向导 RNA (sgRNA) 面板",
   "EpigeneticCircuit.ColTargetGene": "靶基因",
   "EpigeneticCircuit.ColSpecificity": "CFD 特异性 %",
-  "EpigeneticCircuit.ColFoldChange": "预测表达倍数变化"
+  "EpigeneticCircuit.ColFoldChange": "预测表达倍数变化",
+  "Gui.DepotWorkspace.TrayMitoticDriftAdvisory": "有丝分裂漂移预警",
+  "MultiYear.SectionTitle": "10年期永久内分泌稳态与有丝分裂持久性模拟器",
+  "MultiYear.SectionSubtitle": "第0–180天水凝胶向表观遗传耦合交接 • DNMT1 染色质遗传 • 长期祖细胞稳定性",
+  "MultiYear.HorizonLabel": "模拟跨度（年）",
+  "MultiYear.FidelityLabel": "有丝分裂保真率 (0.90–0.9999)",
+  "MultiYear.ProgenitorLabel": "转导祖细胞比例 (0.10–1.0)",
+  "MultiYear.CircuitIdLabel": "关联表观遗传回路 ID（可选）",
+  "MultiYear.RunButton": "模拟多年持久性",
+  "MultiYear.BadgeVerified": "已验证永久稳态",
+  "MultiYear.BadgeAdvisory": "有丝分裂漂移预警",
+  "MultiYear.TenYearTtrLabel": "预计多年目标范围内时间 (%)",
+  "MultiYear.HandoffTtrLabel": "第90–180天交接期 TTR (%)",
+  "MultiYear.FinalMemoryLabel": "末期甲基化祖细胞比例 (%)",
+  "MultiYear.ChartTitle": "双源轨迹：外源性水凝胶 -> 内源性表观遗传稳态",
+  "MultiYear.TableCaption": "逐年内分泌稳态与染色质记忆检查点",
+  "MultiYear.BoosterAdvised": "建议加强剂 / 启动子强化",
+  "MultiYear.LifetimeConserved": "无需加强剂长期维持"
 }

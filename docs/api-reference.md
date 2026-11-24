@@ -1392,6 +1392,39 @@ Retrieves the latest persisted adaptive Bayesian calibration snapshot, evaluated
 * **Response Status**: `200 OK` (`DepotCalibrationResponse`)
 * **Errors**: `400 Bad Request`, `401 Unauthorized`, `403 Forbidden`, `404 Not Found` (unknown depot or no calibration snapshot computed yet).
 
+### `POST /api/depots/{depotId}/simulate-multiyear`
+Executes and persists a 1-to-10-year coupled hydrogel-to-epigenetic endocrine durability forecast (`IMultiYearHomeostasisService`), evaluating Day 90–180 handoff continuity, quiescent vs. proliferating DNMT1 methylation maintenance, annual checkpoints (`weaver_multiyear_homeostasis_checkpoints`), and FDA 21 CFR Part 11 audit trail (`DEPOT_MULTIYEAR_SIMULATION_RUN`).
+
+* **Method**: `POST`
+* **Role Requirement**: `Administrator` or `Researcher` with active subject access
+* **Request Body (`SimulateMultiYearHomeostasisRequest`, JSON)**:
+  * `circuitId` (optional `string`): Patient-owned epigenetic toggle circuit ID to couple into endogenous drive (must belong to the same `patientId` as the depot).
+  * `horizonYears` (`integer`, default `10`, range `1–10`): Longitudinal horizon in years (`365–3650` discrete daily RK4 steps).
+  * `mitoticFidelityRate` (`double`, default `0.9985`, range `0.90–0.9999`): Per-division DNMT1 maintenance methylation fidelity.
+  * `transducedProgenitorFraction` (`double`, default `0.85`, range `0.10–1.0`): Initial transduced steroidogenic progenitor cell fraction.
+  * `quiescentStemCellFraction` (`double`, default `0.35`, range `0.0–0.95`): Slow-cycling quiescent stem cell pool fraction within the target niche.
+  * `tissueDivisionIntervalDays` (`double`, default `45.0`, range `7.0–365.0`): Mean proliferating cell-division interval in days.
+  * `clearanceMultiplier` (`double`, default `1.0`, range `0.1–5.0`): Pharmacogenomic systemic clearance multiplier.
+  * `promoterReinforcementStrength` (`double`, default `1.0`, range `0.0–2.0`): Cooperative reader-writer chromatin self-reinforcement strength.
+* **Response Status**: `201 Created` (`Location: /api/depots/{depotId}/multiyear-forecasts/{runId}`, body: `MultiYearHomeostasisForecastReport` containing `projectedTenYearTtrPercent`, `handoffWindowTtrPercent`, `handoffTroughDropDetected`, `finalMethylatedProgenitorFraction`, `washoutOnsetYear`, `durabilityStatus` [`PermanentHomeostasisVerified` | `MitoticDriftAdvisory`], `mitoticDriftAlert`, `requiresBoosterDose`, `recommendedIntervention`, `annualCheckpoints`, and `trajectorySamples`)
+* **Errors**: `400 Bad Request` (invalid kinetic bounds, unknown linked circuit, or cross-patient circuit mismatch), `401 Unauthorized`, `403 Forbidden`, `404 Not Found` (unknown `depotId`).
+
+### `GET /api/depots/{depotId}/multiyear-forecasts`
+Lists all persisted multi-year permanent homeostasis durability forecasts for a depot formulation in newest-first chronological order, reconstructing representative trajectory samples and annual checkpoints.
+
+* **Method**: `GET`
+* **Role Requirement**: `Administrator`, `Researcher` with subject access, or self `Patient`
+* **Response Status**: `200 OK` (`MultiYearHomeostasisForecastReport[]`)
+* **Errors**: `400 Bad Request`, `401 Unauthorized`, `403 Forbidden`, `404 Not Found` (unknown `depotId`).
+
+### `GET /api/depots/{depotId}/multiyear-forecasts/latest`
+Retrieves the most recent persisted multi-year permanent homeostasis forecast and mitotic drift alert state for a depot formulation, powering the native desktop/mobile summary cards and tray advisory notifications.
+
+* **Method**: `GET`
+* **Role Requirement**: `Administrator`, `Researcher` with subject access, or self `Patient`
+* **Response Status**: `200 OK` (`MultiYearHomeostasisForecastReport`)
+* **Errors**: `400 Bad Request`, `401 Unauthorized`, `403 Forbidden`, `404 Not Found` (unknown `depotId` or no multi-year forecast simulated yet).
+
 ---
 
 ## 10. Post-Quantum Cryptography & Regulatory Compliance

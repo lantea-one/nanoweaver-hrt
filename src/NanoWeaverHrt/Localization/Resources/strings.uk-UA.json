@@ -198,5 +198,22 @@
   "EpigeneticCircuit.GuideTableTitle": "Панель напрямної РНК (sgRNA) стероїдогенних локусів",
   "EpigeneticCircuit.ColTargetGene": "Цільовий ген",
   "EpigeneticCircuit.ColSpecificity": "Специфічність CFD %",
-  "EpigeneticCircuit.ColFoldChange": "Прогнозована кратність зміни"
+  "EpigeneticCircuit.ColFoldChange": "Прогнозована кратність зміни",
+  "Gui.DepotWorkspace.TrayMitoticDriftAdvisory": "Попередження про Мітотичний Дрейф",
+  "MultiYear.SectionTitle": "10-Річний Симулятор Постійного Ендокринного Гомеостазу та Мітотичної Стійкості",
+  "MultiYear.SectionSubtitle": "Перехід Гідрогель-Епігенетика Дні 0–180 • Успадкування Хроматину DNMT1 • Стабільність Попередників",
+  "MultiYear.HorizonLabel": "Горизонт Симуляції (Роки)",
+  "MultiYear.FidelityLabel": "Мітотична Точність (0.90–0.9999)",
+  "MultiYear.ProgenitorLabel": "Трансдукована Частка Попередників (0.10–1.0)",
+  "MultiYear.CircuitIdLabel": "ID Пов'язаної Епігенетичної Схеми (Опційно)",
+  "MultiYear.RunButton": "Моделювати Багаторічну Стійкість",
+  "MultiYear.BadgeVerified": "ПОСТІЙНИЙ ГОМЕОСТАЗ ПІДТВЕРДЖЕНО",
+  "MultiYear.BadgeAdvisory": "ПОПЕРЕДЖЕННЯ ПРО МІТОТИЧНИЙ ДРЕЙФ",
+  "MultiYear.TenYearTtrLabel": "Прогнозований Багаторічний TTR (%)",
+  "MultiYear.HandoffTtrLabel": "TTR Переходу Дні 90–180 (%)",
+  "MultiYear.FinalMemoryLabel": "Кінцеві Метильовані Попередники (%)",
+  "MultiYear.ChartTitle": "Дводжерельна Траєкторія: Екзогенний Гідрогель -> Ендогенна Епігенетика",
+  "MultiYear.TableCaption": "Щорічні Контрольні Точки Гомеостазу та Хроматинової Пам'яті",
+  "MultiYear.BoosterAdvised": "РЕКОМЕНДОВАНО БУСТЕР / ПІДСИЛЕННЯ",
+  "MultiYear.LifetimeConserved": "ЗБЕРЕЖЕНО БЕЗ БУСТЕРА"
 }

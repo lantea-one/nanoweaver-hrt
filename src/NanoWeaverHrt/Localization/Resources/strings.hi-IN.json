@@ -198,5 +198,22 @@
   "EpigeneticCircuit.GuideTableTitle": "स्टेरॉयडोजेनिक सिंगल-गाइड RNA (sgRNA) पैनल",
   "EpigeneticCircuit.ColTargetGene": "लक्षित जीन",
   "EpigeneticCircuit.ColSpecificity": "CFD विशिष्टता %",
-  "EpigeneticCircuit.ColFoldChange": "अनुमानित फ़ोल्ड-चेंज"
+  "EpigeneticCircuit.ColFoldChange": "अनुमानित फ़ोल्ड-चेंज",
+  "Gui.DepotWorkspace.TrayMitoticDriftAdvisory": "माइटोटिक ड्रिफ्ट सलाह",
+  "MultiYear.SectionTitle": "10-वर्षीय स्थायी अंतःस्रावी होमियोस्टैसिस और माइटोटिक स्थायित्व सिम्युलेटर",
+  "MultiYear.SectionSubtitle": "युग्मित दिन 0–180 हाइड्रोजेल-से-एपिजेनेटिक हैंडऑफ़ • DNMT1 क्रोमैटिन वंशागति • दीर्घकालिक पूर्वज स्थिरता",
+  "MultiYear.HorizonLabel": "सिमुलेशन अवधि (वर्ष)",
+  "MultiYear.FidelityLabel": "माइटोटिक फिडेलिटी दर (0.90–0.9999)",
+  "MultiYear.ProgenitorLabel": "ट्रांसड्यूस्ड पूर्वज अंश (0.10–1.0)",
+  "MultiYear.CircuitIdLabel": "संबद्ध एपिजेनेटिक सर्किट आईडी (वैकल्पिक)",
+  "MultiYear.RunButton": "बहु-वर्षीय स्थायित्व का अनुकरण करें",
+  "MultiYear.BadgeVerified": "स्थायी होमियोस्टैसिस सत्यापित",
+  "MultiYear.BadgeAdvisory": "माइटोटिक ड्रिफ्ट सलाह",
+  "MultiYear.TenYearTtrLabel": "अनुमानित बहु-वर्षीय TTR (%)",
+  "MultiYear.HandoffTtrLabel": "दिन 90–180 हैंडऑफ़ TTR (%)",
+  "MultiYear.FinalMemoryLabel": "अंतिम मेथिलेटेड पूर्वज (%)",
+  "MultiYear.ChartTitle": "द्वि-स्रोत पथ: बहिर्जात हाइड्रोजेल -> अंतर्जात एपिजेनेटिक आउटपुट",
+  "MultiYear.TableCaption": "वार्षिक अंतःस्रावी होमियोस्टैसिस और क्रोमैटिन स्मृति जांच बिंदु",
+  "MultiYear.BoosterAdvised": "बूस्टर / सुदृढ़ीकरण की सलाह",
+  "MultiYear.LifetimeConserved": "बूस्टर के बिना संरक्षित"
 }

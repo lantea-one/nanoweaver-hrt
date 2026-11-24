@@ -198,5 +198,22 @@
   "EpigeneticCircuit.GuideTableTitle": "لوحة الحمض النووي الريبي الدليلي المفرد (sgRNA) للمواضع الستيرويدية",
   "EpigeneticCircuit.ColTargetGene": "الجين المستهدف",
   "EpigeneticCircuit.ColSpecificity": "نوعية CFD %",
-  "EpigeneticCircuit.ColFoldChange": "تغير التعبير المتوقع"
+  "EpigeneticCircuit.ColFoldChange": "تغير التعبير المتوقع",
+  "Gui.DepotWorkspace.TrayMitoticDriftAdvisory": "تنبيه الانجراف الانقسامي",
+  "MultiYear.SectionTitle": "محاكي التوازن الصماوي الدائم لمدة 10 سنوات والمتانة الانقسامية",
+  "MultiYear.SectionSubtitle": "التسليم المزدوج من الهيدروجيل إلى علم التخلق (اليوم 0–180) • توارث الكروماتين DNMT1 • استقرار الخلايا السلفية",
+  "MultiYear.HorizonLabel": "أفق المحاكاة (سنوات)",
+  "MultiYear.FidelityLabel": "معدل الدقة الانقسامية (0.90–0.9999)",
+  "MultiYear.ProgenitorLabel": "كسر الخلايا السلفية المنقولة (0.10–1.0)",
+  "MultiYear.CircuitIdLabel": "معرّف الدائرة التخلقية المرتبطة (اختياري)",
+  "MultiYear.RunButton": "محاكاة المتانة متعددة السنوات",
+  "MultiYear.BadgeVerified": "تم التحقق من التوازن الدائم",
+  "MultiYear.BadgeAdvisory": "تنبيه الانجراف الانقسامي",
+  "MultiYear.TenYearTtrLabel": "النسبة المتوقعة ضمن النطاق لعدة سنوات (%)",
+  "MultiYear.HandoffTtrLabel": "نسبة التسليم ضمن النطاق للأيام 90–180 (%)",
+  "MultiYear.FinalMemoryLabel": "الخلايا السلفية المثيلية النهائية (%)",
+  "MultiYear.ChartTitle": "مسار مزدوج المصدر: الهيدروجيل الخارجي -> التخلق الداخلي",
+  "MultiYear.TableCaption": "نقاط التفتيش السنوية للتوازن الصماوي وذاكرة الكروماتين",
+  "MultiYear.BoosterAdvised": "يُوصى بجرعة معززة / تقوية",
+  "MultiYear.LifetimeConserved": "محفوظ دون جرعة معززة"
 }

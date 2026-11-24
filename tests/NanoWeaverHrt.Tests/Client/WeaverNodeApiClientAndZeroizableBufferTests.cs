@@ -1861,6 +1861,8 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         EvaluateEpigeneticCircuitRequest epiEvalReq = new EvaluateEpigeneticCircuitRequest().GetExamples();
         ApproveEpigeneticCircuitRequest epiApproveReq = new ApproveEpigeneticCircuitRequest().GetExamples();
         EpigeneticCircuitEvaluationReport epiReport = new EpigeneticCircuitEvaluationReport().GetExamples();
+        SimulateMultiYearHomeostasisRequest myhReq = new SimulateMultiYearHomeostasisRequest().GetExamples();
+        MultiYearHomeostasisForecastReport myhReport = new MultiYearHomeostasisForecastReport().GetExamples();
 
         innerMock.Setup(i => i.CreateFabricationLotAsync(profile, "tok", createReq, It.IsAny<CancellationToken>())).ReturnsAsync(lot);
         innerMock.Setup(i => i.GetFabricationLotsAsync(profile, "tok", "patient_alice", It.IsAny<CancellationToken>())).ReturnsAsync([lot]);
@@ -1890,6 +1892,9 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         innerMock.Setup(i => i.ListEpigeneticCircuitsAsync(profile, "tok", "pat_001", It.IsAny<CancellationToken>())).ReturnsAsync([epiReport]);
         innerMock.Setup(i => i.EvaluateEpigeneticCircuitAsync(profile, "tok", "epicirc_20261123_001", epiEvalReq, It.IsAny<CancellationToken>())).ReturnsAsync(epiReport);
         innerMock.Setup(i => i.ApproveEpigeneticCircuitAsync(profile, "tok", "epicirc_20261123_001", epiApproveReq, It.IsAny<CancellationToken>())).ReturnsAsync(epiReport with { CircuitStatus = NanoWeaverHrt.Models.EpigeneticCircuitStatus.Approved });
+        innerMock.Setup(i => i.SimulateMultiYearHomeostasisAsync(profile, "tok", "depot_sample_001", myhReq, It.IsAny<CancellationToken>())).ReturnsAsync(myhReport);
+        innerMock.Setup(i => i.GetMultiYearHomeostasisForecastsAsync(profile, "tok", "depot_sample_001", It.IsAny<CancellationToken>())).ReturnsAsync([myhReport]);
+        innerMock.Setup(i => i.GetLatestMultiYearHomeostasisForecastAsync(profile, "tok", "depot_sample_001", It.IsAny<CancellationToken>())).ReturnsAsync(myhReport);
 
         WeaverNodeApiClient client = new(innerMock.Object);
         Assert.Equal(lot.LotId, (await client.CreateFabricationLotAsync(profile, "tok", createReq)).LotId);
@@ -1920,6 +1925,9 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         Assert.Single(await client.ListEpigeneticCircuitsAsync(profile, "tok", "pat_001"));
         Assert.Equal("epicirc_20261123_001", (await client.EvaluateEpigeneticCircuitAsync(profile, "tok", "epicirc_20261123_001", epiEvalReq)).CircuitId);
         Assert.Equal(NanoWeaverHrt.Models.EpigeneticCircuitStatus.Approved, (await client.ApproveEpigeneticCircuitAsync(profile, "tok", "epicirc_20261123_001", epiApproveReq)).CircuitStatus);
+        Assert.Equal("myh_20261124_001", (await client.SimulateMultiYearHomeostasisAsync(profile, "tok", "depot_sample_001", myhReq)).RunId);
+        Assert.Single(await client.GetMultiYearHomeostasisForecastsAsync(profile, "tok", "depot_sample_001"));
+        Assert.Equal("myh_20261124_001", (await client.GetLatestMultiYearHomeostasisForecastAsync(profile, "tok", "depot_sample_001"))?.RunId);
 
         client.Dispose();
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.CreateFabricationLotAsync(profile, "tok", createReq));
@@ -1950,5 +1958,8 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ListEpigeneticCircuitsAsync(profile, "tok", "pat_001"));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.EvaluateEpigeneticCircuitAsync(profile, "tok", "epicirc_20261123_001", epiEvalReq));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ApproveEpigeneticCircuitAsync(profile, "tok", "epicirc_20261123_001", epiApproveReq));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.SimulateMultiYearHomeostasisAsync(profile, "tok", "depot_sample_001", myhReq));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetMultiYearHomeostasisForecastsAsync(profile, "tok", "depot_sample_001"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetLatestMultiYearHomeostasisForecastAsync(profile, "tok", "depot_sample_001"));
     }
 }

@@ -198,5 +198,22 @@
   "EpigeneticCircuit.GuideTableTitle": "Steroidogenes Single-Guide-RNA (sgRNA)-Panel",
   "EpigeneticCircuit.ColTargetGene": "Zielgen",
   "EpigeneticCircuit.ColSpecificity": "CFD-Spezifität %",
-  "EpigeneticCircuit.ColFoldChange": "Erwartete Faltungsänderung"
+  "EpigeneticCircuit.ColFoldChange": "Erwartete Faltungsänderung",
+  "Gui.DepotWorkspace.TrayMitoticDriftAdvisory": "Hinweis auf Mitotische Drift",
+  "MultiYear.SectionTitle": "10-Jahres-Simulator für Permanente Endokrine Homöostase & Mitotische Beständigkeit",
+  "MultiYear.SectionSubtitle": "Gekoppelter Tag-0–180-Hydrogel-zu-Epigenetik-Übergang • DNMT1-Chromatinvererbung • Langzeit-Progenitorstabilität",
+  "MultiYear.HorizonLabel": "Simulationshorizont (Jahre)",
+  "MultiYear.FidelityLabel": "Mitotische Erhaltungsrate (0,90–0,9999)",
+  "MultiYear.ProgenitorLabel": "Transduzierte Vorläuferzellfraktion (0,10–1,0)",
+  "MultiYear.CircuitIdLabel": "Verknüpfte Epigenetik-Schaltkreis-ID (Optional)",
+  "MultiYear.RunButton": "Mehrjährige Beständigkeit Simulieren",
+  "MultiYear.BadgeVerified": "PERMANENTE HOMÖOSTASE BESTÄTIGT",
+  "MultiYear.BadgeAdvisory": "MITOTISCHE DRIFT WARNUNG",
+  "MultiYear.TenYearTtrLabel": "Prognostizierte Mehrjahres-TTR (%)",
+  "MultiYear.HandoffTtrLabel": "Tag-90–180-Übergangs-TTR (%)",
+  "MultiYear.FinalMemoryLabel": "Finale Methylierte Vorläufer (%)",
+  "MultiYear.ChartTitle": "Duale Trajektorie: Exogenes Hydrogel -> Endogene Epigenetik",
+  "MultiYear.TableCaption": "Jährliche Endokrine Homöostase- und Chromatingedächtnis-Kontrollpunkte",
+  "MultiYear.BoosterAdvised": "BOOSTER / VERSTÄRKUNG EMPFOHLEN",
+  "MultiYear.LifetimeConserved": "OHNE BOOSTER KONSERVIERT"
 }

@@ -135,6 +135,10 @@ public sealed class RazorComponentLifecycleTests : IDisposable
         sc.AddSingleton<ISubjectAccessService, SubjectAccessService>();
         sc.AddSingleton<IEpigeneticCircuitRepository, EpigeneticCircuitRepository>();
         sc.AddSingleton<IEpigeneticCircuitService, EpigeneticCircuitService>();
+        sc.AddSingleton<IDepotFormulationRepository, DepotFormulationRepository>();
+        sc.AddSingleton<ITimeReleaseDepotService, TimeReleaseDepotService>();
+        sc.AddSingleton<IMultiYearHomeostasisRepository, MultiYearHomeostasisRepository>();
+        sc.AddSingleton<IMultiYearHomeostasisService, MultiYearHomeostasisService>();
         sc.AddSingleton<IUserAuthenticationService, UserAuthenticationService>();
         sc.AddSingleton<IAcceleratorTelemetryProvider, DefaultAcceleratorTelemetryProvider>();
         sc.AddSingleton<IAcceleratorBenchmarkService, AcceleratorBenchmarkService>();

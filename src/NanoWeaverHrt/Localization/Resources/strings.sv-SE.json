@@ -198,5 +198,22 @@
   "EpigeneticCircuit.GuideTableTitle": "Steroidogen Single-Guide RNA (sgRNA)-panel",
   "EpigeneticCircuit.ColTargetGene": "Målgen",
   "EpigeneticCircuit.ColSpecificity": "CFD-specificitet %",
-  "EpigeneticCircuit.ColFoldChange": "Förutsagd veckningsändring"
+  "EpigeneticCircuit.ColFoldChange": "Förutsagd veckningsändring",
+  "Gui.DepotWorkspace.TrayMitoticDriftAdvisory": "Varning för Mitotisk Drift",
+  "MultiYear.SectionTitle": "10-Årssimulator för Permanent Endokrin Homeostas & Mitotisk Hållbarhet",
+  "MultiYear.SectionSubtitle": "Dag 0–180 Hydrogel-till-Epigenetik Övergång • DNMT1-Kromatinarv • Långsiktig Progenitorstabilitet",
+  "MultiYear.HorizonLabel": "Simuleringshorisont (År)",
+  "MultiYear.FidelityLabel": "Mitotisk Bevarandegrad (0,90–0,9999)",
+  "MultiYear.ProgenitorLabel": "Transducerad Progenitorfraktion (0,10–1,0)",
+  "MultiYear.CircuitIdLabel": "Länkat Epigenetiskt Krets-ID (Valfritt)",
+  "MultiYear.RunButton": "Simulera Flerårig Hållbarhet",
+  "MultiYear.BadgeVerified": "PERMANENT HOMEOSTAS VERIFIERAD",
+  "MultiYear.BadgeAdvisory": "VARNING FÖR MITOTISK DRIFT",
+  "MultiYear.TenYearTtrLabel": "Prognostiserad Flerårig TTR (%)",
+  "MultiYear.HandoffTtrLabel": "Dag 90–180 Övergångs-TTR (%)",
+  "MultiYear.FinalMemoryLabel": "Slutliga Metylerade Progenitorer (%)",
+  "MultiYear.ChartTitle": "Tvåkällsbana: Exogen Hydrogel -> Endogen Epigenetik",
+  "MultiYear.TableCaption": "Årliga Kontrollpunkter för Endokrin Homeostas och Kromatinminne",
+  "MultiYear.BoosterAdvised": "BOOSTER / FÖRSTÄRKNING REKOMMENDERAS",
+  "MultiYear.LifetimeConserved": "BEVARAD UTAN BOOSTER"
 }

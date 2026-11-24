@@ -81,6 +81,11 @@ public sealed class DepotStudioComponentTests : BunitContext
     private readonly Mock<IClinicalPharmacovigilanceService> _pvMock = new();
 
     /// <summary>
+    /// Mocked 10-year coupled hydrogel-to-epigenetic homeostasis durability service for Milestone 43 UI tests.
+    /// </summary>
+    private readonly Mock<IMultiYearHomeostasisService> _multiYearMock = new();
+
+    /// <summary>
     /// In-memory list of peer subscriptions managed by <see cref="_peerSyncMock"/>.
     /// </summary>
     private readonly List<FederatedPeerSyncEndpointRecord> _peerSyncEndpoints = [];
@@ -250,6 +255,7 @@ public sealed class DepotStudioComponentTests : BunitContext
         Services.AddSingleton(_peerSyncMock.Object);
         Services.AddSingleton(_coldChainMock.Object);
         Services.AddSingleton(_pvMock.Object);
+        Services.AddSingleton(_multiYearMock.Object);
     }
 
     /// <inheritdoc/>
@@ -839,5 +845,83 @@ public sealed class DepotStudioComponentTests : BunitContext
         cut.Find("#btn-verify-peer-certificate").Click();
         Assert.Contains("CARPA QUARANTINE", cut.Find("#peer-verify-pv-badge").TextContent);
         Assert.DoesNotContain("TRUSTED FOR CLINICAL USE", cut.Find("#peer-verify-trust-badge").TextContent);
+    }
+
+    /// <summary>
+    /// Verifies Milestone 43 (P228) multi-year permanent homeostasis panel inside <see cref="DepotStudio"/>:
+    /// dual-source SVG chart, year-by-year table, Permanent vs. Mitotic Drift Advisory badges, and error display.
+    /// </summary>
+    [Fact]
+    public void DepotStudio_MultiYearHomeostasisPanel_RendersTrajectoryBadgeTableAndValidationErrors()
+    {
+        // WHAT: Exercises #multiyear-homeostasis-panel execution in DepotStudio.razor across verified, drift, and error branches.
+        // WHY:  Milestone 43 (P228): Verifies dual-source Day 0-180 handoff SVG rendering and advisory alerts.
+        // HOW:  Simulates 180-day baseline, configures _multiYearMock for conserved vs. washout vs. error outcomes, and inspects DOM.
+        MultiYearHomeostasisForecastReport sample = new MultiYearHomeostasisForecastReport().GetExamples();
+        _multiYearMock
+            .Setup(m => m.SimulateAndPersistAsync(
+                It.IsAny<string>(),
+                It.IsAny<SimulateMultiYearHomeostasisRequest?>(),
+                "depot-studio-operator",
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string depotId, SimulateMultiYearHomeostasisRequest? req, string _, CancellationToken _) =>
+            {
+                if (req != null && req.HorizonYears == 99)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(req.HorizonYears), "HorizonYears must be between 1 and 10.");
+                }
+
+                bool drift = req != null && req.MitoticFidelityRate < 0.99;
+                return sample with
+                {
+                    DepotId = depotId,
+                    HorizonYears = req?.HorizonYears ?? 10,
+                    MitoticFidelityRate = req?.MitoticFidelityRate ?? 0.9985,
+                    ProjectedTenYearTtrPercent = drift ? 76.2 : 99.6,
+                    FinalMethylatedProgenitorFraction = drift ? 0.508 : 0.826,
+                    DurabilityStatus = drift
+                        ? MultiYearDurabilityStatus.MitoticDriftAdvisory
+                        : MultiYearDurabilityStatus.PermanentHomeostasisVerified,
+                    MitoticDriftAlert = drift,
+                    RequiresBoosterDose = drift,
+                    RecommendedIntervention = drift
+                        ? "Mitotic chromatin washout advisory beginning Year 7.50."
+                        : "Permanent endogenous homeostasis verified over 10 years.",
+                    TrajectorySamples =
+                    [
+                        new MultiYearTrajectoryPoint { Day = 0, YearFraction = 0.0, EstradiolPmolL = 120.0, TestosteroneNmolL = 18.0, LhIuL = 6.5, FshIuL = 5.0, HydrogelContributionFraction = 1.0, EndogenousContributionFraction = 0.0, MethylatedProgenitorFraction = 0.85, InTargetRange = false },
+                        new MultiYearTrajectoryPoint { Day = 120, YearFraction = 0.33, EstradiolPmolL = 550.0, TestosteroneNmolL = 1.1, LhIuL = 0.4, FshIuL = 0.7, HydrogelContributionFraction = 0.45, EndogenousContributionFraction = 0.55, MethylatedProgenitorFraction = 0.848, InTargetRange = true },
+                        new MultiYearTrajectoryPoint { Day = 3650, YearFraction = 10.0, EstradiolPmolL = drift ? 340.0 : 548.0, TestosteroneNmolL = 1.1, LhIuL = 0.4, FshIuL = 0.7, HydrogelContributionFraction = 0.0, EndogenousContributionFraction = 1.0, MethylatedProgenitorFraction = drift ? 0.508 : 0.826, InTargetRange = !drift }
+                    ]
+                };
+            });
+
+        IRenderedComponent<DepotStudio> cut = Render<DepotStudio>();
+        cut.Find("#btn-run-depot-simulation").Click();
+
+        Assert.NotNull(cut.Find("#multiyear-homeostasis-panel"));
+
+        // 1. Conserved 10-year trajectory -> PERMANENT HOMEOSTASIS VERIFIED + SVG + table
+        cut.Find("#input-multiyear-circuit-id").Change("epicirc_20261123_001");
+        cut.Find("#btn-run-multiyear-simulation").Click();
+
+        Assert.Contains("PERMANENT HOMEOSTASIS VERIFIED", cut.Find("#multiyear-durability-badge").TextContent);
+        Assert.NotNull(cut.Find("#multiyear-trajectory-svg"));
+        Assert.NotNull(cut.Find("#multiyear-checkpoints-table"));
+        Assert.Contains("99.6%", cut.Find("#multiyear-kpi-grid").TextContent);
+        Assert.Contains("CONSERVED WITHOUT BOOSTER", cut.Find("#multiyear-kpi-grid").TextContent);
+
+        // 2. Low-fidelity mitotic washout -> MITOTIC DRIFT ADVISORY + BOOSTER ADVISED
+        cut.Find("#input-multiyear-fidelity").Change("0.985");
+        cut.Find("#btn-run-multiyear-simulation").Click();
+
+        Assert.Contains("MITOTIC DRIFT ADVISORY", cut.Find("#multiyear-durability-badge").TextContent);
+        Assert.Contains("BOOSTER / REINFORCEMENT ADVISED", cut.Find("#multiyear-kpi-grid").TextContent);
+        Assert.Contains("76.2%", cut.Find("#multiyear-kpi-grid").TextContent);
+
+        // 3. Invalid horizon triggers error banner
+        cut.Find("#input-multiyear-horizon").Change("99");
+        cut.Find("#btn-run-multiyear-simulation").Click();
+        Assert.Contains("HorizonYears must be between 1 and 10.", cut.Find("#multiyear-validation-error").TextContent);
     }
 }

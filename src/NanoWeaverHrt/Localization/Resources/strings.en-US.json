@@ -198,5 +198,22 @@
   "EpigeneticCircuit.GuideTableTitle": "Steroidogenic Locus Single-Guide RNA (sgRNA) Panel",
   "EpigeneticCircuit.ColTargetGene": "Target Gene",
   "EpigeneticCircuit.ColSpecificity": "CFD Specificity %",
-  "EpigeneticCircuit.ColFoldChange": "Predicted Fold-Change"
+  "EpigeneticCircuit.ColFoldChange": "Predicted Fold-Change",
+  "Gui.DepotWorkspace.TrayMitoticDriftAdvisory": "Mitotic Drift Advisory",
+  "MultiYear.SectionTitle": "10-Year Permanent Endocrine Homeostasis & Mitotic Durability Simulator",
+  "MultiYear.SectionSubtitle": "Coupled Day 0–180 Hydrogel-to-Epigenetic Handoff • DNMT1 Chromatin Inheritance • Lifetime Progenitor Stability",
+  "MultiYear.HorizonLabel": "Simulation Horizon (Years)",
+  "MultiYear.FidelityLabel": "Mitotic Fidelity Rate (0.90–0.9999)",
+  "MultiYear.ProgenitorLabel": "Transduced Progenitor Fraction (0.10–1.0)",
+  "MultiYear.CircuitIdLabel": "Linked Epigenetic Circuit ID (Optional)",
+  "MultiYear.RunButton": "Simulate Multi-Year Durability",
+  "MultiYear.BadgeVerified": "PERMANENT HOMEOSTASIS VERIFIED",
+  "MultiYear.BadgeAdvisory": "MITOTIC DRIFT ADVISORY",
+  "MultiYear.TenYearTtrLabel": "Projected Multi-Year TTR (%)",
+  "MultiYear.HandoffTtrLabel": "Day 90–180 Handoff TTR (%)",
+  "MultiYear.FinalMemoryLabel": "Final Methylated Progenitors (%)",
+  "MultiYear.ChartTitle": "Dual-Source Exogenous Hydrogel -> Endogenous Epigenetic Trajectory",
+  "MultiYear.TableCaption": "Year-by-Year Endocrine Homeostasis and Chromatin Memory Checkpoints",
+  "MultiYear.BoosterAdvised": "BOOSTER / REINFORCEMENT ADVISED",
+  "MultiYear.LifetimeConserved": "CONSERVED WITHOUT BOOSTER"
 }

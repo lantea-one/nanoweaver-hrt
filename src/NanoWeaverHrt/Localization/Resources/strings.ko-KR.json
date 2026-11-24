@@ -198,5 +198,22 @@
   "EpigeneticCircuit.GuideTableTitle": "스테로이드 생성 유전자좌 sgRNA 패널",
   "EpigeneticCircuit.ColTargetGene": "표적 유전자",
   "EpigeneticCircuit.ColSpecificity": "CFD 특이도 %",
-  "EpigeneticCircuit.ColFoldChange": "예측 발현 배수 변화"
+  "EpigeneticCircuit.ColFoldChange": "예측 발현 배수 변화",
+  "Gui.DepotWorkspace.TrayMitoticDriftAdvisory": "유사분열 드리프트 주의보",
+  "MultiYear.SectionTitle": "10년 영구 내분비 항상성 및 유사분열 지속성 시뮬레이터",
+  "MultiYear.SectionSubtitle": "0–180일 하이드로겔-후성유전학 연계 전환 • DNMT1 염색질 유전 • 장기 전구세포 안정성",
+  "MultiYear.HorizonLabel": "시뮬레이션 기간 (년)",
+  "MultiYear.FidelityLabel": "유사분열 유지 충실도 (0.90–0.9999)",
+  "MultiYear.ProgenitorLabel": "형질전환 전구세포 비율 (0.10–1.0)",
+  "MultiYear.CircuitIdLabel": "연결된 후성유전 회로 ID (선택)",
+  "MultiYear.RunButton": "다년 지속성 시뮬레이션",
+  "MultiYear.BadgeVerified": "영구 항상성 검증됨",
+  "MultiYear.BadgeAdvisory": "유사분열 드리프트 주의보",
+  "MultiYear.TenYearTtrLabel": "예상 다년 목표 범위 시간 (%)",
+  "MultiYear.HandoffTtrLabel": "90–180일 전환 구간 TTR (%)",
+  "MultiYear.FinalMemoryLabel": "최종 메틸화 전구세포 (%)",
+  "MultiYear.ChartTitle": "이중 소스 궤적: 외인성 하이드로겔 -> 내인성 후성유전 출력",
+  "MultiYear.TableCaption": "연도별 내분비 항상성 및 염색질 기억 체크포인트",
+  "MultiYear.BoosterAdvised": "부스터 / 프로모터 강화 권장",
+  "MultiYear.LifetimeConserved": "부스터 없이 장기 보존"
 }

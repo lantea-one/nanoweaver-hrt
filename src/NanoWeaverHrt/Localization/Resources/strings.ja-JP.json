@@ -198,5 +198,22 @@
   "EpigeneticCircuit.GuideTableTitle": "ステロイド産生遺伝子座 sgRNA パネル",
   "EpigeneticCircuit.ColTargetGene": "標的遺伝子",
   "EpigeneticCircuit.ColSpecificity": "CFD 特異性 %",
-  "EpigeneticCircuit.ColFoldChange": "予測発現倍率"
+  "EpigeneticCircuit.ColFoldChange": "予測発現倍率",
+  "Gui.DepotWorkspace.TrayMitoticDriftAdvisory": "有糸分裂ドリフト警告",
+  "MultiYear.SectionTitle": "10年恒久内分泌ホメオスタシス・有糸分裂耐久性シミュレーター",
+  "MultiYear.SectionSubtitle": "0〜180日ハイドロゲル〜エピジェネティック引き継ぎ • DNMT1クロマチン継承 • 長期前駆細胞安定性",
+  "MultiYear.HorizonLabel": "シミュレーション期間 (年)",
+  "MultiYear.FidelityLabel": "有糸分裂忠実度 (0.90–0.9999)",
+  "MultiYear.ProgenitorLabel": "導入前駆細胞比率 (0.10–1.0)",
+  "MultiYear.CircuitIdLabel": "連携エピジェネティック回路 ID (任意)",
+  "MultiYear.RunButton": "多年度耐久性をシミュレート",
+  "MultiYear.BadgeVerified": "恒久ホメオスタシス検証済み",
+  "MultiYear.BadgeAdvisory": "有糸分裂ドリフト警告",
+  "MultiYear.TenYearTtrLabel": "予測多年度 TTR (%)",
+  "MultiYear.HandoffTtrLabel": "90〜180日引き継ぎ TTR (%)",
+  "MultiYear.FinalMemoryLabel": "最終メチル化前駆細胞 (%)",
+  "MultiYear.ChartTitle": "デュアルソース軌道：外因性ハイドロゲル -> 内因性エピジェネティクス",
+  "MultiYear.TableCaption": "年次内分泌ホメオスタシスおよびクロマチン記憶チェックポイント",
+  "MultiYear.BoosterAdvised": "ブースター・強化推奨",
+  "MultiYear.LifetimeConserved": "ブースター不要で維持"
 }
