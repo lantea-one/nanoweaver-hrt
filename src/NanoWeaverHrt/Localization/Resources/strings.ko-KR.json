@@ -182,5 +182,21 @@
   "Pharmacovigilance.LogImmunogenicitySubmit": "면역원성 패널 기록",
   "Pharmacovigilance.AdverseEventsEmpty": "이 제조 로트에 대해 기록된 이식 후 이상반응이 없습니다.",
   "Pharmacovigilance.ImmunogenicityAssaysEmpty": "아직 기록된 CARPA 또는 TLR9 면역원성 패널이 없습니다.",
-  "Pharmacovigilance.EmergencyRecallRecommended": "긴급 임상 회수 권장"
+  "Pharmacovigilance.EmergencyRecallRecommended": "긴급 임상 회수 권장",
+  "EpigeneticCircuit.SectionTitle": "후성유전 스테로이드 생성 효소 재프로그래밍 및 쌍안정 회로 스튜디오",
+  "EpigeneticCircuit.SectionSubtitle": "비뉴클레아제 dCas9-DNMT3A/TET1 · CRISPRoff/on 염색질 스위치 • CFD >= 98.0% • ML-DSA-65 합성 승인 게이트",
+  "EpigeneticCircuit.BadgeApproved": "영구 합성 승인됨",
+  "EpigeneticCircuit.BadgeBlocked": "차단됨 — 비표적 위험 또는 단안정",
+  "EpigeneticCircuit.BadgeEvaluated": "평가 완료 — ML-DSA-65 서명 준비됨",
+  "EpigeneticCircuit.DesignButton": "토글 회로 설계 및 분석",
+  "EpigeneticCircuit.EvaluateButton": "안정성 스트레스 평가",
+  "EpigeneticCircuit.ApproveButton": "승인 및 서명 (ML-DSA-65)",
+  "EpigeneticCircuit.PatientIdLabel": "환자 식별자",
+  "EpigeneticCircuit.EffectorLabel": "후성유전 이펙터 플랫폼",
+  "EpigeneticCircuit.StabilityFactorLabel": "염색질 안정성 배율",
+  "EpigeneticCircuit.PhasePlaneTitle": "쌍안정 힐 토글 위상 평면 (분리선 경계)",
+  "EpigeneticCircuit.GuideTableTitle": "스테로이드 생성 유전자좌 sgRNA 패널",
+  "EpigeneticCircuit.ColTargetGene": "표적 유전자",
+  "EpigeneticCircuit.ColSpecificity": "CFD 특이도 %",
+  "EpigeneticCircuit.ColFoldChange": "예측 발현 배수 변화"
 }

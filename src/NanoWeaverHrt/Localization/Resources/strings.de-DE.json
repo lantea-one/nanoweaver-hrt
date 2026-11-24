@@ -182,5 +182,21 @@
   "Pharmacovigilance.LogImmunogenicitySubmit": "Immunogenitäts-Panel erfassen",
   "Pharmacovigilance.AdverseEventsEmpty": "Für diese Herstellungscharge wurden keine Nebenwirkungen nach Implantation erfasst.",
   "Pharmacovigilance.ImmunogenicityAssaysEmpty": "Noch keine CARPA- oder TLR9-Immunogenitäts-Panels erfasst.",
-  "Pharmacovigilance.EmergencyRecallRecommended": "KLINISCHER NOTFALLRÜCKRUF EMPFOHLEN"
+  "Pharmacovigilance.EmergencyRecallRecommended": "KLINISCHER NOTFALLRÜCKRUF EMPFOHLEN",
+  "EpigeneticCircuit.SectionTitle": "Studio für Epigenetische Steroidogenese-Umprogrammierung & Bistabile Schaltkreise",
+  "EpigeneticCircuit.SectionSubtitle": "Nukleasefreier dCas9-DNMT3A/TET1 & CRISPRoff/on Chromatin-Schalter • CFD >= 98.0% • ML-DSA-65 Synthese-Freigabe",
+  "EpigeneticCircuit.BadgeApproved": "FÜR DAUERHAFTE SYNTHESE FREIGEGEBEN",
+  "EpigeneticCircuit.BadgeBlocked": "BLOCKIERT — OFF-TARGET ODER MONOSTABIL",
+  "EpigeneticCircuit.BadgeEvaluated": "EVALUIERT — BEREIT FÜR ML-DSA-65 SIGNATUR",
+  "EpigeneticCircuit.DesignButton": "Kippschaltkreis entwerfen & analysieren",
+  "EpigeneticCircuit.EvaluateButton": "Stabilitäts-Stresstest bewerten",
+  "EpigeneticCircuit.ApproveButton": "Freigeben & Signieren (ML-DSA-65)",
+  "EpigeneticCircuit.PatientIdLabel": "Patientenkennung",
+  "EpigeneticCircuit.EffectorLabel": "Epigenetische Effektor-Plattform",
+  "EpigeneticCircuit.StabilityFactorLabel": "Chromatin-Stabilitätsfaktor",
+  "EpigeneticCircuit.PhasePlaneTitle": "Bistabiles Hill-Phasenporträt (Separatrix-Grenze)",
+  "EpigeneticCircuit.GuideTableTitle": "Steroidogenes Single-Guide-RNA (sgRNA)-Panel",
+  "EpigeneticCircuit.ColTargetGene": "Zielgen",
+  "EpigeneticCircuit.ColSpecificity": "CFD-Spezifität %",
+  "EpigeneticCircuit.ColFoldChange": "Erwartete Faltungsänderung"
 }

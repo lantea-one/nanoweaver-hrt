@@ -182,5 +182,21 @@
   "Pharmacovigilance.LogImmunogenicitySubmit": "प्रतिरक्षाजनन पैनल दर्ज करें",
   "Pharmacovigilance.AdverseEventsEmpty": "इस निर्माण लॉट के लिए कोई प्रतिकूल घटना दर्ज नहीं है।",
   "Pharmacovigilance.ImmunogenicityAssaysEmpty": "अभी तक कोई CARPA या TLR9 प्रतिरक्षाजनन पैनल दर्ज नहीं किया गया है।",
-  "Pharmacovigilance.EmergencyRecallRecommended": "आपातकालीन नैदानिक वापसी अनुशंसित"
+  "Pharmacovigilance.EmergencyRecallRecommended": "आपातकालीन नैदानिक वापसी अनुशंसित",
+  "EpigeneticCircuit.SectionTitle": "एपिजेनेटिक स्टेरॉयडोजेनिक रीप्रोग्रामिंग और बायस्टेबल सर्किट स्टूडियो",
+  "EpigeneticCircuit.SectionSubtitle": "नॉन-न्यूक्लीज dCas9-DNMT3A/TET1 व CRISPRoff/on क्रोमैटिन स्विच • CFD >= 98.0% • ML-DSA-65 गेट",
+  "EpigeneticCircuit.BadgeApproved": "स्थायी संश्लेषण हेतु अनुमोदित",
+  "EpigeneticCircuit.BadgeBlocked": "अवरुद्ध — ऑफ-टारगेट जोखिम या मोनोस्टेबल",
+  "EpigeneticCircuit.BadgeEvaluated": "मूल्यांकित — ML-DSA-65 हस्ताक्षर के लिए तैयार",
+  "EpigeneticCircuit.DesignButton": "टॉगल सर्किट डिज़ाइन व विश्लेषण करें",
+  "EpigeneticCircuit.EvaluateButton": "स्थिरता तनाव का मूल्यांकन करें",
+  "EpigeneticCircuit.ApproveButton": "अनुमोदित व हस्ताक्षर करें (ML-DSA-65)",
+  "EpigeneticCircuit.PatientIdLabel": "रोगी पहचानकर्ता",
+  "EpigeneticCircuit.EffectorLabel": "एपिजेनेटिक इफेक्टर प्लेटफ़ॉर्म",
+  "EpigeneticCircuit.StabilityFactorLabel": "क्रोमैटिन स्थिरता गुणांक",
+  "EpigeneticCircuit.PhasePlaneTitle": "बायस्टेबल हिल टॉगल फेज़ प्लेन (सेपेरेट्रिक्स सीमा)",
+  "EpigeneticCircuit.GuideTableTitle": "स्टेरॉयडोजेनिक सिंगल-गाइड RNA (sgRNA) पैनल",
+  "EpigeneticCircuit.ColTargetGene": "लक्षित जीन",
+  "EpigeneticCircuit.ColSpecificity": "CFD विशिष्टता %",
+  "EpigeneticCircuit.ColFoldChange": "अनुमानित फ़ोल्ड-चेंज"
 }

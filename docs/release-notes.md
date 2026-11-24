@@ -4,6 +4,26 @@
 
 ---
 
+## v2026.11.23.2 — Epigenetic Steroidogenic Enzyme Reprogramming & Permanent Bistable Circuit Design Studio (Milestone 42 / Forgejo Issues #251–#255) (2026-11-23)
+
+Completes **Milestone 42 (`P220`–`P224` / Forgejo Issues `#251`–`#255`)**, introducing non-nuclease epigenetic reprogramming models (`dCas9-DNMT3A/TET1`, `CRISPRoff/on`, `dCas9-KRAB/VP64`), mutual-repression Hill phase-plane stability analysis, genome-wide CFD off-target gating, and fail-closed NIST FIPS 204 ML-DSA-65 circuit synthesis approval:
+* **Phase 1: Epigenetic Steroidogenic Toggle Circuit Persistence (`Migration021_EpigeneticToggleCircuits` / Forgejo #251 / P220)**:
+  - Added `Migration021_EpigeneticToggleCircuits` (`Version = 21`) across SQLite, PostgreSQL, DuckDB (omitting unsupported `ON DELETE CASCADE`), and MySQL/MariaDB creating `weaver_epigenetic_circuits` and `weaver_epigenetic_guide_rnas` with 3 indexed query paths.
+  - Implemented `EpigeneticEffectorPlatform`, `EpigeneticCircuitStatus`, `GuideRnaModulationMode`, `EpigeneticCircuitRecord`, `EpigeneticGuideRnaRecord`, `IEpigeneticCircuitRepository`, and `EpigeneticCircuitRepository` supporting atomic save, chronological queries, evaluation updates, and GDPR Article 17 erasure cascades in `DeleteByPatientIdAsync`.
+* **Phase 2: Steroidogenic Enzyme Reprogramming & Bistable Hill Phase-Plane Engine (Forgejo #252 / P221)**:
+  - Implemented `IEpigeneticCircuitService` and `EpigeneticCircuitService` modeling MtF (`CYP19A1` + `HSD17B1` activation; `SRD5A2` + `HSD17B3` silencing -> 350–750 pmol/L E2, < 1.8 nmol/L T) and FtM (`HSD17B3` + `CYP17A1` activation; `CYP19A1` silencing -> 12–28 nmol/L T, < 150 pmol/L E2) chromatin toggle networks.
+  - Added zero-LINQ 2D Hill toggle nullcline and 200-step bracketed bisection fixed-point solver (`IsBistable`, `SeparatrixMargin >= 0.25`), CFD specificity floor (`>= 98.0%`), AES-256-GCM note encryption (`ProfileDataProtector.EncryptField`), fail-closed `ML-DSA-65` approval signing (`ApproveCircuitAsync`) & verification (`VerifyApprovalSignature`), and 21 CFR Part 11 audits (`EPIGENETIC_CIRCUIT_DESIGN`, `EPIGENETIC_CIRCUIT_EVALUATE`, `EPIGENETIC_CIRCUIT_APPROVE`).
+* **Phase 3: Epigenetic Circuit Minimal API Endpoints, Client SDK & ViewModel Parity (Forgejo #253 / P222)**:
+  - Appended 4 authenticated Minimal API routes to `Program.cs` (`POST /api/endocrine/epigenetic-circuits`, `GET /api/endocrine/epigenetic-circuits/{patientId}`, `POST /api/endocrine/epigenetic-circuits/{circuitId}/evaluate`, and `POST /api/endocrine/epigenetic-circuits/{circuitId}/approve` returning HTTP 422 fail-closed on unsafe circuits) with granular Administrator / granted Researcher / Patient-self RBAC helpers.
+  - Extended `INanoWeaverNodeClient`, `NanoWeaverNodeClient`, `WeaverNodeApiClient`, and `ClinicalGenomicsWorkspaceViewModel` (`ActiveEpigeneticCircuits`, `LatestEpigeneticCircuit`, and async design/load/evaluate/approve methods).
+* **Phase 4: Sovereign Epigenetic Reprogramming UI, 18-Language Localization & bUnit Suite (Forgejo #254 / P223)**:
+  - Added `#epigenetic-circuit-studio-panel`, `#epigenetic-guide-table`, `#epigenetic-phase-plane-svg` (dark-mode SVG nullclines, separatrix, saddle, and attractor markers with zero inline styles), and fail-closed `#epigenetic-approval-badge` (`APPROVED FOR PERMANENT SYNTHESIS` / `BLOCKED — OFF-TARGET OR MONOSTABLE`) inside `EndocrineDashboard.razor`.
+  - Added 16 localized `EpigeneticCircuit.*` keys across all 18 community language catalogs (`200` keys per catalog) with full bUnit and localization parity coverage.
+* **Phase 5: CalVer `v2026.11.23.2` Release, 8-Gate Verification & Audited Pull Request (Forgejo #255 / P224)**:
+  - Updated `<DefaultCalVerVersion>2026.11.23.2</DefaultCalVerVersion>` in `Directory.Build.props`, updated endocrine/API/compliance/GUI docs, and passed all 8 verification gates (`./scripts/verify-all.sh`) at 100.00% line and branch coverage.
+
+---
+
 ## v2026.11.23.1 — Post-Implantation Pharmacovigilance, Immunogenicity Surveillance & Automated Quarantine Escalation (Milestone 41 / Forgejo Issues #246–#250) (2026-11-23)
 
 Completes **Milestone 41 (`P215`–`P219` / Forgejo Issues `#246`–`#250`)**, establishing real-time post-implantation adverse event tracking, quantitative CARPA complement and TLR9 innate cytokine surveillance, automated fail-closed batch quarantine, and cross-node CoA trust revocation:

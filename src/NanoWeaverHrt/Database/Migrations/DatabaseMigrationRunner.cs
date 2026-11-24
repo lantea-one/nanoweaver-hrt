@@ -57,7 +57,8 @@ public sealed class DatabaseMigrationRunner : IDisposable
                 new Migration017_FederatedRevocationFeed(),
                 new Migration018_FederatedPeerSyncState(),
                 new Migration019_ColdChainStabilityAndCustody(),
-                new Migration020_ClinicalPharmacovigilance()
+                new Migration020_ClinicalPharmacovigilance(),
+                new Migration021_EpigeneticToggleCircuits()
             }.OrderBy(m => m.Version).ToList();
         }
     }

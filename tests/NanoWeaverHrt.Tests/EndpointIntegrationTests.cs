@@ -3283,4 +3283,159 @@ public sealed class EndpointIntegrationTests : IClassFixture<WebApplicationFacto
             Assert.Contains(entries, e => e.Action == "FABRICATION_PHARMACOVIGILANCE_QUARANTINE");
         }
     }
+
+    /// <summary>
+    /// End-to-end integration test for Milestone 42 (P222): verifies all 4 epigenetic steroidogenic
+    /// circuit Minimal API routes, RBAC/subject-access gating, Patient self-read access, fail-closed HTTP 422
+    /// approval blocking on low CFD specificity, ML-DSA-65 approval signing, and 21 CFR Part 11 audit trails.
+    /// </summary>
+    [Fact]
+    public async Task EpigeneticCircuitEndpoints_EnforceRbacFailClosedApprovalAndAuditTrail()
+    {
+        // WHAT: Tests POST/GET /api/endocrine/epigenetic-circuits, /evaluate, and /approve end-to-end.
+        // WHY:  Milestone 42 (P222): Verifies role boundaries, 400/403/404/422 RFC 7807 errors, and ML-DSA-65 approval.
+        // HOW:  Exercises Admin, Researcher (ungranted & granted), Patient self/other, anonymous caller, and safety gating.
+        string suf = Guid.NewGuid().ToString("N")[..8];
+        string patSelf = $"pat_epi_self_{suf}";
+        string patOther = $"pat_epi_other_{suf}";
+        string researcher = $"res_epi_{suf}";
+
+        string tokSelf = await ProvisionUserAndGetTokenAsync(patSelf, UserRole.Patient);
+        string tokOther = await ProvisionUserAndGetTokenAsync(patOther, UserRole.Patient);
+        string tokRes = await ProvisionUserAndGetTokenAsync(researcher, UserRole.Researcher);
+
+        using HttpClient clientAnon = _factory.CreateClient();
+        using HttpClient clientRes = CreateClientWithBearer(tokRes);
+        using HttpClient clientSelf = CreateClientWithBearer(tokSelf);
+        using HttpClient clientOther = CreateClientWithBearer(tokOther);
+
+        DesignEpigeneticCircuitRequest validDesign = new()
+        {
+            PatientId = patSelf,
+            Regimen = TherapeuticRegimen.MaleToFemale,
+            TargetTissue = TargetTissueType.GonadalTarget,
+            EffectorPlatform = EpigeneticEffectorPlatform.CrisprOffOn,
+            Notes = "Permanent MtF bistable switch"
+        };
+
+        // Unauthorized & BadRequest checks
+        Assert.Equal(HttpStatusCode.Unauthorized, (await clientAnon.GetAsync($"/api/endocrine/epigenetic-circuits/{patSelf}")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.GetAsync("/api/endocrine/epigenetic-circuits/%20")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/endocrine/epigenetic-circuits/%20/evaluate", new EvaluateEpigeneticCircuitRequest())).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/endocrine/epigenetic-circuits/%20/approve", new ApproveEpigeneticCircuitRequest())).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/endocrine/epigenetic-circuits", validDesign with { PatientId = " " })).StatusCode);
+        using (StringContent nullBody = new("null", Encoding.UTF8, "application/json"))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsync("/api/endocrine/epigenetic-circuits", nullBody)).StatusCode);
+        }
+
+        // NotFound checks before Researcher grant (Researcher lacks grant vs missing circuit)
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsJsonAsync("/api/endocrine/epigenetic-circuits/missing-404/evaluate", new EvaluateEpigeneticCircuitRequest())).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsJsonAsync("/api/endocrine/epigenetic-circuits/missing-404/approve", new ApproveEpigeneticCircuitRequest())).StatusCode);
+
+        // RBAC Forbidden checks prior to grant
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientSelf.PostAsJsonAsync("/api/endocrine/epigenetic-circuits", validDesign)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientOther.GetAsync($"/api/endocrine/epigenetic-circuits/{patSelf}")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientRes.PostAsJsonAsync("/api/endocrine/epigenetic-circuits", validDesign)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientRes.GetAsync($"/api/endocrine/epigenetic-circuits/{patSelf}")).StatusCode);
+
+        // Admin designs safe MtF circuit (201) and unsafe CFD circuit (201, Blocked)
+        HttpResponseMessage createSafeResp = await _client.PostAsJsonAsync("/api/endocrine/epigenetic-circuits", validDesign);
+        Assert.Equal(HttpStatusCode.Created, createSafeResp.StatusCode);
+        EpigeneticCircuitEvaluationReport? safeCircuit = await createSafeResp.Content.ReadFromJsonAsync<EpigeneticCircuitEvaluationReport>();
+        Assert.NotNull(safeCircuit);
+        Assert.True(safeCircuit.IsSafeForPermanentSynthesis);
+        Assert.Equal(EpigeneticCircuitStatus.Evaluated, safeCircuit.CircuitStatus);
+
+        DesignEpigeneticCircuitRequest blockedDesign = validDesign with
+        {
+            Guides =
+            [
+                new GuideRnaSpecInput
+                {
+                    TargetGeneSymbol = "CYP19A1",
+                    ModulationMode = GuideRnaModulationMode.Activate,
+                    ProtospacerSequence = "GCTAGTCAGCTGATCGATCG",
+                    PamSequence = "AGG",
+                    CfdSpecificityScore = 94.0,
+                    PredictedFoldChange = 4.2
+                },
+                new GuideRnaSpecInput
+                {
+                    TargetGeneSymbol = "SRD5A2",
+                    ModulationMode = GuideRnaModulationMode.Repress,
+                    ProtospacerSequence = "CGATCGATGCTAGCTAGCTA",
+                    PamSequence = "CGG",
+                    CfdSpecificityScore = 99.0,
+                    PredictedFoldChange = 0.12
+                }
+            ]
+        };
+        HttpResponseMessage createBlockedResp = await _client.PostAsJsonAsync("/api/endocrine/epigenetic-circuits", blockedDesign);
+        Assert.Equal(HttpStatusCode.Created, createBlockedResp.StatusCode);
+        EpigeneticCircuitEvaluationReport? blockedCircuit = await createBlockedResp.Content.ReadFromJsonAsync<EpigeneticCircuitEvaluationReport>();
+        Assert.NotNull(blockedCircuit);
+        Assert.Equal(EpigeneticCircuitStatus.Blocked, blockedCircuit.CircuitStatus);
+
+        // Patient self blocked on mutations (evaluate/approve), ungranted Researcher blocked on circuit mutations
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientSelf.PostAsJsonAsync($"/api/endocrine/epigenetic-circuits/{safeCircuit.CircuitId}/evaluate", new EvaluateEpigeneticCircuitRequest())).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientSelf.PostAsJsonAsync($"/api/endocrine/epigenetic-circuits/{safeCircuit.CircuitId}/approve", new ApproveEpigeneticCircuitRequest())).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientRes.PostAsJsonAsync($"/api/endocrine/epigenetic-circuits/{safeCircuit.CircuitId}/evaluate", new EvaluateEpigeneticCircuitRequest())).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientRes.PostAsJsonAsync($"/api/endocrine/epigenetic-circuits/{safeCircuit.CircuitId}/approve", new ApproveEpigeneticCircuitRequest())).StatusCode);
+
+        // Service validation errors mapped cleanly to 400 Bad Request
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/endocrine/epigenetic-circuits", validDesign with { Notes = new string('x', 2005) })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync($"/api/endocrine/epigenetic-circuits/{safeCircuit.CircuitId}/evaluate", new EvaluateEpigeneticCircuitRequest { ClearanceMultiplier = 0.05 })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync($"/api/endocrine/epigenetic-circuits/{safeCircuit.CircuitId}/approve", new ApproveEpigeneticCircuitRequest { ReviewerNotes = new string('y', 2005) })).StatusCode);
+
+        // Grant Researcher access to patSelf
+        using (IServiceScope grantScope = _factory.Services.CreateScope())
+        {
+            ISubjectAccessService accessSvc = grantScope.ServiceProvider.GetRequiredService<ISubjectAccessService>();
+            await accessSvc.GrantSubjectAccessAsync("admin", researcher, patSelf, SubjectAccessLevel.FullReadAccess, "M42 epigenetic studio");
+        }
+
+        // Patient self GET lists both circuits cleanly (200)
+        HttpResponseMessage selfListResp = await clientSelf.GetAsync($"/api/endocrine/epigenetic-circuits/{patSelf}");
+        Assert.Equal(HttpStatusCode.OK, selfListResp.StatusCode);
+        List<EpigeneticCircuitEvaluationReport>? selfCircuits = await selfListResp.Content.ReadFromJsonAsync<List<EpigeneticCircuitEvaluationReport>>();
+        Assert.NotNull(selfCircuits);
+        Assert.Equal(2, selfCircuits.Count);
+
+        // Granted Researcher designs FtM circuit (201), evaluates with null + explicit body (200), hits fail-closed 422 on blocked circuit, approves safe circuit (200)
+        HttpResponseMessage resDesignResp = await clientRes.PostAsJsonAsync("/api/endocrine/epigenetic-circuits", validDesign with { Regimen = TherapeuticRegimen.FemaleToMale });
+        Assert.Equal(HttpStatusCode.Created, resDesignResp.StatusCode);
+
+        HttpResponseMessage evalResp = await clientRes.PostAsJsonAsync($"/api/endocrine/epigenetic-circuits/{safeCircuit.CircuitId}/evaluate", new EvaluateEpigeneticCircuitRequest());
+        Assert.Equal(HttpStatusCode.OK, evalResp.StatusCode);
+        using (StringContent nullEvalBody = new("null", Encoding.UTF8, "application/json"))
+        {
+            Assert.Equal(HttpStatusCode.OK, (await clientRes.PostAsync($"/api/endocrine/epigenetic-circuits/{safeCircuit.CircuitId}/evaluate", nullEvalBody)).StatusCode);
+        }
+
+        HttpResponseMessage blockedApproveResp = await clientRes.PostAsJsonAsync($"/api/endocrine/epigenetic-circuits/{blockedCircuit.CircuitId}/approve", new ApproveEpigeneticCircuitRequest());
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, blockedApproveResp.StatusCode);
+
+        HttpResponseMessage safeApproveResp = await clientRes.PostAsJsonAsync($"/api/endocrine/epigenetic-circuits/{safeCircuit.CircuitId}/approve", new ApproveEpigeneticCircuitRequest { ReviewerNotes = "Ready for wet-lab assembly" });
+        Assert.Equal(HttpStatusCode.OK, safeApproveResp.StatusCode);
+        EpigeneticCircuitEvaluationReport? approvedDto = await safeApproveResp.Content.ReadFromJsonAsync<EpigeneticCircuitEvaluationReport>();
+        Assert.NotNull(approvedDto);
+        Assert.Equal(EpigeneticCircuitStatus.Approved, approvedDto.CircuitStatus);
+        Assert.Equal("ML-DSA-65", approvedDto.SignatureAlgorithm);
+        Assert.NotNull(approvedDto.ApprovalSignatureBase64);
+
+        using (StringContent nullApproveBody = new("null", Encoding.UTF8, "application/json"))
+        {
+            Assert.Equal(HttpStatusCode.OK, (await clientRes.PostAsync($"/api/endocrine/epigenetic-circuits/{safeCircuit.CircuitId}/approve", nullApproveBody)).StatusCode);
+        }
+
+        using (IServiceScope auditScope = _factory.Services.CreateScope())
+        {
+            IComplianceAuditService audit = auditScope.ServiceProvider.GetRequiredService<IComplianceAuditService>();
+            IReadOnlyList<AuditRecord> entries = audit.GetAuditRecords(500);
+            Assert.Contains(entries, e => e.Action == "EPIGENETIC_CIRCUIT_DESIGN");
+            Assert.Contains(entries, e => e.Action == "EPIGENETIC_CIRCUIT_EVALUATE");
+            Assert.Contains(entries, e => e.Action == "EPIGENETIC_CIRCUIT_APPROVE");
+        }
+    }
 }

@@ -182,5 +182,21 @@
   "Pharmacovigilance.LogImmunogenicitySubmit": "Ghi nhận Bảng Miễn dịch",
   "Pharmacovigilance.AdverseEventsEmpty": "Chưa có biến cố bất lợi sau cấy ghép nào được ghi nhận cho lô chế tạo này.",
   "Pharmacovigilance.ImmunogenicityAssaysEmpty": "Chưa có bảng xét nghiệm miễn dịch CARPA hoặc TLR9 nào được ghi nhận.",
-  "Pharmacovigilance.EmergencyRecallRecommended": "KHUYẾN CÁO THU HỒI LÂM SÀNG KHẨN CẤP"
+  "Pharmacovigilance.EmergencyRecallRecommended": "KHUYẾN CÁO THU HỒI LÂM SÀNG KHẨN CẤP",
+  "EpigeneticCircuit.SectionTitle": "Phòng thiết kế Tái lập trình Enzyme Steroid Biểu sinh & Mạch lưỡng ổn định",
+  "EpigeneticCircuit.SectionSubtitle": "Công tắc chất nhiễm sắc không nuclease dCas9-DNMT3A/TET1 & CRISPRoff/on • CFD >= 98.0% • Cổng ML-DSA-65",
+  "EpigeneticCircuit.BadgeApproved": "ĐÃ PHÊ DUYỆT TỔNG HỢP VĨNH VIỄN",
+  "EpigeneticCircuit.BadgeBlocked": "BỊ CHẶN — RỦI RO NGOÀI ĐÍCH HOẶC ĐƠN ỔN ĐỊNH",
+  "EpigeneticCircuit.BadgeEvaluated": "ĐÃ ĐÁNH GIÁ — SẴN SÀNG KÝ ML-DSA-65",
+  "EpigeneticCircuit.DesignButton": "Thiết kế & Phân tích mạch chuyển đổi",
+  "EpigeneticCircuit.EvaluateButton": "Đánh giá sức chịu ổn định",
+  "EpigeneticCircuit.ApproveButton": "Phê duyệt & Ký số (ML-DSA-65)",
+  "EpigeneticCircuit.PatientIdLabel": "Mã bệnh nhân",
+  "EpigeneticCircuit.EffectorLabel": "Nền tảng tác nhân biểu sinh",
+  "EpigeneticCircuit.StabilityFactorLabel": "Hệ số ổn định chất nhiễm sắc",
+  "EpigeneticCircuit.PhasePlaneTitle": "Mặt phẳng pha Hill lưỡng ổn định (Biên phân tách)",
+  "EpigeneticCircuit.GuideTableTitle": "Bảng ARN dẫn đường đơn (sgRNA) vùng gen steroid",
+  "EpigeneticCircuit.ColTargetGene": "Gen đích",
+  "EpigeneticCircuit.ColSpecificity": "Độ đặc hiệu CFD %",
+  "EpigeneticCircuit.ColFoldChange": "Mức thay đổi biểu hiện dự kiến"
 }

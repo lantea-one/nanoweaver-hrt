@@ -4736,4 +4736,137 @@ public sealed class NanoWeaverNodeClient : INanoWeaverNodeClient
         LotPharmacovigilanceReport? report = await resp.Content.ReadFromJsonAsync<LotPharmacovigilanceReport>(JsonOptions, ct);
         return report ?? throw new InvalidOperationException("Endpoint returned empty or null pharmacovigilance report payload.");
     }
+
+    /// <inheritdoc/>
+    public async Task<EpigeneticCircuitEvaluationReport> DesignEpigeneticCircuitAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        DesignEpigeneticCircuitRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/endocrine/epigenetic-circuits to author and evaluate a toggle circuit.
+        // WHY:  Milestone 42 (P222): Enables remote workstations to design epigenetic steroidogenic switches.
+        // HOW:  Validates inputs, posts serialized JSON payload with Bearer token, and deserializes EpigeneticCircuitEvaluationReport.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, "/api/endocrine/epigenetic-circuits");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        EpigeneticCircuitEvaluationReport? report = await resp.Content.ReadFromJsonAsync<EpigeneticCircuitEvaluationReport>(JsonOptions, ct);
+        return report ?? throw new InvalidOperationException("Endpoint returned empty or null epigenetic circuit report payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<EpigeneticCircuitEvaluationReport>> ListEpigeneticCircuitsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string patientId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/endocrine/epigenetic-circuits/{patientId} to list a patient's blueprints.
+        // WHY:  Milestone 42 (P222): Loads persisted circuits and phase-plane geometry for clinicians and patients.
+        // HOW:  Validates arguments, sends authenticated GET request, and deserializes report collection.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(patientId);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/endocrine/epigenetic-circuits/{Uri.EscapeDataString(patientId)}");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        List<EpigeneticCircuitEvaluationReport>? list = await resp.Content.ReadFromJsonAsync<List<EpigeneticCircuitEvaluationReport>>(JsonOptions, ct);
+        return (IReadOnlyList<EpigeneticCircuitEvaluationReport>?)list ?? [];
+    }
+
+    /// <inheritdoc/>
+    public async Task<EpigeneticCircuitEvaluationReport> EvaluateEpigeneticCircuitAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string circuitId,
+        EvaluateEpigeneticCircuitRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/endocrine/epigenetic-circuits/{circuitId}/evaluate to recompute phase-plane stability.
+        // WHY:  Milestone 42 (P222): Lets native clients test patient clearance sensitivity prior to approval.
+        // HOW:  Validates inputs, sends authenticated JSON POST, and deserializes updated evaluation report.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(circuitId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/endocrine/epigenetic-circuits/{Uri.EscapeDataString(circuitId)}/evaluate");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        EpigeneticCircuitEvaluationReport? report = await resp.Content.ReadFromJsonAsync<EpigeneticCircuitEvaluationReport>(JsonOptions, ct);
+        return report ?? throw new InvalidOperationException("Endpoint returned empty or null epigenetic circuit evaluation payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<EpigeneticCircuitEvaluationReport> ApproveEpigeneticCircuitAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string circuitId,
+        ApproveEpigeneticCircuitRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/endocrine/epigenetic-circuits/{circuitId}/approve for ML-DSA-65 synthesis sign-off.
+        // WHY:  Milestone 42 (P222): Requests cryptographic approval and surfaces HTTP 422 fail-closed gate rejections.
+        // HOW:  Validates arguments, sends authenticated JSON POST, throws NodeApiException on 422/errors, returns approved report.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(circuitId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/endocrine/epigenetic-circuits/{Uri.EscapeDataString(circuitId)}/approve");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        EpigeneticCircuitEvaluationReport? report = await resp.Content.ReadFromJsonAsync<EpigeneticCircuitEvaluationReport>(JsonOptions, ct);
+        return report ?? throw new InvalidOperationException("Endpoint returned empty or null epigenetic circuit approval payload.");
+    }
 }

@@ -4471,6 +4471,78 @@ public sealed class NanoWeaverNodeClientTests : IDisposable
     }
 
     /// <summary>
+    /// Verifies Milestone 42 (P222) epigenetic toggle circuit SDK methods across nominal round-trips,
+    /// fail-closed HTTP 422 gate rejections, null payloads, server errors, and argument validation guards.
+    /// </summary>
+    [Fact]
+    public async Task EpigeneticCircuitClientMethods_NominalErrorsAndGuards_BehaveExpectedly()
+    {
+        // WHAT: Tests DesignEpigeneticCircuitAsync, ListEpigeneticCircuitsAsync, EvaluateEpigeneticCircuitAsync, and ApproveEpigeneticCircuitAsync.
+        // WHY:  Milestone 42 (P222): Enforces 100% client SDK line and branch coverage for epigenetic endpoints.
+        // HOW:  Stubs /api/endocrine/epigenetic-circuits* routes in memory and verifies happy, null, 422, 500, and guard paths.
+        EpigeneticCircuitEvaluationReport sample = new EpigeneticCircuitEvaluationReport().GetExamples();
+        string sampleJson = JsonSerializer.Serialize(sample);
+        DesignEpigeneticCircuitRequest designReq = new DesignEpigeneticCircuitRequest().GetExamples();
+        EvaluateEpigeneticCircuitRequest evalReq = new EvaluateEpigeneticCircuitRequest().GetExamples();
+        ApproveEpigeneticCircuitRequest approveReq = new ApproveEpigeneticCircuitRequest().GetExamples();
+
+        // 1. DesignEpigeneticCircuitAsync
+        _httpHandler.SetResponse("/api/endocrine/epigenetic-circuits", HttpStatusCode.Created, sampleJson);
+        EpigeneticCircuitEvaluationReport designed = await _client.DesignEpigeneticCircuitAsync(_localProfile, "valid_token", designReq);
+        Assert.Equal(sample.CircuitId, designed.CircuitId);
+
+        _httpHandler.SetResponse("/api/endocrine/epigenetic-circuits", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.DesignEpigeneticCircuitAsync(_localProfile, "valid_token", designReq));
+        _httpHandler.SetResponse("/api/endocrine/epigenetic-circuits", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.DesignEpigeneticCircuitAsync(_localProfile, "valid_token", designReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.DesignEpigeneticCircuitAsync(null!, "valid_token", designReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.DesignEpigeneticCircuitAsync(_localProfile, "", designReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.DesignEpigeneticCircuitAsync(_localProfile, "valid_token", null!));
+
+        // 2. ListEpigeneticCircuitsAsync
+        _httpHandler.SetResponse("/api/endocrine/epigenetic-circuits/pat_001", HttpStatusCode.OK, JsonSerializer.Serialize(new[] { sample }));
+        IReadOnlyList<EpigeneticCircuitEvaluationReport> listed = await _client.ListEpigeneticCircuitsAsync(_localProfile, "valid_token", "pat_001");
+        Assert.Single(listed);
+
+        _httpHandler.SetResponse("/api/endocrine/epigenetic-circuits/pat_001", HttpStatusCode.OK, "null");
+        Assert.Empty(await _client.ListEpigeneticCircuitsAsync(_localProfile, "valid_token", "pat_001"));
+        _httpHandler.SetResponse("/api/endocrine/epigenetic-circuits/pat_001", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.ListEpigeneticCircuitsAsync(_localProfile, "valid_token", "pat_001"));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.ListEpigeneticCircuitsAsync(null!, "valid_token", "pat_001"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.ListEpigeneticCircuitsAsync(_localProfile, "", "pat_001"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.ListEpigeneticCircuitsAsync(_localProfile, "valid_token", ""));
+
+        // 3. EvaluateEpigeneticCircuitAsync
+        _httpHandler.SetResponse("/api/endocrine/epigenetic-circuits/epicirc_001/evaluate", HttpStatusCode.OK, sampleJson);
+        EpigeneticCircuitEvaluationReport evaluated = await _client.EvaluateEpigeneticCircuitAsync(_localProfile, "valid_token", "epicirc_001", evalReq);
+        Assert.Equal(sample.CircuitId, evaluated.CircuitId);
+
+        _httpHandler.SetResponse("/api/endocrine/epigenetic-circuits/epicirc_001/evaluate", HttpStatusCode.BadRequest, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.EvaluateEpigeneticCircuitAsync(_localProfile, "valid_token", "epicirc_001", evalReq));
+        _httpHandler.SetResponse("/api/endocrine/epigenetic-circuits/epicirc_001/evaluate", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.EvaluateEpigeneticCircuitAsync(_localProfile, "valid_token", "epicirc_001", evalReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.EvaluateEpigeneticCircuitAsync(null!, "valid_token", "epicirc_001", evalReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.EvaluateEpigeneticCircuitAsync(_localProfile, "", "epicirc_001", evalReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.EvaluateEpigeneticCircuitAsync(_localProfile, "valid_token", "", evalReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.EvaluateEpigeneticCircuitAsync(_localProfile, "valid_token", "epicirc_001", null!));
+
+        // 4. ApproveEpigeneticCircuitAsync (including 422 fail-closed gate rejection)
+        string approvedJson = JsonSerializer.Serialize(sample with { CircuitStatus = EpigeneticCircuitStatus.Approved, SignatureAlgorithm = "ML-DSA-65" });
+        _httpHandler.SetResponse("/api/endocrine/epigenetic-circuits/epicirc_001/approve", HttpStatusCode.OK, approvedJson);
+        EpigeneticCircuitEvaluationReport approved = await _client.ApproveEpigeneticCircuitAsync(_localProfile, "valid_token", "epicirc_001", approveReq);
+        Assert.Equal(EpigeneticCircuitStatus.Approved, approved.CircuitStatus);
+
+        _httpHandler.SetResponse("/api/endocrine/epigenetic-circuits/epicirc_001/approve", HttpStatusCode.UnprocessableEntity, """{"detail":"Blocked"}""");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.ApproveEpigeneticCircuitAsync(_localProfile, "valid_token", "epicirc_001", approveReq));
+        _httpHandler.SetResponse("/api/endocrine/epigenetic-circuits/epicirc_001/approve", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.ApproveEpigeneticCircuitAsync(_localProfile, "valid_token", "epicirc_001", approveReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.ApproveEpigeneticCircuitAsync(null!, "valid_token", "epicirc_001", approveReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.ApproveEpigeneticCircuitAsync(_localProfile, "", "epicirc_001", approveReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.ApproveEpigeneticCircuitAsync(_localProfile, "valid_token", "", approveReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.ApproveEpigeneticCircuitAsync(_localProfile, "valid_token", "epicirc_001", null!));
+    }
+
+    /// <summary>
     /// In-memory HTTP message handler stub for deterministic test execution.
     /// </summary>
     private sealed class StubHttpMessageHandler : HttpMessageHandler

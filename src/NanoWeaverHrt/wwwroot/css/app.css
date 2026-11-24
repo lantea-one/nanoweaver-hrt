@@ -2949,3 +2949,78 @@ select.form-control-sm {
     word-break: break-all;
 }
 
+/* Epigenetic bistable phase-plane SVG & approval status styling (Milestone 42) */
+.epigenetic-phase-svg {
+    width: 100%;
+    max-width: 560px;
+    height: auto;
+    background: #060b14;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    display: block;
+}
+
+.epigenetic-axis {
+    stroke: #64748b;
+    stroke-width: 1.25;
+}
+
+.epigenetic-grid {
+    stroke: rgba(148, 163, 184, 0.16);
+    stroke-width: 0.75;
+    stroke-dasharray: 3 3;
+}
+
+.epigenetic-nullcline-e2 {
+    fill: none;
+    stroke: #38bdf8;
+    stroke-width: 2.25;
+}
+
+.epigenetic-nullcline-t {
+    fill: none;
+    stroke: #ec4899;
+    stroke-width: 2.25;
+}
+
+.epigenetic-separatrix {
+    fill: none;
+    stroke: #f59e0b;
+    stroke-width: 1.75;
+    stroke-dasharray: 5 4;
+}
+
+.epigenetic-attractor-target {
+    fill: #10b981;
+    stroke: #ecfdf5;
+    stroke-width: 1.5;
+}
+
+.epigenetic-attractor-alt {
+    fill: #64748b;
+    stroke: #e2e8f0;
+    stroke-width: 1.25;
+}
+
+.epigenetic-saddle-pt {
+    fill: #f59e0b;
+    stroke: #fffbeb;
+    stroke-width: 1.25;
+}
+
+.epigenetic-svg-label {
+    fill: #cbd5e1;
+    font-size: 9.5px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.badge-amber {
+    background: rgba(245, 158, 11, 0.18);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.45);
+    padding: 0.25rem 0.65rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+

@@ -160,6 +160,8 @@ public class Program
         builder.Services.AddSingleton<IColdChainStabilityService, ColdChainStabilityService>();
         builder.Services.AddSingleton<IClinicalPharmacovigilanceRepository, ClinicalPharmacovigilanceRepository>();
         builder.Services.AddSingleton<IClinicalPharmacovigilanceService, ClinicalPharmacovigilanceService>();
+        builder.Services.AddSingleton<IEpigeneticCircuitRepository, EpigeneticCircuitRepository>();
+        builder.Services.AddSingleton<IEpigeneticCircuitService, EpigeneticCircuitService>();
         builder.Services.AddSingleton<IFederatedPeerSyncRepository, FederatedPeerSyncRepository>();
         builder.Services.AddSingleton<IFederatedDnsResolver, SystemFederatedDnsResolver>();
         builder.Services.AddHttpClient(FederatedPeerSyncService.HttpClientName, client =>
@@ -6160,6 +6162,187 @@ public class Program
         .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden)
         .Produces<SecureProblemDetails>(StatusCodes.Status404NotFound);
 
+        app.MapPost("/api/endocrine/epigenetic-circuits", async (
+            DesignEpigeneticCircuitRequest? request,
+            IEpigeneticCircuitService circuitService,
+            ISubjectAccessService subjectAccess,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Designs and evaluates a patient-specific epigenetic steroidogenic toggle circuit.
+            // WHY:  Milestone 42 (P222): Persists encrypted blueprints and computes CFD + Hill phase-plane safety gates.
+            // HOW:  Validates non-null payload and non-empty patientId, authorizes Administrator or granted Researcher, delegates to DesignCircuitAsync.
+            if (request is null || string.IsNullOrWhiteSpace(request.PatientId))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Valid epigenetic circuit request and patientId are required.");
+            }
+
+            (IResult? denial, UserAccount caller) = await AuthorizeEpigeneticPatientAccessAsync(
+                request.PatientId.Trim(), allowPatientSelf: false, subjectAccess, context, ct);
+            if (denial is not null)
+            {
+                return denial;
+            }
+
+            try
+            {
+                EpigeneticCircuitEvaluationReport report = await circuitService.DesignCircuitAsync(request, caller.Username, ct);
+                return Results.Created($"/api/endocrine/epigenetic-circuits/{report.PatientId}", report);
+            }
+            catch (ArgumentException ex)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, ex.Message);
+            }
+        })
+        .WithName("DesignEpigeneticCircuit")
+        .WithTags("Endocrine Regulatory Hub")
+        .WithSummary("Designs and evaluates a patient-specific epigenetic steroidogenic toggle circuit.")
+        .WithDescription("Creates dCas9 chromatin reprogramming circuits (MtF/FtM), checks >= 98.0% CFD specificity, solves Hill bistability, and logs 21 CFR Part 11 audits.")
+        .Accepts<DesignEpigeneticCircuitRequest>("application/json")
+        .Produces<EpigeneticCircuitEvaluationReport>(StatusCodes.Status201Created)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden);
+
+        app.MapGet("/api/endocrine/epigenetic-circuits/{patientId}", async (
+            string patientId,
+            IEpigeneticCircuitService circuitService,
+            ISubjectAccessService subjectAccess,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Lists all epigenetic toggle circuits belonging to a patient with decrypted notes and phase-plane diagrams.
+            // WHY:  Milestone 42 (P222): Enables authorized clinicians, researchers, and self-accessing patients to review designs.
+            // HOW:  Validates patientId, authorizes Administrator/granted Researcher/Patient self, and invokes ListPatientCircuitsAsync.
+            if (string.IsNullOrWhiteSpace(patientId))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Valid patientId is required.");
+            }
+
+            string cleanPatientId = patientId.Trim();
+            (IResult? denial, _) = await AuthorizeEpigeneticPatientAccessAsync(
+                cleanPatientId, allowPatientSelf: true, subjectAccess, context, ct);
+            if (denial is not null)
+            {
+                return denial;
+            }
+
+            IReadOnlyList<EpigeneticCircuitEvaluationReport> list = await circuitService.ListPatientCircuitsAsync(cleanPatientId, ct);
+            return Results.Ok(list);
+        })
+        .WithName("ListPatientEpigeneticCircuits")
+        .WithTags("Endocrine Regulatory Hub")
+        .WithSummary("Lists persisted epigenetic toggle circuits and phase-plane stability diagrams for a patient.")
+        .WithDescription("Returns chronologically ordered circuits with decrypted clinician notes for Administrator, granted Researcher, or matching Patient self.")
+        .Produces<IReadOnlyList<EpigeneticCircuitEvaluationReport>>(StatusCodes.Status200OK)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden);
+
+        app.MapPost("/api/endocrine/epigenetic-circuits/{circuitId}/evaluate", async (
+            string circuitId,
+            EvaluateEpigeneticCircuitRequest? request,
+            IEpigeneticCircuitRepository circuitRepository,
+            IEpigeneticCircuitService circuitService,
+            ISubjectAccessService subjectAccess,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Evaluates or stresses Hill phase-plane bistability, CFD specificity, and endocrine setpoints for a circuit.
+            // WHY:  Milestone 42 (P222): Verifies clearance and chromatin heritability robustness before cryptographic approval.
+            // HOW:  Authorizes Administrator or granted Researcher for circuit owner, executes EvaluateCircuitAsync, maps validation errors to 400.
+            if (string.IsNullOrWhiteSpace(circuitId))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Valid circuitId is required.");
+            }
+
+            (EpigeneticCircuitRecord? circuit, IResult? denial, UserAccount caller) = await AuthorizeEpigeneticCircuitAccessAsync(
+                circuitId.Trim(), circuitRepository, subjectAccess, context, ct);
+            if (denial is not null)
+            {
+                return denial;
+            }
+
+            try
+            {
+                // WHY `!`: AuthorizeEpigeneticCircuitAccessAsync guarantees circuit is non-null whenever denial is null.
+                EpigeneticCircuitEvaluationReport? report = await circuitService.EvaluateCircuitAsync(
+                    circuit!.CircuitId, request, caller.Username, ct);
+                return Results.Ok(report);
+            }
+            catch (ArgumentException ex)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, ex.Message);
+            }
+        })
+        .WithName("EvaluateEpigeneticCircuit")
+        .WithTags("Endocrine Regulatory Hub")
+        .WithSummary("Re-evaluates bistable Hill phase-plane stability, CFD specificity, and hormone setpoints for a circuit.")
+        .WithDescription("Computes nullclines, separatrix stability margin, E2/T predictions, and updates Evaluated/Blocked status.")
+        .Accepts<EvaluateEpigeneticCircuitRequest>("application/json")
+        .Produces<EpigeneticCircuitEvaluationReport>(StatusCodes.Status200OK)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden)
+        .Produces<SecureProblemDetails>(StatusCodes.Status404NotFound);
+
+        app.MapPost("/api/endocrine/epigenetic-circuits/{circuitId}/approve", async (
+            string circuitId,
+            ApproveEpigeneticCircuitRequest? request,
+            IEpigeneticCircuitRepository circuitRepository,
+            IEpigeneticCircuitService circuitService,
+            ISubjectAccessService subjectAccess,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Executes fail-closed live safety gating and signs safe blueprints with the node ML-DSA-65 key.
+            // WHY:  Milestone 42 (P222): Blocks off-target risk (< 98.0% CFD), monostability, or out-of-range circuits with HTTP 422.
+            // HOW:  Authorizes Administrator or granted Researcher, delegates to ApproveCircuitAsync, returns 200 if Approved or 422 if Blocked.
+            if (string.IsNullOrWhiteSpace(circuitId))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Valid circuitId is required.");
+            }
+
+            (EpigeneticCircuitRecord? circuit, IResult? denial, UserAccount caller) = await AuthorizeEpigeneticCircuitAccessAsync(
+                circuitId.Trim(), circuitRepository, subjectAccess, context, ct);
+            if (denial is not null)
+            {
+                return denial;
+            }
+
+            try
+            {
+                // WHY `!`: AuthorizeEpigeneticCircuitAccessAsync guarantees circuit is non-null whenever denial is null.
+                EpigeneticCircuitEvaluationReport? report = await circuitService.ApproveCircuitAsync(
+                    circuit!.CircuitId, request, caller.Username, ct);
+                // WHY `!`: AuthorizeEpigeneticCircuitAccessAsync already guaranteed the circuit exists in persistence.
+                if (report!.CircuitStatus != EpigeneticCircuitStatus.Approved)
+                {
+                    return SecureProblemResult(
+                        context,
+                        StatusCodes.Status422UnprocessableEntity,
+                        $"Epigenetic circuit '{circuit.CircuitId}' failed safety gating and is Blocked: {string.Join("; ", report.FailureReasons)}");
+                }
+
+                return Results.Ok(report);
+            }
+            catch (ArgumentException ex)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, ex.Message);
+            }
+        })
+        .WithName("ApproveEpigeneticCircuit")
+        .WithTags("Endocrine Regulatory Hub")
+        .WithSummary("Performs fail-closed ML-DSA-65 synthesis approval for a safe bistable epigenetic circuit.")
+        .WithDescription("Returns 200 OK with ML-DSA-65 signature when safe, or fails closed with 422 Unprocessable Entity on off-target/monostable failure.")
+        .Accepts<ApproveEpigeneticCircuitRequest>("application/json")
+        .Produces<EpigeneticCircuitEvaluationReport>(StatusCodes.Status200OK)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden)
+        .Produces<SecureProblemDetails>(StatusCodes.Status404NotFound)
+        .Produces<SecureProblemDetails>(StatusCodes.Status422UnprocessableEntity);
+
         app.Run();
     }
 
@@ -7339,6 +7522,91 @@ public class Program
         }
 
         return (lot, null, caller);
+    }
+
+    /// <summary>
+    /// Enforces Administrator, granted Researcher, or optional matching Patient-self authorization for patient-scoped
+    /// epigenetic toggle circuit endpoints.
+    /// </summary>
+    /// <param name="patientId">Target patient identifier owning the epigenetic circuits.</param>
+    /// <param name="allowPatientSelf">True on read-only routes allowing matching Patient self-access; false on design mutations.</param>
+    /// <param name="subjectAccess">Subject-level grant service.</param>
+    /// <param name="context">Active HTTP context carrying the validated <c>CurrentUser</c>.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>An optional RFC 7807 denial result and the authenticated <see cref="UserAccount"/>.</returns>
+    private static async Task<(IResult? Denial, UserAccount Caller)> AuthorizeEpigeneticPatientAccessAsync(
+        string patientId,
+        bool allowPatientSelf,
+        ISubjectAccessService subjectAccess,
+        HttpContext context,
+        CancellationToken ct)
+    {
+        // WHAT: Centralizes patient-scoped RBAC checks across DesignEpigeneticCircuit and ListPatientEpigeneticCircuits.
+        // WHY:  Milestone 42 (P222): Eliminates duplicated RBAC branch trees and keeps Gate 7 coverage clean.
+        // HOW:  Blocks Patient mutations upfront, verifies Patient self-match when read-only, and checks Researcher grants.
+        // WHY `!`: Authentication middleware guarantees CurrentUser is populated before reaching any authenticated handler.
+        UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+        if (caller.Role == UserRole.Patient)
+        {
+            if (!allowPatientSelf || !string.Equals(caller.Username, patientId, StringComparison.OrdinalIgnoreCase))
+            {
+                return (SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: Insufficient permissions for patient epigenetic circuits."), caller);
+            }
+        }
+        else if (caller.Role == UserRole.Researcher)
+        {
+            SubjectAccessLevel? accessLevel = await subjectAccess.GetEffectiveAccessLevelAsync(caller.Username, patientId, ct);
+            if (!accessLevel.HasValue)
+            {
+                return (SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: Researcher lacks active subject access grant for this patient."), caller);
+            }
+        }
+
+        return (null, caller);
+    }
+
+    /// <summary>
+    /// Loads an existing epigenetic circuit and enforces Administrator or granted Researcher authorization for mutations.
+    /// </summary>
+    /// <param name="circuitId">Target epigenetic circuit identifier.</param>
+    /// <param name="circuitRepository">Persistent epigenetic circuit repository.</param>
+    /// <param name="subjectAccess">Subject-level grant service.</param>
+    /// <param name="context">Active HTTP context carrying the validated <c>CurrentUser</c>.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The resolved <see cref="EpigeneticCircuitRecord"/> when authorized, optional RFC 7807 denial, and caller.</returns>
+    private static async Task<(EpigeneticCircuitRecord? Circuit, IResult? Denial, UserAccount Caller)> AuthorizeEpigeneticCircuitAccessAsync(
+        string circuitId,
+        IEpigeneticCircuitRepository circuitRepository,
+        ISubjectAccessService subjectAccess,
+        HttpContext context,
+        CancellationToken ct)
+    {
+        // WHAT: Resolves an existing circuit record and enforces Administrator/granted Researcher access for evaluate & approve.
+        // WHY:  Milestone 42 (P222): Guarantees Patient tokens cannot mutate/approve circuits and returns 404 before grant checks.
+        // HOW:  Rejects Patient role, queries repository (404 when absent), and validates Researcher subject access grant.
+        // WHY `!`: Authentication middleware guarantees CurrentUser is populated before reaching any authenticated handler.
+        UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+        if (caller.Role == UserRole.Patient)
+        {
+            return (null, SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: Administrator or Researcher role required for epigenetic circuit mutations."), caller);
+        }
+
+        EpigeneticCircuitRecord? circuit = await circuitRepository.GetCircuitByIdAsync(circuitId, ct);
+        if (circuit is null)
+        {
+            return (null, SecureProblemResult(context, StatusCodes.Status404NotFound, $"Epigenetic circuit '{circuitId}' was not found."), caller);
+        }
+
+        if (caller.Role == UserRole.Researcher)
+        {
+            SubjectAccessLevel? accessLevel = await subjectAccess.GetEffectiveAccessLevelAsync(caller.Username, circuit.PatientId, ct);
+            if (!accessLevel.HasValue)
+            {
+                return (null, SecureProblemResult(context, StatusCodes.Status403Forbidden, "Forbidden: Researcher lacks active subject access grant for this patient."), caller);
+            }
+        }
+
+        return (circuit, null, caller);
     }
 }
 

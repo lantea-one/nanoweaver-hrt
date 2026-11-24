@@ -207,6 +207,15 @@ For semi-annual subcutaneous nanocarrier depots, the **180-Day Depot Studio** (`
 
 ---
 
+## Epigenetic Steroidogenic Reprogramming & Bistable Circuit Studio (`/endocrine`, Milestone 42)
+
+Alongside circulating depot pharmacokinetics, `/endocrine` hosts `#epigenetic-circuit-studio-panel` (`IEpigeneticCircuitService`), designing permanent non-nuclease chromatin reprogramming toggles (`dCas9-DNMT3A/TET1`, `CRISPRoff/on`, and `dCas9-KRAB/VP64`):
+* **MtF Permanent Chromatin Switch**: Activates endogenous *CYP19A1* (aromatase) + *HSD17B1* while epigenetically silencing *SRD5A2* and *HSD17B3* to sustain physiological 17β-estradiol (350 to 750 pmol/L) with suppressed testosterone (< 1.8 nmol/L).
+* **FtM Permanent Chromatin Switch**: Activates *HSD17B3* + *CYP17A1* while epigenetically silencing *CYP19A1* to sustain endogenous total testosterone (12 to 28 nmol/L) with suppressed 17β-estradiol (< 150 pmol/L).
+* **Fail-Closed Phase-Plane & Off-Target Gating**: Evaluates mutual-repression Hill toggle nullclines, linearized separatrix boundaries (`SeparatrixMargin >= 0.25`), and genome-wide CFD specificity (`>= 98.0%`) before permitting NIST FIPS 204 `ML-DSA-65` permanent synthesis sign-off.
+
+---
+
 ## Next Steps
 * Learn about database persistence in [**Configuration & Sovereign Peering**](configuration-peers.md).
 * Monitor microservice vitals in [**Stack Topology & Hardware Telemetry**](stack-services.md).

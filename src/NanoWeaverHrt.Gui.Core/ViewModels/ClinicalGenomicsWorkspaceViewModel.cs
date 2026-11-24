@@ -159,6 +159,16 @@ public sealed class ClinicalGenomicsWorkspaceViewModel : INotifyPropertyChanged
     private PatientDigitalDnaRecord? _lastCreatedDnaRecord;
 
     /// <summary>
+    /// Collection of patient epigenetic toggle circuit evaluation reports loaded from the server.
+    /// </summary>
+    private IReadOnlyList<EpigeneticCircuitEvaluationReport> _activeEpigeneticCircuits = [];
+
+    /// <summary>
+    /// Result of the most recent epigenetic toggle circuit design, evaluation, or ML-DSA-65 approval.
+    /// </summary>
+    private EpigeneticCircuitEvaluationReport? _latestEpigeneticCircuit;
+
+    /// <summary>
     /// Occurs when a property value changes.
     /// </summary>
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -261,6 +271,24 @@ public sealed class ClinicalGenomicsWorkspaceViewModel : INotifyPropertyChanged
     {
         get => _lastCreatedDnaRecord;
         private set => SetField(ref _lastCreatedDnaRecord, value);
+    }
+
+    /// <summary>
+    /// Gets the collection of loaded epigenetic toggle circuit evaluation reports for the active patient.
+    /// </summary>
+    public IReadOnlyList<EpigeneticCircuitEvaluationReport> ActiveEpigeneticCircuits
+    {
+        get => _activeEpigeneticCircuits;
+        private set => SetField(ref _activeEpigeneticCircuits, value);
+    }
+
+    /// <summary>
+    /// Gets the most recently designed, evaluated, or approved epigenetic toggle circuit evaluation report.
+    /// </summary>
+    public EpigeneticCircuitEvaluationReport? LatestEpigeneticCircuit
+    {
+        get => _latestEpigeneticCircuit;
+        private set => SetField(ref _latestEpigeneticCircuit, value);
     }
 
     /// <summary>
@@ -545,6 +573,153 @@ public sealed class ClinicalGenomicsWorkspaceViewModel : INotifyPropertyChanged
             var result = await _client.CreatePatientDnaAsync(profile, token, username, request, ct).ConfigureAwait(false);
             LastCreatedDnaRecord = result;
             return result;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Designs and evaluates a patient-specific epigenetic steroidogenic toggle circuit on the connected node.
+    /// </summary>
+    /// <param name="request">Circuit regimen, tissue target, effector platform, and optional guide RNAs.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The created and evaluated <see cref="EpigeneticCircuitEvaluationReport"/>.</returns>
+    public async Task<EpigeneticCircuitEvaluationReport> DesignEpigeneticCircuitAsync(
+        DesignEpigeneticCircuitRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches DesignEpigeneticCircuitAsync to the REST node client and updates observable state.
+        // WHY:  Milestone 42 (P222): Enables native workstation clinicians to design permanent epigenetic toggle circuits.
+        // HOW:  Validates request, resolves session credentials, toggles IsBusy, and updates LatestEpigeneticCircuit.
+        ArgumentNullException.ThrowIfNull(request);
+        var (profile, token) = ResolveEffectiveSession();
+
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            EpigeneticCircuitEvaluationReport report = await _client.DesignEpigeneticCircuitAsync(profile, token, request, ct).ConfigureAwait(false);
+            LatestEpigeneticCircuit = report;
+            return report;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Loads all persisted epigenetic toggle circuits belonging to a patient from the connected node.
+    /// </summary>
+    /// <param name="patientId">Patient identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Read-only list of chronological <see cref="EpigeneticCircuitEvaluationReport"/> records.</returns>
+    public async Task<IReadOnlyList<EpigeneticCircuitEvaluationReport>> LoadEpigeneticCircuitsAsync(
+        string patientId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Queries persisted epigenetic circuits for a patient and populates ActiveEpigeneticCircuits.
+        // WHY:  Milestone 42 (P222): Refreshes circuit history and phase-plane data across desktop and mobile shells.
+        // HOW:  Validates patientId, resolves credentials, updates ActiveEpigeneticCircuits and LatestEpigeneticCircuit when present.
+        ArgumentException.ThrowIfNullOrWhiteSpace(patientId);
+        var (profile, token) = ResolveEffectiveSession();
+
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            IReadOnlyList<EpigeneticCircuitEvaluationReport> list = await _client.ListEpigeneticCircuitsAsync(profile, token, patientId, ct).ConfigureAwait(false);
+            ActiveEpigeneticCircuits = list;
+            LatestEpigeneticCircuit = list.Count > 0 ? list[^1] : null;
+            return list;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Re-evaluates bistable phase-plane stability, CFD specificity, and endocrine setpoints for an existing circuit.
+    /// </summary>
+    /// <param name="circuitId">Target epigenetic circuit identifier.</param>
+    /// <param name="request">Clearance and epigenetic stability stress-test multipliers.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Updated <see cref="EpigeneticCircuitEvaluationReport"/>.</returns>
+    public async Task<EpigeneticCircuitEvaluationReport> EvaluateEpigeneticCircuitAsync(
+        string circuitId,
+        EvaluateEpigeneticCircuitRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Invokes EvaluateEpigeneticCircuitAsync on the REST client and publishes updated phase-plane geometry.
+        // WHY:  Milestone 42 (P222): Lets native clients verify patient metabolic sensitivity prior to approval.
+        // HOW:  Validates inputs, resolves credentials, toggles IsBusy, and stores result in LatestEpigeneticCircuit.
+        ArgumentException.ThrowIfNullOrWhiteSpace(circuitId);
+        ArgumentNullException.ThrowIfNull(request);
+        var (profile, token) = ResolveEffectiveSession();
+
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            EpigeneticCircuitEvaluationReport report = await _client.EvaluateEpigeneticCircuitAsync(profile, token, circuitId, request, ct).ConfigureAwait(false);
+            LatestEpigeneticCircuit = report;
+            return report;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Requests fail-closed NIST FIPS 204 ML-DSA-65 permanent synthesis sign-off for a safe bistable circuit.
+    /// </summary>
+    /// <param name="circuitId">Target epigenetic circuit identifier.</param>
+    /// <param name="request">Reviewer remarks and pre-approval verification multipliers.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Approved and cryptographically signed <see cref="EpigeneticCircuitEvaluationReport"/>.</returns>
+    public async Task<EpigeneticCircuitEvaluationReport> ApproveEpigeneticCircuitAsync(
+        string circuitId,
+        ApproveEpigeneticCircuitRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches ApproveEpigeneticCircuitAsync and surfaces either the ML-DSA-65 signed blueprint or HTTP 422 error.
+        // WHY:  Milestone 42 (P222): Enforces fail-closed cryptographic gating across native GUI workstations.
+        // HOW:  Validates arguments, resolves credentials, records Errors on 422 gate rejections, and updates LatestEpigeneticCircuit.
+        ArgumentException.ThrowIfNullOrWhiteSpace(circuitId);
+        ArgumentNullException.ThrowIfNull(request);
+        var (profile, token) = ResolveEffectiveSession();
+
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            EpigeneticCircuitEvaluationReport report = await _client.ApproveEpigeneticCircuitAsync(profile, token, circuitId, request, ct).ConfigureAwait(false);
+            LatestEpigeneticCircuit = report;
+            return report;
         }
         catch (Exception ex)
         {

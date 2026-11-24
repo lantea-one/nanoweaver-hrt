@@ -182,5 +182,21 @@
   "Pharmacovigilance.LogImmunogenicitySubmit": "Записати панель імуногенності",
   "Pharmacovigilance.AdverseEventsEmpty": "Для цієї виробничої партії ще не зареєстровано післяімплантаційних побічних явищ.",
   "Pharmacovigilance.ImmunogenicityAssaysEmpty": "Панелі імуногенності CARPA або TLR9 ще не зареєстровані.",
-  "Pharmacovigilance.EmergencyRecallRecommended": "РЕКОМЕНДОВАНО ЕКСТРЕНЕ КЛІНІЧНЕ ВІДКЛИКАННЯ"
+  "Pharmacovigilance.EmergencyRecallRecommended": "РЕКОМЕНДОВАНО ЕКСТРЕНЕ КЛІНІЧНЕ ВІДКЛИКАННЯ",
+  "EpigeneticCircuit.SectionTitle": "Студія епігенетичного стероїдогенного перепрограмування та бістабільних схем",
+  "EpigeneticCircuit.SectionSubtitle": "Безнуклеазний перемикач хроматину dCas9-DNMT3A/TET1 та CRISPRoff/on • CFD >= 98.0% • Шлюз ML-DSA-65",
+  "EpigeneticCircuit.BadgeApproved": "СХВАЛЕНО ДЛЯ ПОСТІЙНОГО СИНТЕЗУ",
+  "EpigeneticCircuit.BadgeBlocked": "ЗАБЛОКОВАНО — ПОЗАЦІЛЬОВИЙ РИЗИК АБО МОНОСТАБІЛЬНІСТЬ",
+  "EpigeneticCircuit.BadgeEvaluated": "ОЦІНЕНО — ГОТОВО ДО ПІДПИСУ ML-DSA-65",
+  "EpigeneticCircuit.DesignButton": "Спроєктувати та проаналізувати схему",
+  "EpigeneticCircuit.EvaluateButton": "Оцінити стабільність під навантаженням",
+  "EpigeneticCircuit.ApproveButton": "Схвалити та підписати (ML-DSA-65)",
+  "EpigeneticCircuit.PatientIdLabel": "Ідентифікатор пацієнта",
+  "EpigeneticCircuit.EffectorLabel": "Епігенетична ефекторна платформа",
+  "EpigeneticCircuit.StabilityFactorLabel": "Коефіцієнт стабільності хроматину",
+  "EpigeneticCircuit.PhasePlaneTitle": "Бістабільна фазова площина Хілла (межа сепаратриси)",
+  "EpigeneticCircuit.GuideTableTitle": "Панель напрямної РНК (sgRNA) стероїдогенних локусів",
+  "EpigeneticCircuit.ColTargetGene": "Цільовий ген",
+  "EpigeneticCircuit.ColSpecificity": "Специфічність CFD %",
+  "EpigeneticCircuit.ColFoldChange": "Прогнозована кратність зміни"
 }

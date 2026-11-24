@@ -182,5 +182,21 @@
   "Pharmacovigilance.LogImmunogenicitySubmit": "Enregistrer le Bilan Immunogénique",
   "Pharmacovigilance.AdverseEventsEmpty": "Aucun événement indésirable post-implantation enregistré pour ce lot.",
   "Pharmacovigilance.ImmunogenicityAssaysEmpty": "Aucun bilan immunogénique CARPA ou TLR9 enregistré pour l'instant.",
-  "Pharmacovigilance.EmergencyRecallRecommended": "RAPPEL CLINIQUE D'URGENCE RECOMMANDÉ"
+  "Pharmacovigilance.EmergencyRecallRecommended": "RAPPEL CLINIQUE D'URGENCE RECOMMANDÉ",
+  "EpigeneticCircuit.SectionTitle": "Studio de Reprogrammation Stéroïdogène Épigénétique & Circuits Bistables",
+  "EpigeneticCircuit.SectionSubtitle": "Interrupteur chromatinien sans nucléase dCas9-DNMT3A/TET1 & CRISPRoff/on • CFD >= 98.0% • Porte ML-DSA-65",
+  "EpigeneticCircuit.BadgeApproved": "APPROUVÉ POUR SYNTHÈSE PERMANENTE",
+  "EpigeneticCircuit.BadgeBlocked": "BLOQUÉ — HORS-CIBLE OU MONOSTABLE",
+  "EpigeneticCircuit.BadgeEvaluated": "ÉVALUÉ — PRÊT POUR SIGNATURE ML-DSA-65",
+  "EpigeneticCircuit.DesignButton": "Concevoir & analyser le circuit bistable",
+  "EpigeneticCircuit.EvaluateButton": "Évaluer la contrainte de stabilité",
+  "EpigeneticCircuit.ApproveButton": "Approuver & signer (ML-DSA-65)",
+  "EpigeneticCircuit.PatientIdLabel": "Identifiant patient",
+  "EpigeneticCircuit.EffectorLabel": "Plateforme effectrice épigénétique",
+  "EpigeneticCircuit.StabilityFactorLabel": "Facteur de stabilité chromatinienne",
+  "EpigeneticCircuit.PhasePlaneTitle": "Plan de phase bistable de Hill (frontière séparatrice)",
+  "EpigeneticCircuit.GuideTableTitle": "Panel d'ARN guide unique (sgRNA) stéroïdogène",
+  "EpigeneticCircuit.ColTargetGene": "Gène cible",
+  "EpigeneticCircuit.ColSpecificity": "Spécificité CFD %",
+  "EpigeneticCircuit.ColFoldChange": "Facteur de modulation prévu"
 }

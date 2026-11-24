@@ -1,9 +1,13 @@
 @page "/endocrine"
+@using System.Globalization
+@using System.Text
 @using NanoWeaverHrt.Genomics
 @using NanoWeaverHrt.Endocrine
+@using NanoWeaverHrt.Models
 @inject EndocrineStateEngine Engine
 @inject IPharmacogenomicsService GenomicsService
 @inject IEndocrineClosedLoopEngine ClosedLoopEngine
+@inject IEpigeneticCircuitService EpigeneticCircuitService
 @inject IConfigurationRepository ConfigRepo
 @inject IJSRuntime JS
 @inject IWeaverLocalizer Localizer
@@ -331,6 +335,167 @@
             </div>
         }
     </div>
+
+    <!-- Milestone 42: Epigenetic Steroidogenic Enzyme Reprogramming & Bistable Circuit Design Studio -->
+    <div id="epigenetic-circuit-studio-panel" class="card panel mt-4">
+        <div class="panel-header">
+            <div>
+                <h3>@Localizer.GetString("EpigeneticCircuit.SectionTitle", _currentLanguage)</h3>
+                <span class="subtext">@Localizer.GetString("EpigeneticCircuit.SectionSubtitle", _currentLanguage)</span>
+            </div>
+            @if (_activeEpigeneticCircuit is not null)
+            {
+                <span id="epigenetic-approval-badge" class="@GetEpigeneticBadgeClass(_activeEpigeneticCircuit.CircuitStatus)">
+                    @GetEpigeneticStatusLabel(_activeEpigeneticCircuit.CircuitStatus)
+                </span>
+            }
+        </div>
+
+        <div class="grid-3 gap-2 mt-3">
+            <div>
+                <label class="form-label" for="epigenetic-patient-input">@Localizer.GetString("EpigeneticCircuit.PatientIdLabel", _currentLanguage)</label>
+                <input id="epigenetic-patient-input" type="text" class="form-control" @bind="_epigeneticPatientId" />
+            </div>
+            <div>
+                <label class="form-label" for="epigenetic-regimen-select">Regimen</label>
+                <select id="epigenetic-regimen-select" class="form-control" @bind="_epigeneticRegimen">
+                    <option value="@TherapeuticRegimen.MaleToFemale">@TherapeuticRegimen.MaleToFemale</option>
+                    <option value="@TherapeuticRegimen.FemaleToMale">@TherapeuticRegimen.FemaleToMale</option>
+                </select>
+            </div>
+            <div>
+                <label class="form-label" for="epigenetic-tissue-select">Target Tissue</label>
+                <select id="epigenetic-tissue-select" class="form-control" @bind="_epigeneticTargetTissue">
+                    <option value="@TargetTissueType.GonadalTarget">@TargetTissueType.GonadalTarget</option>
+                    <option value="@TargetTissueType.AdrenalSteroidogenic">@TargetTissueType.AdrenalSteroidogenic</option>
+                    <option value="@TargetTissueType.AnteriorPituitaryGonadotrope">@TargetTissueType.AnteriorPituitaryGonadotrope</option>
+                    <option value="@TargetTissueType.PeripheralReceptor">@TargetTissueType.PeripheralReceptor</option>
+                </select>
+            </div>
+            <div>
+                <label class="form-label" for="epigenetic-effector-select">@Localizer.GetString("EpigeneticCircuit.EffectorLabel", _currentLanguage)</label>
+                <select id="epigenetic-effector-select" class="form-control" @bind="_epigeneticEffectorPlatform">
+                    <option value="@EpigeneticEffectorPlatform.CrisprOffOn">@EpigeneticEffectorPlatform.CrisprOffOn</option>
+                    <option value="@EpigeneticEffectorPlatform.DCas9Dnmt3aTet1">@EpigeneticEffectorPlatform.DCas9Dnmt3aTet1</option>
+                    <option value="@EpigeneticEffectorPlatform.DCas9KrabVp64">@EpigeneticEffectorPlatform.DCas9KrabVp64</option>
+                </select>
+            </div>
+            <div>
+                <label class="form-label" for="epigenetic-stability-input">@Localizer.GetString("EpigeneticCircuit.StabilityFactorLabel", _currentLanguage)</label>
+                <input id="epigenetic-stability-input" type="number" step="0.05" class="form-control" @bind="_epigeneticStabilityFactor" />
+            </div>
+            <div>
+                <label class="form-label" for="epigenetic-notes-input">Clinician Design Notes (AES-256-GCM)</label>
+                <input id="epigenetic-notes-input" type="text" class="form-control" @bind="_epigeneticNotes" />
+            </div>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2 mt-3">
+            <button id="btn-design-epigenetic-circuit" class="btn btn-primary btn-sm" @onclick="DesignEpigeneticCircuitUiAsync">
+                @Localizer.GetString("EpigeneticCircuit.DesignButton", _currentLanguage)
+            </button>
+            @if (_activeEpigeneticCircuit is not null)
+            {
+                <button id="btn-evaluate-epigenetic-circuit" class="btn btn-outline btn-sm" @onclick="EvaluateEpigeneticCircuitUiAsync">
+                    @Localizer.GetString("EpigeneticCircuit.EvaluateButton", _currentLanguage)
+                </button>
+                <button id="btn-approve-epigenetic-circuit" class="btn btn-outline btn-sm" @onclick="ApproveEpigeneticCircuitUiAsync">
+                    @Localizer.GetString("EpigeneticCircuit.ApproveButton", _currentLanguage)
+                </button>
+            }
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(_epigeneticErrorMessage))
+        {
+            <div id="epigenetic-error-banner" class="genomic-alert-critical mt-3">@_epigeneticErrorMessage</div>
+        }
+
+        @if (_activeEpigeneticCircuit is not null)
+        {
+            <div class="setpoints-display mt-3">
+                <div class="setpoint-item">
+                    <span class="setpoint-label">PREDICTED E2 / T</span>
+                    <span class="setpoint-val font-mono">@_activeEpigeneticCircuit.PredictedEstradiolPmolL.ToString("F1", CultureInfo.InvariantCulture) pmol/L • @_activeEpigeneticCircuit.PredictedTestosteroneNmolL.ToString("F2", CultureInfo.InvariantCulture) nmol/L</span>
+                </div>
+                <div class="setpoint-item">
+                    <span class="setpoint-label">PREDICTED TTR / MIN CFD</span>
+                    <span class="setpoint-val font-mono">@_activeEpigeneticCircuit.PredictedTtrPercent.ToString("F1", CultureInfo.InvariantCulture)% • CFD @_activeEpigeneticCircuit.MinOffTargetSpecificityScore.ToString("F2", CultureInfo.InvariantCulture)%</span>
+                </div>
+                <div class="setpoint-item">
+                    <span class="setpoint-label">BISTABLE SEPARATRIX MARGIN</span>
+                    <span class="setpoint-val font-mono">@(_activeEpigeneticCircuit.IsBistable ? "Bistable" : "Monostable") (Δ=@_activeEpigeneticCircuit.SeparatrixMargin.ToString("F3", CultureInfo.InvariantCulture))</span>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(_activeEpigeneticCircuit.SignatureAlgorithm))
+                {
+                    <div class="setpoint-item">
+                        <span class="setpoint-label">PQC SYNTHESIS SEAL</span>
+                        <span class="setpoint-val font-mono text-break-all">@_activeEpigeneticCircuit.SignatureAlgorithm • @_activeEpigeneticCircuit.ApprovalSignerKeyId</span>
+                    </div>
+                }
+            </div>
+
+            @if (_activeEpigeneticCircuit.FailureReasons.Count > 0)
+            {
+                <div class="genomic-alert-critical mt-3">
+                    @foreach (string reason in _activeEpigeneticCircuit.FailureReasons)
+                    {
+                        <div>• @reason</div>
+                    }
+                </div>
+            }
+
+            <div class="mt-3">
+                <h4>@Localizer.GetString("EpigeneticCircuit.PhasePlaneTitle", _currentLanguage)</h4>
+                <svg id="epigenetic-phase-plane-svg" class="epigenetic-phase-svg" viewBox="0 0 320 220" role="img" aria-label="Bistable Hill Toggle Phase Plane">
+                    <line x1="34" y1="14" x2="34" y2="194" class="epigenetic-axis" />
+                    <line x1="34" y1="194" x2="308" y2="194" class="epigenetic-axis" />
+                    <line x1="34" y1="104" x2="308" y2="104" class="epigenetic-grid" />
+                    <line x1="171" y1="14" x2="171" y2="194" class="epigenetic-grid" />
+                    <polyline points="@BuildPhasePlanePolyline(_activeEpigeneticCircuit.PhasePlane.EstrogenNullcline)" class="epigenetic-nullcline-e2" />
+                    <polyline points="@BuildPhasePlanePolyline(_activeEpigeneticCircuit.PhasePlane.AndrogenNullcline)" class="epigenetic-nullcline-t" />
+                    @if (_activeEpigeneticCircuit.PhasePlane.SeparatrixCurve.Count > 1)
+                    {
+                        <polyline points="@BuildPhasePlanePolyline(_activeEpigeneticCircuit.PhasePlane.SeparatrixCurve)" class="epigenetic-separatrix" />
+                    }
+                    <circle cx="@ToPhaseSvgX(_activeEpigeneticCircuit.PhasePlane.TargetAttractor.EstrogenAxisNormalized)" cy="@ToPhaseSvgY(_activeEpigeneticCircuit.PhasePlane.TargetAttractor.AndrogenAxisNormalized)" r="5" class="epigenetic-attractor-target" />
+                    @if (_activeEpigeneticCircuit.PhasePlane.IsBistable)
+                    {
+                        <circle cx="@ToPhaseSvgX(_activeEpigeneticCircuit.PhasePlane.AlternateAttractor.EstrogenAxisNormalized)" cy="@ToPhaseSvgY(_activeEpigeneticCircuit.PhasePlane.AlternateAttractor.AndrogenAxisNormalized)" r="4" class="epigenetic-attractor-alt" />
+                        <circle cx="@ToPhaseSvgX(_activeEpigeneticCircuit.PhasePlane.SaddlePoint.EstrogenAxisNormalized)" cy="@ToPhaseSvgY(_activeEpigeneticCircuit.PhasePlane.SaddlePoint.AndrogenAxisNormalized)" r="4" class="epigenetic-saddle-pt" />
+                    }
+                    <text x="145" y="212" class="epigenetic-svg-label">Estrogenic Chromatin (u)</text>
+                    <text x="40" y="24" class="epigenetic-svg-label">Androgenic (v)</text>
+                </svg>
+            </div>
+
+            <div class="mt-3">
+                <h4>@Localizer.GetString("EpigeneticCircuit.GuideTableTitle", _currentLanguage)</h4>
+                <table id="epigenetic-guide-table" class="table table-dark table-sm mt-2">
+                    <thead>
+                        <tr>
+                            <th>@Localizer.GetString("EpigeneticCircuit.ColTargetGene", _currentLanguage)</th>
+                            <th>Mode</th>
+                            <th>Protospacer / PAM</th>
+                            <th>@Localizer.GetString("EpigeneticCircuit.ColSpecificity", _currentLanguage)</th>
+                            <th>@Localizer.GetString("EpigeneticCircuit.ColFoldChange", _currentLanguage)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (EpigeneticGuideRnaRecord guide in _activeEpigeneticCircuit.Guides)
+                        {
+                            <tr>
+                                <td class="font-mono">@guide.TargetGeneSymbol</td>
+                                <td class="font-mono">@guide.ModulationMode</td>
+                                <td class="font-mono">@guide.ProtospacerSequence (@guide.PamSequence)</td>
+                                <td class="font-mono">@guide.CfdSpecificityScore.ToString("F2", CultureInfo.InvariantCulture)%</td>
+                                <td class="font-mono">@guide.PredictedFoldChange.ToString("F2", CultureInfo.InvariantCulture)x</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
 </div>
 
 @code {
@@ -600,5 +765,220 @@
         {
             yield return _closedLoopResult.Points[^1];
         }
+    }
+
+    /// <summary>
+    /// Patient identifier bound to the epigenetic toggle circuit studio form.
+    /// </summary>
+    private string _epigeneticPatientId = "pat_endocrine_demo";
+
+    /// <summary>
+    /// Selected endocrine therapeutic regimen for epigenetic circuit synthesis.
+    /// </summary>
+    private TherapeuticRegimen _epigeneticRegimen = TherapeuticRegimen.MaleToFemale;
+
+    /// <summary>
+    /// Selected anatomical tissue target for epigenetic circuit delivery.
+    /// </summary>
+    private TargetTissueType _epigeneticTargetTissue = TargetTissueType.GonadalTarget;
+
+    /// <summary>
+    /// Selected non-nuclease dCas9 epigenetic effector platform.
+    /// </summary>
+    private EpigeneticEffectorPlatform _epigeneticEffectorPlatform = EpigeneticEffectorPlatform.CrisprOffOn;
+
+    /// <summary>
+    /// Chromatin heritability stability scaling multiplier evaluated during stress testing.
+    /// </summary>
+    private double _epigeneticStabilityFactor = 1.0;
+
+    /// <summary>
+    /// Optional clinician design notes encrypted via AES-256-GCM when persisted.
+    /// </summary>
+    private string _epigeneticNotes = "Canonical endogenous steroidogenic toggle switch";
+
+    /// <summary>
+    /// Validation or safety error message displayed inside the epigenetic studio panel.
+    /// </summary>
+    private string? _epigeneticErrorMessage;
+
+    /// <summary>
+    /// Active evaluated or approved epigenetic circuit report displayed in the studio panel.
+    /// </summary>
+    private EpigeneticCircuitEvaluationReport? _activeEpigeneticCircuit;
+
+    /// <summary>
+    /// Designs and evaluates a new patient-specific epigenetic toggle circuit from the form inputs.
+    /// </summary>
+    /// <returns>A task representing the asynchronous design operation.</returns>
+    private async Task DesignEpigeneticCircuitUiAsync()
+    {
+        // WHAT: Builds a DesignEpigeneticCircuitRequest from panel inputs and invokes EpigeneticCircuitService.
+        // WHY:  Milestone 42 (P223): Enables clinicians to generate and analyze permanent epigenetic switches interactively.
+        // HOW:  Clears prior errors, invokes DesignCircuitAsync, updates _activeEpigeneticCircuit, and captures validation exceptions.
+        _epigeneticErrorMessage = null;
+        try
+        {
+            DesignEpigeneticCircuitRequest req = new()
+            {
+                PatientId = _epigeneticPatientId,
+                Regimen = _epigeneticRegimen,
+                TargetTissue = _epigeneticTargetTissue,
+                EffectorPlatform = _epigeneticEffectorPlatform,
+                Notes = _epigeneticNotes
+            };
+            _activeEpigeneticCircuit = await EpigeneticCircuitService.DesignCircuitAsync(req, "endocrine_ui");
+        }
+        catch (Exception ex)
+        {
+            _epigeneticErrorMessage = ex.Message;
+        }
+    }
+
+    /// <summary>
+    /// Re-evaluates Hill bistability and endocrine setpoints for the active circuit under configured stability stress.
+    /// </summary>
+    /// <returns>A task representing the asynchronous evaluation operation.</returns>
+    private async Task EvaluateEpigeneticCircuitUiAsync()
+    {
+        // WHAT: Invokes EvaluateCircuitAsync with the panel's chromatin stability factor.
+        // WHY:  Demonstrates bistable attractor resilience vs monostable collapse prior to approval.
+        // HOW:  Guards for active circuit, invokes EvaluateCircuitAsync, and refreshes panel state or error message.
+        if (_activeEpigeneticCircuit is null)
+        {
+            return;
+        }
+
+        _epigeneticErrorMessage = null;
+        try
+        {
+            EvaluateEpigeneticCircuitRequest req = new()
+            {
+                ClearanceMultiplier = _genomicProfile?.OverallClearanceMultiplier ?? 1.0,
+                EpigeneticStabilityFactor = _epigeneticStabilityFactor
+            };
+            _activeEpigeneticCircuit = await EpigeneticCircuitService.EvaluateCircuitAsync(
+                _activeEpigeneticCircuit.CircuitId,
+                req,
+                "endocrine_ui");
+        }
+        catch (Exception ex)
+        {
+            _epigeneticErrorMessage = ex.Message;
+        }
+    }
+
+    /// <summary>
+    /// Attempts fail-closed NIST FIPS 204 ML-DSA-65 permanent synthesis sign-off for the active circuit.
+    /// </summary>
+    /// <returns>A task representing the asynchronous approval operation.</returns>
+    private async Task ApproveEpigeneticCircuitUiAsync()
+    {
+        // WHAT: Invokes ApproveCircuitAsync to either mint an ML-DSA-65 signature or lock status to Blocked.
+        // WHY:  Enforces fail-closed synthesis gating visibly inside #epigenetic-approval-badge.
+        // HOW:  Supplies active stability/clearance parameters to ApproveCircuitAsync and updates rendered state.
+        if (_activeEpigeneticCircuit is null)
+        {
+            return;
+        }
+
+        _epigeneticErrorMessage = null;
+        try
+        {
+            ApproveEpigeneticCircuitRequest req = new()
+            {
+                ReviewerNotes = "Approved via Endocrine Regulatory Hub UI",
+                ClearanceMultiplier = _genomicProfile?.OverallClearanceMultiplier ?? 1.0,
+                EpigeneticStabilityFactor = _epigeneticStabilityFactor
+            };
+            _activeEpigeneticCircuit = await EpigeneticCircuitService.ApproveCircuitAsync(
+                _activeEpigeneticCircuit.CircuitId,
+                req,
+                "endocrine_ui");
+        }
+        catch (Exception ex)
+        {
+            _epigeneticErrorMessage = ex.Message;
+        }
+    }
+
+    /// <summary>
+    /// Maps an <see cref="EpigeneticCircuitStatus"/> value to its accessible high-contrast badge CSS class.
+    /// </summary>
+    /// <param name="status">Current epigenetic circuit approval status.</param>
+    /// <returns>CSS badge class string.</returns>
+    private static string GetEpigeneticBadgeClass(EpigeneticCircuitStatus status) => status switch
+    {
+        EpigeneticCircuitStatus.Approved => "genomic-badge-optimal",
+        EpigeneticCircuitStatus.Blocked => "genomic-badge-critical animate-pulse",
+        _ => "badge-amber"
+    };
+
+    /// <summary>
+    /// Resolves the localized plain-English approval banner text for an <see cref="EpigeneticCircuitStatus"/>.
+    /// </summary>
+    /// <param name="status">Current epigenetic circuit approval status.</param>
+    /// <returns>Localized approval or fail-closed block text.</returns>
+    private string GetEpigeneticStatusLabel(EpigeneticCircuitStatus status) => status switch
+    {
+        EpigeneticCircuitStatus.Approved => Localizer.GetString("EpigeneticCircuit.BadgeApproved", _currentLanguage),
+        EpigeneticCircuitStatus.Blocked => Localizer.GetString("EpigeneticCircuit.BadgeBlocked", _currentLanguage),
+        _ => Localizer.GetString("EpigeneticCircuit.BadgeEvaluated", _currentLanguage)
+    };
+
+    /// <summary>
+    /// Projects a sequence of phase-plane coordinates into an SVG polyline points string.
+    /// </summary>
+    /// <param name="points">Ordered normalized phase-plane points.</param>
+    /// <returns>Space-delimited <c>x,y</c> SVG polyline coordinates formatted invariantly.</returns>
+    private static string BuildPhasePlanePolyline(IReadOnlyList<PhasePlanePoint> points)
+    {
+        // WHAT: Converts normalized phase-plane coordinates (u, v) into SVG polyline point pairs.
+        // WHY:  Plots deterministic dark-mode SVG nullclines and separatrix curves without JS canvas dependencies.
+        // HOW:  Iterates points linearly using StringBuilder and invariant decimal formatting.
+        StringBuilder sb = new(points.Count * 12);
+        for (int i = 0; i < points.Count; i++)
+        {
+            if (i > 0)
+            {
+                sb.Append(' ');
+            }
+
+            sb.Append(ToPhaseSvgX(points[i].EstrogenAxisNormalized));
+            sb.Append(',');
+            sb.Append(ToPhaseSvgY(points[i].AndrogenAxisNormalized));
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Maps a normalized estrogen axis value <c>u</c> in [0, 1.25] into SVG horizontal pixel coordinates.
+    /// </summary>
+    /// <param name="uNormalized">Normalized estrogenic chromatin coordinate.</param>
+    /// <returns>Invariant decimal string representing horizontal SVG pixel offset.</returns>
+    private static string ToPhaseSvgX(double uNormalized)
+    {
+        // WHAT: Linearly transforms u in [0, 1.25] into plot viewport [34, 308].
+        // WHY:  Ensures consistent SVG axis alignment across attractors, saddle, and nullclines.
+        // HOW:  Clamps normalized coordinate and interpolates linearly.
+        double clamped = Math.Clamp(uNormalized, 0.0, 1.25) / 1.25;
+        double px = 34.0 + (clamped * 274.0);
+        return px.ToString("F1", CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// Maps a normalized androgen axis value <c>v</c> in [0, 1.25] into inverted SVG vertical pixel coordinates.
+    /// </summary>
+    /// <param name="vNormalized">Normalized androgenic chromatin coordinate.</param>
+    /// <returns>Invariant decimal string representing vertical SVG pixel offset.</returns>
+    private static string ToPhaseSvgY(double vNormalized)
+    {
+        // WHAT: Linearly transforms v in [0, 1.25] into plot viewport [194, 14] (bottom to top).
+        // WHY:  SVG vertical coordinates increase downward, requiring inversion for standard Cartesian orientation.
+        // HOW:  Clamps normalized coordinate and subtracts scaled height from baseline 194.
+        double clamped = Math.Clamp(vNormalized, 0.0, 1.25) / 1.25;
+        double py = 194.0 - (clamped * 180.0);
+        return py.ToString("F1", CultureInfo.InvariantCulture);
     }
 }
