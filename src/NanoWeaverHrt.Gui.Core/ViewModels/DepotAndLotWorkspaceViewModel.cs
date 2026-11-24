@@ -62,6 +62,7 @@ public enum ClinicalWorkspaceSeverity
 /// <param name="CriticalPharmacovigilanceLotCount">Number of inspected lots flagged for fail-closed quarantine by post-implantation pharmacovigilance or CARPA/TLR9 signals.</param>
 /// <param name="ProjectedTenYearTtrPercent">Projected multi-year Time in Target Range percentage from the latest homeostasis forecast, or <see langword="null"/> when unavailable.</param>
 /// <param name="MitoticDriftAlert">True when the latest multi-year durability forecast detected mitotic epigenetic washout or handoff trough drop.</param>
+/// <param name="EmergencyAntidoteAdministered">True when a paired reversal antidote has been neutralized or administered on the active lot.</param>
 public sealed record DepotWorkspaceSummary(
     string? ActivePatientId,
     int FormulationCount,
@@ -80,7 +81,8 @@ public sealed record DepotWorkspaceSummary(
     int CompromisedColdChainLotCount = 0,
     int CriticalPharmacovigilanceLotCount = 0,
     double? ProjectedTenYearTtrPercent = null,
-    bool MitoticDriftAlert = false);
+    bool MitoticDriftAlert = false,
+    bool EmergencyAntidoteAdministered = false);
 
 /// <summary>
 /// Native cross-platform MVVM ViewModel unifying Milestones 33–36 clinical workflows:
@@ -874,6 +876,7 @@ public sealed class DepotAndLotWorkspaceViewModel : INotifyPropertyChanged
         int criticalPharmacovigilance = _latestPharmacovigilanceReport != null && _latestPharmacovigilanceReport.IsQuarantineTriggered ? 1 : 0;
         double? projectedTenYearTtr = _latestMultiYearForecast != null ? _latestMultiYearForecast.ProjectedTenYearTtrPercent : null;
         bool mitoticDriftAlert = _latestMultiYearForecast != null && _latestMultiYearForecast.MitoticDriftAlert;
+        bool emergencyAntidoteAdministered = EmergencyAntidoteAdministered;
 
         ClinicalWorkspaceSeverity severity = ResolveWorkspaceSeverity(
             quarantined,
@@ -902,7 +905,8 @@ public sealed class DepotAndLotWorkspaceViewModel : INotifyPropertyChanged
             CompromisedColdChainLotCount: compromisedColdChain,
             CriticalPharmacovigilanceLotCount: criticalPharmacovigilance,
             ProjectedTenYearTtrPercent: projectedTenYearTtr,
-            MitoticDriftAlert: mitoticDriftAlert);
+            MitoticDriftAlert: mitoticDriftAlert,
+            EmergencyAntidoteAdministered: emergencyAntidoteAdministered);
     }
 
     /// <summary>
@@ -1009,6 +1013,9 @@ public sealed class DepotAndLotWorkspaceViewModel : INotifyPropertyChanged
         ActiveLotAdverseEvents = [];
         LatestMultiYearForecast = null;
         MultiYearForecasts = [];
+        PairedAntidoteReport = null;
+        LatestNeutralizationSimulation = null;
+        LastAntidoteAdministration = null;
         ErrorMessage = null;
     }
 
@@ -1040,7 +1047,7 @@ public sealed class DepotAndLotWorkspaceViewModel : INotifyPropertyChanged
              _lastCertificateVerification.TrustSource == FabricationCertificateTrustSource.InvalidSignature ||
              _lastCertificateVerification.TrustSource == FabricationCertificateTrustSource.RevokedSigner);
 
-        if (calibrationCritical || revokedCount > 0 || verificationCritical || newFederatedRecallCount > 0 || compromisedColdChainCount > 0 || criticalPharmacovigilanceCount > 0)
+        if (calibrationCritical || revokedCount > 0 || verificationCritical || newFederatedRecallCount > 0 || compromisedColdChainCount > 0 || criticalPharmacovigilanceCount > 0 || EmergencyAntidoteAdministered)
         {
             return ClinicalWorkspaceSeverity.Critical;
         }
@@ -2083,6 +2090,216 @@ public sealed class DepotAndLotWorkspaceViewModel : INotifyPropertyChanged
             MultiYearHomeostasisForecastReport? latest = await _client.GetLatestMultiYearHomeostasisForecastAsync(profile, token, depotId, ct).ConfigureAwait(false);
             LatestMultiYearForecast = latest;
             return latest;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Backing field for <see cref="PairedAntidoteReport"/>.
+    /// </summary>
+    private ReversalAntidotePairingReport? _pairedAntidoteReport;
+
+    /// <summary>
+    /// Backing field for <see cref="LatestNeutralizationSimulation"/>.
+    /// </summary>
+    private NeutralizationSimulationReport? _latestNeutralizationSimulation;
+
+    /// <summary>
+    /// Backing field for <see cref="LastAntidoteAdministration"/>.
+    /// </summary>
+    private AntidoteAdministrationResponse? _lastAntidoteAdministration;
+
+    /// <summary>
+    /// Gets the paired reversal antidote protocol and live verification report for <see cref="SelectedLotId"/>.
+    /// </summary>
+    public ReversalAntidotePairingReport? PairedAntidoteReport
+    {
+        get => _pairedAntidoteReport;
+        private set
+        {
+            _pairedAntidoteReport = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(EmergencyAntidoteAdministered));
+        }
+    }
+
+    /// <summary>
+    /// Gets the most recent 24-hour strand-displacement neutralization kinetics simulation for <see cref="SelectedLotId"/>.
+    /// </summary>
+    public NeutralizationSimulationReport? LatestNeutralizationSimulation
+    {
+        get => _latestNeutralizationSimulation;
+        private set
+        {
+            _latestNeutralizationSimulation = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Gets the most recent emergency antidote administration outcome executed in the active clinical session.
+    /// </summary>
+    public AntidoteAdministrationResponse? LastAntidoteAdministration
+    {
+        get => _lastAntidoteAdministration;
+        private set
+        {
+            _lastAntidoteAdministration = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(EmergencyAntidoteAdministered));
+        }
+    }
+
+    /// <summary>
+    /// Gets a value indicating whether an emergency reversal antidote has been administered or neutralized for <see cref="SelectedLotId"/>.
+    /// </summary>
+    public bool EmergencyAntidoteAdministered =>
+        _lastAntidoteAdministration != null
+        || (_pairedAntidoteReport != null && _pairedAntidoteReport.Status == ReversalAntidoteStatus.Neutralized);
+
+    /// <summary>
+    /// Pairs a sequence-specific ML-DSA-65 signed reversal antidote with <see cref="SelectedLotId"/> via
+    /// POST /api/fabrication/lots/{lotId}/antidote.
+    /// </summary>
+    /// <param name="request">Toehold length, aptamer lock bases, and stoichiometric formulation settings.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Signed <see cref="ReversalAntidotePairingReport"/>.</returns>
+    public async Task<ReversalAntidotePairingReport> PairSelectedLotAntidoteAsync(
+        PairReversalAntidoteRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Synthesizes and binds a paired reversal antidote oligo to SelectedLotId.
+        // WHY:  Milestone 44 (P232): Exposes pairing workflows directly on native Avalonia desktop and mobile shells.
+        // HOW:  Validates inputs and SelectedLotId, posts to REST API, and updates PairedAntidoteReport.
+        ArgumentNullException.ThrowIfNull(request);
+        string lotId = RequireSelectedLotId();
+        var (profile, token) = ResolveEffectiveSession();
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            ReversalAntidotePairingReport report = await _client.PairReversalAntidoteAsync(profile, token, lotId, request, ct).ConfigureAwait(false);
+            PairedAntidoteReport = report;
+            return report;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Loads the latest paired reversal antidote report for <see cref="SelectedLotId"/> via
+    /// GET /api/fabrication/lots/{lotId}/antidote.
+    /// </summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The <see cref="ReversalAntidotePairingReport"/>, or <see langword="null"/> when none exists.</returns>
+    public async Task<ReversalAntidotePairingReport?> LoadSelectedLotAntidoteAsync(CancellationToken ct = default)
+    {
+        // WHAT: Fetches the paired antidote recipe, ML-DSA-65 signature status, and event log for SelectedLotId.
+        // WHY:  Milestone 44 (P232): Synchronizes standby status and prior neutralization events into native UIs.
+        // HOW:  Validates SelectedLotId, calls GetReversalAntidoteAsync, and updates PairedAntidoteReport.
+        string lotId = RequireSelectedLotId();
+        var (profile, token) = ResolveEffectiveSession();
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            ReversalAntidotePairingReport? report = await _client.GetReversalAntidoteAsync(profile, token, lotId, ct).ConfigureAwait(false);
+            PairedAntidoteReport = report;
+            return report;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Models 24-hour toehold strand-displacement neutralization kinetics for <see cref="SelectedLotId"/> via
+    /// POST /api/fabrication/lots/{lotId}/antidote/simulate-neutralization.
+    /// </summary>
+    /// <param name="request">Optional bolus dose and time horizon settings.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Computed <see cref="NeutralizationSimulationReport"/>.</returns>
+    public async Task<NeutralizationSimulationReport> SimulateSelectedLotNeutralizationAsync(
+        SimulateNeutralizationRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Evaluates 24-hour nanocarrier disassembly and hormone arrest kinetics for SelectedLotId.
+        // WHY:  Milestone 44 (P232): Displays projected clearance time prior to emergency clinical injection.
+        // HOW:  Validates request and SelectedLotId, calls SimulateAntidoteNeutralizationAsync, updates LatestNeutralizationSimulation.
+        ArgumentNullException.ThrowIfNull(request);
+        string lotId = RequireSelectedLotId();
+        var (profile, token) = ResolveEffectiveSession();
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            NeutralizationSimulationReport sim = await _client.SimulateAntidoteNeutralizationAsync(profile, token, lotId, request, ct).ConfigureAwait(false);
+            LatestNeutralizationSimulation = sim;
+            return sim;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Executes emergency clinical antidote administration against <see cref="SelectedLotId"/> via
+    /// POST /api/fabrication/lots/{lotId}/antidote/administer and updates local revocation state.
+    /// </summary>
+    /// <param name="request">Administered bolus dose and documented clinical justification.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Complete <see cref="AntidoteAdministrationResponse"/>.</returns>
+    public async Task<AntidoteAdministrationResponse> AdministerSelectedLotAntidoteAsync(
+        AdministerAntidoteRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Triggers irreversible depot neutralization and refreshes lot ledger state cleanly.
+        // WHY:  Milestone 44 (P232): Powers desktop critical clinical alerts and mobile biometric antidote arrest flows.
+        // HOW:  Calls AdministerReversalAntidoteAsync, stores LastAntidoteAdministration and LatestNeutralizationSimulation, and refreshes lots if active.
+        ArgumentNullException.ThrowIfNull(request);
+        string lotId = RequireSelectedLotId();
+        var (profile, token) = ResolveEffectiveSession();
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            AntidoteAdministrationResponse resp = await _client.AdministerReversalAntidoteAsync(profile, token, lotId, request, ct).ConfigureAwait(false);
+            LastAntidoteAdministration = resp;
+            LatestNeutralizationSimulation = resp.Kinetics;
+            PairedAntidoteReport = await _client.GetReversalAntidoteAsync(profile, token, lotId, ct).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(_activePatientId))
+            {
+                FabricationLots = await _client.GetFabricationLotsAsync(profile, token, _activePatientId, ct).ConfigureAwait(false);
+            }
+
+            return resp;
         }
         catch (Exception ex)
         {

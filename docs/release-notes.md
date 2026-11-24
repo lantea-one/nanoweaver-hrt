@@ -4,6 +4,26 @@
 
 ---
 
+## v2026.11.24.2 — Antidote Reversal Switch & Emergency Clinical Neutralization Protocol Engine (Milestone 44 / Forgejo Issues #261–#265) (2026-11-24)
+
+Completes **Milestone 44 (`P230`–`P234` / Forgejo Issues `#261`–`#265`)**, introducing sequence-specific Watson-Crick toehold strand-displacement reversal antidotes, NIST FIPS 204 ML-DSA-65 lot-pairing attestations, 24-hour hormone cessation decay kinetics, fail-closed pre-implantation standby enforcement, and emergency lot neutralization workflows:
+* **Phase 1: Paired Reversal Antidote & Neutralization Event Persistence (`Migration023_ReversalAntidoteProtocols` / Forgejo #261 / P230)**:
+  - Added `Migration023_ReversalAntidoteProtocols` (`Version = 23`) across SQLite, PostgreSQL, DuckDB (omitting unsupported `ON DELETE CASCADE`), and MySQL/MariaDB creating `weaver_lot_reversal_antidotes` and `weaver_lot_neutralization_events` with 4 indexed query paths.
+  - Implemented `ReversalAntidoteStatus`, `ReversalAntidoteRecord`, `LotNeutralizationEventRecord`, `IReversalAntidoteRepository`, and `ReversalAntidoteRepository` with atomic GDPR Article 17 erasure cascades integrated into `FabricationLotRepository.DeleteByPatientIdAsync`.
+* **Phase 2: Toehold Strand-Displacement Antidote Designer & 24-Hour Neutralization Engine (Forgejo #262 / P231)**:
+  - Implemented `IReversalAntidoteService` and `ReversalAntidoteService` designing complementary invading ssDNA 5'→3' oligos with configurable 6–12 nt toehold overhangs, nearest-neighbor `ΔG°37` and salt-corrected `Tm` thermodynamics, stoichiometric 5:1 molar-excess standby recipes (`1x PBS, 5 mM Mg²⁺, pH 7.4`), and hourly 24-hour hormone washout kinetics.
+  - Cryptographically sealed antidote-lot pairings via canonical SHA-256 + NIST FIPS 204 **ML-DSA-65**, wired `Fabrication:RequirePairedAntidote` (`ColdChainStabilityService.RequirePairedAntidoteConfigKey`) into `CustodyStage.PatientAdministration` gating, and emitted 21 CFR Part 11 audit events (`FABRICATION_ANTIDOTE_PAIR`, `FABRICATION_ANTIDOTE_ADMINISTER`).
+* **Phase 3: Minimal API Endpoints, Client SDK, ViewModel & Desktop/Mobile Safety Parity (Forgejo #263 / P232)**:
+  - Appended 4 authenticated Minimal API routes to `Program.cs` (`POST /api/fabrication/lots/{lotId}/antidote`, `GET /api/fabrication/lots/{lotId}/antidote`, `POST /api/fabrication/lots/{lotId}/antidote/simulate-neutralization`, and `POST /api/fabrication/lots/{lotId}/antidote/administer`) reusing `AuthorizeColdChainLotAccessAsync`.
+  - Extended `INanoWeaverNodeClient`, `NanoWeaverNodeClient`, `WeaverNodeApiClient`, `DepotWorkspaceSummary`, `DepotAndLotWorkspaceViewModel`, `MobileClinicalActionGate` (`AdministerSelectedLotAntidoteWithBiometricApprovalAsync`), and `DesktopTrayIconController` (`TrayHealthBadge.Critical` / `Gui.DepotWorkspace.TrayAntidoteAdministered`).
+* **Phase 4: Sovereign Emergency Antidote UI, 18-Language Localization & bUnit Suite (Forgejo #264 / P233)**:
+  - Added `#reversal-antidote-panel`, `#antidote-recipe-card`, `#antidote-signature-badge`, `#antidote-neutralization-svg` (dark-mode SVG 24-hour hormone cessation and strand-displacement curves using `.antidote-*` classes in `app.css`), and `#antidote-neutralization-events-table` inside `DepotStudio.razor`.
+  - Added `18` localized `Antidote.*` and `Gui.DepotWorkspace.TrayAntidoteAdministered` keys across all 18 community translation catalogs (`235` keys per catalog) with full bUnit and localization coverage.
+* **Phase 5: CalVer `v2026.11.24.2` Release, 8-Gate Verification & Audited Pull Request (Forgejo #265 / P234)**:
+  - Updated `<DefaultCalVerVersion>2026.11.24.2</DefaultCalVerVersion>` in `Directory.Build.props`, updated `docs/api-reference.md`, `docs/compliance-and-security.md`, `docs/desktop-and-mobile-gui.md`, `docs/diy-fabrication-guide.md`, and `docs/release-notes.md`, and passed all 8 verification gates (`./scripts/verify-all.sh`) at 100.00% line and branch coverage.
+
+---
+
 ## v2026.11.24.1 — Multi-Year Permanent Endocrine Homeostasis & Mitotic Cell-Turnover Durability Simulator (Milestone 43 / Forgejo Issues #256–#260) (2026-11-24)
 
 Completes **Milestone 43 (`P225`–`P229` / Forgejo Issues `#256`–`#260`)**, coupling Day 0–180 polymer depot release kinetics with 1-to-10-year mitotic epigenetic inheritance, Day 90–180 exogenous-to-endogenous handoff surveillance, early mitotic washout detection, and cross-platform tray drift notifications:

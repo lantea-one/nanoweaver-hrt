@@ -2093,4 +2093,70 @@ public interface INanoWeaverNodeClient
         string bearerToken,
         string depotId,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Designs and ML-DSA-65 pairs a sequence-specific toehold reversal antidote for a fabrication lot via
+    /// POST /api/fabrication/lots/{lotId}/antidote.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="lotId">Target primary wet-lab fabrication lot identifier.</param>
+    /// <param name="request">Antidote design, toehold length, and stoichiometric formulation parameters.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The signed <see cref="ReversalAntidotePairingReport"/>.</returns>
+    Task<ReversalAntidotePairingReport> PairReversalAntidoteAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        PairReversalAntidoteRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Retrieves the paired reversal antidote protocol and live verification status for a fabrication lot via
+    /// GET /api/fabrication/lots/{lotId}/antidote.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="lotId">Target primary wet-lab fabrication lot identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The <see cref="ReversalAntidotePairingReport"/>, or <see langword="null"/> when HTTP 404 is returned.</returns>
+    Task<ReversalAntidotePairingReport?> GetReversalAntidoteAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Simulates 24-hour strand-displacement depot neutralization kinetics via
+    /// POST /api/fabrication/lots/{lotId}/antidote/simulate-neutralization.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="lotId">Target primary wet-lab fabrication lot identifier.</param>
+    /// <param name="request">Optional antidote dose bolus and horizon hours.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The computed <see cref="NeutralizationSimulationReport"/>.</returns>
+    Task<NeutralizationSimulationReport> SimulateAntidoteNeutralizationAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        SimulateNeutralizationRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Executes emergency reversal antidote administration and permanently revokes the primary lot via
+    /// POST /api/fabrication/lots/{lotId}/antidote/administer.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="lotId">Target primary wet-lab fabrication lot identifier.</param>
+    /// <param name="request">Administered dose mass and plain-English clinical justification.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The complete <see cref="AntidoteAdministrationResponse"/>.</returns>
+    Task<AntidoteAdministrationResponse> AdministerReversalAntidoteAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        AdministerAntidoteRequest request,
+        CancellationToken ct = default);
 }

@@ -3084,3 +3084,48 @@ select.form-control-sm {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
+/* Reversal antidote strand-displacement & neutralization SVG styling (Milestone 44) */
+.antidote-neutralization-svg {
+    width: 100%;
+    height: auto;
+    background: #060b14;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    display: block;
+}
+
+.antidote-grid {
+    stroke: rgba(148, 163, 184, 0.16);
+    stroke-width: 0.75;
+    stroke-dasharray: 3 3;
+}
+
+.antidote-axis {
+    stroke: #64748b;
+    stroke-width: 1.25;
+}
+
+.antidote-clearance-line {
+    stroke: rgba(16, 185, 129, 0.55);
+    stroke-width: 1;
+    stroke-dasharray: 4 3;
+}
+
+.antidote-hormone-line {
+    fill: none;
+    stroke: #f43f5e;
+    stroke-width: 2.5;
+}
+
+.antidote-displaced-line {
+    fill: none;
+    stroke: #38bdf8;
+    stroke-width: 2.25;
+}
+
+.antidote-svg-label {
+    fill: #cbd5e1;
+    font-size: 9.5px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+

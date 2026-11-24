@@ -224,5 +224,13 @@ public sealed class DesktopClinicalIntegrationTests
         DepotWorkspaceSummary driftWithSafetyAlert = driftSummary with { ActiveSafetyAlertCount = 1 };
         tray.ApplyClinicalSafetyState(driftWithSafetyAlert, true, false, ["Zurich Lab"]);
         Assert.Equal(TrayHealthBadge.Warning, tray.CurrentState.Badge);
+
+        // Milestone 44: Emergency reversal antidote administration escalates tray immediately to Critical
+        DepotWorkspaceSummary antidoteAdministered = driftSummary with
+        {
+            EmergencyAntidoteAdministered = true
+        };
+        tray.ApplyClinicalSafetyState(antidoteAdministered, false, false, ["Zurich Lab"]);
+        Assert.Equal(TrayHealthBadge.Critical, tray.CurrentState.Badge);
     }
 }

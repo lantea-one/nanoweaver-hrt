@@ -86,6 +86,11 @@ public sealed class DepotStudioComponentTests : BunitContext
     private readonly Mock<IMultiYearHomeostasisService> _multiYearMock = new();
 
     /// <summary>
+    /// Mocked toehold strand-displacement reversal antidote service for Milestone 44 UI tests.
+    /// </summary>
+    private readonly Mock<IReversalAntidoteService> _antidoteMock = new();
+
+    /// <summary>
     /// In-memory list of peer subscriptions managed by <see cref="_peerSyncMock"/>.
     /// </summary>
     private readonly List<FederatedPeerSyncEndpointRecord> _peerSyncEndpoints = [];
@@ -244,6 +249,10 @@ public sealed class DepotStudioComponentTests : BunitContext
                 IsPharmacovigilanceFlagged = _pvReport.IsQuarantineTriggered
             });
 
+        _antidoteMock
+            .Setup(a => a.GetLatestAntidoteReportAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ReversalAntidotePairingReport?)null);
+
         Services.AddSingleton<IWeaverLocalizer>(_localizer);
         Services.AddSingleton<ITimeReleaseDepotService>(_depotService);
         Services.AddSingleton<IDepotCalibrationService>(_calibrationService);
@@ -256,6 +265,7 @@ public sealed class DepotStudioComponentTests : BunitContext
         Services.AddSingleton(_coldChainMock.Object);
         Services.AddSingleton(_pvMock.Object);
         Services.AddSingleton(_multiYearMock.Object);
+        Services.AddSingleton(_antidoteMock.Object);
     }
 
     /// <inheritdoc/>
@@ -923,5 +933,128 @@ public sealed class DepotStudioComponentTests : BunitContext
         cut.Find("#input-multiyear-horizon").Change("99");
         cut.Find("#btn-run-multiyear-simulation").Click();
         Assert.Contains("HorizonYears must be between 1 and 10.", cut.Find("#multiyear-validation-error").TextContent);
+    }
+
+    /// <summary>
+    /// Verifies Milestone 44 (P233) Reversal Antidote &amp; Emergency Clinical Neutralization UI inside <see cref="DepotStudio"/>:
+    /// validation alerts, ML-DSA-65 pairing badge, 24-hour kinetics SVG curve, and irreversible lot neutralization.
+    /// </summary>
+    [Fact]
+    public void DepotStudio_ReversalAntidotePanel_PairsSimulatesAdministersAndSurfacesErrors()
+    {
+        // WHAT: Exercises #reversal-antidote-panel end-to-end inside DepotStudio with fresh cut.Find queries.
+        // WHY:  Verifies unpaired status, argument validation alert, paired oligo recipe & ML-DSA-65 badge, 24h kinetics SVG, and emergency administration.
+        // HOW:  Mints a lot, tests invalid pairing sequence, pairs a valid antidote, simulates 24h kinetics, tests blocked reason, then administers antidote.
+        ReversalAntidotePairingReport samplePairing = new ReversalAntidotePairingReport().GetExamples();
+        NeutralizationSimulationReport sampleKinetics = new NeutralizationSimulationReport().GetExamples() with
+        {
+            Trajectory =
+            [
+                new NeutralizationKineticsPoint { Hour = 0, BoundNanocarrierFraction = 1.0, DisplacedComplexFraction = 0.0, NormalizedHormoneOutputPercent = 100.0, PredictedEstradiolPmolL = 550.0, PredictedTestosteroneNmolL = 1.05 },
+                new NeutralizationKineticsPoint { Hour = 12, BoundNanocarrierFraction = 0.08, DisplacedComplexFraction = 0.92, NormalizedHormoneOutputPercent = 8.0, PredictedEstradiolPmolL = 82.0, PredictedTestosteroneNmolL = 1.05 },
+                new NeutralizationKineticsPoint { Hour = 24, BoundNanocarrierFraction = 0.004, DisplacedComplexFraction = 0.996, NormalizedHormoneOutputPercent = 0.4, PredictedEstradiolPmolL = 44.0, PredictedTestosteroneNmolL = 1.05 }
+            ]
+        };
+        AntidoteAdministrationResponse sampleAdmin = new AntidoteAdministrationResponse().GetExamples() with
+        {
+            Kinetics = sampleKinetics
+        };
+
+        _antidoteMock
+            .Setup(a => a.PairAntidoteAsync(
+                It.IsAny<string>(),
+                It.Is<PairReversalAntidoteRequest?>(r => r != null && r.TargetAptamerLockSequence5To3 == "BAD"),
+                "depot-studio-operator",
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new ArgumentException("TargetAptamerLockSequence5To3 length must be between 18 and 80 nt."));
+
+        _antidoteMock
+            .Setup(a => a.PairAntidoteAsync(
+                It.IsAny<string>(),
+                It.Is<PairReversalAntidoteRequest?>(r => r == null || r.TargetAptamerLockSequence5To3 != "BAD"),
+                "depot-studio-operator",
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string lotId, PairReversalAntidoteRequest? _, string _, CancellationToken _) =>
+                samplePairing with { PrimaryLotId = lotId });
+
+        _antidoteMock
+            .Setup(a => a.SimulateNeutralizationAsync(
+                It.IsAny<string>(),
+                It.IsAny<SimulateNeutralizationRequest?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string lotId, SimulateNeutralizationRequest? _, CancellationToken _) =>
+                sampleKinetics with { PrimaryLotId = lotId });
+
+        _antidoteMock
+            .Setup(a => a.AdministerAntidoteAsync(
+                It.IsAny<string>(),
+                It.Is<AdministerAntidoteRequest>(r => string.IsNullOrWhiteSpace(r.ClinicalReason)),
+                "depot-studio-operator",
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new ArgumentException("ClinicalReason must be non-empty."));
+
+        _antidoteMock
+            .Setup(a => a.AdministerAntidoteAsync(
+                It.IsAny<string>(),
+                It.Is<AdministerAntidoteRequest>(r => !string.IsNullOrWhiteSpace(r.ClinicalReason)),
+                "depot-studio-operator",
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string lotId, AdministerAntidoteRequest req, string op, CancellationToken _) =>
+                sampleAdmin with
+                {
+                    Event = sampleAdmin.Event with
+                    {
+                        PrimaryLotId = lotId,
+                        DosageMg = req.DosageMg,
+                        ClinicalReason = req.ClinicalReason,
+                        ExecutedBy = op
+                    }
+                });
+
+        IRenderedComponent<DepotStudio> cut = Render<DepotStudio>();
+        cut.Find("#btn-mint-fabrication-lot").Click();
+
+        Assert.NotNull(cut.Find("#reversal-antidote-panel"));
+        Assert.Contains("NOT PAIRED", cut.Find("#antidote-status-badge").TextContent);
+
+        // 1. Invalid target lock sequence displays validation alert
+        cut.Find("#input-antidote-target-seq").Change("BAD");
+        cut.Find("#btn-pair-antidote").Click();
+        Assert.Contains("TargetAptamerLockSequence5To3", cut.Find("#antidote-error").TextContent);
+
+        // 2. Valid pairing renders recipe card, ML-DSA-65 badge, and empty events state
+        cut.Find("#input-antidote-target-seq").Change("ATGCATGCTAGCTAGCTAGCTAGCATGC");
+        cut.Find("#input-antidote-toehold-nt").Change("8");
+        cut.Find("#input-antidote-molar-excess").Change("5");
+        cut.Find("#input-antidote-stock-um").Change("100");
+        cut.Find("#btn-pair-antidote").Click();
+
+        Assert.Contains("ACTIVE STANDBY (PAIRED)", cut.Find("#antidote-status-badge").TextContent);
+        Assert.Contains("ML-DSA-65 PAIRING VERIFIED", cut.Find("#antidote-signature-badge").TextContent);
+        Assert.Contains(samplePairing.Recipe.AntidoteSequence5To3, cut.Find("#antidote-sequence-readout").TextContent);
+        Assert.NotNull(cut.Find("#antidote-events-empty"));
+
+        // 3. Simulate 24-hour kinetics renders KPI summary and SVG chart
+        cut.Find("#input-antidote-sim-dose").Change("1.65");
+        cut.Find("#input-antidote-sim-horizon").Change("24");
+        cut.Find("#btn-simulate-neutralization").Click();
+
+        Assert.NotNull(cut.Find("#antidote-kinetics-kpi"));
+        Assert.NotNull(cut.Find("#antidote-neutralization-svg"));
+        Assert.Contains("99.60%", cut.Find("#antidote-kinetics-kpi").TextContent);
+
+        // 4. Empty clinical reason surfaces validation alert before administration
+        cut.Find("#input-antidote-admin-reason").Change(" ");
+        cut.Find("#btn-administer-antidote").Click();
+        Assert.Contains("ClinicalReason must be non-empty.", cut.Find("#antidote-error").TextContent);
+
+        // 5. Emergency administration transitions antidote to Neutralized, revokes lot, and records event row
+        cut.Find("#input-antidote-admin-dose").Change("5.0");
+        cut.Find("#input-antidote-admin-reason").Change("Acute CARPA reaction requiring immediate arrest.");
+        cut.Find("#btn-administer-antidote").Click();
+
+        Assert.Contains("NEUTRALIZED (LOT REVOKED)", cut.Find("#antidote-status-badge").TextContent);
+        Assert.Contains("Revoked", cut.Find("#lot-status-badge").TextContent);
+        Assert.Contains("Acute CARPA reaction requiring immediate arrest.", cut.Find("#antidote-neutralization-events-table").TextContent);
     }
 }

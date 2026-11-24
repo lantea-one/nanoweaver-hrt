@@ -3,11 +3,14 @@ using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using Moq;
 using NanoWeaverHrt.Compliance;
+using NanoWeaverHrt.Configuration;
 using NanoWeaverHrt.Database.Access;
 using NanoWeaverHrt.Endocrine;
 using NanoWeaverHrt.Fabrication;
 using NanoWeaverHrt.Models;
 using NanoWeaverHrt.Security.Authentication;
+using NanoWeaverHrt.Security.Cryptography;
+using NanoWeaverHrt.Security.KeyManagement;
 using NanoWeaverHrt.Security.Secrets;
 using NanoWeaverHrt.Storage;
 using Xunit;
@@ -491,6 +494,115 @@ public sealed class ColdChainStabilityServiceTests : IDisposable
         // Already-untrusted base stays untrusted even when local lot is thermally safe
         FabricationCertificateVerificationReport alreadyUntrusted = safeBase with { IsTrusted = false };
         Assert.False((await svc.ApplyColdChainStabilityGateAsync(alreadyUntrusted)).IsTrusted);
+    }
+
+    /// <summary>
+    /// Verifies that enabling <see cref="ColdChainStabilityService.RequirePairedAntidoteConfigKey"/> via static
+    /// <see cref="IConfiguration"/> or runtime <see cref="IConfigurationRepository"/> blocks un-paired
+    /// <see cref="CustodyStage.PatientAdministration"/> handoffs fail-closed and allows them once an active ML-DSA-65 antidote is paired.
+    /// </summary>
+    [Fact]
+    public async Task RecordCustodyHandoffAsync_RequirePairedAntidotePolicy_EnforcesActiveVerifiedStandby()
+    {
+        // WHAT: Tests fail-closed RequirePairedAntidote gating across static IConfiguration and runtime SystemConfigurationStore.
+        // WHY:  Milestone 44 (P231): Clinics can mandate verified molecular reversal antidote standby prior to patient implantation.
+        // HOW:  Exercises missing service, un-paired lot, paired-antidote standby, and policy-disabled flows.
+        DateTimeOffset t0 = new(2026, 11, 24, 10, 0, 0, TimeSpan.Zero);
+        await SeedLotAsync("lot-gate-test", "pat-gate", FabricationLotStatus.Released, t0, t0);
+
+        IConfiguration strictStaticConfig = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                [ColdChainStabilityService.RequirePairedAntidoteConfigKey] = "true"
+            })
+            .Build();
+
+        // 1. Static strict config without IReversalAntidoteService injected -> fail-closed
+        ColdChainStabilityService svcNoAntidoteSvc = new(
+            _lotRepo, _coldRepo, _protector, _auditMock.Object, () => t0, null, strictStaticConfig, null);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => svcNoAntidoteSvc.RecordCustodyHandoffAsync(
+            "lot-gate-test",
+            new RecordCustodyHandoffRequest
+            {
+                Stage = CustodyStage.PatientAdministration,
+                FromActor = "nurse",
+                ToActor = "patient",
+                FacilityCode = "CLINIC-1",
+                TemperatureCelsius = 4.0
+            },
+            "clinician"));
+
+        // 2. Construct genuine ReversalAntidoteService and runtime SystemConfigurationStore
+        NodeSecretStore secretStore = new(new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { [NodeSecretStore.NodeKeysDirectoryConfigKey] = _tempDir })
+            .Build());
+        PostQuantumCryptoProvider crypto = new();
+        SubjectKeyRepository skRepo = new(_factory);
+        SubjectErasureJournal journal = new(secretStore);
+        SubjectKeyVault vault = new(skRepo, _protector, crypto, journal);
+        await vault.InitializeAsync();
+        KeyManagementService kms = new(crypto, vault, secretStore);
+        ReversalAntidoteRepository antiRepo = new(_factory);
+        ReversalAntidoteService antiSvc = new(_lotRepo, antiRepo, kms, crypto, _auditMock.Object, () => t0);
+
+        using SystemConfigurationStore configStore = new(_factory);
+        await configStore.InitializeAsync();
+        await configStore.SetDatabaseOverrideAsync(ColdChainStabilityService.RequirePairedAntidoteConfigKey, "true");
+
+        IConfiguration disabledStaticConfig = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                [ColdChainStabilityService.RequirePairedAntidoteConfigKey] = "false"
+            })
+            .Build();
+
+        ColdChainStabilityService svcStrictViaRepo = new(
+            _lotRepo, _coldRepo, _protector, _auditMock.Object, () => t0, antiSvc, disabledStaticConfig, configStore);
+
+        // Runtime DB override blocks PatientAdministration while no antidote is paired
+        await Assert.ThrowsAsync<InvalidOperationException>(() => svcStrictViaRepo.RecordCustodyHandoffAsync(
+            "lot-gate-test",
+            new RecordCustodyHandoffRequest
+            {
+                Stage = CustodyStage.PatientAdministration,
+                FromActor = "nurse",
+                ToActor = "patient",
+                FacilityCode = "CLINIC-1",
+                TemperatureCelsius = 4.0
+            },
+            "clinician"));
+
+        // Pair active verified antidote -> PatientAdministration succeeds cleanly!
+        await antiSvc.PairAntidoteAsync("lot-gate-test", null, "admin");
+        CustodyHandoffRecord? allowed = await svcStrictViaRepo.RecordCustodyHandoffAsync(
+            "lot-gate-test",
+            new RecordCustodyHandoffRequest
+            {
+                Stage = CustodyStage.PatientAdministration,
+                FromActor = "nurse",
+                ToActor = "patient",
+                FacilityCode = "CLINIC-1",
+                TemperatureCelsius = 4.0
+            },
+            "clinician");
+        Assert.NotNull(allowed);
+        Assert.Equal(CustodyStage.PatientAdministration, allowed.Stage);
+
+        // Policy disabled ("false") in both static & repo allows non-paired lot administration
+        await SeedLotAsync("lot-gate-open", "pat-gate", FabricationLotStatus.Released, t0, t0);
+        await configStore.SetDatabaseOverrideAsync(ColdChainStabilityService.RequirePairedAntidoteConfigKey, "false");
+        CustodyHandoffRecord? openAllowed = await svcStrictViaRepo.RecordCustodyHandoffAsync(
+            "lot-gate-open",
+            new RecordCustodyHandoffRequest
+            {
+                Stage = CustodyStage.PatientAdministration,
+                FromActor = "nurse",
+                ToActor = "patient",
+                FacilityCode = "CLINIC-1",
+                TemperatureCelsius = 4.0
+            },
+            "clinician");
+        Assert.NotNull(openAllowed);
     }
 
     /// <summary>

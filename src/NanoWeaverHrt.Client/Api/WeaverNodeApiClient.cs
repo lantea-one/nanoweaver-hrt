@@ -2489,4 +2489,67 @@ public sealed class WeaverNodeApiClient : INanoWeaverNodeClient, IDisposable
         string effectiveToken = ResolveBearerToken(bearerToken);
         return _innerClient.GetLatestMultiYearHomeostasisForecastAsync(profile, effectiveToken, depotId, ct);
     }
+
+    /// <inheritdoc/>
+    public Task<ReversalAntidotePairingReport> PairReversalAntidoteAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        PairReversalAntidoteRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/fabrication/lots/{lotId}/antidote using provided or cached session token.
+        // WHY:  Milestone 44 (P232): Pairs verified reversal antidotes cleanly from managed native shells.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.PairReversalAntidoteAsync(profile, effectiveToken, lotId, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<ReversalAntidotePairingReport?> GetReversalAntidoteAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/fabrication/lots/{lotId}/antidote using provided or cached session token.
+        // WHY:  Milestone 44 (P232): Retrieves antidote verification and neutralization history cleanly from native clients.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.GetReversalAntidoteAsync(profile, effectiveToken, lotId, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<NeutralizationSimulationReport> SimulateAntidoteNeutralizationAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        SimulateNeutralizationRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/fabrication/lots/{lotId}/antidote/simulate-neutralization with resolved token.
+        // WHY:  Milestone 44 (P232): Models 24-hour hormone cessation decay curves in native shells.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.SimulateAntidoteNeutralizationAsync(profile, effectiveToken, lotId, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<AntidoteAdministrationResponse> AdministerReversalAntidoteAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        AdministerAntidoteRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/fabrication/lots/{lotId}/antidote/administer using provided or cached token.
+        // WHY:  Milestone 44 (P232): Powers desktop and biometric mobile emergency neutralization actions.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.AdministerReversalAntidoteAsync(profile, effectiveToken, lotId, request, ct);
+    }
 }

@@ -59,7 +59,8 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
         new("Peer:AllowExternalConnections", "true", "PEER_ALLOW_EXTERNAL", "Peer Collaboration", "Enables or disables remote collaborative UI connections via single-use share links."),
         new("Peer:DefaultTokenLifetimeHours", "24", "PEER_DEFAULT_LIFETIME_HOURS", "Peer Collaboration", "Default expiration window for newly generated collaborative share links."),
         new("Peer:CollaborativeWorkerEndpoint", "http://localhost:5000", "COLLABORATIVE_WORKER_ENDPOINT", "Peer Collaboration", "Local node address advertised to external instances in generated share links."),
-        new("Peer:RequireSignedDatasets", "false", "PEER_REQUIRE_SIGNED_DATASETS", "Peer Collaboration", "When true, POST /api/datasets/import refuses every dataset whose manifest is not signed by this node or by an active registered peer key. Off by default so existing unsigned bundles and the documented quickstart keep working. While off, a signature identifies a trusted sender but does not stop an uploader who simply leaves the signature out.")
+        new("Peer:RequireSignedDatasets", "false", "PEER_REQUIRE_SIGNED_DATASETS", "Peer Collaboration", "When true, POST /api/datasets/import refuses every dataset whose manifest is not signed by this node or by an active registered peer key. Off by default so existing unsigned bundles and the documented quickstart keep working. While off, a signature identifies a trusted sender but does not stop an uploader who simply leaves the signature out."),
+        new("Fabrication:RequirePairedAntidote", "false", "FABRICATION_REQUIRE_PAIRED_ANTIDOTE", "Wet-Lab Safety & Reversal", "When true, clinical PatientAdministration custody handoffs fail closed unless the fabrication lot is bound to an active, ML-DSA-65 signature-verified toehold strand-displacement reversal antidote.")
     ];
 
     /// <summary>

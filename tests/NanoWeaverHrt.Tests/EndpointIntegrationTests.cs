@@ -3559,4 +3559,183 @@ public sealed class EndpointIntegrationTests : IClassFixture<WebApplicationFacto
             Assert.Contains(entries, e => e.Action == "DEPOT_MULTIYEAR_SIMULATION_RUN");
         }
     }
+
+    /// <summary>
+    /// End-to-end integration test for Milestone 44 (P232): verifies all 4 reversal antidote Minimal API
+    /// routes, RBAC &amp; subject-access gating, 400/404/422 error branches, live <c>Fabrication:RequirePairedAntidote</c>
+    /// fail-closed <c>PatientAdministration</c> gate, emergency antidote administration permanently revoking the lot,
+    /// and 21 CFR Part 11 audit ledger trails.
+    /// </summary>
+    [Fact]
+    public async Task ReversalAntidoteEndpoints_FullLifecycleRbacGateAndEmergencyRecall_WorkEndToEnd()
+    {
+        string patSelf = "m44_patient_self";
+        string patOther = "m44_patient_other";
+        string researcher = "m44_researcher";
+
+        string tokSelf = await ProvisionUserAndGetTokenAsync(patSelf, UserRole.Patient);
+        string tokOther = await ProvisionUserAndGetTokenAsync(patOther, UserRole.Patient);
+        string tokRes = await ProvisionUserAndGetTokenAsync(researcher, UserRole.Researcher);
+
+        using HttpClient clientAnon = _factory.CreateClient();
+        using HttpClient clientRes = CreateClientWithBearer(tokRes);
+        using HttpClient clientSelf = CreateClientWithBearer(tokSelf);
+        using HttpClient clientOther = CreateClientWithBearer(tokOther);
+
+        // 1. Seed depot formulation, create fabrication lot, pass all 5 QC gates, and mint ML-DSA-65 CoA
+        HttpResponseMessage depotResp = await _client.PostAsJsonAsync("/api/depots/formulations", new CreateDepotFormulationRequest
+        {
+            PatientId = patSelf,
+            Regimen = TherapeuticRegimen.MaleToFemale,
+            PolymerMatrixType = "PLGA-PEG-PLGA",
+            InitialNanocarrierMassMg = 18.0,
+            DailyErosionRatePercent = 0.55,
+            ReleaseKineticsModel = "Korsmeyer-Peppas",
+            TargetHorizonDays = 180
+        });
+        Assert.Equal(HttpStatusCode.Created, depotResp.StatusCode);
+        DepotFormulationResponse? createdDepot = await depotResp.Content.ReadFromJsonAsync<DepotFormulationResponse>();
+        Assert.NotNull(createdDepot);
+
+        HttpResponseMessage lotResp = await _client.PostAsJsonAsync("/api/fabrication/lots", new CreateFabricationLotRequest
+        {
+            DepotId = createdDepot.Formulation.DepotId,
+            UseLatestCalibration = false,
+            CpGMethylationRequired = true,
+            OpentronsProtocolSha256 = new string('7', 64)
+        });
+        Assert.Equal(HttpStatusCode.Created, lotResp.StatusCode);
+        FabricationLotResponse? lotDto = await lotResp.Content.ReadFromJsonAsync<FabricationLotResponse>();
+        Assert.NotNull(lotDto);
+        string lotId = lotDto.LotId;
+
+        await _client.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/qc", new RecordFabricationQcRequest { GateType = FabricationQcGateType.GelFoldingYield, MeasuredValue = 94.0 });
+        await _client.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/qc", new RecordFabricationQcRequest { GateType = FabricationQcGateType.EndotoxinSterility, MeasuredValue = 0.08 });
+        await _client.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/qc", new RecordFabricationQcRequest { GateType = FabricationQcGateType.HydrodynamicSizePdi, MeasuredValue = 58.0, SecondaryValue = 0.11 });
+        await _client.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/qc", new RecordFabricationQcRequest { GateType = FabricationQcGateType.PayloadEncapsulation, MeasuredValue = 90.0, SecondaryValue = 0.8 });
+        await _client.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/qc", new RecordFabricationQcRequest { GateType = FabricationQcGateType.CpGMethylation, MeasuredValue = 98.5 });
+        Assert.Equal(HttpStatusCode.OK, (await _client.PostAsync($"/api/fabrication/lots/{lotId}/release", null)).StatusCode);
+
+        // 2. Unauthorized, BadRequest, NotFound, and Forbidden checks across all 4 antidote endpoints
+        PairReversalAntidoteRequest validPairReq = new PairReversalAntidoteRequest().GetExamples();
+        SimulateNeutralizationRequest validSimReq = new SimulateNeutralizationRequest().GetExamples();
+        AdministerAntidoteRequest validAdminReq = new AdministerAntidoteRequest().GetExamples();
+
+        Assert.Equal(HttpStatusCode.Unauthorized, (await clientAnon.GetAsync($"/api/fabrication/lots/{lotId}/antidote")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/fabrication/lots/%20/antidote", validPairReq)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.GetAsync("/api/fabrication/lots/%20/antidote")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/fabrication/lots/%20/antidote/simulate-neutralization", validSimReq)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/fabrication/lots/%20/antidote/administer", validAdminReq)).StatusCode);
+        using (StringContent nullAdminBody = new("null", Encoding.UTF8, "application/json"))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsync($"/api/fabrication/lots/{lotId}/antidote/administer", nullAdminBody)).StatusCode);
+        }
+
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsJsonAsync("/api/fabrication/lots/missing-lot-404/antidote", validPairReq)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/fabrication/lots/missing-lot-404/antidote")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync($"/api/fabrication/lots/{lotId}/antidote")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsJsonAsync("/api/fabrication/lots/missing-lot-404/antidote/simulate-neutralization", validSimReq)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsJsonAsync("/api/fabrication/lots/missing-lot-404/antidote/administer", validAdminReq)).StatusCode);
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientSelf.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/antidote", validPairReq)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientSelf.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/antidote/simulate-neutralization", validSimReq)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientSelf.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/antidote/administer", validAdminReq)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientOther.GetAsync($"/api/fabrication/lots/{lotId}/antidote")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientRes.GetAsync($"/api/fabrication/lots/{lotId}/antidote")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await clientRes.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/antidote", validPairReq)).StatusCode);
+
+        // Grant Researcher access to patSelf
+        using (IServiceScope grantScope = _factory.Services.CreateScope())
+        {
+            ISubjectAccessService accessSvc = grantScope.ServiceProvider.GetRequiredService<ISubjectAccessService>();
+            await accessSvc.GrantSubjectAccessAsync("admin", researcher, patSelf, SubjectAccessLevel.FullReadAccess, "M44 antidote testing");
+        }
+
+        // Validation ArgumentException -> 400; missing-antidote InvalidOperationException -> 422
+        Assert.Equal(HttpStatusCode.BadRequest, (await clientRes.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/antidote", validPairReq with { ToeholdLengthNt = 2 })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await clientRes.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/antidote/simulate-neutralization", new SimulateNeutralizationRequest { HorizonHours = 2 })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await clientRes.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/antidote/administer", validAdminReq with { ClinicalReason = "" })).StatusCode);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await clientRes.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/antidote/simulate-neutralization", validSimReq)).StatusCode);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await clientRes.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/antidote/administer", validAdminReq)).StatusCode);
+
+        // 3. Enable live RequirePairedAntidote policy -> PatientAdministration blocked fail-closed until paired
+        Assert.Equal(HttpStatusCode.OK, (await _client.PostAsJsonAsync("/api/configuration/override", new
+        {
+            key = ColdChainStabilityService.RequirePairedAntidoteConfigKey,
+            value = "true",
+            description = "M44 strict paired-antidote pre-implant gate"
+        })).StatusCode);
+
+        try
+        {
+            HttpResponseMessage blockedHandoffResp = await clientRes.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/custody-handoffs", new RecordCustodyHandoffRequest
+            {
+                Stage = CustodyStage.PatientAdministration,
+                FromActor = "clinic_rn",
+                ToActor = patSelf,
+                FacilityCode = "BER-CLINIC-01",
+                TemperatureCelsius = 4.0
+            });
+            Assert.Equal(HttpStatusCode.UnprocessableEntity, blockedHandoffResp.StatusCode);
+
+            // 4. Pair ML-DSA-65 verified antidote as granted Researcher (201 Created) & verify Patient/Researcher read (200 OK)
+            HttpResponseMessage pairResp = await clientRes.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/antidote", validPairReq);
+            Assert.Equal(HttpStatusCode.Created, pairResp.StatusCode);
+            ReversalAntidotePairingReport? pairedDto = await pairResp.Content.ReadFromJsonAsync<ReversalAntidotePairingReport>();
+            Assert.NotNull(pairedDto);
+            Assert.True(pairedDto.SignatureVerified);
+            Assert.Equal(ReversalAntidoteStatus.ActiveStandby, pairedDto.Status);
+
+            HttpResponseMessage selfGetResp = await clientSelf.GetAsync($"/api/fabrication/lots/{lotId}/antidote");
+            Assert.Equal(HttpStatusCode.OK, selfGetResp.StatusCode);
+            ReversalAntidotePairingReport? selfGetDto = await selfGetResp.Content.ReadFromJsonAsync<ReversalAntidotePairingReport>();
+            Assert.NotNull(selfGetDto);
+            Assert.True(selfGetDto.SignatureVerified);
+
+            // Now PatientAdministration succeeds cleanly because an active ML-DSA-65 verified antidote is paired!
+            HttpResponseMessage allowedHandoffResp = await clientRes.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/custody-handoffs", new RecordCustodyHandoffRequest
+            {
+                Stage = CustodyStage.PatientAdministration,
+                FromActor = "clinic_rn",
+                ToActor = patSelf,
+                FacilityCode = "BER-CLINIC-01",
+                TemperatureCelsius = 4.0
+            });
+            Assert.Equal(HttpStatusCode.Created, allowedHandoffResp.StatusCode);
+
+            // 5. Simulate 24h kinetics (explicit + null default) -> 200 OK
+            HttpResponseMessage simResp = await clientRes.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/antidote/simulate-neutralization", validSimReq);
+            Assert.Equal(HttpStatusCode.OK, simResp.StatusCode);
+            NeutralizationSimulationReport? simDto = await simResp.Content.ReadFromJsonAsync<NeutralizationSimulationReport>();
+            Assert.NotNull(simDto);
+            Assert.True(simDto.TwentyFourHourCessationPercent >= 95.0);
+
+            using (StringContent nullSimBody = new("null", Encoding.UTF8, "application/json"))
+            {
+                Assert.Equal(HttpStatusCode.OK, (await clientRes.PostAsync($"/api/fabrication/lots/{lotId}/antidote/simulate-neutralization", nullSimBody)).StatusCode);
+            }
+
+            // 6. Execute emergency clinical neutralization -> permanently neutralizes antidote & revokes primary lot; repeat returns 422
+            HttpResponseMessage adminResp = await clientRes.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/antidote/administer", validAdminReq);
+            Assert.Equal(HttpStatusCode.OK, adminResp.StatusCode);
+            AntidoteAdministrationResponse? adminDto = await adminResp.Content.ReadFromJsonAsync<AntidoteAdministrationResponse>();
+            Assert.NotNull(adminDto);
+            Assert.Equal(FabricationLotStatus.Revoked, adminDto.LotStatus);
+            Assert.Equal(ReversalAntidoteStatus.Neutralized, adminDto.Antidote.Status);
+
+            Assert.Equal(HttpStatusCode.UnprocessableEntity, (await clientRes.PostAsJsonAsync($"/api/fabrication/lots/{lotId}/antidote/administer", validAdminReq)).StatusCode);
+        }
+        finally
+        {
+            await _client.DeleteAsync($"/api/configuration/override/{ColdChainStabilityService.RequirePairedAntidoteConfigKey}");
+        }
+
+        using (IServiceScope auditScope = _factory.Services.CreateScope())
+        {
+            IComplianceAuditService audit = auditScope.ServiceProvider.GetRequiredService<IComplianceAuditService>();
+            IReadOnlyList<AuditRecord> entries = audit.GetAuditRecords(500);
+            Assert.Contains(entries, e => e.Action == "FABRICATION_ANTIDOTE_PAIR");
+            Assert.Contains(entries, e => e.Action == "FABRICATION_ANTIDOTE_ADMINISTER");
+        }
+    }
 }

@@ -2,7 +2,9 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Configuration;
 using NanoWeaverHrt.Compliance;
+using NanoWeaverHrt.Configuration;
 using NanoWeaverHrt.Models;
 using NanoWeaverHrt.Security.Authentication;
 using NanoWeaverHrt.Storage;
@@ -30,6 +32,11 @@ namespace NanoWeaverHrt.Fabrication;
 /// </remarks>
 public sealed class ColdChainStabilityService : IColdChainStabilityService
 {
+    /// <summary>
+    /// Configuration catalog key controlling whether <see cref="CustodyStage.PatientAdministration"/> requires an active paired reversal antidote.
+    /// </summary>
+    public const string RequirePairedAntidoteConfigKey = "Fabrication:RequirePairedAntidote";
+
     /// <summary>
     /// Maximum allowed plaintext character length for optional excursion operator notes.
     /// </summary>
@@ -61,6 +68,21 @@ public sealed class ColdChainStabilityService : IColdChainStabilityService
     private readonly Func<DateTimeOffset> _utcNow;
 
     /// <summary>
+    /// Optional Milestone 44 reversal antidote verifier enforcing <see cref="RequirePairedAntidoteConfigKey"/>.
+    /// </summary>
+    private readonly IReversalAntidoteService? _reversalAntidoteService;
+
+    /// <summary>
+    /// Optional host configuration supplying static overrides for <see cref="RequirePairedAntidoteConfigKey"/>.
+    /// </summary>
+    private readonly IConfiguration? _configuration;
+
+    /// <summary>
+    /// Optional runtime configuration store supplying database overrides for <see cref="RequirePairedAntidoteConfigKey"/>.
+    /// </summary>
+    private readonly IConfigurationRepository? _configurationRepository;
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="ColdChainStabilityService"/> class.
     /// </summary>
     /// <param name="lotRepository">Fabrication lot &amp; revocation repository.</param>
@@ -68,16 +90,22 @@ public sealed class ColdChainStabilityService : IColdChainStabilityService
     /// <param name="protector">AES-256-GCM field protector for optional clinical notes.</param>
     /// <param name="auditService">21 CFR Part 11 compliance audit service.</param>
     /// <param name="utcNow">Optional deterministic UTC clock delegate for testing.</param>
+    /// <param name="reversalAntidoteService">Optional Milestone 44 antidote readiness verifier.</param>
+    /// <param name="configuration">Optional host configuration provider.</param>
+    /// <param name="configurationRepository">Optional runtime configuration repository.</param>
     public ColdChainStabilityService(
         IFabricationLotRepository lotRepository,
         IColdChainCustodyRepository coldChainRepository,
         ProfileDataProtector protector,
         IComplianceAuditService auditService,
-        Func<DateTimeOffset>? utcNow = null)
+        Func<DateTimeOffset>? utcNow = null,
+        IReversalAntidoteService? reversalAntidoteService = null,
+        IConfiguration? configuration = null,
+        IConfigurationRepository? configurationRepository = null)
     {
-        // WHAT: Validates and stores all required domain dependencies.
+        // WHAT: Validates and stores all required domain dependencies and optional Milestone 44 gate dependencies.
         // WHY:  Guarantees fail-fast DI initialization with zero null dereferences during clinical calculations.
-        // HOW:  Throws ArgumentNullException on any missing dependency and defaults clock to DateTimeOffset.UtcNow.
+        // HOW:  Throws ArgumentNullException on any missing required dependency and stores optional antidote/config collaborators.
         ArgumentNullException.ThrowIfNull(lotRepository);
         ArgumentNullException.ThrowIfNull(coldChainRepository);
         ArgumentNullException.ThrowIfNull(protector);
@@ -88,6 +116,9 @@ public sealed class ColdChainStabilityService : IColdChainStabilityService
         _protector = protector;
         _auditService = auditService;
         _utcNow = utcNow ?? (() => DateTimeOffset.UtcNow);
+        _reversalAntidoteService = reversalAntidoteService;
+        _configuration = configuration;
+        _configurationRepository = configurationRepository;
     }
 
     /// <inheritdoc/>
@@ -384,6 +415,22 @@ public sealed class ColdChainStabilityService : IColdChainStabilityService
             if (!stability.IsSafeForImplantation)
             {
                 throw new InvalidOperationException($"Patient administration blocked fail-closed: {stability.Summary}");
+            }
+
+            if (await IsPairedAntidoteRequiredAsync(cancellationToken).ConfigureAwait(false))
+            {
+                if (_reversalAntidoteService is null)
+                {
+                    throw new InvalidOperationException("Patient administration blocked fail-closed (RequirePairedAntidote): reversal antidote verification service is unavailable.");
+                }
+
+                (bool antidoteReady, string antidoteReason) = await _reversalAntidoteService
+                    .VerifyActivePairedAntidoteAsync(lot.LotId, cancellationToken)
+                    .ConfigureAwait(false);
+                if (!antidoteReady)
+                {
+                    throw new InvalidOperationException(antidoteReason);
+                }
             }
         }
 
@@ -695,5 +742,31 @@ public sealed class ColdChainStabilityService : IColdChainStabilityService
         DateTimeOffset utc = timestamp.ToUniversalTime();
         long microsecondTicks = utc.Ticks - (utc.Ticks % 10);
         return new DateTimeOffset(microsecondTicks, TimeSpan.Zero);
+    }
+
+    /// <summary>
+    /// Resolves whether <see cref="RequirePairedAntidoteConfigKey"/> is currently enabled in host or runtime configuration.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token for cooperative cancellation.</param>
+    /// <returns><see langword="true"/> when active paired reversal antidotes are mandatory before patient administration.</returns>
+    private async Task<bool> IsPairedAntidoteRequiredAsync(CancellationToken cancellationToken)
+    {
+        // WHAT: Evaluates Fabrication:RequirePairedAntidote across IConfiguration and IConfigurationRepository.
+        // WHY:  Milestone 44 (P231): Supports both static host config overrides and live database config toggles without restarts.
+        // HOW:  Checks _configuration first and falls back to _configurationRepository.GetValueAsync when present.
+        if (string.Equals(_configuration?[RequirePairedAntidoteConfigKey], "true", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (_configurationRepository is not null)
+        {
+            string value = await _configurationRepository
+                .GetValueAsync(RequirePairedAntidoteConfigKey, "false", cancellationToken)
+                .ConfigureAwait(false);
+            return string.Equals(value.Trim(), "true", StringComparison.OrdinalIgnoreCase);
+        }
+
+        return false;
     }
 }
