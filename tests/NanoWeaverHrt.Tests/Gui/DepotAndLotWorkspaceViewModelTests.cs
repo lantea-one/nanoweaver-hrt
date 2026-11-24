@@ -1015,4 +1015,106 @@ public sealed class DepotAndLotWorkspaceViewModelTests
         Assert.Null(vm.ProjectedTenYearTtrPercent);
         Assert.False(vm.MitoticDriftAlert);
     }
+
+    /// <summary>
+    /// Verifies Milestone 44 (P232) reversal antidote pairing, loading, 24h neutralization simulation,
+    /// emergency antidote administration (with and without ActivePatientId refresh), severity escalation,
+    /// error propagation, and sensitive cache cleanup.
+    /// </summary>
+    [Fact]
+    public async Task ReversalAntidoteCommands_SeverityEscalationErrorsAndCacheCleanup_WorkDeterministically()
+    {
+        InstanceProfile profile = CreateProfile();
+        Mock<INanoWeaverNodeClient> clientMock = new();
+        DepotAndLotWorkspaceViewModel vm = new(clientMock.Object, () => profile, () => "token")
+        {
+            SelectedLotId = "lot_sample_001"
+        };
+
+        PairReversalAntidoteRequest pairReq = new PairReversalAntidoteRequest().GetExamples();
+        SimulateNeutralizationRequest simReq = new SimulateNeutralizationRequest().GetExamples();
+        AdministerAntidoteRequest adminReq = new AdministerAntidoteRequest().GetExamples();
+
+        ReversalAntidotePairingReport standbyReport = new ReversalAntidotePairingReport().GetExamples();
+        ReversalAntidotePairingReport neutralizedReport = standbyReport with { Status = ReversalAntidoteStatus.Neutralized, PrimaryLotStatus = FabricationLotStatus.Revoked };
+        NeutralizationSimulationReport simReport = new NeutralizationSimulationReport().GetExamples();
+        AntidoteAdministrationResponse adminResp = new AntidoteAdministrationResponse().GetExamples();
+
+        // 1. PairSelectedLotAntidoteAsync + error branch + null guard
+        await Assert.ThrowsAsync<ArgumentNullException>(() => vm.PairSelectedLotAntidoteAsync(null!));
+        clientMock.Setup(c => c.PairReversalAntidoteAsync(profile, "token", "lot_sample_001", pairReq, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(standbyReport);
+        Assert.Equal("anti_20261124_001", (await vm.PairSelectedLotAntidoteAsync(pairReq)).AntidoteId);
+        Assert.False(vm.EmergencyAntidoteAdministered);
+
+        clientMock.Setup(c => c.PairReversalAntidoteAsync(profile, "token", "lot_sample_001", pairReq, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("pair fail"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.PairSelectedLotAntidoteAsync(pairReq));
+        Assert.Equal("pair fail", vm.ErrorMessage);
+
+        // 2. LoadSelectedLotAntidoteAsync (Standby, Neutralized without LastAntidoteAdministration, 404 null, and error)
+        clientMock.Setup(c => c.GetReversalAntidoteAsync(profile, "token", "lot_sample_001", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(neutralizedReport);
+        ReversalAntidotePairingReport? loadedNeutralized = await vm.LoadSelectedLotAntidoteAsync();
+        Assert.NotNull(loadedNeutralized);
+        Assert.True(vm.EmergencyAntidoteAdministered);
+        DepotWorkspaceSummary neutralizedSummary = vm.BuildSummary();
+        Assert.True(neutralizedSummary.EmergencyAntidoteAdministered);
+        Assert.Equal(ClinicalWorkspaceSeverity.Critical, neutralizedSummary.Severity);
+
+        clientMock.Setup(c => c.GetReversalAntidoteAsync(profile, "token", "lot_sample_001", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ReversalAntidotePairingReport?)null);
+        Assert.Null(await vm.LoadSelectedLotAntidoteAsync());
+        Assert.False(vm.EmergencyAntidoteAdministered);
+
+        clientMock.Setup(c => c.GetReversalAntidoteAsync(profile, "token", "lot_sample_001", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("load fail"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.LoadSelectedLotAntidoteAsync());
+        Assert.Equal("load fail", vm.ErrorMessage);
+
+        // 3. SimulateSelectedLotNeutralizationAsync
+        await Assert.ThrowsAsync<ArgumentNullException>(() => vm.SimulateSelectedLotNeutralizationAsync(null!));
+        clientMock.Setup(c => c.SimulateAntidoteNeutralizationAsync(profile, "token", "lot_sample_001", simReq, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(simReport);
+        NeutralizationSimulationReport sim = await vm.SimulateSelectedLotNeutralizationAsync(simReq);
+        Assert.Equal(99.6, sim.TwentyFourHourCessationPercent);
+        Assert.NotNull(vm.LatestNeutralizationSimulation);
+
+        clientMock.Setup(c => c.SimulateAntidoteNeutralizationAsync(profile, "token", "lot_sample_001", simReq, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("sim neut fail"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.SimulateSelectedLotNeutralizationAsync(simReq));
+        Assert.Equal("sim neut fail", vm.ErrorMessage);
+
+        // 4. AdministerSelectedLotAntidoteAsync (first without ActivePatientId, then with ActivePatientId lot refresh, then error)
+        await Assert.ThrowsAsync<ArgumentNullException>(() => vm.AdministerSelectedLotAntidoteAsync(null!));
+        clientMock.Setup(c => c.AdministerReversalAntidoteAsync(profile, "token", "lot_sample_001", adminReq, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(adminResp);
+        clientMock.Setup(c => c.GetReversalAntidoteAsync(profile, "token", "lot_sample_001", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(neutralizedReport);
+
+        AntidoteAdministrationResponse resWithoutPatient = await vm.AdministerSelectedLotAntidoteAsync(adminReq);
+        Assert.Equal(FabricationLotStatus.Revoked, resWithoutPatient.LotStatus);
+        Assert.True(vm.EmergencyAntidoteAdministered);
+        Assert.NotNull(vm.LastAntidoteAdministration);
+        clientMock.Verify(c => c.GetFabricationLotsAsync(It.IsAny<InstanceProfile>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        vm.ActivePatientId = "pat_001";
+        FabricationLotResponse revokedLotResp = new FabricationLotResponse().GetExamples() with { LotId = "lot_sample_001", LotStatus = FabricationLotStatus.Revoked };
+        clientMock.Setup(c => c.GetFabricationLotsAsync(profile, "token", "pat_001", It.IsAny<CancellationToken>()))
+            .ReturnsAsync([revokedLotResp]);
+        await vm.AdministerSelectedLotAntidoteAsync(adminReq);
+        clientMock.Verify(c => c.GetFabricationLotsAsync(profile, "token", "pat_001", It.IsAny<CancellationToken>()), Times.Once);
+
+        clientMock.Setup(c => c.AdministerReversalAntidoteAsync(profile, "token", "lot_sample_001", adminReq, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("administer fail"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.AdministerSelectedLotAntidoteAsync(adminReq));
+        Assert.Equal("administer fail", vm.ErrorMessage);
+
+        // 5. Cache cleanup wipes antidote state
+        vm.ClearSensitiveClinicalCache();
+        Assert.Null(vm.PairedAntidoteReport);
+        Assert.Null(vm.LatestNeutralizationSimulation);
+        Assert.Null(vm.LastAntidoteAdministration);
+        Assert.False(vm.EmergencyAntidoteAdministered);
+    }
 }

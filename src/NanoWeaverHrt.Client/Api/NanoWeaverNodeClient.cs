@@ -4968,4 +4968,143 @@ public sealed class NanoWeaverNodeClient : INanoWeaverNodeClient
 
         return await resp.Content.ReadFromJsonAsync<MultiYearHomeostasisForecastReport>(JsonOptions, ct);
     }
+
+    /// <inheritdoc/>
+    public async Task<ReversalAntidotePairingReport> PairReversalAntidoteAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        PairReversalAntidoteRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/fabrication/lots/{lotId}/antidote to design and pair an ML-DSA-65 reversal antidote.
+        // WHY:  Milestone 44 (P232): Enables native desktop/mobile clients to bind molecular kill-switches to fabrication lots.
+        // HOW:  Validates arguments, sends authenticated JSON POST, throws on non-success, returns ReversalAntidotePairingReport.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(lotId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/fabrication/lots/{Uri.EscapeDataString(lotId)}/antidote");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        ReversalAntidotePairingReport? report = await resp.Content.ReadFromJsonAsync<ReversalAntidotePairingReport>(JsonOptions, ct);
+        return report ?? throw new InvalidOperationException("Endpoint returned empty or null reversal antidote pairing payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<ReversalAntidotePairingReport?> GetReversalAntidoteAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/fabrication/lots/{lotId}/antidote to inspect the paired antidote and verification state.
+        // WHY:  Milestone 44 (P232): Returns null cleanly on HTTP 404 when no antidote is paired yet.
+        // HOW:  Validates inputs, inspects HTTP 404 before error handling, and deserializes report JSON.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(lotId);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/fabrication/lots/{Uri.EscapeDataString(lotId)}/antidote");
+
+        using HttpRequestMessage req = new(HttpMethod.Get, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (resp.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        return await resp.Content.ReadFromJsonAsync<ReversalAntidotePairingReport>(JsonOptions, ct);
+    }
+
+    /// <inheritdoc/>
+    public async Task<NeutralizationSimulationReport> SimulateAntidoteNeutralizationAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        SimulateNeutralizationRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/fabrication/lots/{lotId}/antidote/simulate-neutralization to model 24h kinetics.
+        // WHY:  Milestone 44 (P232): Quantifies time-to-clearance before administering an emergency rescue bolus Bolus.
+        // HOW:  Validates inputs, sends authenticated JSON POST, throws on error, deserializes NeutralizationSimulationReport.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(lotId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/fabrication/lots/{Uri.EscapeDataString(lotId)}/antidote/simulate-neutralization");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        NeutralizationSimulationReport? report = await resp.Content.ReadFromJsonAsync<NeutralizationSimulationReport>(JsonOptions, ct);
+        return report ?? throw new InvalidOperationException("Endpoint returned empty or null neutralization simulation payload.");
+    }
+
+    /// <inheritdoc/>
+    public async Task<AntidoteAdministrationResponse> AdministerReversalAntidoteAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string lotId,
+        AdministerAntidoteRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/fabrication/lots/{lotId}/antidote/administer to execute emergency lot neutralization.
+        // WHY:  Milestone 44 (P232): Enables authorized clinicians (and mobile biometric workflows) to trigger immediate depot arrest.
+        // HOW:  Validates arguments, sends authenticated JSON POST, throws on non-success, deserializes AntidoteAdministrationResponse.
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bearerToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(lotId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        Uri baseUri = ValidateBaseUri(profile.BaseUri);
+        Uri endpointUri = new(baseUri, $"/api/fabrication/lots/{Uri.EscapeDataString(lotId)}/antidote/administer");
+
+        using HttpRequestMessage req = new(HttpMethod.Post, endpointUri)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        using HttpResponseMessage resp = await _httpClient.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw await NodeApiException.CreateAsync(resp, ct);
+        }
+
+        AntidoteAdministrationResponse? result = await resp.Content.ReadFromJsonAsync<AntidoteAdministrationResponse>(JsonOptions, ct);
+        return result ?? throw new InvalidOperationException("Endpoint returned empty or null antidote administration payload.");
+    }
 }

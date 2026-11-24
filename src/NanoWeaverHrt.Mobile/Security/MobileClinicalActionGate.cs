@@ -1,4 +1,5 @@
 using System.Text;
+using NanoWeaverHrt.Fabrication;
 using NanoWeaverHrt.Gui.Core.ViewModels;
 using NanoWeaverHrt.Models;
 
@@ -86,6 +87,42 @@ public sealed class MobileClinicalActionGate
             ct).ConfigureAwait(false);
 
         return await workspace.RevokeSelectedLotAsync(reason, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Requires hardware biometric confirmation before executing emergency reversal antidote administration on the
+    /// currently selected fabrication lot, permanently neutralizing the depot batch.
+    /// </summary>
+    /// <param name="workspace">Active depot and fabrication lot workspace ViewModel.</param>
+    /// <param name="dosageMg">Administered ssDNA rescue antidote dose mass in milligrams.</param>
+    /// <param name="clinicalReason">Documented clinical reason triggering irreversible depot arrest.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The complete <see cref="AntidoteAdministrationResponse"/> after biometric confirmation.</returns>
+    public async Task<AntidoteAdministrationResponse> AdministerSelectedLotAntidoteWithBiometricApprovalAsync(
+        DepotAndLotWorkspaceViewModel workspace,
+        double dosageMg,
+        string clinicalReason,
+        CancellationToken ct = default)
+    {
+        // WHAT: Enforces hardware biometric verification prior to irreversible emergency antidote administration.
+        // WHY:  Milestone 44 (P232): Antidote injection permanently disassembles the depot and revokes the batch; accidental taps must be blocked.
+        // HOW:  Validates arguments, awaits EnsureBiometricApprovalAsync, and invokes workspace.AdministerSelectedLotAntidoteAsync.
+        ArgumentNullException.ThrowIfNull(workspace);
+        ArgumentException.ThrowIfNullOrWhiteSpace(clinicalReason);
+
+        await EnsureBiometricApprovalAsync(
+            title: "Confirm Emergency Antidote Neutralization",
+            subtitle: "Irreversible Depot Reversal Protocol",
+            description: "Confirm hardware biometrics to administer the paired ssDNA antidote and permanently neutralize this depot lot.",
+            ct).ConfigureAwait(false);
+
+        return await workspace.AdministerSelectedLotAntidoteAsync(
+            new AdministerAntidoteRequest
+            {
+                DosageMg = dosageMg,
+                ClinicalReason = clinicalReason.Trim()
+            },
+            ct).ConfigureAwait(false);
     }
 
     /// <summary>

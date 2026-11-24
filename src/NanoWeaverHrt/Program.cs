@@ -157,6 +157,8 @@ public class Program
         builder.Services.AddSingleton<IFabricationLotRepository, FabricationLotRepository>();
         builder.Services.AddSingleton<IFabricationLotService, FabricationLotService>();
         builder.Services.AddSingleton<IColdChainCustodyRepository, ColdChainCustodyRepository>();
+        builder.Services.AddSingleton<IReversalAntidoteRepository, ReversalAntidoteRepository>();
+        builder.Services.AddSingleton<IReversalAntidoteService, ReversalAntidoteService>();
         builder.Services.AddSingleton<IColdChainStabilityService, ColdChainStabilityService>();
         builder.Services.AddSingleton<IClinicalPharmacovigilanceRepository, ClinicalPharmacovigilanceRepository>();
         builder.Services.AddSingleton<IClinicalPharmacovigilanceService, ClinicalPharmacovigilanceService>();
@@ -6471,6 +6473,199 @@ public class Program
         .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
         .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden)
         .Produces<SecureProblemDetails>(StatusCodes.Status404NotFound);
+
+        app.MapPost("/api/fabrication/lots/{lotId}/antidote", async (
+            string lotId,
+            PairReversalAntidoteRequest? request,
+            IFabricationLotRepository lotRepository,
+            IReversalAntidoteService antidoteService,
+            ISubjectAccessService subjectAccess,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Designs, cryptographically signs with ML-DSA-65, and pairs a reversal antidote oligo with lotId.
+            // WHY:  Milestone 44 (P232): Binds a verified molecular kill-switch oligo to a patient nanocarrier batch.
+            // HOW:  Authorizes Administrator or granted Researcher, delegates to PairAntidoteAsync, and returns 201 Created.
+            if (string.IsNullOrWhiteSpace(lotId))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Valid lotId is required.");
+            }
+
+            (FabricationLotRecord? lot, IResult? denial, UserAccount caller) = await AuthorizeColdChainLotAccessAsync(
+                lotId.Trim(), allowPatientSelf: false, lotRepository, subjectAccess, context, ct);
+            if (denial is not null)
+            {
+                return denial;
+            }
+
+            try
+            {
+                // WHY `!`: AuthorizeColdChainLotAccessAsync guarantees lot is non-null whenever denial is null.
+                ReversalAntidotePairingReport? report = await antidoteService.PairAntidoteAsync(
+                    lot!.LotId, request, caller.Username, ct);
+                // WHY `!`: PairAntidoteAsync returns non-null because lot existence was verified above.
+                return Results.Created($"/api/fabrication/lots/{lot.LotId}/antidote", report!);
+            }
+            catch (ArgumentException ex)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, ex.Message);
+            }
+        })
+        .WithName("PairLotReversalAntidote")
+        .WithTags("Wet-Lab Fabrication & QC")
+        .WithSummary("Designs and ML-DSA-65 pairs a sequence-specific ssDNA reversal antidote for a fabrication lot.")
+        .WithDescription("Synthesizes complementary toehold strand-displacement oligo, computes ΔG°37 and Tm, signs canonically with ML-DSA-65, and emits FABRICATION_ANTIDOTE_PAIR audit.")
+        .Accepts<PairReversalAntidoteRequest>("application/json")
+        .Produces<ReversalAntidotePairingReport>(StatusCodes.Status201Created)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden)
+        .Produces<SecureProblemDetails>(StatusCodes.Status404NotFound);
+
+        app.MapGet("/api/fabrication/lots/{lotId}/antidote", async (
+            string lotId,
+            IFabricationLotRepository lotRepository,
+            IReversalAntidoteService antidoteService,
+            ISubjectAccessService subjectAccess,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Retrieves the paired reversal antidote protocol, live ML-DSA-65 verification status, and neutralization events.
+            // WHY:  Milestone 44 (P232): Surfaces antidote standby integrity and event history across API and GUI shells.
+            // HOW:  Authorizes Administrator, granted Researcher, or matching Patient self and returns 200 OK or 404 Not Found.
+            if (string.IsNullOrWhiteSpace(lotId))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Valid lotId is required.");
+            }
+
+            (FabricationLotRecord? lot, IResult? denial, _) = await AuthorizeColdChainLotAccessAsync(
+                lotId.Trim(), allowPatientSelf: true, lotRepository, subjectAccess, context, ct);
+            if (denial is not null)
+            {
+                return denial;
+            }
+
+            // WHY `!`: AuthorizeColdChainLotAccessAsync guarantees lot is non-null whenever denial is null.
+            ReversalAntidotePairingReport? report = await antidoteService.GetLatestAntidoteReportAsync(lot!.LotId, ct);
+            if (report is null)
+            {
+                return SecureProblemResult(context, StatusCodes.Status404NotFound, $"No reversal antidote is paired with fabrication lot '{lot.LotId}'.");
+            }
+
+            return Results.Ok(report);
+        })
+        .WithName("GetLotReversalAntidote")
+        .WithTags("Wet-Lab Fabrication & QC")
+        .WithSummary("Retrieves the paired ssDNA reversal antidote and live ML-DSA-65 signature verification report for a lot.")
+        .WithDescription("Returns paired oligo sequence, thermodynamics, stoichiometric recipe, signature verification boolean, and recorded neutralization events.")
+        .Produces<ReversalAntidotePairingReport>(StatusCodes.Status200OK)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden)
+        .Produces<SecureProblemDetails>(StatusCodes.Status404NotFound);
+
+        app.MapPost("/api/fabrication/lots/{lotId}/antidote/simulate-neutralization", async (
+            string lotId,
+            SimulateNeutralizationRequest? request,
+            IFabricationLotRepository lotRepository,
+            IReversalAntidoteService antidoteService,
+            ISubjectAccessService subjectAccess,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Runs in-silico 24-hour strand-displacement nanocarrier disassembly and systemic hormone decay modeling.
+            // WHY:  Milestone 44 (P232): Lets clinicians verify <5% clearance time before emergency intervention.
+            // HOW:  Authorizes Administrator or granted Researcher, delegates to SimulateNeutralizationAsync, maps 400 and 422 cleanly.
+            if (string.IsNullOrWhiteSpace(lotId))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Valid lotId is required.");
+            }
+
+            (FabricationLotRecord? lot, IResult? denial, _) = await AuthorizeColdChainLotAccessAsync(
+                lotId.Trim(), allowPatientSelf: false, lotRepository, subjectAccess, context, ct);
+            if (denial is not null)
+            {
+                return denial;
+            }
+
+            try
+            {
+                // WHY `!`: AuthorizeColdChainLotAccessAsync guarantees lot is non-null whenever denial is null.
+                NeutralizationSimulationReport? sim = await antidoteService.SimulateNeutralizationAsync(lot!.LotId, request, ct);
+                return Results.Ok(sim);
+            }
+            catch (ArgumentException ex)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return SecureProblemResult(context, StatusCodes.Status422UnprocessableEntity, ex.Message);
+            }
+        })
+        .WithName("SimulateLotAntidoteNeutralization")
+        .WithTags("Wet-Lab Fabrication & QC")
+        .WithSummary("Simulates 24-hour strand-displacement disassembly and systemic hormone cessation kinetics.")
+        .WithDescription("Computes half-life, time to <5% basal hormone elution, and hourly decay points for an active paired antidote.")
+        .Accepts<SimulateNeutralizationRequest>("application/json")
+        .Produces<NeutralizationSimulationReport>(StatusCodes.Status200OK)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden)
+        .Produces<SecureProblemDetails>(StatusCodes.Status404NotFound)
+        .Produces<SecureProblemDetails>(StatusCodes.Status422UnprocessableEntity);
+
+        app.MapPost("/api/fabrication/lots/{lotId}/antidote/administer", async (
+            string lotId,
+            AdministerAntidoteRequest? request,
+            IFabricationLotRepository lotRepository,
+            IReversalAntidoteService antidoteService,
+            ISubjectAccessService subjectAccess,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Executes irreversible emergency reversal antidote administration and permanently revokes the primary lot.
+            // WHY:  Milestone 44 (P232): Halts implanted depot release safely and updates lot revocation ledgers atomically.
+            // HOW:  Validates payload, authorizes Administrator or granted Researcher, delegates to AdministerAntidoteAsync.
+            if (string.IsNullOrWhiteSpace(lotId) || request is null)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Valid lotId and administration payload are required.");
+            }
+
+            (FabricationLotRecord? lot, IResult? denial, UserAccount caller) = await AuthorizeColdChainLotAccessAsync(
+                lotId.Trim(), allowPatientSelf: false, lotRepository, subjectAccess, context, ct);
+            if (denial is not null)
+            {
+                return denial;
+            }
+
+            try
+            {
+                // WHY `!`: AuthorizeColdChainLotAccessAsync guarantees lot is non-null whenever denial is null.
+                AntidoteAdministrationResponse? resp = await antidoteService.AdministerAntidoteAsync(
+                    lot!.LotId, request, caller.Username, ct);
+                return Results.Ok(resp);
+            }
+            catch (ArgumentException ex)
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return SecureProblemResult(context, StatusCodes.Status422UnprocessableEntity, ex.Message);
+            }
+        })
+        .WithName("AdministerLotReversalAntidote")
+        .WithTags("Wet-Lab Fabrication & QC")
+        .WithSummary("Administers a paired reversal antidote to neutralize a depot lot and issue a permanent recall.")
+        .WithDescription("Transitions antidote to Neutralized, revokes primary lot fail-closed, persists neutralization event, and emits FABRICATION_ANTIDOTE_ADMINISTER.")
+        .Accepts<AdministerAntidoteRequest>("application/json")
+        .Produces<AntidoteAdministrationResponse>(StatusCodes.Status200OK)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
+        .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden)
+        .Produces<SecureProblemDetails>(StatusCodes.Status404NotFound)
+        .Produces<SecureProblemDetails>(StatusCodes.Status422UnprocessableEntity);
 
         app.Run();
     }

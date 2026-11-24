@@ -1863,6 +1863,12 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         EpigeneticCircuitEvaluationReport epiReport = new EpigeneticCircuitEvaluationReport().GetExamples();
         SimulateMultiYearHomeostasisRequest myhReq = new SimulateMultiYearHomeostasisRequest().GetExamples();
         MultiYearHomeostasisForecastReport myhReport = new MultiYearHomeostasisForecastReport().GetExamples();
+        PairReversalAntidoteRequest pairAntiReq = new PairReversalAntidoteRequest().GetExamples();
+        ReversalAntidotePairingReport pairAntiReport = new ReversalAntidotePairingReport().GetExamples();
+        SimulateNeutralizationRequest simNeutReq = new SimulateNeutralizationRequest().GetExamples();
+        NeutralizationSimulationReport simNeutReport = new NeutralizationSimulationReport().GetExamples();
+        AdministerAntidoteRequest adminAntiReq = new AdministerAntidoteRequest().GetExamples();
+        AntidoteAdministrationResponse adminAntiResp = new AntidoteAdministrationResponse().GetExamples();
 
         innerMock.Setup(i => i.CreateFabricationLotAsync(profile, "tok", createReq, It.IsAny<CancellationToken>())).ReturnsAsync(lot);
         innerMock.Setup(i => i.GetFabricationLotsAsync(profile, "tok", "patient_alice", It.IsAny<CancellationToken>())).ReturnsAsync([lot]);
@@ -1895,6 +1901,10 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         innerMock.Setup(i => i.SimulateMultiYearHomeostasisAsync(profile, "tok", "depot_sample_001", myhReq, It.IsAny<CancellationToken>())).ReturnsAsync(myhReport);
         innerMock.Setup(i => i.GetMultiYearHomeostasisForecastsAsync(profile, "tok", "depot_sample_001", It.IsAny<CancellationToken>())).ReturnsAsync([myhReport]);
         innerMock.Setup(i => i.GetLatestMultiYearHomeostasisForecastAsync(profile, "tok", "depot_sample_001", It.IsAny<CancellationToken>())).ReturnsAsync(myhReport);
+        innerMock.Setup(i => i.PairReversalAntidoteAsync(profile, "tok", "lot-1", pairAntiReq, It.IsAny<CancellationToken>())).ReturnsAsync(pairAntiReport);
+        innerMock.Setup(i => i.GetReversalAntidoteAsync(profile, "tok", "lot-1", It.IsAny<CancellationToken>())).ReturnsAsync(pairAntiReport);
+        innerMock.Setup(i => i.SimulateAntidoteNeutralizationAsync(profile, "tok", "lot-1", simNeutReq, It.IsAny<CancellationToken>())).ReturnsAsync(simNeutReport);
+        innerMock.Setup(i => i.AdministerReversalAntidoteAsync(profile, "tok", "lot-1", adminAntiReq, It.IsAny<CancellationToken>())).ReturnsAsync(adminAntiResp);
 
         WeaverNodeApiClient client = new(innerMock.Object);
         Assert.Equal(lot.LotId, (await client.CreateFabricationLotAsync(profile, "tok", createReq)).LotId);
@@ -1928,6 +1938,10 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         Assert.Equal("myh_20261124_001", (await client.SimulateMultiYearHomeostasisAsync(profile, "tok", "depot_sample_001", myhReq)).RunId);
         Assert.Single(await client.GetMultiYearHomeostasisForecastsAsync(profile, "tok", "depot_sample_001"));
         Assert.Equal("myh_20261124_001", (await client.GetLatestMultiYearHomeostasisForecastAsync(profile, "tok", "depot_sample_001"))?.RunId);
+        Assert.Equal("anti_20261124_001", (await client.PairReversalAntidoteAsync(profile, "tok", "lot-1", pairAntiReq)).AntidoteId);
+        Assert.Equal("anti_20261124_001", (await client.GetReversalAntidoteAsync(profile, "tok", "lot-1"))?.AntidoteId);
+        Assert.Equal("anti_20261124_001", (await client.SimulateAntidoteNeutralizationAsync(profile, "tok", "lot-1", simNeutReq)).AntidoteId);
+        Assert.Equal(FabricationLotStatus.Revoked, (await client.AdministerReversalAntidoteAsync(profile, "tok", "lot-1", adminAntiReq)).LotStatus);
 
         client.Dispose();
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.CreateFabricationLotAsync(profile, "tok", createReq));
@@ -1961,5 +1975,9 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.SimulateMultiYearHomeostasisAsync(profile, "tok", "depot_sample_001", myhReq));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetMultiYearHomeostasisForecastsAsync(profile, "tok", "depot_sample_001"));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetLatestMultiYearHomeostasisForecastAsync(profile, "tok", "depot_sample_001"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.PairReversalAntidoteAsync(profile, "tok", "lot-1", pairAntiReq));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetReversalAntidoteAsync(profile, "tok", "lot-1"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.SimulateAntidoteNeutralizationAsync(profile, "tok", "lot-1", simNeutReq));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.AdministerReversalAntidoteAsync(profile, "tok", "lot-1", adminAntiReq));
     }
 }

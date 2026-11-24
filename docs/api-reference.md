@@ -936,6 +936,22 @@ Records a quantitative post-implantation immunogenicity assay panel (`CH50 %`, `
 Evaluates live post-implantation pharmacovigilance posture (`LotPharmacovigilanceReport`, `200 OK`), returning aggregate posture (`Nominal`, `Monitor`, `CarpaQuarantine`), highest CTCAE grade, CARPA/TLR9/humoral flags, emergency recall recommendation, and chronological adverse event and assay timelines.
 * **Role Requirement**: `Administrator`, cohort-authorized `Researcher`, or `Patient` self.
 
+#### `POST /api/fabrication/lots/{lotId}/antidote`
+Designs a patient- and lot-matched Watson-Crick complementary invading ssDNA toehold strand-displacement reversal antidote (`PairReversalAntidoteRequest`: optional `targetAptamerLockSequence5To3` 18–80 nt, `toeholdLengthNt` 6–12, `molarExcessRatio` 1.5–20.0, `stockConcentrationMicromolar` 10–1000 µM), computes hybridization thermodynamics (`ΔG°37`, `Tm`) and stoichiometric 5:1 standby rescue injection recipe (`1x PBS, 5 mM Mg²⁺, pH 7.4`), cryptographically pairs the oligo to the primary lot via canonical SHA-256 + NIST FIPS 204 **ML-DSA-65**, persists in `weaver_lot_reversal_antidotes`, and emits `FABRICATION_ANTIDOTE_PAIR` (`201 Created` / `ReversalAntidotePairingReport`).
+* **Role Requirement**: `Administrator` or cohort-authorized `Researcher` (`Patient` receives `403 Forbidden`).
+
+#### `GET /api/fabrication/lots/{lotId}/antidote`
+Retrieves the latest paired reversal antidote protocol, stoichiometric wet-lab formulation recipe, live `ML-DSA-65` pairing verification verdict (`signatureVerified`), and historical clinical neutralization events (`200 OK` / `404 Not Found` when no lot or antidote exists).
+* **Role Requirement**: `Administrator`, cohort-authorized `Researcher`, or `Patient` self.
+
+#### `POST /api/fabrication/lots/{lotId}/antidote/simulate-neutralization`
+Computes hourly first-order strand-displacement disassembly and systemic hormone cessation decay over a 6–72 hour horizon (`SimulateNeutralizationRequest`: optional `dosageMg` 0.05–250.0 mg, `horizonHours` 6–72), returning `NeutralizationSimulationReport` (`estimatedHalfLifeHours`, `estimatedClearanceHours` to < 5% basal output, `twentyFourHourCessationPercent`, and hourly `trajectory`). Fails closed with HTTP `422 Unprocessable Entity` if no antidote is paired.
+* **Role Requirement**: `Administrator` or cohort-authorized `Researcher`.
+
+#### `POST /api/fabrication/lots/{lotId}/antidote/administer`
+Executes irreversible emergency clinical reversal antidote administration (`AdministerAntidoteRequest`: `dosageMg`, `clinicalReason`), failing closed (`422 Unprocessable Entity`) if no `ActiveStandby` antidote is paired or if its `ML-DSA-65` pairing signature fails verification. Transitions the paired antidote to `Neutralized`, permanently updates the primary fabrication lot to `Revoked`, persists an immutable local recall tombstone (`weaver_fabrication_lot_revocations`) and neutralization record (`weaver_lot_neutralization_events`), and emits `FABRICATION_ANTIDOTE_ADMINISTER` (`200 OK` / `AntidoteAdministrationResponse`). When `Fabrication:RequirePairedAntidote` is `"true"`, `POST /api/fabrication/lots/{lotId}/custody-handoffs` at `CustodyStage.PatientAdministration` fails closed unless an active, `ML-DSA-65` verified antidote is on standby.
+* **Role Requirement**: `Administrator` or cohort-authorized `Researcher` (`Patient` receives `403 Forbidden`).
+
 #### `GET /api/fabrication/revocations/feed`
 Exports all locally issued permanent lot revocation tombstones as a de-identified (zero patient IDs), canonically hashed, **ML-DSA-65** signed `SignedLotRevocationFeed` JSON document ready for peer node synchronization (`200 OK`).
 * **Role Requirement**: `Administrator` or `Researcher`.

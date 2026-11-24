@@ -4600,6 +4600,82 @@ public sealed class NanoWeaverNodeClientTests : IDisposable
     }
 
     /// <summary>
+    /// Verifies Milestone 44 (P232) reversal antidote pairing, retrieval (including HTTP 404),
+    /// 24-hour neutralization simulation, and emergency antidote administration client SDK methods.
+    /// </summary>
+    [Fact]
+    public async Task ReversalAntidoteClientMethods_NominalErrorsAndGuards_BehaveExpectedly()
+    {
+        // WHAT: Tests PairReversalAntidoteAsync, GetReversalAntidoteAsync, SimulateAntidoteNeutralizationAsync, and AdministerReversalAntidoteAsync.
+        // WHY:  Milestone 44 (P232): Guarantees 100% SDK line and branch coverage across all 4 antidote REST endpoints.
+        // HOW:  Stubs /api/fabrication/lots/{lotId}/antidote* routes verifying 201/200/404/422/500 and argument guards.
+        ReversalAntidotePairingReport pairSample = new ReversalAntidotePairingReport().GetExamples();
+        NeutralizationSimulationReport simSample = new NeutralizationSimulationReport().GetExamples();
+        AntidoteAdministrationResponse adminSample = new AntidoteAdministrationResponse().GetExamples();
+
+        PairReversalAntidoteRequest pairReq = new PairReversalAntidoteRequest().GetExamples();
+        SimulateNeutralizationRequest simReq = new SimulateNeutralizationRequest().GetExamples();
+        AdministerAntidoteRequest adminReq = new AdministerAntidoteRequest().GetExamples();
+
+        // 1. PairReversalAntidoteAsync
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_sample_001/antidote", HttpStatusCode.Created, JsonSerializer.Serialize(pairSample));
+        ReversalAntidotePairingReport paired = await _client.PairReversalAntidoteAsync(_localProfile, "valid_token", "lot_sample_001", pairReq);
+        Assert.Equal(pairSample.AntidoteId, paired.AntidoteId);
+
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_sample_001/antidote", HttpStatusCode.BadRequest, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.PairReversalAntidoteAsync(_localProfile, "valid_token", "lot_sample_001", pairReq));
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_sample_001/antidote", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.PairReversalAntidoteAsync(_localProfile, "valid_token", "lot_sample_001", pairReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.PairReversalAntidoteAsync(null!, "valid_token", "lot_sample_001", pairReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.PairReversalAntidoteAsync(_localProfile, "", "lot_sample_001", pairReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.PairReversalAntidoteAsync(_localProfile, "valid_token", "", pairReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.PairReversalAntidoteAsync(_localProfile, "valid_token", "lot_sample_001", null!));
+
+        // 2. GetReversalAntidoteAsync (200 OK, 404 null, error, and guards)
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_sample_001/antidote", HttpStatusCode.OK, JsonSerializer.Serialize(pairSample));
+        ReversalAntidotePairingReport? loaded = await _client.GetReversalAntidoteAsync(_localProfile, "valid_token", "lot_sample_001");
+        Assert.NotNull(loaded);
+        Assert.Equal(pairSample.AntidoteId, loaded.AntidoteId);
+
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_sample_001/antidote", HttpStatusCode.NotFound, "{}");
+        Assert.Null(await _client.GetReversalAntidoteAsync(_localProfile, "valid_token", "lot_sample_001"));
+
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_sample_001/antidote", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.GetReversalAntidoteAsync(_localProfile, "valid_token", "lot_sample_001"));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.GetReversalAntidoteAsync(null!, "valid_token", "lot_sample_001"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetReversalAntidoteAsync(_localProfile, "", "lot_sample_001"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.GetReversalAntidoteAsync(_localProfile, "valid_token", ""));
+
+        // 3. SimulateAntidoteNeutralizationAsync
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_sample_001/antidote/simulate-neutralization", HttpStatusCode.OK, JsonSerializer.Serialize(simSample));
+        NeutralizationSimulationReport sim = await _client.SimulateAntidoteNeutralizationAsync(_localProfile, "valid_token", "lot_sample_001", simReq);
+        Assert.Equal(simSample.TwentyFourHourCessationPercent, sim.TwentyFourHourCessationPercent);
+
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_sample_001/antidote/simulate-neutralization", HttpStatusCode.UnprocessableEntity, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.SimulateAntidoteNeutralizationAsync(_localProfile, "valid_token", "lot_sample_001", simReq));
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_sample_001/antidote/simulate-neutralization", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.SimulateAntidoteNeutralizationAsync(_localProfile, "valid_token", "lot_sample_001", simReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.SimulateAntidoteNeutralizationAsync(null!, "valid_token", "lot_sample_001", simReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.SimulateAntidoteNeutralizationAsync(_localProfile, "", "lot_sample_001", simReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.SimulateAntidoteNeutralizationAsync(_localProfile, "valid_token", "", simReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.SimulateAntidoteNeutralizationAsync(_localProfile, "valid_token", "lot_sample_001", null!));
+
+        // 4. AdministerReversalAntidoteAsync
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_sample_001/antidote/administer", HttpStatusCode.OK, JsonSerializer.Serialize(adminSample));
+        AntidoteAdministrationResponse administered = await _client.AdministerReversalAntidoteAsync(_localProfile, "valid_token", "lot_sample_001", adminReq);
+        Assert.Equal(FabricationLotStatus.Revoked, administered.LotStatus);
+
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_sample_001/antidote/administer", HttpStatusCode.UnprocessableEntity, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.AdministerReversalAntidoteAsync(_localProfile, "valid_token", "lot_sample_001", adminReq));
+        _httpHandler.SetResponse("/api/fabrication/lots/lot_sample_001/antidote/administer", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.AdministerReversalAntidoteAsync(_localProfile, "valid_token", "lot_sample_001", adminReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.AdministerReversalAntidoteAsync(null!, "valid_token", "lot_sample_001", adminReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.AdministerReversalAntidoteAsync(_localProfile, "", "lot_sample_001", adminReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.AdministerReversalAntidoteAsync(_localProfile, "valid_token", "", adminReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.AdministerReversalAntidoteAsync(_localProfile, "valid_token", "lot_sample_001", null!));
+    }
+
+    /// <summary>
     /// In-memory HTTP message handler stub for deterministic test execution.
     /// </summary>
     private sealed class StubHttpMessageHandler : HttpMessageHandler

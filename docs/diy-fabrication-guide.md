@@ -204,6 +204,16 @@ When all required gates pass, `POST /api/fabrication/lots/{lotId}/release` mints
 
 ---
 
+## 8. Paired Toehold Strand-Displacement Reversal Antidote & Emergency Buffer (Milestone 44)
+
+Every releasable nanocarrier batch can be cryptographically paired with a sequence-specific **Watson-Crick invading ssDNA antidote oligonucleotide** (`POST /api/fabrication/lots/{lotId}/antidote`) featuring an exposed 6–12 nt single-stranded toehold initiation domain (`5'→3'`).
+
+1. **Stoichiometric Formulation**: Reconstitute the lyophilized invading ssDNA antidote oligo to **100.0 µM** (range 10–1000 µM) in sterile, RNase/DNase-free **`1x PBS, 5 mM Mg²⁺, pH 7.4`** buffer at a **5:1 molar excess** over embedded aptamer lock sites (`0.002 µmol/mg` payload).
+2. **ML-DSA-65 Standby Pairing**: The antidote sequence, thermodynamic hybridization stability (`ΔG°37`, `Tm`), and primary lot linkage are sealed with NIST FIPS 204 **ML-DSA-65**. Enabling `Fabrication:RequirePairedAntidote = true` blocks patient implantation handoffs (`CustodyStage.PatientAdministration`) fail-closed unless an active, signature-verified rescue vial is on standby.
+3. **Emergency Clinical Neutralization**: Executing `POST /api/fabrication/lots/{lotId}/antidote/administer` rapidly disassembles aptamer locks via branch migration (suppressing active hormone release below 5% basal output within the simulated 24-hour window), transitions the antidote to `Neutralized`, and permanently writes a recall tombstone revoking the primary depot batch.
+
+---
+
 ## Next Steps
 * Walk through the end-to-end software pipeline in [**Guided DNA Workflow Wizard**](workflow-wizard.md).
 * Review endocrine setpoints in [**Endocrine Hub & Pharmacodynamics**](endocrine-hub.md).

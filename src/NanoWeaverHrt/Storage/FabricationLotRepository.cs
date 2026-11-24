@@ -346,6 +346,22 @@ public sealed class FabricationLotRepository : IFabricationLotRepository
             await using WeaverDbSession session = await _connectionFactory.OpenAsync(cancellationToken).ConfigureAwait(false);
             await using DbTransaction tx = await session.Connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
+            await using (DbCommand deleteNeutralizations = session.CreateCommand(
+                $"DELETE FROM weaver_lot_neutralization_events WHERE patient_id = {session.Dialect.Parameter("pid")}"))
+            {
+                deleteNeutralizations.Transaction = tx;
+                WeaverDbParameters.Add(deleteNeutralizations, "pid", patientId);
+                deletedTotal += await deleteNeutralizations.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            await using (DbCommand deleteAntidotes = session.CreateCommand(
+                $"DELETE FROM weaver_lot_reversal_antidotes WHERE patient_id = {session.Dialect.Parameter("pid")}"))
+            {
+                deleteAntidotes.Transaction = tx;
+                WeaverDbParameters.Add(deleteAntidotes, "pid", patientId);
+                deletedTotal += await deleteAntidotes.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+
             await using (DbCommand deleteImmunogenicity = session.CreateCommand(
                 $"DELETE FROM weaver_lot_immunogenicity_assays WHERE patient_id = {session.Dialect.Parameter("pid")}"))
             {

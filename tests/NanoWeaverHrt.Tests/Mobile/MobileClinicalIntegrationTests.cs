@@ -2,6 +2,7 @@ using System.Text;
 using Moq;
 using NanoWeaverHrt.Client.Api;
 using NanoWeaverHrt.Client.Storage;
+using NanoWeaverHrt.Fabrication;
 using NanoWeaverHrt.Gui.Core.ViewModels;
 using NanoWeaverHrt.Gui.Core.Views;
 using NanoWeaverHrt.Mobile.Platform;
@@ -127,6 +128,20 @@ public sealed class MobileClinicalIntegrationTests
 
         FabricationLotRevocationResponse approvedRevoke = await gate.RevokeSelectedLotWithBiometricApprovalAsync(workspace, "Courier temperature breach");
         Assert.Equal("lot_sample_001", approvedRevoke.Lot.LotId);
+
+        // 5. Milestone 44 emergency antidote administration enforces hardware biometrics and clinical reason
+        await Assert.ThrowsAsync<ArgumentNullException>(() => gate.AdministerSelectedLotAntidoteWithBiometricApprovalAsync(null!, 5.0, "Reason"));
+        await Assert.ThrowsAsync<ArgumentException>(() => gate.AdministerSelectedLotAntidoteWithBiometricApprovalAsync(workspace, 5.0, " "));
+
+        var adminResp = new AntidoteAdministrationResponse().GetExamples();
+        clientMock.Setup(c => c.AdministerReversalAntidoteAsync(It.IsAny<InstanceProfile>(), "jwt-mobile", "lot_mob_001", It.IsAny<AdministerAntidoteRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(adminResp);
+        clientMock.Setup(c => c.GetReversalAntidoteAsync(It.IsAny<InstanceProfile>(), "jwt-mobile", "lot_mob_001", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ReversalAntidotePairingReport().GetExamples() with { Status = ReversalAntidoteStatus.Neutralized });
+
+        AntidoteAdministrationResponse approvedNeutralize = await gate.AdministerSelectedLotAntidoteWithBiometricApprovalAsync(workspace, 5.0, "Acute CARPA neutralization");
+        Assert.Equal(FabricationLotStatus.Revoked, approvedNeutralize.LotStatus);
+        Assert.True(workspace.EmergencyAntidoteAdministered);
     }
 
     /// <summary>
