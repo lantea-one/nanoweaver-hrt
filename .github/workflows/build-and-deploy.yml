@@ -257,10 +257,11 @@ jobs:
 
   build-and-publish-gui-artifacts:
     # WHAT: Builds, signs, and attaches standalone desktop and mobile application packages on GitHub Actions.
-    # WHY:  Mirrors the Forgejo artifact matrix so GitHub mirrors host identical release assets.
+    # WHY:  Mirrors the Forgejo artifact matrix on pull requests and versioned releases without continuous nightly builds.
     # HOW:  Installs SDKs, runs scripts/packaging/build-all-packages.sh, uploads 5 discrete artifact bundles,
-    #       and attaches direct binary downloads to GitHub Releases.
+    #       and attaches direct binary downloads on release branches and version tags.
     runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
     steps:
@@ -289,6 +290,7 @@ jobs:
         run: ./scripts/packaging/build-all-packages.sh --allow-stub-packaging
 
       - name: Upload Linux Packages & AUR Definitions
+        if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/tags/v'))
         uses: actions/upload-artifact@v7
         with:
           name: nanoweaver-hrt-linux-packages
@@ -298,6 +300,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload macOS Packages
+        if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/tags/v'))
         uses: actions/upload-artifact@v7
         with:
           name: nanoweaver-hrt-macos-packages
@@ -305,6 +308,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload Windows Packages
+        if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/tags/v'))
         uses: actions/upload-artifact@v7
         with:
           name: nanoweaver-hrt-windows-packages
@@ -312,6 +316,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload Mobile Packages
+        if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/tags/v'))
         uses: actions/upload-artifact@v7
         with:
           name: nanoweaver-hrt-mobile-packages
@@ -319,6 +324,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload Cryptographic Manifest & Trust Anchors
+        if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/tags/v'))
         uses: actions/upload-artifact@v7
         with:
           name: nanoweaver-hrt-codesign-manifest
@@ -328,6 +334,7 @@ jobs:
           if-no-files-found: error
 
       - name: Compute Release Metadata
+        if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/tags/v'))
         id: release-meta
         run: |
           VERSION="$("${GITHUB_WORKSPACE}/scripts/packaging/get-version.sh")"
@@ -337,10 +344,8 @@ jobs:
             echo "release_name=NanoWeaver HRT ${TAG_NAME}" >> "$GITHUB_OUTPUT"
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
           else
-            TAG_NAME="nightly"
-            echo "tag_name=${TAG_NAME}" >> "$GITHUB_OUTPUT"
-            echo "release_name=NanoWeaver HRT Continuous Rolling Release (Nightly)" >> "$GITHUB_OUTPUT"
-            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "Nightly rolling releases are disabled; skipping release metadata computation for ref '${GITHUB_REF}'."
+            exit 0
           fi
           python3 "${GITHUB_WORKSPACE}/scripts/packaging/extract-release-notes.py" \
             --tag "${TAG_NAME}" \
@@ -351,9 +356,9 @@ jobs:
 
       - name: Publish Direct Binary Release Assets
         # WHAT: Publishes standalone executables and release packages directly to GitHub Releases.
-        # WHY:  Provides users direct .exe, .dmg, .deb, and mobile package downloads without zip archives.
-        # HOW:  Uses softprops/action-gh-release to create/update rolling 'nightly' release or tag-based releases.
-        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/tags/v'))
+        # WHY:  Provides users direct .exe, .dmg, .deb, and mobile package downloads on versioned releases without zip archives.
+        # HOW:  Uses softprops/action-gh-release to create/update versioned tag/release-branch releases.
+        if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/tags/v'))
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.release-meta.outputs.tag_name }}
