@@ -40,7 +40,7 @@ def measure(report_dir):
     Returns a dict with line_rate, branch_rate, uncovered_lines_total and classes (name -> uncovered
     line count, zero-count classes omitted), or None when no report exists.
     """
-    reports = sorted(glob.glob(os.path.join(report_dir, "**", "coverage.cobertura.xml"), recursive=True))
+    reports = sorted(glob.glob(os.path.join(report_dir, "**", "coverage*.cobertura*.xml"), recursive=True))
     if not reports:
         return None
 
@@ -142,11 +142,17 @@ def main(argv):
 
     measured = measure(report_dir)
     if measured is None:
-        print(f"::error::No coverage report found (no coverage.cobertura.xml under {report_dir}).")
+        print(f"::error::No coverage report found (no coverage*.cobertura*.xml under {report_dir}).")
         return 1
 
     print(f"Measured: line {measured['line_rate']:.2f}%, branch {measured['branch_rate']:.2f}%, "
           f"{measured['uncovered_lines_total']} uncovered lines in {len(measured['classes'])} classes.")
+
+    expected_measurement = {
+        "config": "coverage-full.mtp.json",
+        "runner": "Microsoft.Testing.Platform",
+        "weaver_test_postgres": "unset",
+    }
 
     seeding = False
     if os.path.exists(baseline_path):
@@ -157,7 +163,7 @@ def main(argv):
         seeding = True
         baseline = {
             "schema_version": 1,
-            "measurement": {"runsettings": "coverage-full.runsettings", "weaver_test_postgres": "unset"},
+            "measurement": expected_measurement,
             "line_rate": 0.0,
             "branch_rate": 0.0,
             "uncovered_lines_total": 0,
@@ -178,6 +184,7 @@ def main(argv):
         if not seeding:
             for item in regressions + improvements:
                 print(f"  {item}")
+        baseline["measurement"] = expected_measurement
         baseline["seeded_from_commit"] = head_commit()
         baseline["seeded_on_utc"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
         baseline["line_rate"] = measured["line_rate"]

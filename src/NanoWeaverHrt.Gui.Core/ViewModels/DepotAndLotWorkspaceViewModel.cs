@@ -228,11 +228,8 @@ public sealed class DepotAndLotWorkspaceViewModel : INotifyPropertyChanged
         get => _isBusy;
         private set
         {
-            if (_isBusy != value)
-            {
-                _isBusy = value;
-                OnPropertyChanged();
-            }
+            _isBusy = value;
+            OnPropertyChanged();
         }
     }
 

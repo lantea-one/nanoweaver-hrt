@@ -234,9 +234,6 @@ public sealed class ValkeyCacheService : IValkeyCacheService, IDisposable
         // WHY:  Prevents leaking in-memory objects or multiplexer sockets on service shutdown.
         // HOW:  Clears local cache and disposes connection factory if it implements IDisposable.
         _inMemoryCache.Clear();
-        if (_connectionFactory is IDisposable disposableFactory)
-        {
-            disposableFactory.Dispose();
-        }
+        _connectionFactory.Dispose();
     }
 }

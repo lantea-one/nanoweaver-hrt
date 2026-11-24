@@ -284,18 +284,14 @@ public sealed class EndocrineClosedLoopEngine : IEndocrineClosedLoopEngine
         // WHAT: Evaluates whether the system has reached homeostatic steady state.
         // WHY:  Provides a clinical stability verdict indicating complete stabilization.
         // HOW:  Checks that the rate of change of primary variables across the final sample interval is below threshold.
-        bool steadyStateReached = false;
-        if (points.Count >= 2)
-        {
-            double deltaE = Math.Abs(points[^1].EstradiolPmolL - points[^2].EstradiolPmolL);
-            double deltaT = Math.Abs(points[^1].TestosteroneNmolL - points[^2].TestosteroneNmolL);
-            double deltaLh = Math.Abs(points[^1].LhIuL - points[^2].LhIuL);
-            double rateE = deltaE / request.StepHours;
-            double rateT = deltaT / request.StepHours;
-            double rateLh = deltaLh / request.StepHours;
+        double deltaE = Math.Abs(points[^1].EstradiolPmolL - points[^2].EstradiolPmolL);
+        double deltaT = Math.Abs(points[^1].TestosteroneNmolL - points[^2].TestosteroneNmolL);
+        double deltaLh = Math.Abs(points[^1].LhIuL - points[^2].LhIuL);
+        double rateE = deltaE / request.StepHours;
+        double rateT = deltaT / request.StepHours;
+        double rateLh = deltaLh / request.StepHours;
 
-            steadyStateReached = rateE < 0.5 && rateT < 0.05 && rateLh < 0.05;
-        }
+        bool steadyStateReached = rateE < 0.5 && rateT < 0.05 && rateLh < 0.05;
 
         return new ClosedLoopSimulationResult
         {

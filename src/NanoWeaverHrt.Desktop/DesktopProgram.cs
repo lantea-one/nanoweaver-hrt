@@ -278,7 +278,7 @@ public static class DesktopProgram
         else
         {
             string appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            string baseDir = string.IsNullOrWhiteSpace(appData) ? Path.GetTempPath() : appData;
+            string baseDir = ResolveAppDataBaseDirectory(appData);
             string dbDir = Path.Combine(baseDir, "NanoWeaverHrt");
             Directory.CreateDirectory(dbDir);
             string dbPath = Path.Combine(dbDir, "profiles.db");
@@ -364,5 +364,18 @@ public static class DesktopProgram
         {
             bootstrapper?.Dispose();
         }
+    }
+
+    /// <summary>
+    /// Resolves the root local application data directory, falling back to the system temporary directory when unset.
+    /// </summary>
+    /// <param name="appData">Candidate local application data directory resolved from the environment.</param>
+    /// <returns>Non-empty directory path suitable for storing profile databases.</returns>
+    internal static string ResolveAppDataBaseDirectory(string? appData)
+    {
+        // WHAT: Normalizes the local application data root for headless daemon profile persistence.
+        // WHY:  Containerized Linux environments may omit XDG/LOCALAPPDATA paths; falling back keeps SQLite storage functional.
+        // HOW:  Returns Path.GetTempPath() when appData is null or whitespace; otherwise returns appData directly.
+        return string.IsNullOrWhiteSpace(appData) ? Path.GetTempPath() : appData;
     }
 }

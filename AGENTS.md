@@ -28,7 +28,7 @@
    - Explain domain concepts in plain English. Assume the reader is a talented junior software engineer with zero chemistry background, or a molecular biologist with basic scripting skills.
 
 5. **Mandatory 100.00% Line & Branch Code Coverage Threshold**:
-   - Gate step 4 enforces 100.00% line and branch coverage across all developer-authored C# code and security-critical Razor components (defined by `coverlet.runsettings`).
+   - Gate step 4 enforces 100.00% line and branch coverage across all developer-authored C# code and security-critical Razor components (defined by `coverlet.mtp.json` under Microsoft.Testing.Platform v2).
    - Gate step 7 tracks all compiler-generated state machines against a committed downward-only ratchet baseline (`coverage-baseline.json`, currently 100.00% line with 0 uncovered lines), prohibiting any regression.
    - Any new method, logic branch (`if`, `switch`, `catch`, ternary operators), or boundary condition MUST have comprehensive unit tests in `tests/NanoWeaverHrt.Tests`.
    - Never use `[ExcludeFromCodeCoverage]` as a shortcut to avoid writing tests.
@@ -96,7 +96,7 @@
     - When decomposing large architectural or multi-layer features into tasks (especially for execution by smaller context-window or subagent LLMs), decompose them into atomic, single-layer work packages tracked directly as **Forgejo Issues** (`https://git.lantea.one/lantea-one/nanoweaver-hrt/issues`):
       - **Phase Sizing (Bounded Architectural Layer)**: Exactly one architectural layer per phase (e.g., Migration & Repository → Service & Gating → REST API Endpoints → Blazor UI → Verification & Documentation). Never conflate schema migrations with UI rendering in a single phase.
       - **File Contract Independence**: Every work package issue must specify exact input/output interfaces, concrete types, method signatures, and invariants before code is written, ensuring downstream phases compile against fixed contracts without ambiguity.
-      - **Downward Ratchet Preservation**: Minimize Roslyn state machine divergence. Always append new methods and minimal-API endpoints to the end of files. Avoid capturing outer local variables in endpoint lambdas. Synchronize `ExcludeByFile` rules across `coverlet.runsettings` and `coverage-full.runsettings`.
+      - **Downward Ratchet Preservation**: Minimize Roslyn state machine divergence. Always append new methods and minimal-API endpoints to the end of files. Avoid capturing outer local variables in endpoint lambdas. Synchronize `excludeByFile` rules across `coverlet.mtp.json` and `coverage-full.mtp.json`.
       - **Forgejo Issue Lifecycle**: Author work package specifications directly as Forgejo Issues. Upon successful verification and upstream merge of a phase or phase group, close the corresponding Forgejo Issue and update `docs/release-notes.md` as permanent audit records.
       - **Interactive Decisions Pattern**: Whenever an architectural fork, scoping ambiguity, or design decision arises, present it to the user as an interactive question form with a clearly justified recommended default option.
 
@@ -153,7 +153,7 @@
 This runs:
 1. `dotnet format --verify-no-changes` (Zero formatting errors)
 2. `npm test` (100% line, branch, function JS coverage)
-3. `dotnet test ...` (100% C# unit test pass rate)
+3. `dotnet test --solution NanoWeaverHrt.slnx ...` (100% C# unit test pass rate on Microsoft.Testing.Platform v2, `xunit.v3` 4.0.3, and `coverlet.MTP` 10.1.1)
 4. Cobertura coverage gate (100.00% line and branch coverage threshold)
 5. Markdown scan (0 unescaped single-dollar LaTeX interpolation tokens)
 6. Docblock scan (`scripts/check-docblocks.py`: every documented member has one `<param>` per parameter and a `<returns>`)
@@ -221,7 +221,7 @@ Never assign an LLM agent a task spanning the full vertical stack (schema throug
    - RFC 7807 problem details mappings and full endpoint integration tests with `WebApplicationFactory`.
 4. **Phase 4: Sovereign Blazor UI & Client Interactions**
    - Implements accessible, dark-mode compliant Razor components (`.razor`) and modal dialogues.
-   - Synchronizes `ExcludeByFile` in `coverlet.runsettings` and `coverage-full.runsettings` for non-security UI components, or writes 100% bUnit tests for security components.
+   - Synchronizes `excludeByFile` in `coverlet.mtp.json` and `coverage-full.mtp.json` for non-security UI components, or writes 100% bUnit tests for security components.
    - Verifies browser state isolation, keyboard navigation, and zero inline styles.
 5. **Phase 5: End-to-End Verification, Documentation & Closeout**
    - Runs full 8-gate `./scripts/verify-all.sh` verification.

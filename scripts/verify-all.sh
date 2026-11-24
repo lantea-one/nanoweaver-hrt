@@ -41,13 +41,15 @@ else
 fi
 echo ""
 echo "=============================================================================="
-echo ">> Step 3/8: Running .NET Test Suite with Coverage Collection..."
+echo ">> Step 3/8: Running .NET Test Suite with Coverage Collection (MTP v2)..."
 echo "=============================================================================="
-XDG_RUNTIME_DIR=/tmp dotnet test NanoWeaverHrt.slnx \
+rm -rf artifacts/coverage
+XDG_RUNTIME_DIR=/tmp dotnet test --solution NanoWeaverHrt.slnx \
     --configuration Release \
-    --settings coverlet.runsettings \
-    --collect:"XPlat Code Coverage" \
-    --verbosity normal
+    --no-restore \
+    --results-directory artifacts/coverage \
+    --config-file coverlet.mtp.json \
+    --coverlet
 echo "✓ All .NET unit and integration tests passed."
 
 echo ""
@@ -60,10 +62,9 @@ import glob
 import os
 import sys
 
-# WHY: Step 7 writes a second, un-excluded report under artifacts/; it must never be evaluated here.
-files = [f for f in glob.glob('**/coverage.cobertura.xml', recursive=True) if 'artifacts/' not in f.replace(os.sep, '/')]
+files = glob.glob('artifacts/coverage/**/coverage*.cobertura*.xml', recursive=True)
 if not files:
-    print('::error::No coverage.cobertura.xml report found!')
+    print('::error::No coverage*.cobertura*.xml report found under artifacts/coverage!')
     sys.exit(1)
 
 latest_file = max(files, key=lambda f: os.path.getmtime(f))
@@ -86,10 +87,10 @@ if line_rate < 100.0 or branch_rate < 100.0:
                 fname = cls.attrib.get('filename', '')
                 cname = cls.attrib.get('name', '')
                 print(f'FAIL: {cname} in {fname} (Line: {c_line:.2f}%, Branch: {c_branch:.2f}%)')
-                for l in cls.findall('.//line'):
+                for l in cls.findall('lines/line'):
                     if int(l.attrib.get('hits', 0)) == 0:
                         print(f'  Uncovered line {l.attrib.get(\"number\")}')
-                for l in cls.findall('.//line'):
+                for l in cls.findall('lines/line'):
                     if 'condition-coverage' in l.attrib and '100%' not in l.attrib['condition-coverage']:
                         print(f'  Uncovered branch {l.attrib.get(\"number\")}: {l.attrib.get(\"condition-coverage\")}')
 
@@ -170,12 +171,11 @@ rm -rf artifacts/coverage-full
 #      Postgres-only paths become covered and the measurement improves; with it unset they do
 #      not. Comparing a baseline across both configurations would make step 7 flap. Step 7
 #      therefore always measures the Postgres-absent configuration.
-env -u WEAVER_TEST_POSTGRES XDG_RUNTIME_DIR=/tmp dotnet test NanoWeaverHrt.slnx \
+env -u WEAVER_TEST_POSTGRES XDG_RUNTIME_DIR=/tmp dotnet test --solution NanoWeaverHrt.slnx \
     --configuration Release --no-build \
-    --settings coverage-full.runsettings \
-    --collect:"XPlat Code Coverage" \
     --results-directory artifacts/coverage-full \
-    --verbosity minimal
+    --config-file coverage-full.mtp.json \
+    --coverlet
 python3 -I scripts/check-coverage-ratchet.py artifacts/coverage-full coverage-baseline.json
 echo "✓ Un-excluded coverage matches the committed ratchet baseline."
 

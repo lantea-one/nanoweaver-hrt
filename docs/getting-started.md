@@ -244,9 +244,11 @@ We maintain strict test-driven engineering standards. All pull requests must pas
 
 ### Running .NET Unit & Integration Tests
 ```bash
-XDG_RUNTIME_DIR=/tmp dotnet test NanoWeaverHrt.slnx \
-  --collect:"XPlat Code Coverage" \
-  --settings coverlet.runsettings
+XDG_RUNTIME_DIR=/tmp dotnet test --solution NanoWeaverHrt.slnx \
+  --configuration Release \
+  --results-directory artifacts/coverage \
+  --config-file coverlet.mtp.json \
+  --coverlet
 ```
 
 ### Running Frontend JavaScript Visualization Tests

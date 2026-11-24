@@ -17,13 +17,6 @@
       "allowedVersions": "<11.0.0"
     },
     {
-      "description": "Hold coverlet.collector major 10.x until compiler state-machine branch baseline is reconciled",
-      "matchPackageNames": [
-        "coverlet.collector"
-      ],
-      "allowedVersions": "<7.0.0"
-    },
-    {
       "description": "Pin Ubuntu simulation base image to 24.04 LTS for Intel GPU noble apt repository",
       "matchDatasources": [
         "docker"

@@ -637,7 +637,7 @@ public sealed class ComplianceAuditService : IComplianceAuditService
         // WHAT: Scans FASTA header spans for clinical key-value tags and subject identifiers without Regex or allocations.
         // WHY:  Complies with AGENTS.md Prime Directive 1 (zero-allocation parsing) while extracting HIPAA Safe Harbor PII.
         // HOW:  Iterates over headerLine characters, matching clinical tags at delimiter boundaries and extracting values.
-        if (!subjectSpan.IsEmpty && headerLine.IndexOf(subjectSpan, StringComparison.OrdinalIgnoreCase) >= 0)
+        if (headerLine.IndexOf(subjectSpan, StringComparison.OrdinalIgnoreCase) >= 0)
         {
             string subj = subjectSpan.ToString();
             if (!strippedIdentifiers.Contains(subj, StringComparer.OrdinalIgnoreCase))
@@ -649,7 +649,8 @@ public sealed class ComplianceAuditService : IComplianceAuditService
         int i = 0;
         while (i < headerLine.Length)
         {
-            bool isBoundary = (i == 0 || i == 1 && headerLine[0] == '>') ||
+            // Caller passes FASTA header lines starting with '>', so indices 0 and 1 are header-prefix boundaries.
+            bool isBoundary = (i == 0 || i == 1) ||
                               char.IsWhiteSpace(headerLine[i - 1]) ||
                               headerLine[i - 1] == ',' ||
                               headerLine[i - 1] == ';' ||
@@ -673,14 +674,10 @@ public sealed class ComplianceAuditService : IComplianceAuditService
                         int valEnd = FindTagValueEnd(headerLine, valStart, subjectSpan);
                         if (valEnd > valStart)
                         {
-                            ReadOnlySpan<char> valSpan = headerLine[valStart..valEnd].Trim();
-                            if (!valSpan.IsEmpty)
+                            string val = headerLine[valStart..valEnd].Trim().ToString();
+                            if (!strippedIdentifiers.Contains(val, StringComparer.OrdinalIgnoreCase))
                             {
-                                string val = valSpan.ToString();
-                                if (!strippedIdentifiers.Contains(val, StringComparer.OrdinalIgnoreCase))
-                                {
-                                    strippedIdentifiers.Add(val);
-                                }
+                                strippedIdentifiers.Add(val);
                             }
                         }
 
@@ -761,14 +758,10 @@ public sealed class ComplianceAuditService : IComplianceAuditService
                         int valEnd = FindTagValueEnd(line, valStart, subjectSpan);
                         if (valEnd > valStart)
                         {
-                            ReadOnlySpan<char> valSpan = line[valStart..valEnd].Trim();
-                            if (!valSpan.IsEmpty)
+                            string val = line[valStart..valEnd].Trim().ToString();
+                            if (!strippedIdentifiers.Contains(val, StringComparer.OrdinalIgnoreCase))
                             {
-                                string val = valSpan.ToString();
-                                if (!strippedIdentifiers.Contains(val, StringComparer.OrdinalIgnoreCase))
-                                {
-                                    strippedIdentifiers.Add(val);
-                                }
+                                strippedIdentifiers.Add(val);
                             }
 
                             bool isSubjectTag = string.Equals(tag, "patient:", StringComparison.OrdinalIgnoreCase) ||
@@ -814,7 +807,8 @@ public sealed class ComplianceAuditService : IComplianceAuditService
         while (idx < span.Length)
         {
             char c = span[idx];
-            if (c == ',' || c == ';' || c == '|' || c == '"' || c == '}' || c == '\r' || c == '\n')
+            // EnumerateLines + TrimEnd('\r') already strips CR/LF before FindTagValueEnd is called.
+            if (c == ',' || c == ';' || c == '|' || c == '"' || c == '}')
             {
                 break;
             }

@@ -251,7 +251,7 @@ dotnet run --project src/NanoWeaverHrt/NanoWeaverHrt.csproj
 ### Run Test Suite & Quality Verification Gate
 ```bash
 # Run all unit tests across parsers, cryptographic dataset services, and endocrine engines
-dotnet test NanoWeaverHrt.slnx
+dotnet test --solution NanoWeaverHrt.slnx
 
 # Run JavaScript visualizer test suite (100% line, branch, function coverage)
 npm test

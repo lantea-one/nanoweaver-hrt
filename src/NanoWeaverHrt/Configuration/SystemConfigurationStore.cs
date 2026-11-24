@@ -16,7 +16,7 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
     /// </summary>
     /// <param name="Key">Canonical setting key (e.g. 'Storage:PostgresConnectionString').</param>
     /// <param name="DefaultValue">Built-in fallback used when neither the database nor the environment supplies a value.</param>
-    /// <param name="EnvironmentVariable">Environment variable consulted before the built-in default, or null when the setting has none.</param>
+    /// <param name="EnvironmentVariable">Environment variable consulted before the built-in default.</param>
     /// <param name="Category">Categorical grouping used to organize the setting in the Web UI.</param>
     /// <param name="Description">Plain-English explanation of what the setting controls.</param>
     /// <param name="IsSecret">
@@ -26,7 +26,7 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
     private sealed record ConfigDefinition(
         string Key,
         string DefaultValue,
-        string? EnvironmentVariable,
+        string EnvironmentVariable,
         string Category,
         string Description,
         bool IsSecret = false);
@@ -177,7 +177,7 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
             }
             else
             {
-                string? envVal = def.EnvironmentVariable != null ? Environment.GetEnvironmentVariable(def.EnvironmentVariable) : null;
+                string? envVal = Environment.GetEnvironmentVariable(def.EnvironmentVariable);
                 if (!string.IsNullOrEmpty(envVal))
                 {
                     result.Add(new ConfigurationItem
@@ -231,7 +231,7 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
         }
 
         ConfigDefinition? def = Array.Find(Definitions, d => string.Equals(d.Key, key, StringComparison.OrdinalIgnoreCase));
-        if (def?.EnvironmentVariable != null)
+        if (def != null)
         {
             string? envVal = Environment.GetEnvironmentVariable(def.EnvironmentVariable);
             if (!string.IsNullOrEmpty(envVal))
@@ -548,10 +548,10 @@ public sealed class SystemConfigurationStore : IConfigurationRepository, IDispos
             await using DbDataReader rdr = await cmd.ExecuteReaderAsync(ct);
             while (await rdr.ReadAsync(ct))
             {
-                // WHAT: Converts the engine-specific timestamp column to the DateTime the public item exposes.
-                // WHY:  PostgreSQL returns a DateTime and SQLite returns text; callers must not care which.
-                // HOW:  WeaverDbValues.ReadNullableTimestamp handles both, then the boundary conversion drops the offset.
-                map[rdr.GetString(0)] = (rdr.GetString(1), WeaverDbValues.ReadNullableTimestamp(rdr, 2)?.UtcDateTime);
+                // WHAT: Converts the non-null timestamp column to the UTC DateTime exposed on ConfigurationItem.
+                // WHY:  weaver_configuration.updated_at_utc is NOT NULL across all four backends (PostgreSQL, DuckDB, MySQL, SQLite).
+                // HOW:  Calls WeaverDbValues.ReadTimestamp to handle native DateTime and ISO-8601 text representations uniformly.
+                map[rdr.GetString(0)] = (rdr.GetString(1), WeaverDbValues.ReadTimestamp(rdr, 2).UtcDateTime);
             }
         }
 

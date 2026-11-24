@@ -4,6 +4,24 @@
 
 ---
 
+## v2026.11.24.4 — Testing & Build Platform Modernization (MTP v2, xunit.v3 4.x, coverlet.MTP) & Housekeeping (Milestone 46 / Forgejo Issues #278–#282) (2026-11-24)
+
+Completes **Milestone 46 (`P240`–`P244` / Forgejo Issues `#278`–`#282`)** alongside post-`v2026.11.24.3` runtime/CI housekeeping, standardizing on Microsoft.Testing.Platform v2 while remaining pinned strictly to **.NET 10 LTS** (`net10.0`):
+* **PostgreSQL Driver & Continuous Release Hygiene (Post-`v2026.11.24.3` on `main`)**:
+  - Upgraded `Npgsql` from `10.0.3` → `11.0.0` across `NanoWeaverHrt` and `NanoWeaverHrt.Client` (PR `#245`, closing `#244` & Renovate `#194`), disabled rolling `nightly` GUI builds and leftover PR artifact uploads across Forgejo and GitHub Actions (`publish-forgejo-release.sh`), and pruned obsolete releases, packages, and branches.
+* **Phase 1: Microsoft.Testing.Platform v2 Runner, `xunit.v3 4.0.3` & `coverlet.MTP 10.1.1` (Forgejo #278 / P240)**:
+  - Added repository-root `global.json` (`"runner": "Microsoft.Testing.Platform"`), enabled `<UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>` on `NanoWeaverHrt.Tests.csproj`, upgraded `xunit.v3` to `4.0.3`, replaced legacy `Microsoft.NET.Test.Sdk` / `xunit.runner.visualstudio` / `coverlet.collector` with native `coverlet.MTP` (`10.1.1`), and replaced `.runsettings` with authoritative `coverlet.mtp.json` and `coverage-full.mtp.json` configurations.
+* **Phase 2: Verification Gate & Un-Excluded Coverage Ratchet MTP Migration (Forgejo #279 / P241)**:
+  - Migrated `scripts/verify-all.sh` and `scripts/check-coverage-ratchet.py` to `dotnet test --solution NanoWeaverHrt.slnx --config-file ... --coverlet`, matching Cobertura reports cleanly (`coverage*.cobertura*.xml`) while enforcing 100.00% line & branch coverage and 0 uncovered lines across un-excluded compiler state machines.
+* **Phase 3: Forgejo & GitHub CI Workflows, Node 24 LTS & Renovate Housekeeping (Forgejo #280 / P242)**:
+  - Synchronized `.forgejo/workflows/build-and-deploy.yml` and `.github/workflows/build-and-deploy.yml` to MTP v2 test/coverage commands, aligned CI Node.js provisioning to active Node `24` LTS matching `renovate.json`, and removed the obsolete `coverlet.collector` hold while preserving `.NET 10` LTS (`<11.0.0`), Ubuntu `24.04`, Node `24`, and Forgejo `upload-artifact <4.0.0` pins.
+* **Phase 4: Documentation, `AGENTS.md` & Verification Gate Synchronization (Forgejo #281 / P243)**:
+  - Updated `<DefaultCalVerVersion>2026.11.24.4</DefaultCalVerVersion>` in `Directory.Build.props`, updated `AGENTS.md`, `README.md`, `docs/index.md`, `docs/getting-started.md`, and `docs/release-notes.md`, expanded `MtpBranchCoverageParityTests` alongside dead-branch cleanups to reach 100.00% Coverlet.MTP 10.1.1 line and branch parity (raising the un-excluded `coverage-baseline.json` branch ratchet from `99.08%` to `99.45%` with `0` uncovered lines), and verified all 8 gates of `./scripts/verify-all.sh` (`2,105 / 2,105` tests, 100.00% line & branch coverage, 0 warnings).
+* **Phase 5: Audited PR & CalVer `v2026.11.24.4` Release (Forgejo #282 / P244)**:
+  - Validated green `asgard-ci` and `heimdall-ci` runs, merged into `main`, closed Milestone 46 and `#278`–`#282`, and published `release/v2026.11.24.4` & tag `v2026.11.24.4`.
+
+---
+
 ## v2026.11.24.3 — Regulatory IND / IMPD Dossier Compiler & Reproducible Multi-Center Clinical Trial Audit Bundle (Milestone 45 / Forgejo Issues #266–#270) (2026-11-24)
 
 Completes **Milestone 45 (`P235`–`P239` / Forgejo Issues `#266`–`#270`)**, introducing a 10-gate fail-closed FDA IND (`21 CFR 312`) and EMA IMPD regulatory submission compiler, HIPAA Safe Harbor pseudonymized manifests, AES-256-GCM archival encryption, cross-node NIST FIPS 204 **ML-DSA-65** trust verification, REST/SDK/Desktop workflows, and 18-language Sovereign Web UI support:

@@ -20,7 +20,7 @@ namespace NanoWeaverHrt.Tests;
 /// <para>
 /// First, coverage: <c>POST /api/users</c> is the endpoint that mints accounts bound to caller-supplied
 /// key material, and it had no HTTP test at all. Its 26 lines were invisible to the gate only because
-/// <c>coverlet.runsettings</c> excludes <c>CompilerGeneratedAttribute</c>, which hides every minimal-API
+/// <c>coverlet.mtp.json</c> excludes <c>CompilerGeneratedAttribute</c>, which hides every minimal-API
 /// endpoint lambda. An untested account-provisioning route is a hole whatever that exclusion is set to.
 /// </para>
 /// <para>

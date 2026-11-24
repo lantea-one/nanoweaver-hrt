@@ -111,12 +111,9 @@ public sealed class VaultUnlockViewModel : INotifyPropertyChanged, IDisposable
         get => _isUnlocking;
         private set
         {
-            if (_isUnlocking != value)
-            {
-                _isUnlocking = value;
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(CanUnlock));
-            }
+            _isUnlocking = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(CanUnlock));
         }
     }
 

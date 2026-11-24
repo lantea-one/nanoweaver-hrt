@@ -102,9 +102,7 @@ public sealed class NodeApiException : Exception
         int statusCode = (int)response.StatusCode;
         string defaultTitle = $"HTTP {statusCode} {response.ReasonPhrase ?? "Error"}";
 
-        string? content = response.Content != null
-            ? await response.Content.ReadAsStringAsync(ct)
-            : null;
+        string content = await response.Content.ReadAsStringAsync(ct);
 
         if (string.IsNullOrWhiteSpace(content))
         {
@@ -119,7 +117,8 @@ public sealed class NodeApiException : Exception
             string title = defaultTitle;
             if (root.TryGetProperty("title", out JsonElement titleProp) && titleProp.ValueKind == JsonValueKind.String)
             {
-                title = titleProp.GetString() ?? defaultTitle;
+                // WHY !: ValueKind == JsonValueKind.String guarantees GetString() returns a non-null string.
+                title = titleProp.GetString()!;
             }
 
             string? detail = null;

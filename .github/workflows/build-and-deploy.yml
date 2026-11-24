@@ -31,10 +31,10 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Setup Node.js 26
+      - name: Setup Node.js 24
         uses: actions/setup-node@v7
         with:
-          node-version: '26'
+          node-version: '24'
 
       - name: Restore Dependencies
         run: dotnet restore NanoWeaverHrt.slnx
@@ -52,15 +52,17 @@ jobs:
         run: npm test
 
       - name: Build and Test Solution with Coverage
-        # WHAT: Runs the test suite in Release configuration with cross-platform code coverage collection.
+        # WHAT: Runs the test suite in Release configuration with Microsoft.Testing.Platform v2 code coverage collection.
         # WHY:  Ensures that all unit and integration tests pass and emits Cobertura coverage data.
-        # HOW:  Uses dotnet test with coverlet.runsettings configuring 100% line and branch thresholds.
-        run: dotnet test NanoWeaverHrt.slnx --no-restore --configuration Release --settings coverlet.runsettings --collect:"XPlat Code Coverage" --verbosity normal
+        # HOW:  Uses dotnet test --solution with coverlet.mtp.json configuring 100% line and branch exclusion filters.
+        run: |
+          rm -rf artifacts/coverage
+          dotnet test --solution NanoWeaverHrt.slnx --no-restore --configuration Release --results-directory artifacts/coverage --config-file coverlet.mtp.json --coverlet
 
       - name: Enforce 100% Line and Branch Code Coverage Threshold
         # WHAT: Parses the generated coverage report and validates that line-rate and branch-rate are both 100%.
         # WHY:  Fails the build immediately if any line or branch is uncovered.
-        # HOW:  Inspects coverage.cobertura.xml line-rate and branch-rate attributes and exits 1 on any deficiency.
+        # HOW:  Inspects artifacts/coverage Cobertura report line-rate and branch-rate attributes and exits 1 on any deficiency.
         run: |
           python3 -c "
           import xml.etree.ElementTree as ET
@@ -68,9 +70,9 @@ jobs:
           import os
           import sys
 
-          files = glob.glob('**/coverage.cobertura.xml', recursive=True)
+          files = glob.glob('artifacts/coverage/**/coverage*.cobertura*.xml', recursive=True)
           if not files:
-              print('::error::No coverage.cobertura.xml report found!')
+              print('::error::No coverage*.cobertura*.xml report found under artifacts/coverage!')
               sys.exit(1)
 
           latest_file = max(files, key=lambda f: os.path.getmtime(f))
@@ -93,7 +95,7 @@ jobs:
                           fname = cls.attrib.get('filename', '')
                           cname = cls.attrib.get('name', '')
                           print(f'::error file={fname}::{cname} uncovered (Line: {c_line:.2f}%, Branch: {c_branch:.2f}%)')
-                          for l in cls.findall('.//line'):
+                          for l in cls.findall('lines/line'):
                               if int(l.attrib.get('hits', 0)) == 0:
                                   print(f'  Uncovered line: {l.attrib.get(\"number\")}')
                               if 'condition-coverage' in l.attrib and '100%' not in l.attrib['condition-coverage']:
@@ -164,10 +166,10 @@ jobs:
       - name: Enforce Un-Excluded Coverage Ratchet
         # WHAT: Re-measures coverage with compiler-generated code included and compares it to coverage-baseline.json.
         # WHY:  The 100% step excludes endpoint lambdas and async state machines; the ratchet makes that gap visible and downward-only.
-        # HOW:  Runs the tests with coverage-full.runsettings, then check-coverage-ratchet.py.
+        # HOW:  Runs the tests with coverage-full.mtp.json, then check-coverage-ratchet.py.
         run: |
           rm -rf artifacts/coverage-full
-          env -u WEAVER_TEST_POSTGRES XDG_RUNTIME_DIR=/tmp dotnet test NanoWeaverHrt.slnx --configuration Release --no-build --settings coverage-full.runsettings --collect:"XPlat Code Coverage" --results-directory artifacts/coverage-full --verbosity minimal
+          env -u WEAVER_TEST_POSTGRES XDG_RUNTIME_DIR=/tmp dotnet test --solution NanoWeaverHrt.slnx --configuration Release --no-build --results-directory artifacts/coverage-full --config-file coverage-full.mtp.json --coverlet
           python3 -I scripts/check-coverage-ratchet.py artifacts/coverage-full coverage-baseline.json
 
       - name: Verify Vendored JavaScript Subsystem & SRI Integrity
@@ -273,10 +275,10 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Setup Node.js 26
+      - name: Setup Node.js 24
         uses: actions/setup-node@v7
         with:
-          node-version: '26'
+          node-version: '24'
 
       - name: Restore Dependencies
         # WHAT: Restores all NuGet packages across the entire solution.

@@ -118,11 +118,7 @@ public sealed class StackServiceManager : IStackServiceManager
         List<string> result = new(files.Length);
         for (int i = 0; i < files.Length; i++)
         {
-            string? name = Path.GetFileName(files[i]);
-            if (!string.IsNullOrEmpty(name))
-            {
-                result.Add(name);
-            }
+            result.Add(Path.GetFileName(files[i]));
         }
         return result;
     }
