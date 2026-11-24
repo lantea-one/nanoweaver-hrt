@@ -2381,4 +2381,66 @@ public sealed class WeaverNodeApiClient : INanoWeaverNodeClient, IDisposable
         string effectiveToken = ResolveBearerToken(bearerToken);
         return _innerClient.GetLotPharmacovigilanceAsync(profile, effectiveToken, lotId, ct);
     }
+
+    /// <inheritdoc/>
+    public Task<EpigeneticCircuitEvaluationReport> DesignEpigeneticCircuitAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        DesignEpigeneticCircuitRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/endocrine/epigenetic-circuits using provided or cached session token.
+        // WHY:  Milestone 42 (P222): Creates and evaluates epigenetic toggle circuits from managed desktop/mobile shells.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.DesignEpigeneticCircuitAsync(profile, effectiveToken, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<EpigeneticCircuitEvaluationReport>> ListEpigeneticCircuitsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string patientId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/endocrine/epigenetic-circuits/{patientId} using provided or cached session token.
+        // WHY:  Milestone 42 (P222): Lists patient epigenetic circuits from managed desktop/mobile shells.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.ListEpigeneticCircuitsAsync(profile, effectiveToken, patientId, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<EpigeneticCircuitEvaluationReport> EvaluateEpigeneticCircuitAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string circuitId,
+        EvaluateEpigeneticCircuitRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/endocrine/epigenetic-circuits/{circuitId}/evaluate using provided or cached session token.
+        // WHY:  Milestone 42 (P222): Runs biophysical stability stress-checks from managed native shells.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.EvaluateEpigeneticCircuitAsync(profile, effectiveToken, circuitId, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<EpigeneticCircuitEvaluationReport> ApproveEpigeneticCircuitAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string circuitId,
+        ApproveEpigeneticCircuitRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/endocrine/epigenetic-circuits/{circuitId}/approve using provided or cached session token.
+        // WHY:  Milestone 42 (P222): Executes fail-closed ML-DSA-65 synthesis sign-off from managed native shells.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.ApproveEpigeneticCircuitAsync(profile, effectiveToken, circuitId, request, ct);
+    }
 }

@@ -182,5 +182,21 @@
   "Pharmacovigilance.LogImmunogenicitySubmit": "Immunogeniciteitspanel Registreren",
   "Pharmacovigilance.AdverseEventsEmpty": "Geen post-implantatie bijwerkingen geregistreerd voor deze fabricagepartij.",
   "Pharmacovigilance.ImmunogenicityAssaysEmpty": "Nog geen CARPA- of TLR9-immunogeniciteitspanels geregistreerd.",
-  "Pharmacovigilance.EmergencyRecallRecommended": "NOODRECALL KLINISCH AANBEVOLEN"
+  "Pharmacovigilance.EmergencyRecallRecommended": "NOODRECALL KLINISCH AANBEVOLEN",
+  "EpigeneticCircuit.SectionTitle": "Epigenetische Steroïdogene Herprogrammering & Bistabiele Circuit Studio",
+  "EpigeneticCircuit.SectionSubtitle": "Nucleasevrije dCas9-DNMT3A/TET1 & CRISPRoff/on Chromatineschakelaar • CFD >= 98.0% • ML-DSA-65 Poort",
+  "EpigeneticCircuit.BadgeApproved": "GOEDGEKEURD VOOR PERMANENTE SYNTHESE",
+  "EpigeneticCircuit.BadgeBlocked": "GEBLOKKEERD — OFF-TARGET OF MONOSTABIEL",
+  "EpigeneticCircuit.BadgeEvaluated": "GEËVALUEERD — GEREED VOOR ML-DSA-65 ONDERTEKENING",
+  "EpigeneticCircuit.DesignButton": "Schakelcircuit ontwerpen & analyseren",
+  "EpigeneticCircuit.EvaluateButton": "Stabiliteitsbelasting evalueren",
+  "EpigeneticCircuit.ApproveButton": "Goedkeuren & ondertekenen (ML-DSA-65)",
+  "EpigeneticCircuit.PatientIdLabel": "Patiëntidentificatie",
+  "EpigeneticCircuit.EffectorLabel": "Epigenetisch effectorplatform",
+  "EpigeneticCircuit.StabilityFactorLabel": "Chromatinestabiliteitsfactor",
+  "EpigeneticCircuit.PhasePlaneTitle": "Bistabiel Hill-fasevlak (separatrixgrens)",
+  "EpigeneticCircuit.GuideTableTitle": "Steroïdogeen Single-Guide RNA (sgRNA)-paneel",
+  "EpigeneticCircuit.ColTargetGene": "Doelgen",
+  "EpigeneticCircuit.ColSpecificity": "CFD-specificiteit %",
+  "EpigeneticCircuit.ColFoldChange": "Voorspelde fold-change"
 }

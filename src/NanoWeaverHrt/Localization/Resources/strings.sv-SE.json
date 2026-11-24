@@ -182,5 +182,21 @@
   "Pharmacovigilance.LogImmunogenicitySubmit": "Registrera Immunogenicitetspanel",
   "Pharmacovigilance.AdverseEventsEmpty": "Inga biverkningar efter implantation registrerade för denna tillverkningssats.",
   "Pharmacovigilance.ImmunogenicityAssaysEmpty": "Inga CARPA- eller TLR9-immunogenicitetspaneler registrerade ännu.",
-  "Pharmacovigilance.EmergencyRecallRecommended": "AKUT KLINISK ÅTERKALLELSE REKOMMENDERAS"
+  "Pharmacovigilance.EmergencyRecallRecommended": "AKUT KLINISK ÅTERKALLELSE REKOMMENDERAS",
+  "EpigeneticCircuit.SectionTitle": "Studio för Epigenetisk Steroidogen Omprogrammering & Bistabila Kretsar",
+  "EpigeneticCircuit.SectionSubtitle": "Nukleasfri dCas9-DNMT3A/TET1 & CRISPRoff/on-kromatinväxel • CFD >= 98.0% • ML-DSA-65-spärr",
+  "EpigeneticCircuit.BadgeApproved": "GODKÄND FÖR PERMANENT SYNTES",
+  "EpigeneticCircuit.BadgeBlocked": "BLOCKERAD — OFF-TARGET ELLER MONOSTABIL",
+  "EpigeneticCircuit.BadgeEvaluated": "UTVÄRDERAD — REDO FÖR ML-DSA-65-SIGNERING",
+  "EpigeneticCircuit.DesignButton": "Designa & analysera växelkrets",
+  "EpigeneticCircuit.EvaluateButton": "Utvärdera stabilitetsbelastning",
+  "EpigeneticCircuit.ApproveButton": "Godkänn & signera (ML-DSA-65)",
+  "EpigeneticCircuit.PatientIdLabel": "Patientidentifierare",
+  "EpigeneticCircuit.EffectorLabel": "Epigenetisk effektorplattform",
+  "EpigeneticCircuit.StabilityFactorLabel": "Kromatinstabilitetsfaktor",
+  "EpigeneticCircuit.PhasePlaneTitle": "Bistabilt Hill-fasplan (separatrixgräns)",
+  "EpigeneticCircuit.GuideTableTitle": "Steroidogen Single-Guide RNA (sgRNA)-panel",
+  "EpigeneticCircuit.ColTargetGene": "Målgen",
+  "EpigeneticCircuit.ColSpecificity": "CFD-specificitet %",
+  "EpigeneticCircuit.ColFoldChange": "Förutsagd veckningsändring"
 }

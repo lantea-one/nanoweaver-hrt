@@ -754,11 +754,11 @@ public sealed class DatabaseMigrationRunnerTests
         using DatabaseMigrationRunner runner = new();
 
         int firstPass = await runner.ApplyPendingMigrationsAsync(conn, "sqlite");
-        Assert.Equal(20, firstPass);
+        Assert.Equal(21, firstPass);
 
         IReadOnlyList<long> applied = await runner.GetAppliedVersionsAsync(conn, "sqlite");
-        Assert.Equal(20, applied.Count);
-        for (long i = 1; i <= 20; i++)
+        Assert.Equal(21, applied.Count);
+        for (long i = 1; i <= 21; i++)
         {
             Assert.Contains(i, applied);
         }
@@ -780,11 +780,11 @@ public sealed class DatabaseMigrationRunnerTests
     [InlineData("mariadb")]
     public void AllRegisteredMigrations_GenerateNonEmptySql_AcrossAllSupportedDialects(string dialect)
     {
-        // WHAT: Validates GetSql for all 16 migrations against every engine dialect.
+        // WHAT: Validates GetSql for all registered migrations against every engine dialect.
         // WHY:  Fulfills Issue #99 (P96): Ensures DDL migrations produce valid SQL and data-only migrations handle dialects safely.
         // HOW:  Instantiates DatabaseMigrationRunner, iterates through RegisteredMigrations, and asserts non-null SQL.
         using DatabaseMigrationRunner runner = new();
-        Assert.Equal(20, runner.RegisteredMigrations.Count);
+        Assert.Equal(21, runner.RegisteredMigrations.Count);
 
         foreach (IDatabaseMigration migration in runner.RegisteredMigrations)
         {

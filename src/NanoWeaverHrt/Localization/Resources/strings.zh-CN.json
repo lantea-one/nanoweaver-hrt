@@ -182,5 +182,21 @@
   "Pharmacovigilance.LogImmunogenicitySubmit": "记录免疫原性面板",
   "Pharmacovigilance.AdverseEventsEmpty": "该制造批次尚未记录植入后不良事件。",
   "Pharmacovigilance.ImmunogenicityAssaysEmpty": "尚未记录 CARPA 或 TLR9 免疫原性检测面板。",
-  "Pharmacovigilance.EmergencyRecallRecommended": "建议紧急临床召回"
+  "Pharmacovigilance.EmergencyRecallRecommended": "建议紧急临床召回",
+  "EpigeneticCircuit.SectionTitle": "表观遗传类固醇生成酶重编程与双稳态基因开关设计工作室",
+  "EpigeneticCircuit.SectionSubtitle": "无核酸酶 dCas9-DNMT3A/TET1 与 CRISPRoff/on 染色质开关 • CFD >= 98.0% • ML-DSA-65 合成审批门禁",
+  "EpigeneticCircuit.BadgeApproved": "已批准用于永久合成",
+  "EpigeneticCircuit.BadgeBlocked": "已阻断 — 脱靶风险或单稳态塌缩",
+  "EpigeneticCircuit.BadgeEvaluated": "已评估 — 就绪等待 ML-DSA-65 签名",
+  "EpigeneticCircuit.DesignButton": "设计并分析双稳态开关电路",
+  "EpigeneticCircuit.EvaluateButton": "评估稳定性压力测试",
+  "EpigeneticCircuit.ApproveButton": "批准并签名 (ML-DSA-65)",
+  "EpigeneticCircuit.PatientIdLabel": "患者标识符",
+  "EpigeneticCircuit.EffectorLabel": "表观遗传效应器平台",
+  "EpigeneticCircuit.StabilityFactorLabel": "染色质稳定性系数",
+  "EpigeneticCircuit.PhasePlaneTitle": "双稳态 Hill 开关相平面（分界线边界）",
+  "EpigeneticCircuit.GuideTableTitle": "类固醇生成基因座单向导 RNA (sgRNA) 面板",
+  "EpigeneticCircuit.ColTargetGene": "靶基因",
+  "EpigeneticCircuit.ColSpecificity": "CFD 特异性 %",
+  "EpigeneticCircuit.ColFoldChange": "预测表达倍数变化"
 }

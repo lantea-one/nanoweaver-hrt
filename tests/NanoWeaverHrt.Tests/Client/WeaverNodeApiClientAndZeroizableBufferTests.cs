@@ -1857,6 +1857,10 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         RecordImmunogenicityAssayRequest immReq = new RecordImmunogenicityAssayRequest().GetExamples();
         ImmunogenicityAssayResponse immResp = new ImmunogenicityAssayResponse().GetExamples();
         LotPharmacovigilanceReport pvReport = new LotPharmacovigilanceReport().GetExamples();
+        DesignEpigeneticCircuitRequest epiDesignReq = new DesignEpigeneticCircuitRequest().GetExamples();
+        EvaluateEpigeneticCircuitRequest epiEvalReq = new EvaluateEpigeneticCircuitRequest().GetExamples();
+        ApproveEpigeneticCircuitRequest epiApproveReq = new ApproveEpigeneticCircuitRequest().GetExamples();
+        EpigeneticCircuitEvaluationReport epiReport = new EpigeneticCircuitEvaluationReport().GetExamples();
 
         innerMock.Setup(i => i.CreateFabricationLotAsync(profile, "tok", createReq, It.IsAny<CancellationToken>())).ReturnsAsync(lot);
         innerMock.Setup(i => i.GetFabricationLotsAsync(profile, "tok", "patient_alice", It.IsAny<CancellationToken>())).ReturnsAsync([lot]);
@@ -1882,6 +1886,10 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         innerMock.Setup(i => i.GetLotAdverseEventsAsync(profile, "tok", "lot-1", It.IsAny<CancellationToken>())).ReturnsAsync([aeSummary]);
         innerMock.Setup(i => i.RecordLotImmunogenicityAssayAsync(profile, "tok", "lot-1", immReq, It.IsAny<CancellationToken>())).ReturnsAsync(immResp);
         innerMock.Setup(i => i.GetLotPharmacovigilanceAsync(profile, "tok", "lot-1", It.IsAny<CancellationToken>())).ReturnsAsync(pvReport);
+        innerMock.Setup(i => i.DesignEpigeneticCircuitAsync(profile, "tok", epiDesignReq, It.IsAny<CancellationToken>())).ReturnsAsync(epiReport);
+        innerMock.Setup(i => i.ListEpigeneticCircuitsAsync(profile, "tok", "pat_001", It.IsAny<CancellationToken>())).ReturnsAsync([epiReport]);
+        innerMock.Setup(i => i.EvaluateEpigeneticCircuitAsync(profile, "tok", "epicirc_20261123_001", epiEvalReq, It.IsAny<CancellationToken>())).ReturnsAsync(epiReport);
+        innerMock.Setup(i => i.ApproveEpigeneticCircuitAsync(profile, "tok", "epicirc_20261123_001", epiApproveReq, It.IsAny<CancellationToken>())).ReturnsAsync(epiReport with { CircuitStatus = NanoWeaverHrt.Models.EpigeneticCircuitStatus.Approved });
 
         WeaverNodeApiClient client = new(innerMock.Object);
         Assert.Equal(lot.LotId, (await client.CreateFabricationLotAsync(profile, "tok", createReq)).LotId);
@@ -1908,6 +1916,10 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         Assert.Single(await client.GetLotAdverseEventsAsync(profile, "tok", "lot-1"));
         Assert.Equal("immu_20261123_001", (await client.RecordLotImmunogenicityAssayAsync(profile, "tok", "lot-1", immReq)).Assay.AssayId);
         Assert.Equal(PharmacovigilancePosture.Nominal, (await client.GetLotPharmacovigilanceAsync(profile, "tok", "lot-1")).Posture);
+        Assert.Equal("epicirc_20261123_001", (await client.DesignEpigeneticCircuitAsync(profile, "tok", epiDesignReq)).CircuitId);
+        Assert.Single(await client.ListEpigeneticCircuitsAsync(profile, "tok", "pat_001"));
+        Assert.Equal("epicirc_20261123_001", (await client.EvaluateEpigeneticCircuitAsync(profile, "tok", "epicirc_20261123_001", epiEvalReq)).CircuitId);
+        Assert.Equal(NanoWeaverHrt.Models.EpigeneticCircuitStatus.Approved, (await client.ApproveEpigeneticCircuitAsync(profile, "tok", "epicirc_20261123_001", epiApproveReq)).CircuitStatus);
 
         client.Dispose();
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.CreateFabricationLotAsync(profile, "tok", createReq));
@@ -1934,5 +1946,9 @@ public sealed class WeaverNodeApiClientAndZeroizableBufferTests
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetLotAdverseEventsAsync(profile, "tok", "lot-1"));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.RecordLotImmunogenicityAssayAsync(profile, "tok", "lot-1", immReq));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.GetLotPharmacovigilanceAsync(profile, "tok", "lot-1"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.DesignEpigeneticCircuitAsync(profile, "tok", epiDesignReq));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ListEpigeneticCircuitsAsync(profile, "tok", "pat_001"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.EvaluateEpigeneticCircuitAsync(profile, "tok", "epicirc_20261123_001", epiEvalReq));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ApproveEpigeneticCircuitAsync(profile, "tok", "epicirc_20261123_001", epiApproveReq));
     }
 }

@@ -182,5 +182,21 @@
   "Pharmacovigilance.LogImmunogenicitySubmit": "Zapisz Panel Immunogenności",
   "Pharmacovigilance.AdverseEventsEmpty": "Brak zarejestrowanych zdarzeń niepożądanych po implantacji dla tej serii.",
   "Pharmacovigilance.ImmunogenicityAssaysEmpty": "Nie zarejestrowano jeszcze żadnych paneli immunogenności CARPA ani TLR9.",
-  "Pharmacovigilance.EmergencyRecallRecommended": "ZALECANE PILNE WYCOFANIE KLINICZNE"
+  "Pharmacovigilance.EmergencyRecallRecommended": "ZALECANE PILNE WYCOFANIE KLINICZNE",
+  "EpigeneticCircuit.SectionTitle": "Studio Epigenetycznego Przeprogramowania Steroidogenezy i Obwodów Bistabilnych",
+  "EpigeneticCircuit.SectionSubtitle": "Beznukleazowy przełącznik chromatyny dCas9-DNMT3A/TET1 i CRISPRoff/on • CFD >= 98.0% • Bramka ML-DSA-65",
+  "EpigeneticCircuit.BadgeApproved": "ZATWIERDZONO DO TRWAŁEJ SYNTEZY",
+  "EpigeneticCircuit.BadgeBlocked": "ZABLOKOWANO — RYZYKO OFF-TARGET LUB MONOSTABILNOŚĆ",
+  "EpigeneticCircuit.BadgeEvaluated": "OCENIONO — GOTOWY DO PODPISU ML-DSA-65",
+  "EpigeneticCircuit.DesignButton": "Zaprojektuj i przeanalizuj obwód",
+  "EpigeneticCircuit.EvaluateButton": "Oceń stabilność pod obciążeniem",
+  "EpigeneticCircuit.ApproveButton": "Zatwierdź i podpisz (ML-DSA-65)",
+  "EpigeneticCircuit.PatientIdLabel": "Identyfikator pacjenta",
+  "EpigeneticCircuit.EffectorLabel": "Platforma efektora epigenetycznego",
+  "EpigeneticCircuit.StabilityFactorLabel": "Mnożnik stabilności chromatyny",
+  "EpigeneticCircuit.PhasePlaneTitle": "Bistabilna płaszczyzna fazowa Hilla (granica separatrysy)",
+  "EpigeneticCircuit.GuideTableTitle": "Panel pojedynczych RNA prowadzących (sgRNA) steroidogenezy",
+  "EpigeneticCircuit.ColTargetGene": "Gen docelowy",
+  "EpigeneticCircuit.ColSpecificity": "Specyficzność CFD %",
+  "EpigeneticCircuit.ColFoldChange": "Przewidywana krotność zmiany"
 }

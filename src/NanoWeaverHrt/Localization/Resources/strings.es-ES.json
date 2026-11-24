@@ -182,5 +182,21 @@
   "Pharmacovigilance.LogImmunogenicitySubmit": "Registrar Panel Inmunogénico",
   "Pharmacovigilance.AdverseEventsEmpty": "No hay eventos adversos post-implantación registrados para este lote.",
   "Pharmacovigilance.ImmunogenicityAssaysEmpty": "Aún no se han registrado paneles de inmunogenicidad CARPA o TLR9.",
-  "Pharmacovigilance.EmergencyRecallRecommended": "RETIRO CLÍNICO DE EMERGENCIA RECOMENDADO"
+  "Pharmacovigilance.EmergencyRecallRecommended": "RETIRO CLÍNICO DE EMERGENCIA RECOMENDADO",
+  "EpigeneticCircuit.SectionTitle": "Estudio de Reprogramación Esteroidea Epigenética y Circuitos Biestables",
+  "EpigeneticCircuit.SectionSubtitle": "Interruptor de cromatina sin nucleasa dCas9-DNMT3A/TET1 y CRISPRoff/on • CFD >= 98.0% • Puerta ML-DSA-65",
+  "EpigeneticCircuit.BadgeApproved": "APROBADO PARA SÍNTESIS PERMANENTE",
+  "EpigeneticCircuit.BadgeBlocked": "BLOQUEADO — FUERA DE DIANA O MONOESTABLE",
+  "EpigeneticCircuit.BadgeEvaluated": "EVALUADO — LISTO PARA FIRMA ML-DSA-65",
+  "EpigeneticCircuit.DesignButton": "Diseñar y analizar circuito biestable",
+  "EpigeneticCircuit.EvaluateButton": "Evaluar estrés de estabilidad",
+  "EpigeneticCircuit.ApproveButton": "Aprobar y firmar (ML-DSA-65)",
+  "EpigeneticCircuit.PatientIdLabel": "Identificador de paciente",
+  "EpigeneticCircuit.EffectorLabel": "Plataforma efectora epigenética",
+  "EpigeneticCircuit.StabilityFactorLabel": "Factor de estabilidad de cromatina",
+  "EpigeneticCircuit.PhasePlaneTitle": "Plano de fase biestable de Hill (frontera separatriz)",
+  "EpigeneticCircuit.GuideTableTitle": "Panel de ARN guía único (sgRNA) de loci esteroidogénicos",
+  "EpigeneticCircuit.ColTargetGene": "Gen diana",
+  "EpigeneticCircuit.ColSpecificity": "Especificidad CFD %",
+  "EpigeneticCircuit.ColFoldChange": "Cambio de expresión previsto"
 }

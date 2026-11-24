@@ -182,5 +182,21 @@
   "Pharmacovigilance.LogImmunogenicitySubmit": "免疫原性パネルを記録",
   "Pharmacovigilance.AdverseEventsEmpty": "この製造ロットの移植後有害事象はまだ記録されていません。",
   "Pharmacovigilance.ImmunogenicityAssaysEmpty": "CARPAまたはTLR9免疫原性アッセイパネルはまだ記録されていません。",
-  "Pharmacovigilance.EmergencyRecallRecommended": "緊急臨床回収を推奨"
+  "Pharmacovigilance.EmergencyRecallRecommended": "緊急臨床回収を推奨",
+  "EpigeneticCircuit.SectionTitle": "エピジェネティック・ステロイド産生酵素再プログラム＆双安定回路スタジオ",
+  "EpigeneticCircuit.SectionSubtitle": "非ヌクレアーゼ dCas9-DNMT3A/TET1・CRISPRoff/on クロマチンスイッチ • CFD >= 98.0% • ML-DSA-65 合成承認ゲート",
+  "EpigeneticCircuit.BadgeApproved": "恒久合成承認済み",
+  "EpigeneticCircuit.BadgeBlocked": "遮断 — オフターゲットリスクまたは単安定",
+  "EpigeneticCircuit.BadgeEvaluated": "評価完了 — ML-DSA-65 署名待ち",
+  "EpigeneticCircuit.DesignButton": "トグル回路を設計・解析",
+  "EpigeneticCircuit.EvaluateButton": "安定性ストレス評価を実行",
+  "EpigeneticCircuit.ApproveButton": "承認して署名 (ML-DSA-65)",
+  "EpigeneticCircuit.PatientIdLabel": "患者識別子",
+  "EpigeneticCircuit.EffectorLabel": "エピジェネティック・エフェクター基盤",
+  "EpigeneticCircuit.StabilityFactorLabel": "クロマチン安定性係数",
+  "EpigeneticCircuit.PhasePlaneTitle": "双安定ヒル・トグル位相平面（セパラトリクス境界）",
+  "EpigeneticCircuit.GuideTableTitle": "ステロイド産生遺伝子座 sgRNA パネル",
+  "EpigeneticCircuit.ColTargetGene": "標的遺伝子",
+  "EpigeneticCircuit.ColSpecificity": "CFD 特異性 %",
+  "EpigeneticCircuit.ColFoldChange": "予測発現倍率"
 }

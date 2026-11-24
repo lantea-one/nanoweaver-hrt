@@ -2347,7 +2347,45 @@ Streams a 1 MB content-addressed trajectory chunk for P2P swarm synchronization.
   * `index` (integer, query parameter `?index=0`, optional, default: 0): 0-based chunk sequence index.
 * **Response Status**: `200 OK` — binary chunk stream (`application/octet-stream`).
 * **Errors**: `400 Bad Request`, `401 Unauthorized`, `403 Forbidden`, `404 Not Found`.
-* **Errors**: `404 Not Found`.
+
+---
+
+## 15.5 Epigenetic Steroidogenic Toggle Circuit Endpoints (Milestone 42)
+
+### `POST /api/endocrine/epigenetic-circuits`
+Designs, validates, encrypts clinical notes for, evaluates Hill bistability, and persists a patient-specific epigenetic steroidogenic toggle circuit.
+
+* **Method**: `POST`
+* **Role Requirement**: `Administrator` or granted `Researcher` (`Patient` receives `403 Forbidden`)
+* **Request Payload (`DesignEpigeneticCircuitRequest`)**: `patientId`, `regimen` (`MaleToFemale` / `FemaleToMale` / `Custom`), `targetTissue`, `effectorPlatform` (`CrisprOffOn` / `DCas9Dnmt3aTet1` / `DCas9KrabVp64`), optional `guides`, optional `notes` (encrypted at rest via AES-256-GCM).
+* **Response Status**: `201 Created` — `EpigeneticCircuitEvaluationReport`.
+* **Errors**: `400 Bad Request`, `401 Unauthorized`, `403 Forbidden`.
+
+### `GET /api/endocrine/epigenetic-circuits/{patientId}`
+Lists all persisted epigenetic toggle circuits belonging to a patient with decrypted clinical notes and phase-plane geometry.
+
+* **Method**: `GET`
+* **Role Requirement**: `Administrator`, granted `Researcher`, or matching `Patient` self
+* **Response Status**: `200 OK` — `EpigeneticCircuitEvaluationReport[]`.
+* **Errors**: `400 Bad Request`, `401 Unauthorized`, `403 Forbidden`.
+
+### `POST /api/endocrine/epigenetic-circuits/{circuitId}/evaluate`
+Re-evaluates Hill phase-plane bistability, CFD specificity, and endocrine steady states under patient clearance and chromatin stability factors (`clearanceMultiplier`, `epigeneticStabilityFactor`).
+
+* **Method**: `POST`
+* **Role Requirement**: `Administrator` or granted `Researcher`
+* **Response Status**: `200 OK` — `EpigeneticCircuitEvaluationReport` (`Evaluated` or `Blocked`).
+* **Errors**: `400 Bad Request`, `401 Unauthorized`, `403 Forbidden`, `404 Not Found`.
+
+### `POST /api/endocrine/epigenetic-circuits/{circuitId}/approve`
+Performs live fail-closed safety gating (`CFD >= 98.0%`, `IsBistable && SeparatrixMargin >= 0.25`, `PredictedTtrPercent >= 85.0%` within target hormone bounds) and signs safe blueprints with the node's NIST FIPS 204 `ML-DSA-65` key.
+
+* **Method**: `POST`
+* **Role Requirement**: `Administrator` or granted `Researcher`
+* **Response Status**:
+  * `200 OK`: Returns `EpigeneticCircuitEvaluationReport` with `circuitStatus: "Approved"`, `signatureAlgorithm: "ML-DSA-65"`, `approvalPayloadSha256`, and `approvalSignatureBase64`.
+  * `422 Unprocessable Entity`: Fail-closed `SecureProblemDetails` when CFD off-target specificity, bistable separatrix margin, or steady-state hormone gates fail.
+* **Errors**: `400 Bad Request`, `401 Unauthorized`, `403 Forbidden`, `404 Not Found`, `422 Unprocessable Entity`.
 
 ---
 

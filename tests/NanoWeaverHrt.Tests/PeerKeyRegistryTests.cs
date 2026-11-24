@@ -95,13 +95,13 @@ public sealed class PeerKeyRegistryTests : IDisposable
         Assert.Contains("TIMESTAMPTZ", pgSql, StringComparison.Ordinal);
 
         using DatabaseMigrationRunner runner = new();
-        Assert.Equal(20, runner.RegisteredMigrations.Count);
+        Assert.Equal(21, runner.RegisteredMigrations.Count);
         Assert.Contains(runner.RegisteredMigrations, m => m is Migration007_PeerKeyRegistry && m.Version == 7 && m.Name == "007_PeerKeyRegistry");
 
         await using SqliteConnection conn = new("Data Source=:memory:");
         await conn.OpenAsync();
-        Assert.Equal(20, await runner.ApplyPendingMigrationsAsync(conn, "sqlite"));
-        Assert.Equal(new long[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 }, await runner.GetAppliedVersionsAsync(conn, "sqlite"));
+        Assert.Equal(21, await runner.ApplyPendingMigrationsAsync(conn, "sqlite"));
+        Assert.Equal(new long[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21 }, await runner.GetAppliedVersionsAsync(conn, "sqlite"));
         Assert.Equal(0, await runner.ApplyPendingMigrationsAsync(conn, "sqlite"));
 
         // Verify constructor guard and OpenAPI example providers on PeerKeyModels

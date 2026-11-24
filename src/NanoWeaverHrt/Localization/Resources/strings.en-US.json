@@ -182,5 +182,21 @@
   "Pharmacovigilance.LogImmunogenicitySubmit": "Record Immunogenicity Panel",
   "Pharmacovigilance.AdverseEventsEmpty": "No post-implantation adverse events recorded for this fabrication lot.",
   "Pharmacovigilance.ImmunogenicityAssaysEmpty": "No CARPA or TLR9 immunogenicity assay panels recorded yet.",
-  "Pharmacovigilance.EmergencyRecallRecommended": "EMERGENCY CLINICAL RECALL RECOMMENDED"
+  "Pharmacovigilance.EmergencyRecallRecommended": "EMERGENCY CLINICAL RECALL RECOMMENDED",
+  "EpigeneticCircuit.SectionTitle": "Epigenetic Steroidogenic Reprogramming & Bistable Circuit Studio",
+  "EpigeneticCircuit.SectionSubtitle": "Non-Nuclease dCas9-DNMT3A/TET1 & CRISPRoff/on Chromatin Switch • CFD >= 98.0% • ML-DSA-65 Synthesis Gate",
+  "EpigeneticCircuit.BadgeApproved": "APPROVED FOR PERMANENT SYNTHESIS",
+  "EpigeneticCircuit.BadgeBlocked": "BLOCKED — OFF-TARGET OR MONOSTABLE",
+  "EpigeneticCircuit.BadgeEvaluated": "EVALUATED — READY FOR ML-DSA-65 SIGN-OFF",
+  "EpigeneticCircuit.DesignButton": "Design & Analyze Toggle Circuit",
+  "EpigeneticCircuit.EvaluateButton": "Evaluate Stability Stress",
+  "EpigeneticCircuit.ApproveButton": "Approve & Sign (ML-DSA-65)",
+  "EpigeneticCircuit.PatientIdLabel": "Patient Identifier",
+  "EpigeneticCircuit.EffectorLabel": "Epigenetic Effector Platform",
+  "EpigeneticCircuit.StabilityFactorLabel": "Chromatin Stability Scaling",
+  "EpigeneticCircuit.PhasePlaneTitle": "Bistable Hill Toggle Phase Plane (Separatrix Boundary)",
+  "EpigeneticCircuit.GuideTableTitle": "Steroidogenic Locus Single-Guide RNA (sgRNA) Panel",
+  "EpigeneticCircuit.ColTargetGene": "Target Gene",
+  "EpigeneticCircuit.ColSpecificity": "CFD Specificity %",
+  "EpigeneticCircuit.ColFoldChange": "Predicted Fold-Change"
 }

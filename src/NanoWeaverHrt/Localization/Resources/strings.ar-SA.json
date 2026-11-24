@@ -182,5 +182,21 @@
   "Pharmacovigilance.LogImmunogenicitySubmit": "تسجيل لوحة الاستمناع",
   "Pharmacovigilance.AdverseEventsEmpty": "لم يتم تسجيل أحداث ضارة بعد الزرع لهذه التشغيلة.",
   "Pharmacovigilance.ImmunogenicityAssaysEmpty": "لم يتم تسجيل فحوصات استمناع CARPA أو TLR9 بعد.",
-  "Pharmacovigilance.EmergencyRecallRecommended": "يوصى بالسحب السريري الطارئ"
+  "Pharmacovigilance.EmergencyRecallRecommended": "يوصى بالسحب السريري الطارئ",
+  "EpigeneticCircuit.SectionTitle": "استوديو إعادة البرمجة فوق الجينية لإنزيمات الستيرويد والدوائر ثنائية الاستقرار",
+  "EpigeneticCircuit.SectionSubtitle": "مبدل الكروماتين غير القاطع dCas9-DNMT3A/TET1 وCRISPRoff/on • دقة CFD >= 98.0% • بوابة اعتماد ML-DSA-65",
+  "EpigeneticCircuit.BadgeApproved": "معتمد للتخليق الدائم",
+  "EpigeneticCircuit.BadgeBlocked": "محجوب — خطر خارج الهدف أو أحادي الاستقرار",
+  "EpigeneticCircuit.BadgeEvaluated": "تم التقييم — جاهز للتوقيع عبر ML-DSA-65",
+  "EpigeneticCircuit.DesignButton": "تصميم وتحليل دائرة التبديل",
+  "EpigeneticCircuit.EvaluateButton": "تقييم إجهاد الاستقرار",
+  "EpigeneticCircuit.ApproveButton": "اعتماد وتوقيع (ML-DSA-65)",
+  "EpigeneticCircuit.PatientIdLabel": "معرّف المريض",
+  "EpigeneticCircuit.EffectorLabel": "منصة المؤثر فوق الجيني",
+  "EpigeneticCircuit.StabilityFactorLabel": "معامل استقرار الكروماتين",
+  "EpigeneticCircuit.PhasePlaneTitle": "مستوى الطور ثنائي الاستقرار لهيل (حد الفصل)",
+  "EpigeneticCircuit.GuideTableTitle": "لوحة الحمض النووي الريبي الدليلي المفرد (sgRNA) للمواضع الستيرويدية",
+  "EpigeneticCircuit.ColTargetGene": "الجين المستهدف",
+  "EpigeneticCircuit.ColSpecificity": "نوعية CFD %",
+  "EpigeneticCircuit.ColFoldChange": "تغير التعبير المتوقع"
 }

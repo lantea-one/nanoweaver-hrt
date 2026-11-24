@@ -1988,4 +1988,64 @@ public interface INanoWeaverNodeClient
         string bearerToken,
         string lotId,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Designs and evaluates a patient-specific epigenetic steroidogenic toggle circuit via POST /api/endocrine/epigenetic-circuits.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="request">Circuit regimen, effector platform, target tissue, and guide-RNA specification.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Complete <see cref="EpigeneticCircuitEvaluationReport"/> with phase-plane geometry and gate outcomes.</returns>
+    Task<EpigeneticCircuitEvaluationReport> DesignEpigeneticCircuitAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        DesignEpigeneticCircuitRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Lists all epigenetic toggle circuits belonging to a patient via GET /api/endocrine/epigenetic-circuits/{patientId}.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="patientId">Target patient identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Chronological read-only list of <see cref="EpigeneticCircuitEvaluationReport"/> items.</returns>
+    Task<IReadOnlyList<EpigeneticCircuitEvaluationReport>> ListEpigeneticCircuitsAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string patientId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Re-evaluates bistability, CFD specificity, and endocrine setpoints via POST /api/endocrine/epigenetic-circuits/{circuitId}/evaluate.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="circuitId">Target circuit identifier.</param>
+    /// <param name="request">Clearance and chromatin heritability scaling parameters.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Updated <see cref="EpigeneticCircuitEvaluationReport"/>.</returns>
+    Task<EpigeneticCircuitEvaluationReport> EvaluateEpigeneticCircuitAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string circuitId,
+        EvaluateEpigeneticCircuitRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Requests fail-closed ML-DSA-65 permanent synthesis sign-off via POST /api/endocrine/epigenetic-circuits/{circuitId}/approve.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="circuitId">Target circuit identifier.</param>
+    /// <param name="request">Reviewer notes and pre-approval verification scaling factors.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Approved and ML-DSA-65 signed <see cref="EpigeneticCircuitEvaluationReport"/> (throws <see cref="NodeApiException"/> on HTTP 422 gate block).</returns>
+    Task<EpigeneticCircuitEvaluationReport> ApproveEpigeneticCircuitAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string circuitId,
+        ApproveEpigeneticCircuitRequest request,
+        CancellationToken ct = default);
 }

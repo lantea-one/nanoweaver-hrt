@@ -67,7 +67,7 @@ public sealed class MultiEngineMigrationTests : IDisposable
         DatabaseMigrationRunner runner = new(protector: _protector);
         string[] dialects = ["sqlite", "postgresql", "duckdb", "mysql", "mariadb"];
 
-        Assert.Equal(20, runner.RegisteredMigrations.Count);
+        Assert.Equal(21, runner.RegisteredMigrations.Count);
 
         foreach (IDatabaseMigration migration in runner.RegisteredMigrations)
         {
@@ -109,11 +109,11 @@ public sealed class MultiEngineMigrationTests : IDisposable
         await connection.OpenAsync();
 
         int applied = await runner.ApplyPendingMigrationsAsync(connection, "sqlite");
-        Assert.Equal(20, applied);
+        Assert.Equal(21, applied);
 
         IReadOnlyList<long> versions = await runner.GetAppliedVersionsAsync(connection, "sqlite");
-        Assert.Equal(20, versions.Count);
-        for (int i = 1; i <= 20; i++)
+        Assert.Equal(21, versions.Count);
+        for (int i = 1; i <= 21; i++)
         {
             Assert.Contains(i, versions);
         }
@@ -124,7 +124,7 @@ public sealed class MultiEngineMigrationTests : IDisposable
     }
 
     /// <summary>
-    /// Verifies that <see cref="DatabaseMigrationRunner.ApplyPendingMigrationsAsync"/> executes all 20 migrations cleanly
+    /// Verifies that <see cref="DatabaseMigrationRunner.ApplyPendingMigrationsAsync"/> executes all 21 migrations cleanly
     /// on an in-process DuckDB database and is fully idempotent on subsequent calls.
     /// </summary>
     [Fact]
@@ -136,11 +136,11 @@ public sealed class MultiEngineMigrationTests : IDisposable
         await connection.OpenAsync();
 
         int applied = await runner.ApplyPendingMigrationsAsync(connection, "duckdb");
-        Assert.Equal(20, applied);
+        Assert.Equal(21, applied);
 
         IReadOnlyList<long> versions = await runner.GetAppliedVersionsAsync(connection, "duckdb");
-        Assert.Equal(20, versions.Count);
-        for (int i = 1; i <= 20; i++)
+        Assert.Equal(21, versions.Count);
+        for (int i = 1; i <= 21; i++)
         {
             Assert.Contains(i, versions);
         }

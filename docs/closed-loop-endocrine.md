@@ -122,3 +122,15 @@ $$
 ## 5. Closed-Loop Feedforward Clearance Calibration & isMtF Gonadal Suppression
 - **Feedforward Clearance Calibration**: The closed-loop ODE solver incorporates proportional feedback gain (`K_p = 14.0`) combined with steady-state metabolic clearance feedforward terms, ensuring rapid convergence to target endocrine setpoints without integral overshoot or oscillatory rebound.
 - **`isMtF` Gonadal Suppression Kinetics**: The simulation engine evaluates the boolean flag `isMtF` to configure estrogenic dominant target matrices, applying targeted inhibitory Hill coefficients to suppress endogenous testicular testosterone production and luteinizing hormone secretion.
+
+---
+
+## 6. Epigenetic Toggle Circuit Mutual-Repression Phase Plane (Milestone 42)
+
+For non-nuclease chromatin reprogramming (`EpigeneticCircuitService`), mutual transcriptional inhibition between estrogenic (`u`) and androgenic (`v`) steroidogenic promoter modules obeys coupled Hill kinetics with cooperativity `n = 4.0` and half-saturation `K = 0.5`:
+
+$$
+g_u(v) = \frac{\alpha_u}{1 + (v / K)^n}, \qquad g_v(u) = \frac{\alpha_v}{1 + (u / K)^n}
+$$
+
+Fixed points are solved deterministically by scanning `F(u) = g_u(g_v(u)) - u` over a 200-step bracketed grid with 28 bisection iterations per root. A design passes `PassesBistabilityGate` only when three distinct equilibria exist (target attractor, alternate attractor, and unstable saddle separatrix) with minimum normalized attractor-to-saddle separation `SeparatrixMargin >= 0.25`, `MinOffTargetSpecificityScore >= 98.0%`, and steady-state `PredictedTtrPercent >= 85.0%`.

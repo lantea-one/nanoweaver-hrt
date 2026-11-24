@@ -182,5 +182,21 @@
   "Pharmacovigilance.LogImmunogenicitySubmit": "Catat Panel Imunogenisitas",
   "Pharmacovigilance.AdverseEventsEmpty": "Belum ada kejadian tidak diinginkan pasca-implantasi yang tercatat untuk lot ini.",
   "Pharmacovigilance.ImmunogenicityAssaysEmpty": "Belum ada panel uji imunogenisitas CARPA atau TLR9 yang tercatat.",
-  "Pharmacovigilance.EmergencyRecallRecommended": "PENARIKAN KLINIS DARURAT DIREKOMENDASIKAN"
+  "Pharmacovigilance.EmergencyRecallRecommended": "PENARIKAN KLINIS DARURAT DIREKOMENDASIKAN",
+  "EpigeneticCircuit.SectionTitle": "Studio Pemrograman Ulang Enzim Steroidogenik Epigenetik & Sirkuit Bistabil",
+  "EpigeneticCircuit.SectionSubtitle": "Sakelar Kromatin Non-Nuklease dCas9-DNMT3A/TET1 & CRISPRoff/on • CFD >= 98.0% • Gerbang Sintesis ML-DSA-65",
+  "EpigeneticCircuit.BadgeApproved": "DISETUJUI UNTUK SINTESIS PERMANEN",
+  "EpigeneticCircuit.BadgeBlocked": "DIBLOKIR — RISIKO OFF-TARGET ATAU MONOSTABIL",
+  "EpigeneticCircuit.BadgeEvaluated": "DIEVALUASI — SIAP TANDA TANGAN ML-DSA-65",
+  "EpigeneticCircuit.DesignButton": "Rancang & Analisis Sirkuit Sakelar",
+  "EpigeneticCircuit.EvaluateButton": "Evaluasi Tekanan Stabilitas",
+  "EpigeneticCircuit.ApproveButton": "Setujui & Tandatangani (ML-DSA-65)",
+  "EpigeneticCircuit.PatientIdLabel": "Pengenal Pasien",
+  "EpigeneticCircuit.EffectorLabel": "Platform Efektor Epigenetik",
+  "EpigeneticCircuit.StabilityFactorLabel": "Skala Stabilitas Kromatin",
+  "EpigeneticCircuit.PhasePlaneTitle": "Bidang Fase Sakelar Bistabil Hill (Batas Separatriks)",
+  "EpigeneticCircuit.GuideTableTitle": "Panel Single-Guide RNA (sgRNA) Lokus Steroidogenik",
+  "EpigeneticCircuit.ColTargetGene": "Gen Target",
+  "EpigeneticCircuit.ColSpecificity": "Spesifisitas CFD %",
+  "EpigeneticCircuit.ColFoldChange": "Prediksi Perubahan Lipatan"
 }

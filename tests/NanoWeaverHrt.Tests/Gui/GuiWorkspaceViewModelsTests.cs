@@ -551,6 +551,83 @@ public sealed class GuiWorkspaceViewModelsTests
         Assert.Null(vm.LastAdjustmentResult);
         Assert.Null(vm.LastPatientDnaPackage);
         Assert.Null(vm.LastCreatedDnaRecord);
+        Assert.Empty(vm.ActiveEpigeneticCircuits);
+        Assert.Null(vm.LatestEpigeneticCircuit);
+    }
+
+    /// <summary>
+    /// Verifies Milestone 42 (P222) epigenetic circuit ViewModel workflows across design, load (empty/populated),
+    /// evaluate, approve, validation guards, and failure states.
+    /// </summary>
+    [Fact]
+    public async Task ClinicalGenomicsWorkspaceViewModel_EpigeneticCircuits_AllPaths()
+    {
+        // WHAT: Tests DesignEpigeneticCircuitAsync, LoadEpigeneticCircuitsAsync, EvaluateEpigeneticCircuitAsync, and ApproveEpigeneticCircuitAsync.
+        // WHY:  Milestone 42 (P222): Enforces 100.00% line/branch coverage across ViewModel epigenetic circuit state transitions.
+        // HOW:  Exercises validation guards, missing credentials, empty/non-empty list loads, nominal results, and faults.
+        var clientMock = new Mock<INanoWeaverNodeClient>();
+        var profile = CreateProfile();
+        var vm = new ClinicalGenomicsWorkspaceViewModel(clientMock.Object, () => profile, () => "token-epi");
+
+        DesignEpigeneticCircuitRequest designReq = new DesignEpigeneticCircuitRequest().GetExamples();
+        EvaluateEpigeneticCircuitRequest evalReq = new EvaluateEpigeneticCircuitRequest().GetExamples();
+        ApproveEpigeneticCircuitRequest approveReq = new ApproveEpigeneticCircuitRequest().GetExamples();
+        EpigeneticCircuitEvaluationReport report = new EpigeneticCircuitEvaluationReport().GetExamples();
+        EpigeneticCircuitEvaluationReport approvedReport = report with { CircuitStatus = EpigeneticCircuitStatus.Approved, SignatureAlgorithm = "ML-DSA-65" };
+
+        // Argument validation guards
+        await Assert.ThrowsAsync<ArgumentNullException>(() => vm.DesignEpigeneticCircuitAsync(null!));
+        await Assert.ThrowsAsync<ArgumentException>(() => vm.LoadEpigeneticCircuitsAsync(" "));
+        await Assert.ThrowsAsync<ArgumentException>(() => vm.EvaluateEpigeneticCircuitAsync(" ", evalReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => vm.EvaluateEpigeneticCircuitAsync("epicirc_001", null!));
+        await Assert.ThrowsAsync<ArgumentException>(() => vm.ApproveEpigeneticCircuitAsync(" ", approveReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => vm.ApproveEpigeneticCircuitAsync("epicirc_001", null!));
+
+        // Design success
+        clientMock.Setup(c => c.DesignEpigeneticCircuitAsync(profile, "token-epi", designReq, It.IsAny<CancellationToken>())).ReturnsAsync(report);
+        EpigeneticCircuitEvaluationReport designed = await vm.DesignEpigeneticCircuitAsync(designReq);
+        Assert.Same(report, designed);
+        Assert.Same(report, vm.LatestEpigeneticCircuit);
+        Assert.False(vm.IsBusy);
+
+        // Load empty list then populated list
+        clientMock.Setup(c => c.ListEpigeneticCircuitsAsync(profile, "token-epi", "pat_empty", It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        Assert.Empty(await vm.LoadEpigeneticCircuitsAsync("pat_empty"));
+        Assert.Empty(vm.ActiveEpigeneticCircuits);
+        Assert.Null(vm.LatestEpigeneticCircuit);
+
+        clientMock.Setup(c => c.ListEpigeneticCircuitsAsync(profile, "token-epi", "pat_001", It.IsAny<CancellationToken>())).ReturnsAsync([report]);
+        Assert.Single(await vm.LoadEpigeneticCircuitsAsync("pat_001"));
+        Assert.Single(vm.ActiveEpigeneticCircuits);
+        Assert.Same(report, vm.LatestEpigeneticCircuit);
+
+        // Evaluate success
+        clientMock.Setup(c => c.EvaluateEpigeneticCircuitAsync(profile, "token-epi", "epicirc_001", evalReq, It.IsAny<CancellationToken>())).ReturnsAsync(report);
+        Assert.Same(report, await vm.EvaluateEpigeneticCircuitAsync("epicirc_001", evalReq));
+
+        // Approve success
+        clientMock.Setup(c => c.ApproveEpigeneticCircuitAsync(profile, "token-epi", "epicirc_001", approveReq, It.IsAny<CancellationToken>())).ReturnsAsync(approvedReport);
+        Assert.Same(approvedReport, await vm.ApproveEpigeneticCircuitAsync("epicirc_001", approveReq));
+        Assert.Same(approvedReport, vm.LatestEpigeneticCircuit);
+
+        // Fault paths across all 4 methods
+        clientMock.Setup(c => c.DesignEpigeneticCircuitAsync(profile, "token-epi", designReq, It.IsAny<CancellationToken>())).ThrowsAsync(new InvalidOperationException("design fail"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.DesignEpigeneticCircuitAsync(designReq));
+        Assert.Equal("design fail", vm.ErrorMessage);
+        Assert.False(vm.IsBusy);
+
+        clientMock.Setup(c => c.ListEpigeneticCircuitsAsync(profile, "token-epi", "pat_001", It.IsAny<CancellationToken>())).ThrowsAsync(new InvalidOperationException("list fail"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.LoadEpigeneticCircuitsAsync("pat_001"));
+        Assert.Equal("list fail", vm.ErrorMessage);
+
+        clientMock.Setup(c => c.EvaluateEpigeneticCircuitAsync(profile, "token-epi", "epicirc_001", evalReq, It.IsAny<CancellationToken>())).ThrowsAsync(new InvalidOperationException("eval fail"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.EvaluateEpigeneticCircuitAsync("epicirc_001", evalReq));
+        Assert.Equal("eval fail", vm.ErrorMessage);
+
+        clientMock.Setup(c => c.ApproveEpigeneticCircuitAsync(profile, "token-epi", "epicirc_001", approveReq, It.IsAny<CancellationToken>())).ThrowsAsync(new InvalidOperationException("approve fail"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.ApproveEpigeneticCircuitAsync("epicirc_001", approveReq));
+        Assert.Equal("approve fail", vm.ErrorMessage);
+        Assert.False(vm.IsBusy);
     }
 
     /// <summary>

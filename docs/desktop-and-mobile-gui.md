@@ -227,6 +227,9 @@ Mobile heads execute within deterministic platform coordinators enforcing strict
 7. **Milestone 41 Post-Implantation Pharmacovigilance & Tray Alert Escalation (`DepotAndLotWorkspaceViewModel`, `DesktopTrayIconController`)**:
    - Exposes `LoadSelectedLotPharmacovigilanceAsync`, `LoadSelectedLotAdverseEventsAsync`, `RecordAdverseEventAsync`, and `RecordImmunogenicityAssayAsync` across `INanoWeaverNodeClient`, `NanoWeaverNodeClient`, `WeaverNodeApiClient`, and `DepotAndLotWorkspaceViewModel`, tracking `LatestPharmacovigilanceReport`, `ActiveLotAdverseEvents`, and `CriticalPharmacovigilanceLotCount` on `DepotWorkspaceSummary`.
    - Escalates CTCAE Grade >= 3 or CARPA/TLR9 quarantine triggers (`CriticalPharmacovigilanceLotCount > 0`) to `TrayHealthBadge.Critical` (`Gui.DepotWorkspace.TrayPharmacovigilanceAlert`) and `Monitor` postures to `TrayHealthBadge.Warning` via `DesktopTrayIconController.ApplyClinicalSafetyState`.
+8. **Milestone 42 Epigenetic Steroidogenic Toggle Circuit Studio (`ClinicalGenomicsWorkspaceViewModel`, Web `/endocrine`)**:
+   - Exposes `DesignEpigeneticCircuitAsync`, `LoadEpigeneticCircuitsAsync`, `EvaluateEpigeneticCircuitAsync`, and `ApproveEpigeneticCircuitAsync` across `INanoWeaverNodeClient`, `NanoWeaverNodeClient`, `WeaverNodeApiClient`, and `ClinicalGenomicsWorkspaceViewModel` (`ActiveEpigeneticCircuits`, `LatestEpigeneticCircuit`).
+   - Web `/endocrine` renders `#epigenetic-circuit-studio-panel` with regimen/tissue/effector configuration, guide-RNA CFD/fold-change tables, dark-mode SVG bistable Hill phase-plane separatrix plots (`#epigenetic-phase-plane-svg`), and fail-closed `ML-DSA-65` synthesis status badges (`APPROVED FOR PERMANENT SYNTHESIS` vs. `BLOCKED — OFF-TARGET OR MONOSTABLE`).
 
 ---
 

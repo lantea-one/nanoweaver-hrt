@@ -182,5 +182,21 @@
   "Pharmacovigilance.LogImmunogenicitySubmit": "İmmünojenisite Panelini Kaydet",
   "Pharmacovigilance.AdverseEventsEmpty": "Bu üretim serisi için implantasyon sonrası advers olay kaydedilmedi.",
   "Pharmacovigilance.ImmunogenicityAssaysEmpty": "Henüz CARPA veya TLR9 immünojenisite paneli kaydedilmedi.",
-  "Pharmacovigilance.EmergencyRecallRecommended": "ACİL KLİNİK GERİ ÇAĞIRMA ÖNERİLİR"
+  "Pharmacovigilance.EmergencyRecallRecommended": "ACİL KLİNİK GERİ ÇAĞIRMA ÖNERİLİR",
+  "EpigeneticCircuit.SectionTitle": "Epigenetik Steroidojenik Yeniden Programlama ve Çift Kararlı Devre Stüdyosu",
+  "EpigeneticCircuit.SectionSubtitle": "Nükleazsız dCas9-DNMT3A/TET1 ve CRISPRoff/on Kromatin Anahtarı • CFD >= 98.0% • ML-DSA-65 Kapısı",
+  "EpigeneticCircuit.BadgeApproved": "KALICI SENTEZ İÇİN ONAYLANDI",
+  "EpigeneticCircuit.BadgeBlocked": "ENGELLENDİ — HEDEF DIŞI RİSK VEYA TEK KARARLI",
+  "EpigeneticCircuit.BadgeEvaluated": "DEĞERLENDİRİLDİ — ML-DSA-65 İMZASINA HAZIR",
+  "EpigeneticCircuit.DesignButton": "Anahtar Devreyi Tasarla ve Çözümle",
+  "EpigeneticCircuit.EvaluateButton": "Kararlılık Stresini Değerlendir",
+  "EpigeneticCircuit.ApproveButton": "Onayla ve İmzala (ML-DSA-65)",
+  "EpigeneticCircuit.PatientIdLabel": "Hasta Kimliği",
+  "EpigeneticCircuit.EffectorLabel": "Epigenetik Efektör Platformu",
+  "EpigeneticCircuit.StabilityFactorLabel": "Kromatin Kararlılık Ölçeği",
+  "EpigeneticCircuit.PhasePlaneTitle": "Çift Kararlı Hill Faz Düzlemi (Separatriks Sınırı)",
+  "EpigeneticCircuit.GuideTableTitle": "Steroidojenik Tek Kılavuz RNA (sgRNA) Paneli",
+  "EpigeneticCircuit.ColTargetGene": "Hedef Gen",
+  "EpigeneticCircuit.ColSpecificity": "CFD Özgüllüğü %",
+  "EpigeneticCircuit.ColFoldChange": "Öngörülen Kat Değişimi"
 }
