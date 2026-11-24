@@ -24,13 +24,6 @@
       "allowedVersions": "<7.0.0"
     },
     {
-      "description": "Hold xunit.runner.visualstudio at v2 series while xunit remains on 2.x",
-      "matchPackageNames": [
-        "xunit.runner.visualstudio"
-      ],
-      "allowedVersions": "<3.0.0"
-    },
-    {
       "description": "Pin Ubuntu simulation base image to 24.04 LTS for Intel GPU noble apt repository",
       "matchDatasources": [
         "docker"

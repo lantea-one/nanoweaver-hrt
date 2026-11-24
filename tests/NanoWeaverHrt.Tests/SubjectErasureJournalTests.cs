@@ -14,7 +14,6 @@ using NanoWeaverHrt.Database.Access;
 using NanoWeaverHrt.Security.KeyManagement;
 using NanoWeaverHrt.Security.Models;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace NanoWeaverHrt.Tests;
 

@@ -7,7 +7,6 @@ using NanoWeaverHrt.Models;
 using NanoWeaverHrt.Security.Authentication;
 using NanoWeaverHrt.Storage;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace NanoWeaverHrt.Tests;
 
