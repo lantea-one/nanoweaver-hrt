@@ -233,5 +233,21 @@
   "Antidote.KineticsChartTitle": "24-Timmars Depotnedbrytning & Systemisk Hormonsänkning",
   "Antidote.EmergencyTitle": "Oåterkallelig Klinisk Nödneutralisering",
   "Antidote.EmergencyWarning": "Nödadministrering demonterar depån permanent, sätter antidotet till Neutraliserad och skapar en permanent återkallelsepost.",
-  "Antidote.EventsEmpty": "Inga nödmotgiftsadministreringar har utförts för denna batch."
+  "Antidote.EventsEmpty": "Inga nödmotgiftsadministreringar har utförts för denna batch.",
+  "Dossier.SectionTitle": "Regulatorisk IND / IMPD Dossierkompilator",
+  "Dossier.SectionSubtitle": "Kompilera HIPAA-pseudonymiserade, ML-DSA-65-signerade FDA IND (21 CFR 312) och EMA IMPD inlämningspaket med strikt 10-ports beredskapskontroll och nodöverskridande PQC-signaturverifiering.",
+  "Dossier.PatientIdLabel": "Försökspersons-ID",
+  "Dossier.FrameworkLabel": "Regulatoriskt Ramverk",
+  "Dossier.LotIdLabel": "Vektorbatch-ID (Valfritt)",
+  "Dossier.SponsorLabel": "Sponsororganisation",
+  "Dossier.SiteCodeLabel": "Klinisk Platscod",
+  "Dossier.CompileButton": "Kompilera Regulatorisk Dossier",
+  "Dossier.DownloadButton": "Ladda Ner Signerat Paket (.json)",
+  "Dossier.VerifyButton": "Verifiera Signerad Dossier",
+  "Dossier.BadgeSubmissionReady": "KLAR FÖR INLÄMNING",
+  "Dossier.BadgeBlockedIncomplete": "BLOCKERAD / OFULLSTÄNDIG",
+  "Dossier.BadgeSignatureTrusted": "SIGNATUR BETRODD",
+  "Dossier.BadgeSignatureUntrusted": "SIGNATUR EJ BETRODD",
+  "Dossier.ChecklistTitle": "10-Ports Beredskapschecklista",
+  "Dossier.VerifierInputLabel": "Signerat Regulatoriskt Dossierpaket JSON"
 }

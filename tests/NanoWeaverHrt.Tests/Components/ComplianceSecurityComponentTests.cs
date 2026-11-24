@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Bunit;
 using Microsoft.Extensions.DependencyInjection;
@@ -7,6 +9,8 @@ using Moq;
 using NanoWeaverHrt.Abstractions;
 using NanoWeaverHrt.Compliance;
 using NanoWeaverHrt.Components.Pages;
+using NanoWeaverHrt.Localization;
+using NanoWeaverHrt.Models;
 using NanoWeaverHrt.Security.Authentication;
 using NanoWeaverHrt.Security.Cryptography;
 using NanoWeaverHrt.Security.KeyManagement;
@@ -36,6 +40,11 @@ public sealed class ComplianceSecurityComponentTests : BunitContext
     /// Mock encrypted storage service injected into the page.
     /// </summary>
     private readonly Mock<IEncryptedStorageService> _storageMock = new();
+
+    /// <summary>
+    /// Mock regulatory dossier compiler and PQC audit bundle verification service.
+    /// </summary>
+    private readonly Mock<IRegulatoryDossierService> _dossierMock = new();
 
     /// <summary>
     /// Active user session state tracking authenticated operator credentials.
@@ -120,6 +129,8 @@ public sealed class ComplianceSecurityComponentTests : BunitContext
         Services.AddSingleton<IComplianceAuditService>(_complianceMock.Object);
         Services.AddSingleton<IKeyManagementService>(_keyManagementMock.Object);
         Services.AddSingleton<IEncryptedStorageService>(_storageMock.Object);
+        Services.AddSingleton<IRegulatoryDossierService>(_dossierMock.Object);
+        Services.AddSingleton<IWeaverLocalizer>(new WeaverLocalizer());
         Services.AddSingleton(_sessionState);
     }
 
@@ -272,5 +283,285 @@ public sealed class ComplianceSecurityComponentTests : BunitContext
 
         var alerts = cut.FindAll(".alert-warning");
         Assert.Contains(alerts, a => a.TextContent.Contains(Program.ShredAlreadyMessage("sub_98432_pseudo")));
+    }
+
+    /// <summary>
+    /// Verifies that submitting the dossier compiler with a blank patient ID fails closed with a validation alert
+    /// and never dispatches a compilation request to <see cref="IRegulatoryDossierService"/>.
+    /// </summary>
+    [Fact]
+    public async Task CompileRegulatoryDossier_EmptyPatientId_ShowsValidationError()
+    {
+        // WHAT: Renders ComplianceSecurity and clicks #btn-compile-dossier without filling #input-dossier-patient-id.
+        // WHY:  Prevents empty subject queries from hitting the compilation service or audit ledger.
+        // HOW:  Clicks compile button via InvokeAsync, queries fresh DOM #dossier-error, and verifies Times.Never on mock.
+        IRenderedComponent<ComplianceSecurity> cut = Render<ComplianceSecurity>();
+
+        var compileBtn = cut.Find("#btn-compile-dossier");
+        await cut.InvokeAsync(() => compileBtn.Click());
+
+        var errorBox = cut.Find("#dossier-error");
+        Assert.Contains("Subject identifier is required", errorBox.TextContent);
+        Assert.Empty(cut.FindAll("#dossier-compiled-card"));
+        _dossierMock.Verify(
+            s => s.CompileDossierAsync(It.IsAny<string>(), It.IsAny<CompileRegulatoryDossierRequest?>(), It.IsAny<string>(), default),
+            Times.Never);
+    }
+
+    /// <summary>
+    /// Verifies complete FDA IND compilation rendering 10 passing readiness gates, SUBMISSION READY badge,
+    /// and signed bundle JSON browser export prefilling the cross-node verifier textarea.
+    /// </summary>
+    [Fact]
+    public async Task CompileAndDownloadRegulatoryDossier_ReadyFdaInd_RendersTenGatesAndInvokesDownload()
+    {
+        // WHAT: Compiles a 100% ready FDA IND dossier via UI controls and triggers signed JSON download.
+        // WHY:  Ensures wet-lab operators see the 10-gate readiness checklist, HIPAA pseudonym, and offline bundle export.
+        // HOW:  Fills input fields, mocks CompileDossierAsync returning 10 passing gates, clicks download, and asserts JS interop.
+        SignedRegulatoryDossierBundle readyBundle = CreateSampleDossierBundle(
+            "ind_ui_ready",
+            RegulatorySubmissionFramework.FdaInd,
+            isReady: true);
+
+        _dossierMock
+            .Setup(s => s.CompileDossierAsync(
+                "patient_ind_ui",
+                It.Is<CompileRegulatoryDossierRequest>(r =>
+                    r.SubmissionFramework == RegulatorySubmissionFramework.FdaInd
+                    && r.LotId == "lot_ui_01"
+                    && r.SponsorName == "Lantea Clinical"
+                    && r.ClinicalTrialSiteCode == "SITE-09"),
+                It.IsAny<string>(),
+                default))
+            .ReturnsAsync(readyBundle);
+
+        IRenderedComponent<ComplianceSecurity> cut = Render<ComplianceSecurity>();
+
+        cut.Find("#input-dossier-patient-id").Change("patient_ind_ui");
+        cut.Find("#input-dossier-lot-id").Change("lot_ui_01");
+        cut.Find("#input-dossier-sponsor").Change("Lantea Clinical");
+        cut.Find("#input-dossier-site-code").Change("SITE-09");
+
+        var compileBtn = cut.Find("#btn-compile-dossier");
+        await cut.InvokeAsync(() => compileBtn.Click());
+
+        var badge = cut.Find("#dossier-readiness-badge");
+        Assert.Contains("dossier-badge-ready", badge.ClassName);
+        Assert.Contains("SUBMISSION READY", badge.TextContent);
+
+        var gateRows = cut.FindAll("#dossier-readiness-checklist tbody tr");
+        Assert.Equal(10, gateRows.Count);
+        Assert.Contains("100.0%", cut.Find("#dossier-compiled-card").TextContent);
+        Assert.Contains("ind_ui_ready", cut.Find("#dossier-status").TextContent);
+        Assert.Empty(cut.FindAll("#dossier-blocking-reasons"));
+
+        var downloadBtn = cut.Find("#btn-download-dossier");
+        await cut.InvokeAsync(() => downloadBtn.Click());
+
+        JSInterop.VerifyInvoke("weaverDownloadBlob");
+        var verifyTextarea = cut.Find("#textarea-verify-dossier-json");
+        string textareaValue = verifyTextarea.GetAttribute("value") ?? verifyTextarea.TextContent;
+        Assert.Contains("ind_ui_ready", textareaValue);
+    }
+
+    /// <summary>
+    /// Verifies fail-closed EMA IMPD UI state when mandatory clinical or CMC readiness gates fail.
+    /// </summary>
+    [Fact]
+    public async Task CompileRegulatoryDossier_IncompleteEmaImpd_RendersBlockedBadgeAndReasons()
+    {
+        // WHAT: Selects EMA IMPD and mocks a blocked compilation with unmet readiness gates and blocking reasons.
+        // WHY:  Guarantees fail-closed visual feedback prevents premature regulatory filing when safety prerequisites fail.
+        // HOW:  Changes #select-dossier-framework to EmaImpd, compiles, and asserts #dossier-readiness-badge & blockers list.
+        SignedRegulatoryDossierBundle blockedBundle = CreateSampleDossierBundle(
+            "impd_ui_blocked",
+            RegulatorySubmissionFramework.EmaImpd,
+            isReady: false);
+
+        _dossierMock
+            .Setup(s => s.CompileDossierAsync(
+                "patient_blocked",
+                It.Is<CompileRegulatoryDossierRequest>(r => r.SubmissionFramework == RegulatorySubmissionFramework.EmaImpd),
+                It.IsAny<string>(),
+                default))
+            .ReturnsAsync(blockedBundle);
+
+        IRenderedComponent<ComplianceSecurity> cut = Render<ComplianceSecurity>();
+
+        cut.Find("#input-dossier-patient-id").Change("patient_blocked");
+        cut.Find("#select-dossier-framework").Change(nameof(RegulatorySubmissionFramework.EmaImpd));
+
+        var compileBtn = cut.Find("#btn-compile-dossier");
+        await cut.InvokeAsync(() => compileBtn.Click());
+
+        var badge = cut.Find("#dossier-readiness-badge");
+        Assert.Contains("dossier-badge-blocked", badge.ClassName);
+        Assert.Contains("BLOCKED / INCOMPLETE", badge.TextContent);
+
+        var blockers = cut.Find("#dossier-blocking-reasons");
+        Assert.Contains("Missing active paired reversal antidote.", blockers.TextContent);
+    }
+
+    /// <summary>
+    /// Verifies client JSON validation guards plus trusted-peer and revoked-signer verification badges.
+    /// </summary>
+    [Fact]
+    public async Task VerifyRegulatoryDossier_JsonValidationAndCrossNodeTrustStates_RenderExpectedBadges()
+    {
+        // WHAT: Exercises blank input, invalid JSON, missing manifest, trusted peer verification, and revoked signer verification.
+        // WHY:  Ensures external audit bundles undergo strict structural parsing and fail-closed ML-DSA-65 trust display.
+        // HOW:  Drives #textarea-verify-dossier-json and #btn-verify-dossier sequentially, querying fresh elements after each click.
+        SignedRegulatoryDossierBundle sampleBundle = CreateSampleDossierBundle(
+            "ind_peer_01",
+            RegulatorySubmissionFramework.FdaInd,
+            isReady: true);
+
+        _dossierMock
+            .SetupSequence(s => s.VerifyDossierBundleAsync(It.IsAny<SignedRegulatoryDossierBundle>(), It.IsAny<string>(), default))
+            .ReturnsAsync(new RegulatoryDossierVerificationReport
+            {
+                DossierId = "ind_peer_01",
+                HashValid = true,
+                SignatureValid = true,
+                IsTrusted = true,
+                TrustSource = RegulatoryDossierTrustSource.TrustedPeer,
+                TrustedPeerLabel = "Zurich Clinical Core"
+            })
+            .ReturnsAsync(new RegulatoryDossierVerificationReport
+            {
+                DossierId = "ind_peer_01",
+                HashValid = true,
+                SignatureValid = true,
+                IsTrusted = false,
+                TrustSource = RegulatoryDossierTrustSource.RevokedSigner,
+                TrustedPeerLabel = "Revoked Facility"
+            });
+
+        IRenderedComponent<ComplianceSecurity> cut = Render<ComplianceSecurity>();
+
+        // 1. Blank payload guard
+        var verifyBtn = cut.Find("#btn-verify-dossier");
+        await cut.InvokeAsync(() => verifyBtn.Click());
+        Assert.Contains("Paste a signed dossier bundle JSON payload", cut.Find("#dossier-error").TextContent);
+
+        // 2. Malformed JSON guard
+        cut.Find("#textarea-verify-dossier-json").Change("{not-valid-json");
+        verifyBtn = cut.Find("#btn-verify-dossier");
+        await cut.InvokeAsync(() => verifyBtn.Click());
+        Assert.NotEmpty(cut.Find("#dossier-error").TextContent);
+
+        // 3. Valid JSON missing manifest
+        cut.Find("#textarea-verify-dossier-json").Change("{\"bundleVersion\":\"nanoweaver-ind-dossier-v1\"}");
+        verifyBtn = cut.Find("#btn-verify-dossier");
+        await cut.InvokeAsync(() => verifyBtn.Click());
+        Assert.Contains("missing a valid signed manifest", cut.Find("#dossier-error").TextContent);
+
+        // 4. Valid signed bundle -> TrustedPeer badge
+        string bundleJson = JsonSerializer.Serialize(sampleBundle, new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        });
+        cut.Find("#textarea-verify-dossier-json").Change(bundleJson);
+        verifyBtn = cut.Find("#btn-verify-dossier");
+        await cut.InvokeAsync(() => verifyBtn.Click());
+
+        var trustBadge = cut.Find("#dossier-verify-trust-badge");
+        Assert.Contains("dossier-badge-trusted", trustBadge.ClassName);
+        Assert.Contains("SIGNATURE TRUSTED", trustBadge.TextContent);
+        Assert.Contains("Zurich Clinical Core", cut.Find("#dossier-verify-result-card").TextContent);
+
+        // 5. Re-verify -> RevokedSigner fail-closed badge
+        verifyBtn = cut.Find("#btn-verify-dossier");
+        await cut.InvokeAsync(() => verifyBtn.Click());
+
+        trustBadge = cut.Find("#dossier-verify-trust-badge");
+        Assert.Contains("dossier-badge-untrusted", trustBadge.ClassName);
+        Assert.Contains("SIGNATURE UNTRUSTED", trustBadge.TextContent);
+    }
+
+    /// <summary>
+    /// Verifies that persisted browser locale selection translates the dossier compiler headings
+    /// and that backend service exceptions render cleanly in <c>#dossier-error</c>.
+    /// </summary>
+    [Fact]
+    public async Task DossierPanel_LocalizedBrowserPreference_RendersGermanLabelsAndHandlesServiceError()
+    {
+        // WHAT: Configures JSInterop to return de-DE on weaverGetLanguage and mocks CompileDossierAsync throwing an exception.
+        // WHY:  Verifies multi-language reactivity in ComplianceSecurity alongside fail-safe UI error capture.
+        // HOW:  Renders component, asserts translated German section heading, then triggers compilation error.
+        JSInterop.Setup<string?>("weaverGetLanguage").SetResult("de-DE");
+        _dossierMock
+            .Setup(s => s.CompileDossierAsync(It.IsAny<string>(), It.IsAny<CompileRegulatoryDossierRequest?>(), It.IsAny<string>(), default))
+            .ThrowsAsync(new InvalidOperationException("PQC signing vault locked"));
+
+        IRenderedComponent<ComplianceSecurity> cut = Render<ComplianceSecurity>();
+
+        var section = cut.Find("#ind-dossier-compiler-panel");
+        Assert.Contains("Regulatorischer IND / IMPD Dossier-Compiler", section.TextContent);
+
+        cut.Find("#input-dossier-patient-id").Change("patient_err");
+        var compileBtn = cut.Find("#btn-compile-dossier");
+        await cut.InvokeAsync(() => compileBtn.Click());
+
+        Assert.Contains("PQC signing vault locked", cut.Find("#dossier-error").TextContent);
+    }
+
+    /// <summary>
+    /// Constructs a deterministic <see cref="SignedRegulatoryDossierBundle"/> test fixture containing 10 readiness gates.
+    /// </summary>
+    /// <param name="dossierId">Synthetic dossier identifier.</param>
+    /// <param name="framework">Target submission framework (FDA IND or EMA IMPD).</param>
+    /// <param name="isReady">Whether all 10 readiness gates pass.</param>
+    /// <returns>Constructed <see cref="SignedRegulatoryDossierBundle"/> instance.</returns>
+    private static SignedRegulatoryDossierBundle CreateSampleDossierBundle(
+        string dossierId,
+        RegulatorySubmissionFramework framework,
+        bool isReady)
+    {
+        // WHAT: Populates 10 DossierReadinessGate items matching the production gate inventory.
+        // WHY:  Exercises both ready (100.0%) and fail-closed blocked UI states without duplicating fixture setup.
+        // HOW:  Builds a 10-element gate array where CMC_REVERSAL_ANTIDOTE fails when isReady is false.
+        string[] gateCodes =
+        [
+            "CMC_DNA_BLUEPRINT",
+            "CMC_LOT_COA",
+            "CMC_REVERSAL_ANTIDOTE",
+            "CMC_COLD_CHAIN_CUSTODY",
+            "QSP_PHARMACOGENOMICS",
+            "QSP_DEPOT_180D",
+            "QSP_EPIGENETIC_CIRCUIT",
+            "QSP_MULTIYEAR_HOMEOSTASIS",
+            "COMP_PHARMACOVIGILANCE",
+            "COMP_AUDIT_LEDGER"
+        ];
+
+        List<DossierReadinessGate> gates = new(gateCodes.Length);
+        for (int i = 0; i < gateCodes.Length; i++)
+        {
+            string code = gateCodes[i];
+            bool passed = isReady || code != "CMC_REVERSAL_ANTIDOTE";
+            gates.Add(new DossierReadinessGate
+            {
+                GateCode = code,
+                Passed = passed,
+                Summary = passed ? $"{code} verified." : "Missing active paired reversal antidote."
+            });
+        }
+
+        SignedRegulatoryDossierBundle template = new SignedRegulatoryDossierBundle().GetExamples();
+        return template with
+        {
+            PayloadSha256 = "abcdef0123456789abcdef0123456789",
+            SignerKeyId = "node-mldsa65-test-key",
+            Manifest = template.Manifest with
+            {
+                DossierId = dossierId,
+                SubmissionFramework = framework,
+                IsSubmissionReady = isReady,
+                CompletenessScore = isReady ? 100.0 : 90.0,
+                ReadinessGates = gates,
+                BlockingReasons = isReady ? [] : ["Missing active paired reversal antidote."]
+            }
+        };
     }
 }

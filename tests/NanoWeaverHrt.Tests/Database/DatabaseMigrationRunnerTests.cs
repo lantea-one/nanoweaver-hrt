@@ -754,11 +754,11 @@ public sealed class DatabaseMigrationRunnerTests
         using DatabaseMigrationRunner runner = new();
 
         int firstPass = await runner.ApplyPendingMigrationsAsync(conn, "sqlite");
-        Assert.Equal(23, firstPass);
+        Assert.Equal(24, firstPass);
 
         IReadOnlyList<long> applied = await runner.GetAppliedVersionsAsync(conn, "sqlite");
-        Assert.Equal(23, applied.Count);
-        for (long i = 1; i <= 23; i++)
+        Assert.Equal(24, applied.Count);
+        for (long i = 1; i <= 24; i++)
         {
             Assert.Contains(i, applied);
         }
@@ -784,7 +784,7 @@ public sealed class DatabaseMigrationRunnerTests
         // WHY:  Fulfills Issue #99 (P96): Ensures DDL migrations produce valid SQL and data-only migrations handle dialects safely.
         // HOW:  Instantiates DatabaseMigrationRunner, iterates through RegisteredMigrations, and asserts non-null SQL.
         using DatabaseMigrationRunner runner = new();
-        Assert.Equal(23, runner.RegisteredMigrations.Count);
+        Assert.Equal(24, runner.RegisteredMigrations.Count);
 
         foreach (IDatabaseMigration migration in runner.RegisteredMigrations)
         {

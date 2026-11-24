@@ -2552,4 +2552,65 @@ public sealed class WeaverNodeApiClient : INanoWeaverNodeClient, IDisposable
         string effectiveToken = ResolveBearerToken(bearerToken);
         return _innerClient.AdministerReversalAntidoteAsync(profile, effectiveToken, lotId, request, ct);
     }
+
+    /// <inheritdoc/>
+    public Task<SignedRegulatoryDossierBundle> CompileRegulatoryDossierAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string patientId,
+        CompileRegulatoryDossierRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/compliance/dossiers/{patientId}/compile using provided or cached token.
+        // WHY:  Milestone 45 (P237): Enables desktop compliance tools to compile signed IND/IMPD dossiers.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.CompileRegulatoryDossierAsync(profile, effectiveToken, patientId, request, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<RegulatoryDossierSummary>> ListRegulatoryDossiersAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string patientId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/compliance/dossiers/{patientId} using provided or cached token.
+        // WHY:  Milestone 45 (P237): Retrieves archived IND/IMPD dossier summaries cleanly across native clients.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.ListRegulatoryDossiersAsync(profile, effectiveToken, patientId, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<byte[]?> DownloadRegulatoryDossierAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string dossierId,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches GET /api/compliance/dossiers/{dossierId}/download using provided or cached token.
+        // WHY:  Milestone 45 (P237): Streams portable signed dossier JSON bytes to local desktop file stores.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.DownloadRegulatoryDossierAsync(profile, effectiveToken, dossierId, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<RegulatoryDossierVerificationReport> VerifyRegulatoryDossierAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        VerifyRegulatoryDossierRequest request,
+        CancellationToken ct = default)
+    {
+        // WHAT: Dispatches POST /api/compliance/dossiers/verify using provided or cached token.
+        // WHY:  Milestone 45 (P237): Enables cross-node regulatory bundle verification from native clients.
+        // HOW:  Validates disposal state, resolves effective token, and delegates to _innerClient.
+        ThrowIfDisposed();
+        string effectiveToken = ResolveBearerToken(bearerToken);
+        return _innerClient.VerifyRegulatoryDossierAsync(profile, effectiveToken, request, ct);
+    }
 }

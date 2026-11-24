@@ -2159,4 +2159,65 @@ public interface INanoWeaverNodeClient
         string lotId,
         AdministerAntidoteRequest request,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Compiles, scores, and ML-DSA-65 signs a de-identified FDA IND / EMA IMPD regulatory dossier via
+    /// POST /api/compliance/dossiers/{patientId}/compile.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Administrator Bearer token.</param>
+    /// <param name="patientId">Target patient identifier.</param>
+    /// <param name="request">Compilation options specifying framework and optional target bindings.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The canonically signed <see cref="SignedRegulatoryDossierBundle"/>.</returns>
+    Task<SignedRegulatoryDossierBundle> CompileRegulatoryDossierAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string patientId,
+        CompileRegulatoryDossierRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Lists compiled regulatory dossier archive summaries for a patient via GET /api/compliance/dossiers/{patientId}.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Bearer token.</param>
+    /// <param name="patientId">Target patient identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Newest-first read-only list of <see cref="RegulatoryDossierSummary"/> items.</returns>
+    Task<IReadOnlyList<RegulatoryDossierSummary>> ListRegulatoryDossiersAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string patientId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Downloads a portable signed ML-DSA-65 FDA IND / EMA IMPD JSON bundle via
+    /// GET /api/compliance/dossiers/{dossierId}/download.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Administrator Bearer token.</param>
+    /// <param name="dossierId">Unique regulatory dossier snapshot identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Raw UTF-8 JSON bundle bytes when found; otherwise <see langword="null"/> on HTTP 404.</returns>
+    Task<byte[]?> DownloadRegulatoryDossierAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        string dossierId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Verifies a portable ML-DSA-65 signed IND / IMPD dossier bundle against canonical SHA-256 and peer trust anchors
+    /// via POST /api/compliance/dossiers/verify.
+    /// </summary>
+    /// <param name="profile">Instance connection profile.</param>
+    /// <param name="bearerToken">Active Administrator or Researcher Bearer token.</param>
+    /// <param name="request">Wrapper carrying the signed regulatory dossier bundle.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Computed <see cref="RegulatoryDossierVerificationReport"/>.</returns>
+    Task<RegulatoryDossierVerificationReport> VerifyRegulatoryDossierAsync(
+        InstanceProfile profile,
+        string bearerToken,
+        VerifyRegulatoryDossierRequest request,
+        CancellationToken ct = default);
 }

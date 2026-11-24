@@ -4676,6 +4676,82 @@ public sealed class NanoWeaverNodeClientTests : IDisposable
     }
 
     /// <summary>
+    /// Verifies Milestone 45 (P237) FDA IND / EMA IMPD regulatory dossier compilation, listing,
+    /// portable download (including HTTP 404), and cross-node verification client SDK methods.
+    /// </summary>
+    [Fact]
+    public async Task RegulatoryDossierClientMethods_NominalErrorsAndGuards_BehaveExpectedly()
+    {
+        // WHAT: Tests CompileRegulatoryDossierAsync, ListRegulatoryDossiersAsync, DownloadRegulatoryDossierAsync, and VerifyRegulatoryDossierAsync.
+        // WHY:  Milestone 45 (P237): Guarantees 100% SDK line and branch coverage across all 4 regulatory dossier endpoints.
+        // HOW:  Stubs /api/compliance/dossiers* routes verifying 201/200/404/403/null and every argument validation guard.
+        SignedRegulatoryDossierBundle bundleSample = new SignedRegulatoryDossierBundle().GetExamples();
+        RegulatoryDossierSummary summarySample = new RegulatoryDossierSummary().GetExamples();
+        RegulatoryDossierVerificationReport verifySample = new RegulatoryDossierVerificationReport().GetExamples();
+
+        CompileRegulatoryDossierRequest compileReq = new CompileRegulatoryDossierRequest().GetExamples();
+        VerifyRegulatoryDossierRequest verifyReq = new VerifyRegulatoryDossierRequest { Bundle = bundleSample };
+
+        // 1. CompileRegulatoryDossierAsync
+        _httpHandler.SetResponse("/api/compliance/dossiers/pat_001/compile", HttpStatusCode.Created, JsonSerializer.Serialize(bundleSample));
+        SignedRegulatoryDossierBundle compiled = await _client.CompileRegulatoryDossierAsync(_localProfile, "valid_token", "pat_001", compileReq);
+        Assert.Equal(bundleSample.Manifest.DossierId, compiled.Manifest.DossierId);
+
+        _httpHandler.SetResponse("/api/compliance/dossiers/pat_001/compile", HttpStatusCode.Forbidden, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.CompileRegulatoryDossierAsync(_localProfile, "valid_token", "pat_001", compileReq));
+        _httpHandler.SetResponse("/api/compliance/dossiers/pat_001/compile", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.CompileRegulatoryDossierAsync(_localProfile, "valid_token", "pat_001", compileReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.CompileRegulatoryDossierAsync(null!, "valid_token", "pat_001", compileReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.CompileRegulatoryDossierAsync(_localProfile, "", "pat_001", compileReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.CompileRegulatoryDossierAsync(_localProfile, "valid_token", "", compileReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.CompileRegulatoryDossierAsync(_localProfile, "valid_token", "pat_001", null!));
+
+        // 2. ListRegulatoryDossiersAsync
+        _httpHandler.SetResponse("/api/compliance/dossiers/pat_001", HttpStatusCode.OK, JsonSerializer.Serialize(new[] { summarySample }));
+        IReadOnlyList<RegulatoryDossierSummary> list = await _client.ListRegulatoryDossiersAsync(_localProfile, "valid_token", "pat_001");
+        Assert.Single(list);
+
+        _httpHandler.SetResponse("/api/compliance/dossiers/pat_001", HttpStatusCode.OK, "null");
+        IReadOnlyList<RegulatoryDossierSummary> emptyList = await _client.ListRegulatoryDossiersAsync(_localProfile, "valid_token", "pat_001");
+        Assert.Empty(emptyList);
+
+        _httpHandler.SetResponse("/api/compliance/dossiers/pat_001", HttpStatusCode.Forbidden, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.ListRegulatoryDossiersAsync(_localProfile, "valid_token", "pat_001"));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.ListRegulatoryDossiersAsync(null!, "valid_token", "pat_001"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.ListRegulatoryDossiersAsync(_localProfile, "", "pat_001"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.ListRegulatoryDossiersAsync(_localProfile, "valid_token", ""));
+
+        // 3. DownloadRegulatoryDossierAsync (200 OK, 404 null, 500 error, guards)
+        byte[] expectedBytes = Encoding.UTF8.GetBytes("{\"dossierId\":\"ind_20261124_001\"}");
+        _httpHandler.SetResponse("/api/compliance/dossiers/ind_20261124_001/download", HttpStatusCode.OK, Encoding.UTF8.GetString(expectedBytes));
+        byte[]? downloaded = await _client.DownloadRegulatoryDossierAsync(_localProfile, "valid_token", "ind_20261124_001");
+        Assert.NotNull(downloaded);
+        Assert.Equal(expectedBytes, downloaded);
+
+        _httpHandler.SetResponse("/api/compliance/dossiers/ind_20261124_001/download", HttpStatusCode.NotFound, "{}");
+        Assert.Null(await _client.DownloadRegulatoryDossierAsync(_localProfile, "valid_token", "ind_20261124_001"));
+
+        _httpHandler.SetResponse("/api/compliance/dossiers/ind_20261124_001/download", HttpStatusCode.InternalServerError, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.DownloadRegulatoryDossierAsync(_localProfile, "valid_token", "ind_20261124_001"));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.DownloadRegulatoryDossierAsync(null!, "valid_token", "ind_20261124_001"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.DownloadRegulatoryDossierAsync(_localProfile, "", "ind_20261124_001"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.DownloadRegulatoryDossierAsync(_localProfile, "valid_token", ""));
+
+        // 4. VerifyRegulatoryDossierAsync
+        _httpHandler.SetResponse("/api/compliance/dossiers/verify", HttpStatusCode.OK, JsonSerializer.Serialize(verifySample));
+        RegulatoryDossierVerificationReport report = await _client.VerifyRegulatoryDossierAsync(_localProfile, "valid_token", verifyReq);
+        Assert.True(report.IsTrusted);
+
+        _httpHandler.SetResponse("/api/compliance/dossiers/verify", HttpStatusCode.BadRequest, "{}");
+        await Assert.ThrowsAsync<NodeApiException>(() => _client.VerifyRegulatoryDossierAsync(_localProfile, "valid_token", verifyReq));
+        _httpHandler.SetResponse("/api/compliance/dossiers/verify", HttpStatusCode.OK, "null");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _client.VerifyRegulatoryDossierAsync(_localProfile, "valid_token", verifyReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.VerifyRegulatoryDossierAsync(null!, "valid_token", verifyReq));
+        await Assert.ThrowsAsync<ArgumentException>(() => _client.VerifyRegulatoryDossierAsync(_localProfile, "", verifyReq));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.VerifyRegulatoryDossierAsync(_localProfile, "valid_token", null!));
+    }
+
+    /// <summary>
     /// In-memory HTTP message handler stub for deterministic test execution.
     /// </summary>
     private sealed class StubHttpMessageHandler : HttpMessageHandler

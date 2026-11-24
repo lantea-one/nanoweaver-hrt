@@ -3129,3 +3129,70 @@ select.form-control-sm {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
+/* Regulatory IND / IMPD dossier compiler & PQC trust badges (Milestone 45) */
+.dossier-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.7rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+}
+
+.dossier-badge-ready,
+.dossier-badge-trusted {
+    background: rgba(16, 185, 129, 0.18);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.45);
+}
+
+.dossier-badge-blocked,
+.dossier-badge-untrusted {
+    background: rgba(239, 68, 68, 0.18);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.45);
+}
+
+.dossier-result-card {
+    background: rgba(15, 23, 42, 0.65);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+.dossier-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0.75rem;
+}
+
+.dossier-gate-pass {
+    color: #34d399;
+    font-weight: 600;
+}
+
+.dossier-gate-fail {
+    color: #f87171;
+    font-weight: 600;
+}
+
+.dossier-actions-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: center;
+    margin-top: 1rem;
+}
+
+.dossier-textarea {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.8rem;
+    min-height: 7rem;
+}
+
+.dossier-blocking-list {
+    margin: 0.5rem 0 0 1.25rem;
+    color: #fca5a5;
+}
+

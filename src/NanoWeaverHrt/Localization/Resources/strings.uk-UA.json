@@ -233,5 +233,21 @@
   "Antidote.KineticsChartTitle": "24-годинний розпад депо та зниження рівня гормонів",
   "Antidote.EmergencyTitle": "Незворотна екстрена клінічна нейтралізація",
   "Antidote.EmergencyWarning": "Екстрене введення назавжди розбирає це депо, переводить антидот у стан «Нейтралізовано» та реєструє постійне відкликання партії.",
-  "Antidote.EventsEmpty": "Для цієї партії ще не виконувалося екстрених нейтралізацій."
+  "Antidote.EventsEmpty": "Для цієї партії ще не виконувалося екстрених нейтралізацій.",
+  "Dossier.SectionTitle": "Компілятор Регуляторного Досьє IND / IMPD",
+  "Dossier.SectionSubtitle": "Компілюйте псевдонімізовані за HIPAA та підписані ML-DSA-65 пакети подання FDA IND (21 CFR 312) і EMA IMPD із суворим 10-бар'єрним контролем готовності та міжвузловою PQC-перевіркою підпису.",
+  "Dossier.PatientIdLabel": "Ідентифікатор Суб'єкта",
+  "Dossier.FrameworkLabel": "Регуляторна База",
+  "Dossier.LotIdLabel": "ID Серії Вектора (Необов'язково)",
+  "Dossier.SponsorLabel": "Організація Спонсора",
+  "Dossier.SiteCodeLabel": "Код Клінічного Центру",
+  "Dossier.CompileButton": "Скомпілювати Регуляторне Досьє",
+  "Dossier.DownloadButton": "Завантажити Підписаний Пакет (.json)",
+  "Dossier.VerifyButton": "Перевірити Підписане Досьє",
+  "Dossier.BadgeSubmissionReady": "ГОТОВО ДО ПОДАННЯ",
+  "Dossier.BadgeBlockedIncomplete": "ЗАБЛОКОВАНО / НЕПОВНЕ",
+  "Dossier.BadgeSignatureTrusted": "ПІДПИС ДОВІРЕНИЙ",
+  "Dossier.BadgeSignatureUntrusted": "ПІДПИС НЕДОВІРЕНИЙ",
+  "Dossier.ChecklistTitle": "10-Бар'єрний Чекліст Готовності",
+  "Dossier.VerifierInputLabel": "JSON Підписаного Пакета Регуляторного Досьє"
 }

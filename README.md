@@ -87,6 +87,7 @@ flowchart TD
 - **NIST Post-Quantum Standards**: Hybrid envelope encryption via ML-KEM-768 (FIPS 203) with AES-256-GCM, and quantum-resistant digital signatures via ML-DSA-65 (FIPS 204).
 - **FDA 21 CFR Part 11 Audit Trail**: Immutable, append-only SHA-384 hash-chained audit ledger with automated monotonic sequence and signature verification.
 - **HIPAA Safe Harbor & GDPR Article 17**: Deterministic SHA-256 HMAC pseudonymization of patient identifiers and instant cryptographic shredding / key zeroization for right-to-be-forgotten compliance.
+- **Regulatory IND / IMPD Dossier Compiler (Milestone 45)**: 10-gate fail-closed FDA IND (21 CFR 312) and EMA IMPD submission bundle compiler generating HIPAA-pseudonymized, ML-DSA-65 signed, AES-256-GCM archived trial dossiers with cross-node PQC trust verification.
 
 ### 7. Cryptographic PKI Identity, Role Gating, Idle Expiration & Hardening
 - **Zero Default Passwords & Mandatory Setup Wizard**: No default passwords or backdoors. First-launch setup (`/setup`) locks all cluster operations until the master Administrator account is created and bound to an asymmetric cryptographic keypair (Ed25519 or ML-DSA-65).

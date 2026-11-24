@@ -233,5 +233,21 @@
   "Antidote.KineticsChartTitle": "24-घंटे डिपो विघटन और हार्मोन क्षय वक्र",
   "Antidote.EmergencyTitle": "अपरिवर्तनीय आपातकालीन नैदानिक निष्क्रियता",
   "Antidote.EmergencyWarning": "आपातकालीन प्रशासन इस डिपो को स्थायी रूप से विघटित करता है, एंटीडोट को निष्क्रिय करता है और लॉट को स्थायी रूप से रद्द करता है।",
-  "Antidote.EventsEmpty": "इस लॉट के विरुद्ध कोई आपातकालीन निष्क्रियता प्रशासन निष्पादित नहीं किया गया है।"
+  "Antidote.EventsEmpty": "इस लॉट के विरुद्ध कोई आपातकालीन निष्क्रियता प्रशासन निष्पादित नहीं किया गया है।",
+  "Dossier.SectionTitle": "नियामक IND / IMPD डोजियर संकलक",
+  "Dossier.SectionSubtitle": "10-गेट फेल-क्लोज्ड तैयारी प्रवर्तन और क्रॉस-नोड PQC हस्ताक्षर सत्यापन के साथ HIPAA-छद्मनामयुक्त, ML-DSA-65 हस्ताक्षरित FDA IND (21 CFR 312) और EMA IMPD सबमिशन बंडल संकलित करें।",
+  "Dossier.PatientIdLabel": "विषय पहचानकर्ता",
+  "Dossier.FrameworkLabel": "नियामक ढांचा",
+  "Dossier.LotIdLabel": "वेक्टर लॉट आईडी (वैकल्पिक)",
+  "Dossier.SponsorLabel": "प्रायोजक संगठन",
+  "Dossier.SiteCodeLabel": "क्लिनिकल साइट कोड",
+  "Dossier.CompileButton": "नियामक डोजियर संकलित करें",
+  "Dossier.DownloadButton": "हस्ताक्षरित बंडल डाउनलोड करें (.json)",
+  "Dossier.VerifyButton": "हस्ताक्षरित डोजियर सत्यापित करें",
+  "Dossier.BadgeSubmissionReady": "सबमिशन के लिए तैयार",
+  "Dossier.BadgeBlockedIncomplete": "अवरुद्ध / अपूर्ण",
+  "Dossier.BadgeSignatureTrusted": "हस्ताक्षर विश्वसनीय",
+  "Dossier.BadgeSignatureUntrusted": "हस्ताक्षर अविश्वसनीय",
+  "Dossier.ChecklistTitle": "10-गेट तैयारी जांच सूची",
+  "Dossier.VerifierInputLabel": "हस्ताक्षरित नियामक डोजियर बंडल JSON"
 }

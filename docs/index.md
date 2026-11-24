@@ -141,13 +141,13 @@ Explore the comprehensive guides and references below:
 21. [**Agarose Gel Quality Analysis**](gel-electrophoresis-analysis.md)
     * Automated computer vision segmentation, lane profiling, and band densitometry for DNA origami quality control.
 22. [**Post-Quantum Cryptography & Regulatory Compliance**](compliance-and-security.md)
-    * NIST FIPS 203 (ML-KEM-768), FIPS 204 (ML-DSA-65), HIPAA Safe Harbor, GDPR Article 17 crypto-shredding, GINA non-discrimination, FDA 21 CFR Part 11 audit trails, asymmetric PKI identities, SQL migrations, and idle session guards.
+    * NIST FIPS 203 (ML-KEM-768), FIPS 204 (ML-DSA-65), HIPAA Safe Harbor, GDPR Article 17 crypto-shredding, GINA non-discrimination, FDA 21 CFR Part 11 audit trails, 10-gate FDA IND / EMA IMPD dossier compilation, asymmetric PKI identities, SQL migrations, and idle session guards.
 23. [**Vendored JavaScript Subsystem & SRI Integrity**](vendored-javascript.md)
     * Zero external CDNs, Subresource Integrity (SRI) dynamic hashing, noble crypto Known-Answer Tests, and browser sandbox security.
 24. [**REST API Reference**](api-reference.md)
     * Full endpoint catalog, request/response JSON schemas, and test suite execution.
 25. [**Release Notes & Architecture Evolution**](release-notes.md)
-    * Post-quantum cryptographic upgrades, multi-engine database persistence, longitudinal serum assay depot calibration, cryptographic 5-gate wet-lab lot release, cross-node CoA peer verification & revocation, client REST SDK parity, and milestone releases through v2026.11.19.3.
+    * Post-quantum cryptographic upgrades, multi-engine database persistence, longitudinal serum assay depot calibration, cryptographic wet-lab lot release, cross-node CoA & IND/IMPD dossier verification, reversal antidote kill-switch, client REST SDK parity, and milestone releases through v2026.11.24.3.
 26. [**Scientific Research & Legal Disclaimer**](disclaimer.md)
     * Formal scientific research scope, medical non-advice, and BSL-1 biosafety declarations.
 

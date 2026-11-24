@@ -233,5 +233,21 @@
   "Antidote.KineticsChartTitle": "24-uurs Depotafbraak & Systemische Hormoondaling",
   "Antidote.EmergencyTitle": "Onomkeerbare Klinische Noodneutralisatie",
   "Antidote.EmergencyWarning": "Noodtoediening ontmantelt dit depot permanent, zet het antidotum op Geneutraliseerd en registreert een permanente lotterugroeping.",
-  "Antidote.EventsEmpty": "Er zijn geen noodneutralisaties uitgevoerd voor dit lot."
+  "Antidote.EventsEmpty": "Er zijn geen noodneutralisaties uitgevoerd voor dit lot.",
+  "Dossier.SectionTitle": "Regelgevende IND / IMPD Dossiercompiler",
+  "Dossier.SectionSubtitle": "Compileer HIPAA-gepseudonimiseerde, ML-DSA-65-ondertekende FDA IND (21 CFR 312) en EMA IMPD indieningsbundels met strikte 10-poorts controle en PQC-handtekeningverificatie tussen knooppunten.",
+  "Dossier.PatientIdLabel": "Proefpersoon-ID",
+  "Dossier.FrameworkLabel": "Regelgevend Kader",
+  "Dossier.LotIdLabel": "Vector Lot-ID (Optioneel)",
+  "Dossier.SponsorLabel": "Sponsororganisatie",
+  "Dossier.SiteCodeLabel": "Klinische Locatiecode",
+  "Dossier.CompileButton": "Regelgevend Dossier Compileren",
+  "Dossier.DownloadButton": "Ondertekende Bundel Downloaden (.json)",
+  "Dossier.VerifyButton": "Ondertekend Dossier Verifiëren",
+  "Dossier.BadgeSubmissionReady": "GEREED VOOR INDIENING",
+  "Dossier.BadgeBlockedIncomplete": "GEBLOKKEERD / ONVOLLEDIG",
+  "Dossier.BadgeSignatureTrusted": "HANDTEKENING VERTROUWD",
+  "Dossier.BadgeSignatureUntrusted": "HANDTEKENING ONVERTROUWD",
+  "Dossier.ChecklistTitle": "10-Poorts Gereedheidschecklist",
+  "Dossier.VerifierInputLabel": "Ondertekende Regelgevende Dossierbundel JSON"
 }
