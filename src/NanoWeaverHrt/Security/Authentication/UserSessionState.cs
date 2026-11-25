@@ -122,13 +122,15 @@ public sealed class UserSessionState
         // HOW:  Checks IsExpired; if true, emits IdleTimeout event, signs out the user, and returns true.
         if (IsExpired(customTimeout))
         {
-            if (CurrentUser != null && _eventBus != null)
+            if (_eventBus != null)
             {
+                // WHY !: IsExpired() returned true, which requires IsAuthenticated (CurrentUser != null).
+                UserAccount activeUser = CurrentUser!;
                 _ = _eventBus.PublishAsync(new UserSessionActivityEvent(
-                    CurrentUser.Username,
-                    CurrentUser.Role.ToString(),
+                    activeUser.Username,
+                    activeUser.Role.ToString(),
                     "IdleTimeout",
-                    CurrentUser.AccessGate.ToString()));
+                    activeUser.AccessGate.ToString()));
             }
 
             SignOut();

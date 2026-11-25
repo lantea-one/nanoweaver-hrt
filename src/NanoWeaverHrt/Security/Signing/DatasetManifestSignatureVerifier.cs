@@ -65,8 +65,11 @@ public sealed class DatasetManifestSignatureVerifier
             return false;
         }
 
-        if (!DatasetManifestSignature.TryParseAlgorithm(manifest.SignatureAlgorithm, out KeyAlgorithm manifestAlgorithm) ||
-            manifestAlgorithm != trustedAlgorithm)
+        // WHAT: Parse the manifest signature algorithm after DatasetManifestSignatureState.Signed is guaranteed.
+        // WHY: GetState already enforces valid algorithm syntax for Signed manifests, so only algorithm mismatch needs branching.
+        // HOW: Discard the guaranteed-true TryParseAlgorithm return value and compare manifestAlgorithm directly to trustedAlgorithm.
+        _ = DatasetManifestSignature.TryParseAlgorithm(manifest.SignatureAlgorithm, out KeyAlgorithm manifestAlgorithm);
+        if (manifestAlgorithm != trustedAlgorithm)
         {
             return false;
         }

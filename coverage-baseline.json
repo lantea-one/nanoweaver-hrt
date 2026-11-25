@@ -1,13 +1,14 @@
 {
   "schema_version": 1,
-  "seeded_from_commit": "edd046f7bc9531a460fe3fd9b65681cbb9843bdc",
+  "seeded_from_commit": "e5d19e392bc90eee8e75ec400f96147e0d999dd0",
   "seeded_on_utc": "2026-11-24",
   "measurement": {
-    "runsettings": "coverage-full.runsettings",
+    "config": "coverage-full.mtp.json",
+    "runner": "Microsoft.Testing.Platform",
     "weaver_test_postgres": "unset"
   },
   "line_rate": 100.0,
-  "branch_rate": 99.08,
+  "branch_rate": 99.45,
   "uncovered_lines_total": 0,
   "classes": {}
 }

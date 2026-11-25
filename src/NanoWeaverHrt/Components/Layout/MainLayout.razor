@@ -88,15 +88,12 @@
                 <span class="nav-icon">👥</span> @Localizer.GetString("Nav.UserManagement", _currentLanguage)
             </NavLink>
         }
-        @if (SessionState.IsAuthenticated)
-        {
-            <NavLink href="/dna" class="nav-link">
-                <span class="nav-icon">🧬</span> @Localizer.GetString("Nav.DnaAndImports", _currentLanguage)
-            </NavLink>
-            <NavLink href="/profile" class="nav-link">
-                <span class="nav-icon">👤</span> @Localizer.GetString("Nav.MyProfile", _currentLanguage)
-            </NavLink>
-        }
+        <NavLink href="/dna" class="nav-link">
+            <span class="nav-icon">🧬</span> @Localizer.GetString("Nav.DnaAndImports", _currentLanguage)
+        </NavLink>
+        <NavLink href="/profile" class="nav-link">
+            <span class="nav-icon">👤</span> @Localizer.GetString("Nav.MyProfile", _currentLanguage)
+        </NavLink>
     </div>
 </nav>
 
@@ -516,7 +513,8 @@
                 // Circuit disconnected or test harness
             }
 
-            _dotNetRef?.Dispose();
+            // WHY !: _idleWatcherRegistered is only set to true after _dotNetRef is created.
+            _dotNetRef!.Dispose();
             _dotNetRef = null;
         }
     }

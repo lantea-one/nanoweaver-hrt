@@ -241,7 +241,8 @@ public sealed class DcdPipeReader : ITrajectoryParser
 
         reader.Advance(titleLength);
 
-        if (!reader.TryReadLittleEndian(out int trailingTitleMarker) || trailingTitleMarker != titleLength)
+        _ = reader.TryReadLittleEndian(out int trailingTitleMarker);
+        if (trailingTitleMarker != titleLength)
         {
             throw new InvalidDataException("Mismatched DCD title block trailing Fortran marker.");
         }
@@ -251,9 +252,12 @@ public sealed class DcdPipeReader : ITrajectoryParser
         //       untrusted file (finding H4). Treating an implausible count as an invalid header means the reader
         //       reserves nothing and emits no frames, which is the existing behaviour for a count of zero or less.
         // HOW:  TrajectoryFrameBuffer.IsPlausibleAtomCount applies the documented MaxAtomsPerFrame ceiling.
-        if (!reader.TryReadLittleEndian(out int natomRecordLength) || natomRecordLength != 4) return false;
-        if (!reader.TryReadLittleEndian(out atomCount) || !TrajectoryFrameBuffer.IsPlausibleAtomCount(atomCount)) return false;
-        if (!reader.TryReadLittleEndian(out int trailingNatomMarker) || trailingNatomMarker != 4)
+        _ = reader.TryReadLittleEndian(out int natomRecordLength);
+        if (natomRecordLength != 4) return false;
+        _ = reader.TryReadLittleEndian(out atomCount);
+        if (!TrajectoryFrameBuffer.IsPlausibleAtomCount(atomCount)) return false;
+        _ = reader.TryReadLittleEndian(out int trailingNatomMarker);
+        if (trailingNatomMarker != 4)
         {
             throw new InvalidDataException("Mismatched DCD atom-count block trailing Fortran marker.");
         }

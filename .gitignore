@@ -591,8 +591,9 @@ coverage*.json
 coverage*.xml
 coverage*.info
 
-# The step-7 ratchet baseline is deliberately tracked: the rule above would otherwise hide it.
+# Step 7 ratchet baseline and full-coverage MTP config are deliberately tracked: the rule above would otherwise hide them.
 !/coverage-baseline.json
+!/coverage-full.mtp.json
 
 # Visual Studio code coverage results
 

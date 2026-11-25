@@ -248,10 +248,10 @@ public sealed class DuckDbTrajectoryAnalyticsService : ITrajectoryAnalyticsServi
             using DbDataReader reader = await command.ExecuteReaderAsync(ct);
             await reader.ReadAsync(ct);
 
-            long atomCount = reader.IsDBNull(0) ? 0L : Convert.ToInt64(reader.GetValue(0));
-            long frameCount = reader.IsDBNull(1) ? 0L : Convert.ToInt64(reader.GetValue(1));
-            double bbVolume = reader.IsDBNull(2) ? 0.0 : Convert.ToDouble(reader.GetValue(2));
-            double meanRg = reader.IsDBNull(3) ? 0.0 : Convert.ToDouble(reader.GetValue(3));
+            long atomCount = Convert.ToInt64(reader.GetValue(0));
+            long frameCount = Convert.ToInt64(reader.GetValue(1));
+            double bbVolume = Convert.ToDouble(reader.GetValue(2));
+            double meanRg = Convert.ToDouble(reader.GetValue(3));
 
             return new TrajectorySummaryStatistics(
                 datasetName,

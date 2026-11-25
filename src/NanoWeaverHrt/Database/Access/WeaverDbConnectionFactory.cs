@@ -139,8 +139,7 @@ public sealed class WeaverDbConnectionFactory : IWeaverDbConnectionFactory
         string? envMySql = configuration["MYSQL_CONNECTION_STRING"] ?? Environment.GetEnvironmentVariable("MYSQL_CONNECTION_STRING");
         _mySqlConnectionString = envMySql ?? string.Empty;
 
-        string? envDuckDb = configuration["DUCKDB_CONNECTION_STRING"] ?? Environment.GetEnvironmentVariable("DUCKDB_CONNECTION_STRING")
-            ?? configuration["DUCKDB_DATABASE_PATH"] ?? Environment.GetEnvironmentVariable("DUCKDB_DATABASE_PATH");
+        string? envDuckDb = ResolveSettingWithFallback(configuration, Environment.GetEnvironmentVariable, "DUCKDB_CONNECTION_STRING", "DUCKDB_DATABASE_PATH");
         _duckDbConnectionString = FormatDuckDbConnectionString(envDuckDb);
 
         string incomingDir = configuration["TRAJECTORY_INCOMING_DIR"] ?? Path.Combine(Directory.GetCurrentDirectory(), "simulations", "shared-data");
@@ -273,10 +272,7 @@ public sealed class WeaverDbConnectionFactory : IWeaverDbConnectionFactory
         //       token is rethrown explicitly so shutdown is never mistaken for an outage; the connection is
         //       disposed when the method exits.
         await using NpgsqlConnection probe = new(_postgresConnectionString);
-        Task open = probe.OpenAsync(ct);
-        await Task.WhenAny(open);
-        ct.ThrowIfCancellationRequested();
-        return open.Exception?.GetBaseException();
+        return await ProbeConnectionAsync(probe, ct);
     }
 
     /// <inheritdoc/>
@@ -378,10 +374,7 @@ public sealed class WeaverDbConnectionFactory : IWeaverDbConnectionFactory
 
         await using (probe)
         {
-            Task open = probe.OpenAsync(ct);
-            await Task.WhenAny(open);
-            ct.ThrowIfCancellationRequested();
-            return open.Exception?.GetBaseException();
+            return await ProbeConnectionAsync(probe, ct);
         }
     }
 
@@ -394,12 +387,9 @@ public sealed class WeaverDbConnectionFactory : IWeaverDbConnectionFactory
     {
         // WHAT: Opens and immediately closes a DuckDB in-process connection.
         // WHY:  Validates that DuckDB library and storage file or memory instance are accessible without migrating.
-        // HOW:  Opens DuckDB connection via Task.WhenAny to inspect completion state without try/catch branching.
+        // HOW:  Opens DuckDB connection via ProbeConnectionAsync to inspect completion state without try/catch branching.
         await using DuckDBConnection probe = new(_duckDbConnectionString);
-        Task open = probe.OpenAsync(ct);
-        await Task.WhenAny(open);
-        ct.ThrowIfCancellationRequested();
-        return open.Exception?.GetBaseException();
+        return await ProbeConnectionAsync(probe, ct);
     }
 
     /// <summary>
@@ -471,5 +461,48 @@ public sealed class WeaverDbConnectionFactory : IWeaverDbConnectionFactory
         // WHY:  Allows synchronous consumers (e.g. AuditLedgerRepository) to run ADO.NET operations without async deadlocks.
         // HOW:  Awaits OpenAsync synchronously via GetAwaiter().GetResult().
         return OpenAsync().GetAwaiter().GetResult();
+    }
+
+    /// <summary>
+    /// Shared probe helper that attempts to open an already-constructed database connection and returns any open failure.
+    /// </summary>
+    /// <param name="probe">Initialized database connection instance owned by the caller.</param>
+    /// <param name="ct">Cancellation token; cancellation propagates instead of mapping to an outage.</param>
+    /// <returns>Null when the connection opened cleanly; otherwise the base exception raised while opening.</returns>
+    private static async Task<Exception?> ProbeConnectionAsync(DbConnection probe, CancellationToken ct)
+    {
+        // WHAT: Opens a database probe connection and captures any driver exception without throwing.
+        // WHY:  Shares a single deterministic probe path across PostgreSQL, MySQL, and DuckDB backends.
+        // HOW:  Observes OpenAsync via Task.WhenAny, honors explicit cancellation, and unwraps any base failure.
+        Task open = probe.OpenAsync(ct);
+        await Task.WhenAny(open);
+        ct.ThrowIfCancellationRequested();
+        return open.Exception?.GetBaseException();
+    }
+
+    /// <summary>
+    /// Resolves a database connection setting using primary configuration/environment keys before falling back to a secondary key pair.
+    /// </summary>
+    /// <param name="configuration">Application configuration source checked before environment variables.</param>
+    /// <param name="envLookup">Delegate used to inspect process environment variables by key name.</param>
+    /// <param name="primaryKey">Primary configuration and environment variable name checked first.</param>
+    /// <param name="secondaryKey">Secondary fallback configuration and environment variable name checked when the primary key is unset.</param>
+    /// <returns>The first non-null setting value resolved, or null when none of the four sources specify a value.</returns>
+    internal static string? ResolveSettingWithFallback(
+        IConfiguration configuration,
+        Func<string, string?> envLookup,
+        string primaryKey,
+        string secondaryKey)
+    {
+        // WHAT: Checks primary config/env then secondary config/env without null-coalescing chains in the constructor.
+        // WHY:  Keeps multi-key environment fallback readable and enables direct unit testing of all four precedence branches.
+        // HOW:  Evaluates primary configuration and environment first, then returns secondary configuration or environment.
+        string? primary = configuration[primaryKey] ?? envLookup(primaryKey);
+        if (primary != null)
+        {
+            return primary;
+        }
+
+        return configuration[secondaryKey] ?? envLookup(secondaryKey);
     }
 }

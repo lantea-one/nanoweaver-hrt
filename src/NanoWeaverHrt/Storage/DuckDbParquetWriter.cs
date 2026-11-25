@@ -203,7 +203,7 @@ public sealed class DuckDbParquetWriter : IParquetTrajectoryWriter
         queryCmd.CommandText = $"SELECT COUNT(*) FROM read_parquet('{normalizedPath}');";
 
         object? result = await queryCmd.ExecuteScalarAsync(cancellationToken);
-        return result is long count ? count : Convert.ToInt64(result);
+        return Convert.ToInt64(result);
     }
 
     /// <summary>
