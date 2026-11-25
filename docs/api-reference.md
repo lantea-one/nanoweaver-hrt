@@ -2494,6 +2494,27 @@ The telemetry response object (`GET /api/system/telemetry`) includes the followi
 
 ---
 
+### Web UI Display Preferences (`GET` / `PUT` / `DELETE /api/ui/preferences`)
+
+Manages per-user `Simple` vs. `Advanced` progressive disclosure preferences backed by `weaver_user_preferences` (`Migration025_UserUiPreferences`) and fallback node configuration key `Ui:DefaultDisplayMode` (`Simple` by default, or `Advanced`).
+
+#### `GET /api/ui/preferences`
+Returns the caller's resolved `EffectiveUiPreference` (`username`, `displayMode`, `isUserOverride`, `nodeDefaultDisplayMode`, `updatedAtUtc`).
+* **Role Requirement**: Any authenticated user (`Administrator`, `Researcher`, or `Patient`).
+* **Response Status**: `200 OK`, `401 Unauthorized`.
+
+#### `PUT /api/ui/preferences`
+Persists `{"displayMode": "Simple" | "Advanced"}` for the signed-in caller and records a `UI_DISPLAY_MODE_CHANGED` audit event.
+* **Role Requirement**: Any authenticated user (`Administrator`, `Researcher`, or `Patient`).
+* **Response Status**: `200 OK`, `400 Bad Request` (`SecureProblemDetails` when payload is null or enum is invalid), `401 Unauthorized`.
+
+#### `DELETE /api/ui/preferences`
+Removes the caller's personal override row (`weaver_user_preferences`), emits a `UI_DISPLAY_MODE_RESET` audit event, and returns the resolved node default preference (`isUserOverride: false`).
+* **Role Requirement**: Any authenticated user (`Administrator`, `Researcher`, or `Patient`).
+* **Response Status**: `200 OK`, `401 Unauthorized`.
+
+---
+
 ## 16. Automated Test Suite Execution & Coverage Gate
 
 We mandate a 100% test pass rate and 100.00% line and branch code coverage across both .NET and JavaScript codebases.

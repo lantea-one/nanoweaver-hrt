@@ -80,6 +80,13 @@ On initial boot, the sovereign node enforces a strict zero-backdoor policy: **no
    - Confirm secure offline storage.
    - Once completed, the setup wizard is permanently locked to prevent administrative hijacking.
 
+### Step 5: Task Hub, Navigation & Simple vs. Advanced Display
+
+After signing in, `/` opens the calm **Task Hub** tailored to your role (`Patient`, `Researcher`, or `Administrator`), while the 6-stage **Guided DNA Origami Therapy Wizard** lives at `/wizard`:
+
+- **Simple Mode (Default)**: Hides real-time GC counters, hardware accelerator chips, and database badges from the header/banner; groups navigation into 1–4 role-filtered task menus; and collapses dense engineering/compliance sections behind clean disclosures.
+- **Advanced Display Toggle**: Click **Show Advanced Display** in the top header (or on the Task Hub bar) to persist your preference across logins and immediately reveal live GC/heap telemetry, node hardware/DB identity chips, all 11 flat navigation links, and expanded secondary workspace panels. Administrators can change the cluster default via configuration key `Ui:DefaultDisplayMode` (`Simple` or `Advanced`).
+
 ---
 
 ## 3. Running with Docker Compose

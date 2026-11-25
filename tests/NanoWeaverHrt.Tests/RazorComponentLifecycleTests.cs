@@ -36,6 +36,7 @@ using NanoWeaverHrt.Services;
 using NanoWeaverHrt.Services.Stack;
 using NanoWeaverHrt.Simulations;
 using NanoWeaverHrt.Storage;
+using NanoWeaverHrt.Ui;
 using Xunit;
 
 namespace NanoWeaverHrt.Tests;
@@ -155,6 +156,8 @@ public sealed class RazorComponentLifecycleTests : IDisposable
         sc.AddSingleton<IAcceleratorBenchmarkService, AcceleratorBenchmarkService>();
         sc.AddSingleton<IServerSessionActivityTracker>(_ => new ServerSessionActivityTracker());
         sc.AddSingleton<IWeaverLocalizer, WeaverLocalizer>();
+        sc.AddSingleton<IUserUiPreferenceRepository, UserUiPreferenceRepository>();
+        sc.AddSingleton<IUiPreferenceService, UiPreferenceService>();
         sc.AddScoped<UserSessionState>();
         sc.AddSingleton<NavigationManager>(_navManager);
         sc.AddSingleton<IJSRuntime>(_jsRuntime);

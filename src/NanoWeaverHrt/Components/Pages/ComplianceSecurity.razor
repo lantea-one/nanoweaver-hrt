@@ -49,6 +49,9 @@
 </section>
 
 <!-- Regulatory Compliance Assessment Matrix -->
+<details id="compliance-matrix-disclosure" class="progressive-disclosure mt-1-5rem" open="@(DisplayMode == UiDisplayMode.Advanced)">
+    <summary>@T("Ui.Disclosure.ComplianceMatrix")</summary>
+    <div class="progressive-disclosure-body">
 <section class="card mt-1-5rem">
     <div class="card-header">
         <h3>Regulatory Compliance Posture Assessment</h3>
@@ -108,6 +111,8 @@
         </table>
     </div>
 </section>
+    </div>
+</details>
 
 <!-- Interactive De-Identification & Crypto-Shredding Tool -->
 <div class="compliance-grid">
@@ -830,4 +835,10 @@
             _dossierBusy = false;
         }
     }
+
+    /// <summary>
+    /// Gets or sets the active UI display density cascaded from <see cref="MainLayout"/>.
+    /// </summary>
+    [CascadingParameter(Name = "UiDisplayMode")]
+    public UiDisplayMode DisplayMode { get; set; } = UiDisplayMode.Simple;
 }

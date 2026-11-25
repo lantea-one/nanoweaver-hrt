@@ -1,6 +1,7 @@
 using NanoWeaverHrt.Caching;
 using NanoWeaverHrt.Events;
 using NanoWeaverHrt.Events.Models;
+using NanoWeaverHrt.Ui;
 
 namespace NanoWeaverHrt.Security.Authentication;
 
@@ -176,6 +177,7 @@ public sealed class UserSessionState
     {
         UserAccount? prevUser = CurrentUser;
         CurrentUser = null;
+        DisplayMode = UiDisplayMode.Simple;
 
         if (prevUser != null)
         {
@@ -201,4 +203,27 @@ public sealed class UserSessionState
     /// Dispatches state change notifications to registered Blazor subscribers.
     /// </summary>
     private void NotifyStateChanged() => OnChange?.Invoke();
+
+    /// <summary>
+    /// Gets the active Web UI display density (<see cref="UiDisplayMode.Simple"/> by default).
+    /// </summary>
+    public UiDisplayMode DisplayMode { get; private set; } = UiDisplayMode.Simple;
+
+    /// <summary>
+    /// Gets a value indicating whether the active Web UI session is showing full Advanced operator views.
+    /// </summary>
+    public bool IsAdvancedDisplay => DisplayMode == UiDisplayMode.Advanced;
+
+    /// <summary>
+    /// Updates the circuit's active UI display mode and notifies layout/page subscribers to re-render.
+    /// </summary>
+    /// <param name="displayMode">The newly activated <see cref="UiDisplayMode"/>.</param>
+    public void SetDisplayMode(UiDisplayMode displayMode)
+    {
+        // WHAT: Stores the active display mode on the scoped Blazor circuit state and raises OnChange.
+        // WHY:  Keeps header toggle, grouped navigation, telemetry visibility, and CascadingValue synchronized.
+        // HOW:  Assigns DisplayMode and invokes NotifyStateChanged.
+        DisplayMode = displayMode;
+        NotifyStateChanged();
+    }
 }

@@ -328,6 +328,9 @@
         </div>
     </section>
 
+    <details id="depot-advanced-modules" class="progressive-disclosure mt-4" open="@(DisplayMode == UiDisplayMode.Advanced)">
+        <summary>@T("Ui.Disclosure.AdvancedDepotModules")</summary>
+        <div class="progressive-disclosure-body">
     <!-- Longitudinal Serum Assay & Adaptive Calibration Panel (Milestone 34) -->
     <section id="longitudinal-calibration-panel" class="card panel mt-4" role="region" aria-label="@T("Depot.AssaySectionTitle")">
         <div class="panel-header">
@@ -1670,6 +1673,8 @@
             }
         </div>
     </section>
+        </div>
+    </details>
 }
 
 @code {
@@ -3938,4 +3943,10 @@
 
         return sb.ToString();
     }
+
+    /// <summary>
+    /// Gets or sets the active UI display density cascaded from <see cref="MainLayout"/>.
+    /// </summary>
+    [CascadingParameter(Name = "UiDisplayMode")]
+    public UiDisplayMode DisplayMode { get; set; } = UiDisplayMode.Simple;
 }

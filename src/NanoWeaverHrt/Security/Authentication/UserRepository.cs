@@ -246,6 +246,12 @@ public sealed class UserRepository : IUserRepository, IDisposable
         {
             {
                 await using WeaverDbSession session = await _connectionFactory.OpenAsync(ct);
+                await using (DbCommand prefCmd = session.CreateCommand($"DELETE FROM weaver_user_preferences WHERE username = {session.Dialect.Parameter("u")}"))
+                {
+                    WeaverDbParameters.Add(prefCmd, "u", NormalizeUsername(username));
+                    _ = await prefCmd.ExecuteNonQueryAsync(ct);
+                }
+
                 await using DbCommand cmd = session.CreateCommand($"DELETE FROM weaver_users WHERE username = {session.Dialect.Parameter("u")}");
                 WeaverDbParameters.Add(cmd, "u", NormalizeUsername(username));
                 result = await cmd.ExecuteNonQueryAsync(ct) > 0;

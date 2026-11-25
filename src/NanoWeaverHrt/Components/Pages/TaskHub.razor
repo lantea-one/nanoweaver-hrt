@@ -1,0 +1,168 @@
+@page "/"
+@inject UserSessionState SessionState
+@inject IUiPreferenceService UiPreferences
+@inject IWeaverLocalizer Localizer
+@inject NavigationManager Navigation
+
+@if (SessionState.IsAuthenticated && SessionState.CurrentUser != null)
+{
+    UserRole activeRole = SessionState.CurrentUser.Role;
+    IReadOnlyList<UiTaskCardDescriptor> visibleCards = UiPreferences.GetTaskCardsForRole(activeRole, DisplayMode);
+    bool isAdvanced = DisplayMode == UiDisplayMode.Advanced;
+
+    <div class="taskhub-wrapper">
+        <section class="card panel" role="region" aria-label="Task Hub Header">
+            <div class="taskhub-hero">
+                <div>
+                    <h2>@T("TaskHub.WelcomeHeading")</h2>
+                    <p class="panel-desc">@T(GetSubtitleKey(activeRole))</p>
+                </div>
+                <span class="badge @(isAdvanced ? "badge-accent" : "badge-primary")">
+                    @T(isAdvanced ? "Ui.DisplayMode.Advanced" : "Ui.DisplayMode.Simple")
+                </span>
+            </div>
+
+            <div class="taskhub-mode-bar mt-3">
+                <span class="subtext">
+                    @T(isAdvanced ? "Ui.DisplayMode.AdvancedHint" : "Ui.DisplayMode.SimpleHint")
+                </span>
+                <button id="btn-taskhub-toggle-mode"
+                        type="button"
+                        class="btn btn-sm display-mode-toggle @(isAdvanced ? "active" : "")"
+                        @onclick="ToggleDisplayModeAsync">
+                    @T(isAdvanced ? "Ui.DisplayMode.SwitchToSimple" : "Ui.DisplayMode.SwitchToAdvanced")
+                </button>
+            </div>
+        </section>
+
+        <section class="taskhub-section" role="region" aria-label="@T("TaskHub.PrimaryTasksTitle")">
+            <h3>@T("TaskHub.PrimaryTasksTitle")</h3>
+            <div id="taskhub-primary-grid" class="taskhub-grid">
+                @foreach (UiTaskCardDescriptor card in visibleCards)
+                {
+                    if (card.IsPrimary)
+                    {
+                        <article class="taskhub-card" data-task-id="@card.TaskId">
+                            <div>
+                                <div class="taskhub-card-header">
+                                    <span class="taskhub-card-icon">@card.Icon</span>
+                                    <span class="badge badge-outline">@T(card.CategoryKey)</span>
+                                </div>
+                                <h4 class="mt-2">@T(card.TitleKey)</h4>
+                                <p class="taskhub-card-desc mt-1">@T(card.DescriptionKey)</p>
+                            </div>
+                            <div class="taskhub-card-footer">
+                                <button id="btn-task-@card.TaskId"
+                                        type="button"
+                                        class="btn btn-primary btn-sm"
+                                        @onclick="() => NavigateToTask(card.Route)">
+                                    @T(card.ActionLabelKey)
+                                </button>
+                            </div>
+                        </article>
+                    }
+                }
+            </div>
+        </section>
+
+        @if (isAdvanced)
+        {
+            <section class="taskhub-section" role="region" aria-label="@T("TaskHub.AdvancedShortcutsTitle")">
+                <h3>@T("TaskHub.AdvancedShortcutsTitle")</h3>
+                <div id="taskhub-advanced-grid" class="taskhub-grid">
+                    @foreach (UiTaskCardDescriptor card in visibleCards)
+                    {
+                        if (!card.IsPrimary)
+                        {
+                            <article class="taskhub-card" data-task-id="@card.TaskId">
+                                <div>
+                                    <div class="taskhub-card-header">
+                                        <span class="taskhub-card-icon">@card.Icon</span>
+                                        <span class="badge badge-accent">@T(card.CategoryKey)</span>
+                                    </div>
+                                    <h4 class="mt-2">@T(card.TitleKey)</h4>
+                                    <p class="taskhub-card-desc mt-1">@T(card.DescriptionKey)</p>
+                                </div>
+                                <div class="taskhub-card-footer">
+                                    <button id="btn-task-@card.TaskId"
+                                            type="button"
+                                            class="btn btn-outline btn-sm"
+                                            @onclick="() => NavigateToTask(card.Route)">
+                                        @T(card.ActionLabelKey)
+                                    </button>
+                                </div>
+                            </article>
+                        }
+                    }
+                </div>
+            </section>
+        }
+    </div>
+}
+
+@code {
+    /// <summary>
+    /// Gets or sets the active UI display density cascaded from <see cref="MainLayout"/>.
+    /// </summary>
+    [CascadingParameter(Name = "UiDisplayMode")]
+    public UiDisplayMode DisplayMode { get; set; } = UiDisplayMode.Simple;
+
+    /// <summary>
+    /// Gets or sets the active UI localization language cascaded from <see cref="MainLayout"/>.
+    /// </summary>
+    [CascadingParameter(Name = "UiLanguage")]
+    public WeaverLanguage CurrentLanguage { get; set; } = WeaverLanguage.English;
+
+    /// <summary>
+    /// Resolves a localized string for the active community language.
+    /// </summary>
+    /// <param name="key">Dot-notated localization resource key.</param>
+    /// <returns>Translated UI text in <see cref="CurrentLanguage"/>.</returns>
+    private string T(string key) => Localizer.GetString(key, CurrentLanguage);
+
+    /// <summary>
+    /// Selects the role-appropriate subtitle localization key for the Task Hub hero banner.
+    /// </summary>
+    /// <param name="role">Signed-in user role.</param>
+    /// <returns>Localization key describing tasks available to <paramref name="role"/>.</returns>
+    private static string GetSubtitleKey(UserRole role) => role switch
+    {
+        UserRole.Administrator => "TaskHub.Subtitle.Administrator",
+        UserRole.Researcher => "TaskHub.Subtitle.Researcher",
+        _ => "TaskHub.Subtitle.Patient"
+    };
+
+    /// <summary>
+    /// Navigates cleanly to the selected task workspace route.
+    /// </summary>
+    /// <param name="route">Destination application route.</param>
+    private void NavigateToTask(string route)
+    {
+        // WHAT: Navigates to the chosen workspace route from a Task Hub launch card.
+        // WHY:  Provides single-click task routing for newly signed-in users.
+        // HOW:  Delegates directly to NavigationManager.NavigateTo.
+        Navigation.NavigateTo(route);
+    }
+
+    /// <summary>
+    /// Toggles between Simple Mode and Advanced Display directly from the Task Hub hero bar and persists the preference.
+    /// </summary>
+    /// <returns>A task representing the asynchronous preference save and UI refresh.</returns>
+    private async Task ToggleDisplayModeAsync()
+    {
+        // WHAT: Toggles and persists the caller's Simple vs. Advanced display mode from the landing Task Hub.
+        // WHY:  Milestone 47 (P248): Lets operators expand diagnostics inline without hunting in menus.
+        // HOW:  Saves the opposite mode via IUiPreferenceService and updates SessionState so MainLayout re-renders too.
+        if (SessionState.CurrentUser == null)
+        {
+            return;
+        }
+
+        UiDisplayMode nextMode = DisplayMode == UiDisplayMode.Advanced
+            ? UiDisplayMode.Simple
+            : UiDisplayMode.Advanced;
+
+        EffectiveUiPreference saved = await UiPreferences.SetUserDisplayModeAsync(SessionState.CurrentUser.Username, nextMode);
+        SessionState.SetDisplayMode(saved.DisplayMode);
+    }
+}

@@ -50,6 +50,7 @@ using NanoWeaverHrt.Localization;
 using NanoWeaverHrt.Analytics;
 using NanoWeaverHrt.Hardware.Benchmarking;
 using NanoWeaverHrt.Federation;
+using NanoWeaverHrt.Ui;
 
 namespace NanoWeaverHrt;
 
@@ -237,6 +238,12 @@ public class Program
         // WHY:  Enables verifiable swarm chunk distribution and cross-laboratory trajectory synchronization.
         // HOW:  Registers TrajectoryFederationService as singleton ITrajectoryFederationService into the DI container.
         builder.Services.AddSingleton<ITrajectoryFederationService, TrajectoryFederationService>();
+
+        // WHAT: Registers per-user UI display preference storage and role-tailored Task Hub services.
+        // WHY:  Milestone 47 (P247): Persists Simple/Advanced display mode preferences and resolves task catalogs.
+        // HOW:  Registers UserUiPreferenceRepository and UiPreferenceService as singletons into the DI container.
+        builder.Services.AddSingleton<IUserUiPreferenceRepository, UserUiPreferenceRepository>();
+        builder.Services.AddSingleton<IUiPreferenceService, UiPreferenceService>();
 
         // WHAT: Configures Swagger & OpenAPI generation with XML comments and Swashbuckle annotations.
         // WHY:  Provides interactive API exploration (/swagger) and ReDoc documentation (/documentation).
@@ -6830,6 +6837,75 @@ public class Program
         .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
         .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized)
         .Produces<SecureProblemDetails>(StatusCodes.Status403Forbidden);
+
+        // ---------------------------------------------------------------------
+        // REST API: Sovereign Web UI Display Preferences (Milestone 47 / P247)
+        // ---------------------------------------------------------------------
+        app.MapGet("/api/ui/preferences", async (
+            IUiPreferenceService uiPreferences,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Returns the signed-in caller's effective Web UI display preference.
+            // WHY:  Milestone 47 (P247): Allows Web UI clients and SDK integrations to inspect the active display mode.
+            // HOW:  Extracts caller identity from auth middleware and delegates to IUiPreferenceService.GetEffectivePreferenceAsync.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            EffectiveUiPreference preference = await uiPreferences.GetEffectivePreferenceAsync(caller.Username, ct);
+            return Results.Ok(preference);
+        })
+        .WithName("GetUiPreferences")
+        .WithTags("User Interface Preferences")
+        .WithSummary("Gets the caller's effective Web UI display mode (Simple or Advanced).")
+        .WithDescription("Merges the account's personal preference in weaver_user_preferences with the node-wide Ui:DefaultDisplayMode configuration.")
+        .Produces<EffectiveUiPreference>(StatusCodes.Status200OK)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized);
+
+        app.MapPut("/api/ui/preferences", async (
+            UpdateUiPreferenceRequest? request,
+            IUiPreferenceService uiPreferences,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Saves the caller's preferred Simple or Advanced Web UI display mode.
+            // WHY:  Milestone 47 (P247): Enables persistent UI density toggles across browsers and sessions.
+            // HOW:  Validates non-null payload and enum bounds, writes via IUiPreferenceService, and returns EffectiveUiPreference.
+            if (request is null || !Enum.IsDefined(request.DisplayMode))
+            {
+                return SecureProblemResult(context, StatusCodes.Status400BadRequest, "Valid displayMode ('Simple' or 'Advanced') is required.");
+            }
+
+            // WHY !: Authentication middleware guarantees CurrentUser is populated before reaching this endpoint.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            EffectiveUiPreference updated = await uiPreferences.SetUserDisplayModeAsync(caller.Username, request.DisplayMode, ct);
+            return Results.Ok(updated);
+        })
+        .WithName("UpdateUiPreferences")
+        .WithTags("User Interface Preferences")
+        .WithSummary("Saves the caller's preferred Web UI display mode (Simple or Advanced).")
+        .WithDescription("Persists a per-user override in weaver_user_preferences and emits a UI_DISPLAY_MODE_CHANGED audit record.")
+        .Accepts<UpdateUiPreferenceRequest>("application/json")
+        .Produces<EffectiveUiPreference>(StatusCodes.Status200OK)
+        .Produces<SecureProblemDetails>(StatusCodes.Status400BadRequest)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized);
+
+        app.MapDelete("/api/ui/preferences", async (
+            IUiPreferenceService uiPreferences,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            // WHAT: Deletes the caller's saved UI preference so they inherit the node default.
+            // WHY:  Milestone 47 (P247): Allows any account to reset its UI complexity back to Ui:DefaultDisplayMode.
+            // HOW:  Extracts caller username and calls IUiPreferenceService.ResetUserDisplayModeAsync.
+            UserAccount caller = (UserAccount)context.Items["CurrentUser"]!;
+            EffectiveUiPreference reset = await uiPreferences.ResetUserDisplayModeAsync(caller.Username, ct);
+            return Results.Ok(reset);
+        })
+        .WithName("ResetUiPreferences")
+        .WithTags("User Interface Preferences")
+        .WithSummary("Resets the caller's Web UI display mode back to the node default.")
+        .WithDescription("Removes the personal preference row from weaver_user_preferences and emits a UI_DISPLAY_MODE_RESET audit record.")
+        .Produces<EffectiveUiPreference>(StatusCodes.Status200OK)
+        .Produces<SecureProblemDetails>(StatusCodes.Status401Unauthorized);
 
         app.Run();
     }

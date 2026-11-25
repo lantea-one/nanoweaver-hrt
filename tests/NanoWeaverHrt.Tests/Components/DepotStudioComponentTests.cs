@@ -1057,4 +1057,25 @@ public sealed class DepotStudioComponentTests : BunitContext
         Assert.Contains("Revoked", cut.Find("#lot-status-badge").TextContent);
         Assert.Contains("Acute CARPA reaction requiring immediate arrest.", cut.Find("#antidote-neutralization-events-table").TextContent);
     }
+
+    /// <summary>
+    /// Verifies <see cref="DepotStudio"/> keeps advanced calibration, batch QC, and reversal modules collapsed in Simple Mode
+    /// and expands them in Advanced Display Mode.
+    /// </summary>
+    [Fact]
+    public void DepotStudio_AdvancedModulesDisclosure_FollowsUiDisplayMode()
+    {
+        // WHAT: Executes a 180-day simulation under Simple and Advanced UiDisplayMode cascading parameters.
+        // WHY:  Milestone 47 (P248): Keeps core formulation controls front-and-center in Simple Mode.
+        // HOW:  Clicks #btn-run-depot-simulation and inspects #depot-advanced-modules open attribute.
+        IRenderedComponent<DepotStudio> simpleCut = Render<DepotStudio>(p => p
+            .AddCascadingValue("UiDisplayMode", NanoWeaverHrt.Ui.UiDisplayMode.Simple));
+        simpleCut.Find("#btn-run-depot-simulation").Click();
+        Assert.False(simpleCut.Find("#depot-advanced-modules").HasAttribute("open"));
+
+        IRenderedComponent<DepotStudio> advCut = Render<DepotStudio>(p => p
+            .AddCascadingValue("UiDisplayMode", NanoWeaverHrt.Ui.UiDisplayMode.Advanced));
+        advCut.Find("#btn-run-depot-simulation").Click();
+        Assert.True(advCut.Find("#depot-advanced-modules").HasAttribute("open"));
+    }
 }

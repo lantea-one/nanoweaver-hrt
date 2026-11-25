@@ -564,4 +564,23 @@ public sealed class ComplianceSecurityComponentTests : BunitContext
             }
         };
     }
+
+    /// <summary>
+    /// Verifies <see cref="ComplianceSecurity"/> collapses the full regulatory control matrix in Simple Mode
+    /// and expands it in Advanced Display Mode.
+    /// </summary>
+    [Fact]
+    public void ComplianceSecurity_RegulatoryMatrixDisclosure_FollowsUiDisplayMode()
+    {
+        // WHAT: Renders ComplianceSecurity under Simple and Advanced UiDisplayMode cascading parameters.
+        // WHY:  Milestone 47 (P248): Shows headline PQC posture cards cleanly by default while expanding the dense table in Advanced Display.
+        // HOW:  Inspects #compliance-matrix-disclosure open attribute across both modes.
+        IRenderedComponent<ComplianceSecurity> simpleCut = Render<ComplianceSecurity>(p => p
+            .AddCascadingValue("UiDisplayMode", NanoWeaverHrt.Ui.UiDisplayMode.Simple));
+        Assert.False(simpleCut.Find("#compliance-matrix-disclosure").HasAttribute("open"));
+
+        IRenderedComponent<ComplianceSecurity> advCut = Render<ComplianceSecurity>(p => p
+            .AddCascadingValue("UiDisplayMode", NanoWeaverHrt.Ui.UiDisplayMode.Advanced));
+        Assert.True(advCut.Find("#compliance-matrix-disclosure").HasAttribute("open"));
+    }
 }

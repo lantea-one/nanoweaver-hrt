@@ -3196,3 +3196,216 @@ select.form-control-sm {
     color: #fca5a5;
 }
 
+/* ==========================================================================
+   Milestone 47: Task-Driven Web UI, Grouped Navigation & Progressive Disclosure
+   --------------------------------------------------------------------------
+   WHAT: Sovereign dark-mode styles for the Display Mode toggle, grouped simple
+         navigation dropdowns, "/" Task Hub launch cards, and collapsible
+         <details class="progressive-disclosure"> engineering panels.
+   WHY:  Keeps first sign-in calm, task-oriented, and legible without inline styles.
+   HOW:  Uses CSS Grid, high-contrast WCAG AA palette tokens, and smooth borders.
+   ========================================================================== */
+.display-mode-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    border: 1px solid var(--border-color);
+    background-color: #161f30;
+    color: var(--text-main);
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+
+.display-mode-toggle:hover,
+.display-mode-toggle:focus-visible {
+    border-color: var(--accent-cyan);
+    box-shadow: 0 0 8px rgba(0, 242, 254, 0.25);
+}
+
+.display-mode-toggle.active {
+    border-color: var(--accent-cyan);
+    background-color: rgba(0, 210, 255, 0.14);
+    color: var(--accent-cyan);
+}
+
+.nav-groups-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.65rem;
+}
+
+.nav-group-dropdown {
+    position: relative;
+}
+
+.nav-group-trigger {
+    list-style: none;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.45rem 0.85rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background-color: #161f30;
+    color: var(--text-main);
+    font-size: 0.9rem;
+    font-weight: 500;
+    user-select: none;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.nav-group-trigger::-webkit-details-marker {
+    display: none;
+}
+
+.nav-group-trigger:hover,
+.nav-group-dropdown[open] > .nav-group-trigger {
+    border-color: var(--accent-cyan);
+    background-color: #192233;
+    color: var(--accent-cyan);
+}
+
+.nav-group-panel {
+    position: absolute;
+    top: calc(100% + 0.35rem);
+    left: 0;
+    z-index: 40;
+    min-width: 230px;
+    padding: 0.45rem;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    background-color: #111826;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.55);
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.nav-group-link {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.7rem;
+    border-radius: 6px;
+    color: var(--text-main);
+    text-decoration: none;
+    font-size: 0.88rem;
+}
+
+.nav-group-link:hover,
+.nav-group-link.active {
+    background-color: rgba(0, 210, 255, 0.12);
+    color: var(--accent-cyan);
+}
+
+.taskhub-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.taskhub-hero {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.taskhub-mode-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.85rem 1.1rem;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    background-color: #101723;
+}
+
+.taskhub-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+}
+
+.taskhub-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 1rem;
+}
+
+.taskhub-card {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 0.9rem;
+    padding: 1.25rem;
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-card);
+    transition: border-color 0.15s ease, transform 0.15s ease, background-color 0.15s ease;
+}
+
+.taskhub-card:hover {
+    border-color: var(--accent-cyan);
+    background-color: var(--bg-card-hover);
+    transform: translateY(-2px);
+}
+
+.taskhub-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.taskhub-card-icon {
+    font-size: 1.45rem;
+    line-height: 1;
+}
+
+.taskhub-card-desc {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    line-height: 1.45;
+}
+
+.taskhub-card-footer {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding-top: 0.35rem;
+}
+
+.progressive-disclosure {
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background-color: #101622;
+    padding: 0.65rem 1rem;
+}
+
+.progressive-disclosure > summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--accent-cyan);
+    padding: 0.25rem 0;
+    user-select: none;
+}
+
+.progressive-disclosure[open] > summary {
+    margin-bottom: 0.85rem;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 0.6rem;
+}
+
+.progressive-disclosure-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+

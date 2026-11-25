@@ -16,6 +16,7 @@ using NanoWeaverHrt.Fabrication;
 using NanoWeaverHrt.Fabrication.Gel;
 using NanoWeaverHrt.Fabrication.Opentrons;
 using NanoWeaverHrt.Genomics;
+using NanoWeaverHrt.Localization;
 using NanoWeaverHrt.Models;
 using NanoWeaverHrt.Pipelines;
 using NanoWeaverHrt.Simulations;
@@ -70,6 +71,7 @@ public sealed class WorkflowWizardTests : BunitContext
         Services.AddSingleton<IOpentronsProtocolGenerator, OpentronsProtocolGenerator>();
         Services.AddSingleton(typeof(ILogger<>), typeof(NullLogger<>));
         Services.AddSingleton<IGelAnalysisService, GelAnalysisService>();
+        Services.AddSingleton<IWeaverLocalizer, WeaverLocalizer>();
     }
 
     /// <summary>
@@ -341,5 +343,26 @@ public sealed class WorkflowWizardTests : BunitContext
         // Step 5: Kinetics chart rendering
         await cut.InvokeAsync(() => cut.Instance.SetStep(5));
         JSInterop.VerifyInvoke("WeaverVisualizer.renderKineticsChart");
+    }
+
+    /// <summary>
+    /// Verifies <see cref="WorkflowWizard"/> collapses secondary context and genomics details in Simple Mode
+    /// and expands them in Advanced Display Mode.
+    /// </summary>
+    [Fact]
+    public void WorkflowWizard_ProgressiveDisclosure_FollowsUiDisplayMode()
+    {
+        // WHAT: Tests #wizard-context-disclosure and #wizard-genomics-disclosure open attributes under Simple vs. Advanced.
+        // WHY:  Milestone 47 (P248): Prevents wall-of-text cognitive overload on initial wizard entry.
+        // HOW:  Renders WorkflowWizard with UiDisplayMode.Simple and UiDisplayMode.Advanced CascadingValues.
+        IRenderedComponent<WorkflowWizard> simpleCut = Render<WorkflowWizard>(p => p
+            .AddCascadingValue("UiDisplayMode", NanoWeaverHrt.Ui.UiDisplayMode.Simple));
+        Assert.False(simpleCut.Find("#wizard-context-disclosure").HasAttribute("open"));
+        Assert.False(simpleCut.Find("#wizard-genomics-disclosure").HasAttribute("open"));
+
+        IRenderedComponent<WorkflowWizard> advCut = Render<WorkflowWizard>(p => p
+            .AddCascadingValue("UiDisplayMode", NanoWeaverHrt.Ui.UiDisplayMode.Advanced));
+        Assert.True(advCut.Find("#wizard-context-disclosure").HasAttribute("open"));
+        Assert.True(advCut.Find("#wizard-genomics-disclosure").HasAttribute("open"));
     }
 }
