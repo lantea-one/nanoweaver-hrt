@@ -1,10 +1,10 @@
-@page "/"
 @page "/wizard"
 @using System.Diagnostics
 @using System.IO.Pipelines
 @using System.Security.Cryptography
 @using NanoWeaverHrt.Fabrication.Opentrons
 @using NanoWeaverHrt.Fabrication.Gel
+@using NanoWeaverHrt.Localization
 @using NanoWeaverHrt.Simulations
 @using NanoWeaverHrt.Simulations.Models
 @inject IFabricationService FabricationService
@@ -20,6 +20,7 @@
 @inject IJSRuntime JSRuntime
 @inject IOpentronsProtocolGenerator OpentronsGenerator
 @inject IGelAnalysisService GelService
+@inject IWeaverLocalizer Localizer
 
 <div class="wizard-container">
     <!-- Wizard Progress Stepper -->
@@ -71,12 +72,17 @@
                 <span class="badge badge-accent">STAGE 1 OF 6</span>
             </div>
 
-            <div class="callout-box">
-                <div class="callout-title">💡 Plain-English Biomedical &amp; Nanotech Context</div>
-                <div class="callout-item"><strong>WHAT:</strong> We are ingesting the core nucleic acid sequence (aptamer loop or scaffold fragment) that will interact with patient receptors or hormones.</div>
-                <div class="callout-item"><strong>WHY:</strong> DNA is not merely genetic code—in nanotechnology, it is a nanoscale building material. The sequence governs exact folding geometry, binding pockets, and thermal stability.</div>
-                <div class="callout-item"><strong>HOW:</strong> The system accepts raw sequence text or FASTA format, automatically analyzes base counts and GC content, and provides 1-click verified therapeutic presets.</div>
-            </div>
+            <details id="wizard-context-disclosure" class="progressive-disclosure mt-3" open="@(DisplayMode == UiDisplayMode.Advanced)">
+                <summary>@Localizer.GetString("Ui.Disclosure.EngineeringContext", CurrentLanguage)</summary>
+                <div class="progressive-disclosure-body">
+                    <div class="callout-box">
+                        <div class="callout-title">💡 Plain-English Biomedical &amp; Nanotech Context</div>
+                        <div class="callout-item"><strong>WHAT:</strong> We are ingesting the core nucleic acid sequence (aptamer loop or scaffold fragment) that will interact with patient receptors or hormones.</div>
+                        <div class="callout-item"><strong>WHY:</strong> DNA is not merely genetic code—in nanotechnology, it is a nanoscale building material. The sequence governs exact folding geometry, binding pockets, and thermal stability.</div>
+                        <div class="callout-item"><strong>HOW:</strong> The system accepts raw sequence text or FASTA format, automatically analyzes base counts and GC content, and provides 1-click verified therapeutic presets.</div>
+                    </div>
+                </div>
+            </details>
 
             <!-- Built-In Sample Presets -->
             <div class="preset-section mt-3">
@@ -147,6 +153,9 @@
             <!-- Pharmacogenomic Sequence Screening & Call-Outs -->
             @if (_seqGenomicProfile != null)
             {
+                <details id="wizard-genomics-disclosure" class="progressive-disclosure mt-3" open="@(DisplayMode == UiDisplayMode.Advanced)">
+                    <summary>@Localizer.GetString("Ui.Disclosure.PharmacogenomicDetails", CurrentLanguage)</summary>
+                    <div class="progressive-disclosure-body">
                 <div class="card subpanel mt-3">
                     <div class="panel-header">
                         <h4>🧬 Sequence Pharmacogenomic Screening</h4>
@@ -191,6 +200,8 @@
                         </div>
                     }
                 </div>
+                    </div>
+                </details>
             }
 
             <!-- Interactive 3D B-DNA Double Helix Folding & Base Pairing -->
@@ -2324,4 +2335,16 @@
 
         return pixels;
     }
+
+    /// <summary>
+    /// Gets or sets the active UI display density cascaded from <see cref="MainLayout"/>.
+    /// </summary>
+    [CascadingParameter(Name = "UiDisplayMode")]
+    public UiDisplayMode DisplayMode { get; set; } = UiDisplayMode.Simple;
+
+    /// <summary>
+    /// Gets or sets the active UI localization language cascaded from <see cref="MainLayout"/>.
+    /// </summary>
+    [CascadingParameter(Name = "UiLanguage")]
+    public WeaverLanguage CurrentLanguage { get; set; } = WeaverLanguage.English;
 }

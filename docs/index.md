@@ -60,8 +60,9 @@ flowchart TD
   - LAMMPS Custom Coordinate Dumps (`.dump`, `.lammps`)
   - CHARMM / NAMD / LAMMPS Binary Trajectories (`.dcd`)
 
-### 2. Guided DNA Origami Bench Fabrication Wizard
-- Step-by-step interactive workflow guiding researchers from digitized FASTA/nucleotide sequences to synthesis manifests.
+### 2. Task Hub & Guided DNA Origami Bench Fabrication Wizard (`/wizard`)
+- Role-tailored landing **Task Hub** (`/`) with calm **Simple Mode** default and persisted **Advanced Display** toggle (`Ui:DefaultDisplayMode`, `/api/ui/preferences`).
+- Step-by-step interactive workflow at `/wizard` guiding researchers from digitized FASTA/nucleotide sequences to synthesis manifests.
 - Mathematical sequence analysis: Base composition (A, T/U, G, C), GC-content percentage, and Dalton molecular weight.
 - Algorithmic staple routing: Generation of structural crossover staples, ligand binding pockets, and receptor targeting poly-T anchors.
 - Stoichiometric thermal annealing protocol: 6-stage cryogenic-to-ambient cooling schedule (90°C → 4°C).
@@ -147,7 +148,7 @@ Explore the comprehensive guides and references below:
 24. [**REST API Reference**](api-reference.md)
     * Full endpoint catalog, request/response JSON schemas, and test suite execution.
 25. [**Release Notes & Architecture Evolution**](release-notes.md)
-    * Post-quantum cryptographic upgrades, multi-engine database persistence, longitudinal serum assay depot calibration, cryptographic wet-lab lot release, cross-node CoA & IND/IMPD dossier verification, reversal antidote kill-switch, client REST SDK parity, MTP v2 / `xunit.v3 4.0.3` / `Npgsql 11.0.0` platform modernization, and milestone releases through v2026.11.24.4.
+    * Post-quantum cryptographic upgrades, multi-engine database persistence, longitudinal serum assay depot calibration, cryptographic wet-lab lot release, cross-node CoA & IND/IMPD dossier verification, reversal antidote kill-switch, client REST SDK parity, MTP v2 / `xunit.v3 4.0.3` / `Npgsql 11.0.0` platform modernization, task-driven Sovereign Web UI with progressive display mode, and milestone releases through v2026.11.24.5.
 26. [**Scientific Research & Legal Disclaimer**](disclaimer.md)
     * Formal scientific research scope, medical non-advice, and BSL-1 biosafety declarations.
 

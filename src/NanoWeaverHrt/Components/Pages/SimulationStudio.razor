@@ -1,10 +1,12 @@
 @page "/simulations"
 @using NanoWeaverHrt.Endocrine
 @using NanoWeaverHrt.Genomics
+@using NanoWeaverHrt.Localization
 @using NanoWeaverHrt.Simulations
 @using NanoWeaverHrt.Simulations.Models
 @inject ISimulationCampaignService SimService
 @inject IPharmacogenomicsService GenomicsService
+@inject IWeaverLocalizer Localizer
 
 <section class="card">
     <div class="card-header">
@@ -45,6 +47,9 @@
             </button>
         </div>
 
+        <details id="simulation-telemetry-disclosure" class="progressive-disclosure mt-3" open="@(DisplayMode == UiDisplayMode.Advanced)">
+            <summary>@Localizer.GetString("Ui.Disclosure.SimulationTelemetry", CurrentLanguage)</summary>
+            <div class="progressive-disclosure-body">
         <div class="telemetry-grid mt-3">
             <div class="card stat-card">
                 <div class="stat-label">TEMPERATURE</div>
@@ -71,6 +76,8 @@
                 <div class="stat-sub">M.SssI TLR9 Protection</div>
             </div>
         </div>
+            </div>
+        </details>
 
         <!-- Controls Form -->
         <div class="mt-3 p-3 bg-trans-dark-2">
@@ -509,4 +516,16 @@ else
     {
         _pbpkResult = SimService.SimulatePbpkEndocrine(_pbpkReq);
     }
+
+    /// <summary>
+    /// Gets or sets the active UI display density cascaded from <see cref="MainLayout"/>.
+    /// </summary>
+    [CascadingParameter(Name = "UiDisplayMode")]
+    public UiDisplayMode DisplayMode { get; set; } = UiDisplayMode.Simple;
+
+    /// <summary>
+    /// Gets or sets the active UI localization language cascaded from <see cref="MainLayout"/>.
+    /// </summary>
+    [CascadingParameter(Name = "UiLanguage")]
+    public WeaverLanguage CurrentLanguage { get; set; } = WeaverLanguage.English;
 }

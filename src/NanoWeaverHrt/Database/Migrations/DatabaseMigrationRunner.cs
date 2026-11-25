@@ -61,7 +61,8 @@ public sealed class DatabaseMigrationRunner : IDisposable
                 new Migration021_EpigeneticToggleCircuits(),
                 new Migration022_MultiYearHomeostasisForecasts(),
                 new Migration023_ReversalAntidoteProtocols(),
-                new Migration024_RegulatoryDossierArchives()
+                new Migration024_RegulatoryDossierArchives(),
+                new Migration025_UserUiPreferences()
             }.OrderBy(m => m.Version).ToList();
         }
     }

@@ -4,6 +4,25 @@
 
 ---
 
+## v2026.11.24.5 — Task-Driven Sovereign Web UI & Progressive Display Mode (Milestone 47 / Forgejo Issues #286–#290) (2026-11-24)
+
+Completes **Milestone 47 (`P245`–`P249` / Forgejo Issues `#286`–`#290`)**, transforming the post-login Sovereign Web UI from an unfiltered engineering telemetry screen into a calm, role-tailored task hub with one-click persisted switching to full operator controls:
+* **Phase 1: User UI Preferences Schema & Persistence (`Migration025_UserUiPreferences` / Forgejo #286 / P245)**:
+  - Added `UiDisplayMode` (`Simple = 0`, `Advanced = 1`), `UserUiPreferenceRecord`, `EffectiveUiPreference`, `UpdateUiPreferenceRequest`, `UiTaskCardDescriptor`, and navigation group DTOs (`src/NanoWeaverHrt/Ui/UiDisplayModels.cs`).
+  - Added `Migration025_UserUiPreferences` (`Version = 25`) across SQLite, PostgreSQL, DuckDB, and MySQL/MariaDB (`weaver_user_preferences`), registered it in `DatabaseMigrationRunner`, cascaded deletions from `UserRepository.DeleteUserAsync`, and registered node-wide fallback key `Ui:DefaultDisplayMode` (`UI_DEFAULT_DISPLAY_MODE`) in `SystemConfigurationStore`.
+* **Phase 2: `UiPreferenceService`, Role Task Catalogs & Session State (Forgejo #287 / P246)**:
+  - Implemented `IUiPreferenceService` and `UiPreferenceService` resolving user overrides against `Ui:DefaultDisplayMode`, recording 21 CFR Part 11 audit events (`UI_DISPLAY_MODE_CHANGED`, `UI_DISPLAY_MODE_RESET`), and serving allocation-free role catalogs (`Patient`, `Researcher`, `Administrator`).
+  - Extended `UserSessionState` with `DisplayMode`, `IsAdvancedDisplay`, `SetDisplayMode(...)`, and automatic reset to `Simple` on sign-out.
+* **Phase 3: `/api/ui/preferences` Minimal API Endpoints (Forgejo #288 / P247)**:
+  - Appended `GET`, `PUT`, and `DELETE /api/ui/preferences` endpoints to `Program.cs` with OpenAPI examples and RFC 7807 `SecureProblemDetails` validation (`400 Bad Request`, `401 Unauthorized`).
+* **Phase 4: Task Hub (`/`), Relocated `/wizard`, Grouped Navigation, Progressive Disclosure & 18-Language Localization (Forgejo #289 / P248)**:
+  - Created `TaskHub.razor` at `@page "/"` with role-filtered task cards, relocated `WorkflowWizard.razor` to `@page "/wizard"`, redesigned `MainLayout.razor` to hide GC telemetry and node/accelerator/DB chips by default while organizing navigation into calm role-filtered dropdown menus (`#btn-display-mode-toggle` restores full 11-link nav + live telemetry on demand), and wrapped dense secondary sections in `<details class="progressive-disclosure">` across `WorkflowWizard`, `DepotStudio`, `ComplianceSecurity`, and `SimulationStudio`.
+  - Localized `64` new `Nav.*`, `Ui.*`, and `TaskHub.*` keys across all 18 community translation catalogs (`315` keys per catalog) and updated Sovereign Dark-Mode stylesheets (`app.css`).
+* **Phase 5: CalVer `v2026.11.24.5` Verification, Docs & Audited Forgejo Release (Forgejo #290 / P249)**:
+  - Updated `<DefaultCalVerVersion>2026.11.24.5</DefaultCalVerVersion>` in `Directory.Build.props`, updated `docs/index.md`, `docs/getting-started.md`, `docs/api-reference.md`, and `docs/release-notes.md`, passed all 8 verification gates (`./scripts/verify-all.sh`) at 100.00% line & branch coverage, merged audited PR to `main`, closed Milestone 47 (`#286`–`#290`), and published `v2026.11.24.5`.
+
+---
+
 ## v2026.11.24.4 — Testing & Build Platform Modernization (MTP v2, xunit.v3 4.x, coverlet.MTP) & Housekeeping (Milestone 46 / Forgejo Issues #278–#282) (2026-11-24)
 
 Completes **Milestone 46 (`P240`–`P244` / Forgejo Issues `#278`–`#282`)** alongside post-`v2026.11.24.3` runtime/CI housekeeping, standardizing on Microsoft.Testing.Platform v2 while remaining pinned strictly to **.NET 10 LTS** (`net10.0`):

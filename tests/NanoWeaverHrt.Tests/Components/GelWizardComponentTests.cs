@@ -7,6 +7,7 @@ using NanoWeaverHrt.Fabrication.Opentrons;
 using NanoWeaverHrt.Configuration;
 using NanoWeaverHrt.Endocrine;
 using NanoWeaverHrt.Genomics;
+using NanoWeaverHrt.Localization;
 using NanoWeaverHrt.Pipelines;
 using NanoWeaverHrt.Simulations;
 using NanoWeaverHrt.Storage;
@@ -86,6 +87,7 @@ public class GelWizardComponentTests : BunitContext
         Services.AddSingleton<IParquetTrajectoryWriter>(new Mock<IParquetTrajectoryWriter>().Object);
         Services.AddSingleton<ISimulationCampaignService, SimulationCampaignService>();
         Services.AddSingleton<IOpentronsProtocolGenerator, OpentronsProtocolGenerator>();
+        Services.AddSingleton<IWeaverLocalizer, WeaverLocalizer>();
 
         var cut = Render<WorkflowWizard>();
         cut.InvokeAsync(() => cut.Instance.SetStep(6));
@@ -148,6 +150,7 @@ public class GelWizardComponentTests : BunitContext
         Services.AddSingleton<IParquetTrajectoryWriter>(new Mock<IParquetTrajectoryWriter>().Object);
         Services.AddSingleton<ISimulationCampaignService, SimulationCampaignService>();
         Services.AddSingleton<IOpentronsProtocolGenerator, OpentronsProtocolGenerator>();
+        Services.AddSingleton<IWeaverLocalizer, WeaverLocalizer>();
 
         var cut = Render<WorkflowWizard>();
         cut.InvokeAsync(() => cut.Instance.SetStep(6));

@@ -4,6 +4,7 @@
 @inject IUserAuthenticationService AuthService
 @inject UserSessionState SessionState
 @inject IServerSessionActivityTracker SessionActivity
+@inject IUiPreferenceService UiPreferences
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
 @inject IWeaverLocalizer Localizer
@@ -20,20 +21,31 @@
     <div class="header-actions">
         <LanguageSelector CurrentLanguage="_currentLanguage" OnLanguageChanged="HandleLanguageChanged" />
         @*
-            WHAT: Node identity, accelerator, database backend and the signed-in user chip.
-            WHY:  Every one of these discloses how this sovereign node is configured,
-                  so none of it may render to a visitor without a session.
-            HOW:  Rendered only when ShellVisible is true (see the @code block).
+            WHAT: Display density toggle, optional Advanced node identity badges, and the signed-in user chip.
+            WHY:  Hides low-level hardware/database chips by default to keep sign-in calm while keeping them
+                  one click away under Advanced Display and never exposing server details before sign-in.
+            HOW:  Gated behind ShellVisible; hardware/DB badges render only when SessionState.IsAdvancedDisplay is true.
         *@
         @if (ShellVisible)
         {
+            <button id="btn-display-mode-toggle"
+                    type="button"
+                    class="btn btn-sm display-mode-toggle @(SessionState.IsAdvancedDisplay ? "active" : "")"
+                    aria-pressed="@(SessionState.IsAdvancedDisplay ? "true" : "false")"
+                    aria-label="@Localizer.GetString("Ui.DisplayMode.AriaLabel", _currentLanguage)"
+                    @onclick="HandleToggleDisplayModeAsync">
+                @Localizer.GetString(SessionState.IsAdvancedDisplay ? "Ui.DisplayMode.SwitchToSimple" : "Ui.DisplayMode.SwitchToAdvanced", _currentLanguage)
+            </button>
             <div class="node-status">
-                <div class="status-indicator">
-                    <span class="pulse"></span>
-                    <span>NODE: @Environment.MachineName.ToUpperInvariant()</span>
-                </div>
-                <div class="badge badge-accent">@_acceleratorBackend.ToUpperInvariant()</div>
-                <div class="badge badge-outline">DB: @ConfigRepo.ActiveBackendName</div>
+                @if (SessionState.IsAdvancedDisplay)
+                {
+                    <div class="status-indicator">
+                        <span class="pulse"></span>
+                        <span>NODE: @Environment.MachineName.ToUpperInvariant()</span>
+                    </div>
+                    <div class="badge badge-accent">@_acceleratorBackend.ToUpperInvariant()</div>
+                    <div class="badge badge-outline">DB: @ConfigRepo.ActiveBackendName</div>
+                }
     @*
                 WHAT: Binds authenticated user chip using non-null assertion.
                 WHY:  ShellVisible requires SessionState.IsAuthenticated, which guarantees CurrentUser is non-null.
@@ -47,56 +59,86 @@
 </header>
 
 @*
-    WHAT: Platform navigation and the live node telemetry banner.
-    WHY:  Both are operational surfaces: the nav row is the entry point to every
-          platform page and the banner streams live frame, GC and memory counters.
-          A visitor with no session must see neither.
-    HOW:  The whole block is gated behind ShellVisible, so when no session exists
-          the document is header, sign-in form, footer - nothing else.
+    WHAT: Platform navigation and optional live telemetry banner.
+    WHY:  Simple Mode renders calm role-filtered task groups without hardware/GC counter noise;
+          Advanced Display restores the full 11-link operator bar and live GC telemetry strip.
+    HOW:  Gated behind ShellVisible and branched cleanly on SessionState.IsAdvancedDisplay.
 *@
 @if (ShellVisible)
 {
 <nav class="sub-navbar">
-    <div class="nav-links">
-        <NavLink href="/" class="nav-link" Match="NavLinkMatch.All">
-            <span class="nav-icon">🧬</span> @Localizer.GetString("Nav.GuidedWizard", _currentLanguage)
-        </NavLink>
-        <NavLink href="/services" class="nav-link">
-            <span class="nav-icon">⚙️</span> @Localizer.GetString("Nav.StackServices", _currentLanguage)
-        </NavLink>
-        <NavLink href="/configuration" class="nav-link">
-            <span class="nav-icon">🛡️</span> @Localizer.GetString("Nav.ConfigAndPeers", _currentLanguage)
-        </NavLink>
-        <NavLink href="/trajectories" class="nav-link">
-            <span class="nav-icon">📁</span> @Localizer.GetString("Nav.TrajectoryBrowser", _currentLanguage)
-        </NavLink>
-        <NavLink href="/endocrine" class="nav-link">
-            <span class="nav-icon">⚖️</span> @Localizer.GetString("Nav.Endocrine", _currentLanguage)
-        </NavLink>
-        <NavLink href="/simulations" class="nav-link">
-            <span class="nav-icon">🧪</span> @Localizer.GetString("Nav.Simulations", _currentLanguage)
-        </NavLink>
-        <NavLink href="/depot-studio" class="nav-link">
-            <span class="nav-icon">⏳</span> @Localizer.GetString("Nav.DepotStudio", _currentLanguage)
-        </NavLink>
-        <NavLink href="/compliance" class="nav-link">
-            <span class="nav-icon">🔒</span> @Localizer.GetString("Nav.Compliance", _currentLanguage)
-        </NavLink>
-        @if (SessionState.IsAdmin)
-        {
-            <NavLink href="/users" class="nav-link">
-                <span class="nav-icon">👥</span> @Localizer.GetString("Nav.UserManagement", _currentLanguage)
+    @if (SessionState.IsAdvancedDisplay)
+    {
+        <div class="nav-links">
+            <NavLink href="/" class="nav-link" Match="NavLinkMatch.All">
+                <span class="nav-icon">🏠</span> @Localizer.GetString("Nav.TaskHub", _currentLanguage)
             </NavLink>
-        }
-        <NavLink href="/dna" class="nav-link">
-            <span class="nav-icon">🧬</span> @Localizer.GetString("Nav.DnaAndImports", _currentLanguage)
-        </NavLink>
-        <NavLink href="/profile" class="nav-link">
-            <span class="nav-icon">👤</span> @Localizer.GetString("Nav.MyProfile", _currentLanguage)
-        </NavLink>
-    </div>
+            <NavLink href="/wizard" class="nav-link">
+                <span class="nav-icon">🧬</span> @Localizer.GetString("Nav.GuidedWizard", _currentLanguage)
+            </NavLink>
+            <NavLink href="/services" class="nav-link">
+                <span class="nav-icon">⚙️</span> @Localizer.GetString("Nav.StackServices", _currentLanguage)
+            </NavLink>
+            <NavLink href="/configuration" class="nav-link">
+                <span class="nav-icon">🛡️</span> @Localizer.GetString("Nav.ConfigAndPeers", _currentLanguage)
+            </NavLink>
+            <NavLink href="/trajectories" class="nav-link">
+                <span class="nav-icon">📁</span> @Localizer.GetString("Nav.TrajectoryBrowser", _currentLanguage)
+            </NavLink>
+            <NavLink href="/endocrine" class="nav-link">
+                <span class="nav-icon">⚖️</span> @Localizer.GetString("Nav.Endocrine", _currentLanguage)
+            </NavLink>
+            <NavLink href="/simulations" class="nav-link">
+                <span class="nav-icon">🧪</span> @Localizer.GetString("Nav.Simulations", _currentLanguage)
+            </NavLink>
+            <NavLink href="/depot-studio" class="nav-link">
+                <span class="nav-icon">⏳</span> @Localizer.GetString("Nav.DepotStudio", _currentLanguage)
+            </NavLink>
+            <NavLink href="/compliance" class="nav-link">
+                <span class="nav-icon">🔒</span> @Localizer.GetString("Nav.Compliance", _currentLanguage)
+            </NavLink>
+            @if (SessionState.IsAdmin)
+            {
+                <NavLink href="/users" class="nav-link">
+                    <span class="nav-icon">👥</span> @Localizer.GetString("Nav.UserManagement", _currentLanguage)
+                </NavLink>
+            }
+            <NavLink href="/dna" class="nav-link">
+                <span class="nav-icon">🧬</span> @Localizer.GetString("Nav.DnaAndImports", _currentLanguage)
+            </NavLink>
+            <NavLink href="/profile" class="nav-link">
+                <span class="nav-icon">👤</span> @Localizer.GetString("Nav.MyProfile", _currentLanguage)
+            </NavLink>
+        </div>
+    }
+    else
+    {
+        <div class="nav-groups-bar">
+            <NavLink href="/" class="nav-link" Match="NavLinkMatch.All">
+                <span class="nav-icon">🏠</span> @Localizer.GetString("Nav.TaskHub", _currentLanguage)
+            </NavLink>
+            @foreach (UiNavGroupDescriptor group in UiPreferences.GetNavigationGroupsForRole(SessionState.CurrentUser!.Role))
+            {
+                <details class="nav-group-dropdown" data-group="@group.GroupId">
+                    <summary class="nav-group-trigger">
+                        <span class="nav-icon">@group.Icon</span> @Localizer.GetString(group.LabelKey, _currentLanguage)
+                    </summary>
+                    <div class="nav-group-panel">
+                        @foreach (UiNavItemDescriptor item in group.Items)
+                        {
+                            <NavLink href="@item.Route" class="nav-group-link">
+                                <span class="nav-icon">@item.Icon</span> @Localizer.GetString(item.LabelKey, _currentLanguage)
+                            </NavLink>
+                        }
+                    </div>
+                </details>
+            }
+        </div>
+    }
 </nav>
 
+@if (SessionState.IsAdvancedDisplay)
+{
 <!-- Real-Time Hardware & Zero-Allocation GC Telemetry Banner -->
 <section class="telemetry-grid">
     <div class="card stat-card">
@@ -121,19 +163,22 @@
     </div>
 </section>
 }
+}
 
 <main class="main-container">
     @*
-        WHAT: The routed page body.
-        WHY:  Rendering a protected page even briefly before the redirect lands
-              would run its initialiser and flash its data on screen. Only the
-              two unauthenticated routes (/login, /setup) render without a session.
-        HOW:  Renders when the signed-in shell is visible, or when the current
-              route is one of the public ones.
+        WHAT: The routed page body wrapped in the cascaded UI display density setting.
+        WHY:  Rendering a protected page before redirect settles would leak data, and workspaces need the
+              active Simple/Advanced display mode without duplicating preference queries.
+        HOW:  Renders when ShellVisible or public route, propagating SessionState.DisplayMode via CascadingValue.
     *@
     @if (ShellVisible || IsPublicRoute())
     {
-        @Body
+        <CascadingValue Value="SessionState.DisplayMode" Name="UiDisplayMode">
+            <CascadingValue Value="_currentLanguage" Name="UiLanguage">
+                @Body
+            </CascadingValue>
+        </CascadingValue>
     }
 </main>
 
@@ -264,6 +309,7 @@
             }
 
             EnforceRouteGuard();
+            await EnsureUiPreferenceLoadedAsync();
             await EnsureTelemetryStartedAsync();
             StateHasChanged();
         });
@@ -403,8 +449,11 @@
                 return;
             }
 
-            UpdateTelemetry();
-            StateHasChanged();
+            if (SessionState.IsAdvancedDisplay)
+            {
+                UpdateTelemetry();
+                StateHasChanged();
+            }
         });
     }
 
@@ -483,6 +532,7 @@
         //       wizard) can make the shell visible many renders into the circuit.
         // HOW:  Delegates to the latched helper, which is a no-op until the shell is
         //       visible and then never starts a second timer.
+        await EnsureUiPreferenceLoadedAsync();
         await EnsureTelemetryStartedAsync();
 
         // WHAT: Binds client-side DOM activity listeners when an authenticated session exists.
@@ -685,6 +735,63 @@
         // WHY:  Triggers reactive re-rendering of localized navigation labels without requiring a page reload.
         // HOW:  Stores new language into _currentLanguage and dispatches StateHasChanged.
         _currentLanguage = newLanguage;
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Normalized username whose UI display preference has already been loaded into this circuit, or <see langword="null"/>.
+    /// </summary>
+    private string? _loadedPreferenceUser;
+
+    /// <summary>
+    /// Loads the signed-in user's saved or default UI display preference once per authenticated session.
+    /// </summary>
+    /// <returns>A task representing the asynchronous preference resolution and layout update.</returns>
+    private async Task EnsureUiPreferenceLoadedAsync()
+    {
+        // WHAT: Synchronizes SessionState.DisplayMode with the user's persisted or node-default preference once per login.
+        // WHY:  Ensures returning users see their chosen Simple or Advanced view immediately when signing in.
+        // HOW:  Resets latch when unauthenticated; otherwise fetches GetEffectivePreferenceAsync and applies DisplayMode.
+        if (!ShellVisible)
+        {
+            _loadedPreferenceUser = null;
+            return;
+        }
+
+        string activeUsername = SessionState.CurrentUser!.Username;
+        if (string.Equals(_loadedPreferenceUser, activeUsername, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _loadedPreferenceUser = activeUsername;
+        EffectiveUiPreference pref = await UiPreferences.GetEffectivePreferenceAsync(activeUsername);
+        SessionState.SetDisplayMode(pref.DisplayMode);
+        if (SessionState.IsAdvancedDisplay)
+        {
+            UpdateTelemetry();
+        }
+
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Toggles between Simple Mode and Advanced Display for the current user and persists the choice.
+    /// </summary>
+    /// <returns>A task representing the asynchronous preference save and UI refresh.</returns>
+    private async Task HandleToggleDisplayModeAsync()
+    {
+        // WHAT: Switches between Simple Mode and Advanced Display and saves the preference server-side.
+        // WHY:  Milestone 47 (P248): Restores live telemetry and full operator controls on demand without cluttering default views.
+        // HOW:  Toggles IsAdvancedDisplay, calls IUiPreferenceService.SetUserDisplayModeAsync, and updates SessionState.
+        UiDisplayMode nextMode = SessionState.IsAdvancedDisplay ? UiDisplayMode.Simple : UiDisplayMode.Advanced;
+        EffectiveUiPreference updated = await UiPreferences.SetUserDisplayModeAsync(SessionState.CurrentUser!.Username, nextMode);
+        SessionState.SetDisplayMode(updated.DisplayMode);
+        if (SessionState.IsAdvancedDisplay)
+        {
+            UpdateTelemetry();
+        }
+
         StateHasChanged();
     }
 }

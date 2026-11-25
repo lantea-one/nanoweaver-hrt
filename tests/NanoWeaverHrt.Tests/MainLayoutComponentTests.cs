@@ -12,13 +12,14 @@ using NanoWeaverHrt.Components.Layout;
 using NanoWeaverHrt.Configuration;
 using NanoWeaverHrt.Localization;
 using NanoWeaverHrt.Security.Authentication;
+using NanoWeaverHrt.Ui;
 using Xunit;
 
 namespace NanoWeaverHrt.Tests;
 
 /// <summary>
 /// Unit tests verifying route guarding, first-launch setup lockout, session restoration,
-/// telemetry latching, client-side idle tracking, and sign-out in <see cref="MainLayout"/>.
+/// telemetry latching, Simple/Advanced display mode switching, client-side idle tracking, and sign-out in <see cref="MainLayout"/>.
 /// </summary>
 public sealed class MainLayoutComponentTests : BunitContext
 {
@@ -41,6 +42,11 @@ public sealed class MainLayoutComponentTests : BunitContext
     /// Mock server session activity tracker recording DOM heartbeats and revoking tokens.
     /// </summary>
     private readonly Mock<IServerSessionActivityTracker> _activityMock = new();
+
+    /// <summary>
+    /// Mock UI preference service controlling per-user Simple/Advanced display mode and grouped nav catalogs.
+    /// </summary>
+    private readonly Mock<IUiPreferenceService> _uiPrefMock = new();
 
     /// <summary>
     /// Administrator test user account.
@@ -84,10 +90,35 @@ public sealed class MainLayoutComponentTests : BunitContext
 
         _authMock.Setup(m => m.IsSetupRequiredAsync()).ReturnsAsync(false);
 
+        UiPreferenceService catalogHelper = new(
+            Mock.Of<IUserUiPreferenceRepository>(),
+            _configMock.Object,
+            Mock.Of<NanoWeaverHrt.Compliance.IComplianceAuditService>());
+        _uiPrefMock.Setup(p => p.GetEffectivePreferenceAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string username, CancellationToken _) => new EffectiveUiPreference
+            {
+                Username = username,
+                DisplayMode = UiDisplayMode.Simple,
+                IsUserOverride = false,
+                NodeDefaultDisplayMode = UiDisplayMode.Simple
+            });
+        _uiPrefMock.Setup(p => p.SetUserDisplayModeAsync(It.IsAny<string>(), It.IsAny<UiDisplayMode>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string username, UiDisplayMode mode, CancellationToken _) => new EffectiveUiPreference
+            {
+                Username = username,
+                DisplayMode = mode,
+                IsUserOverride = true,
+                NodeDefaultDisplayMode = UiDisplayMode.Simple,
+                UpdatedAtUtc = DateTimeOffset.UtcNow
+            });
+        _uiPrefMock.Setup(p => p.GetNavigationGroupsForRole(It.IsAny<UserRole>()))
+            .Returns((UserRole role) => catalogHelper.GetNavigationGroupsForRole(role));
+
         Services.AddSingleton(_configMock.Object);
         Services.AddSingleton(_authMock.Object);
         Services.AddSingleton(_sessionState);
         Services.AddSingleton(_activityMock.Object);
+        Services.AddSingleton(_uiPrefMock.Object);
         Services.AddSingleton<IWeaverLocalizer, WeaverLocalizer>();
     }
 
@@ -193,7 +224,7 @@ public sealed class MainLayoutComponentTests : BunitContext
     /// renders navigation links including User Management, and starts telemetry.
     /// </summary>
     [Fact]
-    public void SessionRestoration_WithValidAdminToken_RendersFullAdminShell()
+    public async Task SessionRestoration_WithValidAdminToken_RendersFullAdminShellAsync()
     {
         // WHAT: Tests automatic session restoration from browser storage.
         // WHY:  Preserves authenticated administrator session across browser navigations and tab switches.
@@ -212,13 +243,17 @@ public sealed class MainLayoutComponentTests : BunitContext
 
         Assert.NotNull(cut.Find("#dashboard-body"));
         Assert.NotNull(cut.Find(".sub-navbar"));
-        Assert.NotNull(cut.Find(".telemetry-grid"));
+        Assert.NotNull(cut.Find(".nav-groups-bar"));
+        Assert.Empty(cut.FindAll(".telemetry-grid"));
+
+        var toggleBtn = cut.Find("#btn-display-mode-toggle");
+        Assert.Equal("false", toggleBtn.GetAttribute("aria-pressed"));
 
         var nodeStatus = cut.Find(".node-status");
         Assert.Contains(_adminUser.Username, nodeStatus.TextContent);
-        Assert.Contains("SQLite", nodeStatus.TextContent);
+        Assert.DoesNotContain("SQLite", nodeStatus.TextContent);
 
-        // Verify User Management is visible for Administrator role
+        // Verify User Management is available inside grouped navigation for Administrator role
         var userMgmtLink = cut.Find("a[href='/users']");
         Assert.NotNull(userMgmtLink);
         Assert.Contains("User Management", userMgmtLink.TextContent);
@@ -226,6 +261,19 @@ public sealed class MainLayoutComponentTests : BunitContext
         JSInterop.VerifyInvoke("weaverRegisterIdleWatcher");
         Assert.True(_sessionState.IsAuthenticated);
         Assert.Equal("http://localhost/", nav.Uri);
+
+        // Toggle to Advanced Display -> restores full telemetry banner, node chips, and 11-link bar
+        await cut.Find("#btn-display-mode-toggle").ClickAsync();
+        Assert.Equal("true", cut.Find("#btn-display-mode-toggle").GetAttribute("aria-pressed"));
+        Assert.NotNull(cut.Find(".telemetry-grid"));
+        Assert.NotNull(cut.Find(".nav-links"));
+        Assert.Contains("SQLite", cut.Find(".node-status").TextContent);
+
+        // Toggle back to Simple Mode -> hides telemetry and restores calm grouped bar
+        await cut.Find("#btn-display-mode-toggle").ClickAsync();
+        Assert.Equal("false", cut.Find("#btn-display-mode-toggle").GetAttribute("aria-pressed"));
+        Assert.Empty(cut.FindAll(".telemetry-grid"));
+        Assert.NotNull(cut.Find(".nav-groups-bar"));
     }
 
     /// <summary>
@@ -580,13 +628,14 @@ public sealed class MainLayoutComponentTests : BunitContext
     /// Verifies that the internal UpdateTelemetry method samples process memory and GC statistics accurately.
     /// </summary>
     [Fact]
-    public void UpdateTelemetry_SamplesMemoryAndGcMetrics()
+    public async Task UpdateTelemetry_SamplesMemoryAndGcMetrics()
     {
         // WHAT: Tests UpdateTelemetry metric formatting.
         // WHY:  Ensures node telemetry values (heap, GC collections, uptime) format properly.
-        // HOW:  Invokes UpdateTelemetry via reflection and asserts field values.
+        // HOW:  Enables Advanced Display, invokes UpdateTelemetry via reflection, and asserts telemetry grid visibility.
         _sessionState.SetUser(_adminUser);
         IRenderedComponent<MainLayout> cut = Render<MainLayout>();
+        await cut.Find("#btn-display-mode-toggle").ClickAsync();
 
         MethodInfo? updateMethod = typeof(MainLayout).GetMethod("UpdateTelemetry", BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.NotNull(updateMethod);
@@ -707,7 +756,7 @@ public sealed class MainLayoutComponentTests : BunitContext
     /// Verifies that the telemetry timer tick handles unauthenticated visitors and authenticated telemetry updates.
     /// </summary>
     [Fact]
-    public void TelemetryTimer_ShellVisibilityBranches_ExecutesSafely()
+    public async Task TelemetryTimer_ShellVisibilityBranches_ExecutesSafely()
     {
         // WHAT: Tests the ShellVisible branch and active telemetry sampling in HandleTelemetryTimerTick.
         // WHY:  Covers lines in HandleTelemetryTimerTick when shell is hidden vs when shell is visible.
@@ -719,10 +768,54 @@ public sealed class MainLayoutComponentTests : BunitContext
         // 1. Unauthenticated / login page: ShellVisible is false, returns early
         cut.Instance.HandleTelemetryTimerTick();
 
-        // 2. Authenticated: ShellVisible is true, calls UpdateTelemetry and StateHasChanged
+        // 2. Authenticated Simple Mode: ShellVisible is true, skips telemetry UI refresh
         _sessionState.SetUser(_adminUser);
         nav.NavigateTo("/");
         cut.Render();
         cut.Instance.HandleTelemetryTimerTick();
+
+        // 3. Authenticated Advanced Display: updates telemetry metrics and re-renders
+        await cut.Find("#btn-display-mode-toggle").ClickAsync();
+        cut.Instance.HandleTelemetryTimerTick();
+        Assert.NotNull(cut.Find(".telemetry-grid"));
+    }
+
+    /// <summary>
+    /// Verifies that a user with a persisted <see cref="UiDisplayMode.Advanced"/> preference automatically
+    /// loads into Advanced Display upon sign-in and omits admin-only flat navigation links for Researcher accounts.
+    /// </summary>
+    [Fact]
+    public void PersistedAdvancedPreference_RestoresOnSignIn_AndGatesNonAdminFlatLinks()
+    {
+        // WHAT: Tests initial render with persisted Advanced Display override for a Researcher account.
+        // WHY:  Covers EnsureUiPreferenceLoadedAsync(Advanced), idempotent re-render guard, and @if (SessionState.IsAdmin) false in flat nav.
+        // HOW:  Mocks GetEffectivePreferenceAsync to return Advanced, restores Researcher session, re-renders, and asserts DOM.
+        _uiPrefMock.Setup(p => p.GetEffectivePreferenceAsync(_researcherUser.Username, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EffectiveUiPreference
+            {
+                Username = _researcherUser.Username,
+                DisplayMode = UiDisplayMode.Advanced,
+                IsUserOverride = true,
+                NodeDefaultDisplayMode = UiDisplayMode.Simple,
+                UpdatedAtUtc = DateTimeOffset.UtcNow
+            });
+
+        NavigationManager nav = Services.GetRequiredService<NavigationManager>();
+        nav.NavigateTo("http://localhost/");
+
+        JSInterop.Setup<string?>("weaverGetSessionToken").SetResult("researcher-adv-jwt");
+        _authMock.Setup(m => m.ValidateTokenAsync("researcher-adv-jwt"))
+            .ReturnsAsync((true, _researcherUser, null));
+
+        IRenderedComponent<MainLayout> cut = Render<MainLayout>();
+
+        Assert.NotNull(cut.Find(".telemetry-grid"));
+        Assert.NotNull(cut.Find(".nav-links"));
+        Assert.Empty(cut.FindAll("a[href='/users']"));
+        Assert.NotNull(cut.Find("a[href='/wizard']"));
+
+        // Subsequent render hits already-loaded user latch without querying GetEffectivePreferenceAsync a second time
+        cut.Render();
+        _uiPrefMock.Verify(p => p.GetEffectivePreferenceAsync(_researcherUser.Username, It.IsAny<CancellationToken>()), Times.Once);
     }
 }
